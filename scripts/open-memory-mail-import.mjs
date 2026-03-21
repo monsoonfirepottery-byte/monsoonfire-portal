@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -26,6 +27,16 @@ import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
+
+function resolveHomeOrRepoDefault(...relativeCandidates) {
+  for (const relativePath of relativeCandidates) {
+    const homePath = resolve(homedir(), relativePath);
+    if (existsSync(homePath)) return homePath;
+    const repoPath = resolve(REPO_ROOT, relativePath);
+    if (existsSync(repoPath)) return repoPath;
+  }
+  return resolve(homedir(), relativeCandidates[0]);
+}
 const MAX_MEMORY_CONTENT_CHARS = 20_000;
 const MAX_CLIENT_REQUEST_ID_CHARS = 128;
 const MAX_IMPORT_METADATA_JSON_CHARS = 48_000;
@@ -2390,9 +2401,19 @@ async function run() {
   const openMemoryScript = readStringFlag(flags, "open-memory-script", "./scripts/open-memory.mjs");
 
   const loadEnvFileFlag = readBoolFlag(flags, "load-env-file", true);
-  const envFilePath = resolve(readStringFlag(flags, "env-file", "./secrets/studio-brain/studio-brain-automation.env"));
+  const envFilePath = resolve(
+    REPO_ROOT,
+    readStringFlag(
+      flags,
+      "env-file",
+      resolveHomeOrRepoDefault("secrets/studio-brain/studio-brain-automation.env", "secrets/studio-brain/studio-brain-mcp.env")
+    )
+  );
   const loadPortalEnvFileFlag = readBoolFlag(flags, "load-portal-env-file", true);
-  const portalEnvFilePath = resolve(readStringFlag(flags, "portal-env-file", "./secrets/portal/portal-automation.env"));
+  const portalEnvFilePath = resolve(
+    REPO_ROOT,
+    readStringFlag(flags, "portal-env-file", resolveHomeOrRepoDefault("secrets/portal/portal-automation.env"))
+  );
   const mintStaffTokenFlag = readBoolFlag(flags, "mint-staff-token", true);
   const envState = {
     loadEnvFile: loadEnvFileFlag,
@@ -2439,7 +2460,7 @@ async function run() {
     envState.mintStaffTokenAttempted = true;
     const minted = await mintStaffIdTokenFromPortalEnv({
       env: process.env,
-      defaultCredentialsPath: resolve(REPO_ROOT, "secrets", "portal", "portal-agent-staff.json"),
+      defaultCredentialsPath: resolveHomeOrRepoDefault("secrets/portal/portal-agent-staff.json"),
       preferRefreshToken: true,
     });
     envState.mintStaffTokenOk = minted.ok;

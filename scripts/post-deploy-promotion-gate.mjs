@@ -3,45 +3,16 @@
 /* eslint-disable no-console */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { loadPortalAutomationEnv } from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "post-deploy-promotion-gate.json");
-const DEFAULT_PORTAL_AUTOMATION_ENV_PATH = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
-
-function loadPortalAutomationEnv() {
-  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
-  const envPath = configuredPath || DEFAULT_PORTAL_AUTOMATION_ENV_PATH;
-  if (!envPath || !existsSync(envPath)) return;
-
-  const raw = readFileSync(envPath, "utf8");
-  const lines = raw.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const separatorIndex = trimmed.indexOf("=");
-    if (separatorIndex <= 0) continue;
-    const key = trimmed.slice(0, separatorIndex).trim();
-    if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-    if (String(process.env[key] || "").trim()) continue;
-
-    let value = trimmed.slice(separatorIndex + 1).trim();
-    if (
-      (value.startsWith("\"") && value.endsWith("\"")) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    process.env[key] = value;
-  }
-}
 
 loadPortalAutomationEnv();
 

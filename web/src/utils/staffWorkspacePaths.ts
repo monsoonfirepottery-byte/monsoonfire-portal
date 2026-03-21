@@ -128,6 +128,13 @@ const STAFF_COCKPIT_ROOT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   policyagentops: "policy-agent-ops",
 };
 
+const STAFF_NON_WORKSPACE_SHORTCUT_SEGMENTS = new Set([
+  "message",
+  "messages",
+  "communication",
+  "communications",
+]);
+
 const STAFF_PATH_COPY_PUNCTUATION_PREFIX_RE = /^[\s"'`<{([]+/;
 const STAFF_PATH_COPY_PUNCTUATION_SUFFIX_RE = /[\])}>"'`,.;:!?]+$/;
 
@@ -204,6 +211,19 @@ function resolveStaffWorkspaceRootCockpitSegment(pathname: string): string | nul
   const normalizedSegment = normalizeCockpitSegment(next);
   const canonicalSegment = resolveConsolidatedCockpitSegment(normalizedSegment);
   return STAFF_COCKPIT_KNOWN_SEGMENTS.has(canonicalSegment) ? canonicalSegment : null;
+}
+
+function isNonWorkspaceStaffShortcut(pathname: string): boolean {
+  const normalized = normalizeStaffPath(pathname);
+  if (!normalized || !isStaffPath(normalized) || isStaffCockpitPath(normalized)) {
+    return false;
+  }
+
+  const shortcutPath = normalized.slice(STAFF_PATH.length + 1);
+  if (!shortcutPath) return false;
+
+  const shortcutSegment = shortcutPath.split("/")[0]?.trim().toLowerCase() ?? "";
+  return STAFF_NON_WORKSPACE_SHORTCUT_SEGMENTS.has(shortcutSegment);
 }
 
 function normalizeStaffPathInput(value: StaffPathInput): string {
@@ -361,6 +381,7 @@ export function resolveStaffWorkspaceCanonicalPath(pathname: StaffPathInput): st
   if (rootCockpitSegment) {
     return `${STAFF_COCKPIT_PATH}/${rootCockpitSegment}`;
   }
+  if (isNonWorkspaceStaffShortcut(normalized)) return null;
   if (isStaffPath(normalized)) return STAFF_PATH;
   return null;
 }

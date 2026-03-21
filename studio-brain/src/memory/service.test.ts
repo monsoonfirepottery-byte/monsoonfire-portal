@@ -50,6 +50,217 @@ test("memory service importBatch reports failures when continueOnError=false", a
   assert.equal(result.results[1]?.ok, false);
 });
 
+test("memory service importBatch preserves per-row source when no sourceOverride is supplied", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-import-preserve",
+  });
+
+  await service.importBatch({
+    items: [
+      {
+        id: "mem-row-repo",
+        content: "Repo markdown row should keep repo-markdown as source.",
+        source: "repo-markdown",
+        clientRequestId: "row-repo-1",
+        metadata: {
+          projectLane: "monsoonfire-portal",
+          corpusRecordId: "fact-portal-1",
+        },
+      },
+      {
+        id: "mem-row-codex",
+        content: "Codex resumable row should keep codex-resumable-session as source.",
+        source: "codex-resumable-session",
+        clientRequestId: "row-codex-1",
+        metadata: {
+          projectLane: "monsoonfire-portal",
+          corpusRecordId: "fact-portal-2",
+        },
+      },
+    ],
+  });
+
+  const rows = await service.getByIds({
+    ids: ["mem-row-repo", "mem-row-codex"],
+    includeArchived: true,
+  });
+
+  assert.equal(rows[0]?.source, "repo-markdown");
+  assert.equal(rows[1]?.source, "codex-resumable-session");
+  assert.equal(rows[0]?.metadata.corpusRecordId, "fact-portal-1");
+  assert.equal(rows[1]?.metadata.projectLane, "monsoonfire-portal");
+});
+
+test("memory service importBatch honors explicit sourceOverride when intentionally supplied", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-import-override",
+  });
+
+  await service.importBatch({
+    sourceOverride: "import",
+    items: [
+      {
+        id: "mem-row-override",
+        content: "Explicit overrides should still be honored for archive/replay batches.",
+        source: "repo-markdown",
+        clientRequestId: "row-override-1",
+      },
+    ],
+  });
+
+  const [row] = await service.getByIds({
+    ids: ["mem-row-override"],
+    includeArchived: true,
+  });
+
+  assert.equal(row?.source, "import");
+});
+
+test("repo markdown rows do not synthesize thread lineage without real thread evidence", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-thread-evidence",
+  });
+
+  const row = await service.capture({
+    content: "Portal dashboard documentation notes and implementation outline.",
+    source: "repo-markdown",
+    metadata: {
+      subject: "Portal dashboard docs",
+    },
+  });
+
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.threadEvidence, "none");
+  assert.equal(typeof metadata.threadKey, "undefined");
+  assert.equal(Array.isArray(metadata.patternHints), true);
+  assert.equal((metadata.patternHints as string[]).includes("structure:has-thread"), false);
+});
+
+test("mail-like rows retain derived thread evidence for relationship indexing", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-mail-thread-evidence",
+  });
+
+  const row = await service.capture({
+    content: "Re: kiln queue blocker follow-up with references and next action.",
+    source: "email",
+    metadata: {
+      subject: "Re: Kiln queue blocker",
+      from: "owner@example.com",
+      to: "team@example.com",
+      normalizedMessageId: "<msg-2@example.com>",
+      inReplyToNormalized: "<msg-1@example.com>",
+      referenceMessageIds: ["<msg-1@example.com>"],
+    },
+  });
+
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.threadEvidence, "derived");
+  assert.equal(typeof metadata.threadKey, "string");
+  assert.notEqual(String(metadata.threadKey || "").length, 0);
+});
+
+test("synthetic thread metadata scrubber rewrites legacy non-threaded rows", async () => {
+  const store = createInMemoryMemoryStoreAdapter();
+  const service = createMemoryService({
+    store,
+    defaultTenantId: "tenant-thread-scrub",
+  });
+
+  await store.upsert({
+    id: "mem-legacy-thread-noise",
+    tenantId: "tenant-thread-scrub",
+    agentId: "agent:import",
+    runId: "import:legacy",
+    content: "Imported repo notes that should not behave like an email thread.",
+    source: "repo-markdown",
+    tags: ["import"],
+    metadata: {
+      source: "repo-markdown",
+      threadKey: "mail-thread:unknown",
+      loopClusterKey: "thread:mail-thread:unknown",
+      threadDeterministicSignature: "threadsig_legacy_noise",
+      threadEvidence: "derived",
+      entityHints: ["thread:mail-thread:unknown", "thread-signature:threadsig_legacy_noise"],
+      patternHints: ["loop-cluster:thread:mail-thread:unknown", "structure:has-thread"],
+      workstreamKey: "thread:mail-thread:unknown",
+      messageStructure: {
+        hasThreadKey: true,
+        sourceFamily: "generic",
+      },
+      threadReconstructionSignals: {
+        deterministicSignature: "threadsig_legacy_noise",
+        hasLinkableMessagePath: false,
+      },
+    },
+    embedding: null,
+    occurredAt: null,
+    clientRequestId: "legacy-thread-noise-1",
+    status: "accepted",
+    memoryType: "semantic",
+    sourceConfidence: 0.75,
+    importance: 0.6,
+    contextualizedContent: "Imported repo notes that should not behave like an email thread.",
+    fingerprint: null,
+    embeddingModel: null,
+    embeddingVersion: 1,
+  });
+
+  const result = await service.scrubSyntheticThreadMetadata({
+    dryRun: false,
+    limit: 10,
+  });
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.sample[0]?.beforeThreadKey, "mail-thread:unknown");
+  assert.equal(result.sample[0]?.afterThreadKey, null);
+
+  const [row] = await service.getByIds({
+    ids: ["mem-legacy-thread-noise"],
+    includeArchived: true,
+  });
+
+  const metadata = (row?.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.threadEvidence, "none");
+  assert.equal(typeof metadata.threadKey, "undefined");
+  assert.equal(typeof metadata.loopClusterKey, "undefined");
+  assert.equal(typeof metadata.threadDeterministicSignature, "undefined");
+  assert.equal((metadata.patternHints as string[]).includes("structure:has-thread"), false);
+});
+
+test("synthetic thread metadata scrubber leaves legitimate mail threading alone", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-thread-scrub-mail",
+  });
+
+  await service.capture({
+    content: "Re: real thread with actual message references.",
+    source: "email",
+    metadata: {
+      subject: "Re: Kiln notice",
+      from: "owner@example.com",
+      to: "team@example.com",
+      normalizedMessageId: "<msg-10@example.com>",
+      inReplyToNormalized: "<msg-9@example.com>",
+      referenceMessageIds: ["<msg-9@example.com>"],
+    },
+  });
+
+  const result = await service.scrubSyntheticThreadMetadata({
+    dryRun: true,
+    limit: 10,
+    includeMailLike: true,
+  });
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.updated, 0);
+});
+
 test("memory nanny reroutes non-allowlisted tenant and derives stable namespace", async () => {
   const service = createMemoryService({
     store: createInMemoryMemoryStoreAdapter(),
@@ -227,6 +438,149 @@ test("context can force a seed memory id before scoring", async () => {
 
   assert.equal(context.selection.seedMemoryId, "mem-seed");
   assert.equal(context.items[0]?.id, "mem-seed");
+});
+
+test("project-scoped queries boost same-lane corpus-backed rows over mail noise", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-project-lane",
+  });
+
+  await service.capture({
+    id: "mem-mail",
+    content: "Support email thread about a generic follow up.",
+    source: "mail:outlook",
+    metadata: {
+      projectLane: "personal",
+      participants: ["support@example.com"],
+    },
+  });
+
+  await service.capture({
+    id: "mem-cross-lane",
+    content: "Decision: real estate search coverage was updated.",
+    source: "repo-markdown",
+    metadata: {
+      projectLane: "real-estate",
+      corpusRecordId: "fact-real-estate",
+      corpusManifestPath: "/tmp/real-estate-manifest.json",
+      contextSignals: { decisionLike: true },
+    },
+    status: "accepted",
+    sourceConfidence: 0.84,
+  });
+
+  await service.capture({
+    id: "mem-portal",
+    content: "Decision: Monsoon Fire portal memory retrieval now prefers same-project corpus rows.",
+    source: "repo-markdown",
+    metadata: {
+      projectLane: "monsoonfire-portal",
+      corpusRecordId: "fact-portal",
+      corpusManifestPath: "/tmp/portal-manifest.json",
+      contextSignals: { decisionLike: true },
+    },
+    status: "accepted",
+    sourceConfidence: 0.84,
+  });
+
+  const rows = await service.search({
+    query: "codex monsoonfire portal memory decisions",
+    limit: 3,
+  });
+
+  assert.equal(rows[0]?.id, "mem-portal");
+  assert.equal(rows[2]?.id, "mem-mail");
+});
+
+test("compaction-promoted memories outrank raw compaction captures for startup-style queries", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-compaction-ranking",
+  });
+
+  await service.capture({
+    id: "mem-raw",
+    content: "Raw tool transcript for portal memory retrieval tuning.",
+    source: "codex-compaction-raw",
+    metadata: {
+      threadId: "thread-1",
+      cwd: "D:/monsoonfire-portal",
+      captureKind: "function_call_output",
+    },
+  });
+
+  await service.capture({
+    id: "mem-promoted",
+    content: "Decision: startup retrieval should prefer promoted compaction memories for portal context.",
+    source: "codex-compaction-promoted",
+    metadata: {
+      threadId: "thread-1",
+      cwd: "D:/monsoonfire-portal",
+      captureKind: "promoted",
+      contextSignals: { decisionLike: true },
+    },
+  });
+
+  const rows = await service.search({
+    query: "portal startup retrieval promoted compaction context",
+    limit: 2,
+  });
+
+  assert.equal(rows[0]?.id, "mem-promoted");
+  assert.equal(rows[1]?.id, "mem-raw");
+});
+
+test("expired compaction raw rows are excluded from search and context selection", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-compaction-expiry",
+    defaultAgentId: "agent:codex",
+  });
+
+  await service.capture({
+    id: "mem-expired-raw",
+    content: "Expired raw compaction capture about portal memory context.",
+    source: "codex-compaction-raw",
+    agentId: "agent:codex",
+    runId: "codex-thread:expired",
+    metadata: {
+      threadId: "thread-expired",
+      expiresAt: "2020-01-01T00:00:00.000Z",
+      captureKind: "function_call_output",
+    },
+  });
+
+  await service.capture({
+    id: "mem-live-promoted",
+    content: "Decision: keep live promoted memory for portal context bootstrap.",
+    source: "codex-compaction-promoted",
+    agentId: "agent:codex",
+    runId: "codex-thread:expired",
+    metadata: {
+      threadId: "thread-expired",
+      captureKind: "promoted",
+    },
+  });
+
+  const searchRows = await service.search({
+    query: "portal context bootstrap memory",
+    limit: 5,
+  });
+  assert.equal(searchRows.some((row) => row.id === "mem-expired-raw"), false);
+  assert.equal(searchRows.some((row) => row.id === "mem-live-promoted"), true);
+
+  const context = await service.context({
+    agentId: "agent:codex",
+    runId: "codex-thread:expired",
+    query: "portal context bootstrap memory",
+    maxItems: 5,
+    maxChars: 1200,
+    scanLimit: 50,
+    includeTenantFallback: false,
+  });
+  assert.equal(context.items.some((row) => row.id === "mem-expired-raw"), false);
+  assert.equal(context.items.some((row) => row.id === "mem-live-promoted"), true);
 });
 
 test("incident action idempotency replays when occurredAt is omitted", async () => {

@@ -138,6 +138,8 @@ function formatDashboardPieceStage(stage: string) {
     .join(" ");
 }
 
+// Exported for focused unit coverage in DashboardView.test.ts.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getDashboardPieceTitle(piece: Pick<DashboardPieceRow, "pieceId" | "pieceCode" | "shortDesc">) {
   const pieceCode = String(piece.pieceCode || "").trim();
   if (pieceCode) return pieceCode;
@@ -146,6 +148,8 @@ export function getDashboardPieceTitle(piece: Pick<DashboardPieceRow, "pieceId" 
   return `Piece ${shortId(piece.pieceId)}`;
 }
 
+// Exported for focused unit coverage in DashboardView.test.ts.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getDashboardPieceBadge(piece: Pick<DashboardPieceRow, "pieceId" | "pieceCode" | "shortDesc">) {
   const seed = String(piece.pieceCode || piece.shortDesc || piece.pieceId || "")
     .replace(/[^a-z0-9]+/gi, "")
@@ -153,6 +157,8 @@ export function getDashboardPieceBadge(piece: Pick<DashboardPieceRow, "pieceId" 
   return seed.slice(0, 3) || "PI";
 }
 
+// Exported for focused unit coverage in DashboardView.test.ts.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getDashboardPieceStatus(piece: Pick<DashboardPieceRow, "isArchived" | "stage">) {
   return piece.isArchived ? "Archived" : formatDashboardPieceStage(piece.stage);
 }
@@ -175,6 +181,8 @@ function sortDashboardPieceRows(rows: DashboardPieceRow[]) {
   });
 }
 
+// Exported for focused unit coverage in DashboardView.test.ts.
+// eslint-disable-next-line react-refresh/only-export-components
 export function summarizeDashboardPieces(rows: DashboardPieceRow[], limit = DASHBOARD_PIECES_PREVIEW) {
   const sorted = sortDashboardPieceRows(rows);
   const archivedRows = sorted.filter((piece) => piece.isArchived);
@@ -221,6 +229,8 @@ function normalizeWorkshopText(value: string | null | undefined) {
     .toLowerCase();
 }
 
+// Exported for focused unit coverage in DashboardView.test.ts.
+// eslint-disable-next-line react-refresh/only-export-components
 export function isQaWorkshopEvent(event: Pick<EventSummary, "title" | "summary">) {
   const title = normalizeWorkshopText(event.title);
   const summary = normalizeWorkshopText(event.summary);
@@ -804,9 +814,11 @@ export default function DashboardView({
             <button className="btn btn-ghost" onClick={onOpenQueues}>
               View the queues
             </button>
-            <button className="btn btn-ghost" onClick={onOpenFirings}>
-              Firings
-            </button>
+            {isStaff ? (
+              <button className="btn btn-ghost" onClick={onOpenFirings}>
+                Firings
+              </button>
+            ) : null}
             <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
               Glaze inspiration
             </button>

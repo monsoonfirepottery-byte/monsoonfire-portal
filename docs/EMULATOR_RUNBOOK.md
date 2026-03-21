@@ -145,7 +145,7 @@ Acceptable backend status codes for proxy checks depend on auth/runtime state (`
   - `npm run studio:network:check:gate -- --strict`
   - `npm run guardrails:check -- --strict`
   - `npm run studio:cutover:gate -- --no-smoke`
-  - `npm run studio:cutover:gate -- --portal-deep` (or `npm run studio:cutover:gate -- --portal-deep --portal-base-url https://monsoonfire-portal.web.app` for production-aligned API target)
+  - `npm run studio:cutover:gate -- --portal-deep` (or `npm run studio:cutover:gate -- --portal-deep --portal-base-url https://portal.monsoonfire.com` for production-aligned API target)
   - `npm run integrity:check`
 
 #### Expected runtime (cutover gate)

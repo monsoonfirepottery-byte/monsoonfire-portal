@@ -53,6 +53,10 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function normalizeTextForDigest(value) {
+  return String(value).replace(/\r\n/g, "\n");
+}
+
 function slugify(value, fallback = "item") {
   const normalized = String(value || "")
     .toLowerCase()
@@ -63,7 +67,7 @@ function slugify(value, fallback = "item") {
 
 function digestFileIfExists(path) {
   if (!existsSync(path)) return null;
-  return sha256(readFileSync(path, "utf8"));
+  return sha256(normalizeTextForDigest(readFileSync(path, "utf8")));
 }
 
 function isPlainObject(value) {
@@ -529,11 +533,11 @@ export function validateIntentEntries(repoRoot, entries) {
 export function buildCompiledPlan(repoRoot, validEntries) {
   const intents = validEntries
     .map((entry) => {
-      const intentDigestSha256 = sha256(entry.raw);
+      const intentDigestSha256 = sha256(normalizeTextForDigest(entry.raw));
       const epicPath = entry.intent.epic.path;
       const epicAbsolutePath = resolve(repoRoot, epicPath);
       const epicRaw = readFileSync(epicAbsolutePath, "utf8");
-      const epicDigestSha256 = sha256(epicRaw);
+      const epicDigestSha256 = sha256(normalizeTextForDigest(epicRaw));
 
       const normalizedSlices = entry.intent.executionSlices.map((slice) => ({
         id: slice.id,

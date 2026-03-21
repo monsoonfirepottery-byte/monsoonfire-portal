@@ -1,5 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REPO_ROOT = resolve(__dirname, "..", "..");
+const HOME_ROOT = homedir();
 
 function clean(value) {
   return String(value ?? "").trim();
@@ -13,6 +20,17 @@ function parseJsonSafely(raw) {
   } catch {
     return null;
   }
+}
+
+function resolvePreferredSecretPath(...parts) {
+  const homePath = resolve(HOME_ROOT, ...parts);
+  if (existsSync(homePath)) return homePath;
+  return resolve(REPO_ROOT, ...parts);
+}
+
+function resolveCredentialPath(filePath, { baseDir = HOME_ROOT } = {}) {
+  const raw = clean(filePath);
+  return raw ? resolve(baseDir, raw) : "";
 }
 
 function dedupeNonEmpty(values) {
@@ -33,7 +51,7 @@ export function normalizeBearer(token) {
 
 function readAgentStaffCredentialsFromEnv({
   env = process.env,
-  defaultCredentialsPath = resolve(process.cwd(), "secrets", "portal", "portal-agent-staff.json"),
+  defaultCredentialsPath = resolvePreferredSecretPath("secrets", "portal", "portal-agent-staff.json"),
 } = {}) {
   const credentialsJsonEnv = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON);
   if (credentialsJsonEnv) {
@@ -41,7 +59,10 @@ function readAgentStaffCredentialsFromEnv({
     if (parsed) return parsed;
   }
 
-  const credentialsPath = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS || defaultCredentialsPath);
+  const configuredPath = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS || defaultCredentialsPath);
+  const credentialsPath = isAbsolute(configuredPath)
+    ? configuredPath
+    : resolveCredentialPath(configuredPath);
   if (!credentialsPath || !existsSync(credentialsPath)) {
     return null;
   }
@@ -150,7 +171,7 @@ async function signInWithPassword(apiKey, email, password) {
 
 export async function mintStaffIdTokenFromPortalEnv({
   env = process.env,
-  defaultCredentialsPath = resolve(process.cwd(), "secrets", "portal", "portal-agent-staff.json"),
+  defaultCredentialsPath = resolvePreferredSecretPath("secrets", "portal", "portal-agent-staff.json"),
   preferRefreshToken = true,
 } = {}) {
   const apiKey = clean(env.PORTAL_FIREBASE_API_KEY || env.FIREBASE_WEB_API_KEY);

@@ -74,6 +74,44 @@ function dedupeStrings(values) {
   return [...new Set(values.map((value) => normalizeLabel(value)).filter(Boolean))];
 }
 
+function pickHybridMetadata(metadata = {}) {
+  const values = {};
+  const assign = (key, value) => {
+    if (value === null || value === undefined) return;
+    if (typeof value === "number" || typeof value === "boolean") {
+      values[key] = value;
+      return;
+    }
+    if (Array.isArray(value)) {
+      const filtered = value.map((entry) => normalizeLabel(entry)).filter(Boolean);
+      if (filtered.length > 0) values[key] = filtered;
+      return;
+    }
+    const normalized = normalizeLabel(value);
+    if (normalized) values[key] = normalized;
+  };
+
+  assign("projectLane", metadata.projectLane);
+  assign("docPath", metadata.docPath);
+  assign("headingPath", metadata.headingPath);
+  assign("chunkId", metadata.chunkId);
+  assign("contentHash", metadata.contentHash);
+  assign("sourceFamily", metadata.sourceFamily);
+  assign("sourceKind", metadata.sourceKind);
+  assign("corpusFamily", metadata.corpusFamily);
+  assign("memoryKind", metadata.memoryKind);
+  assign("sessionFile", metadata.sessionFile);
+  assign("conversationId", metadata.conversationId);
+  assign("conversationTitle", metadata.conversationTitle);
+  assign("messageNodeId", metadata.messageNodeId);
+  assign("role", metadata.role);
+  assign("title", metadata.title);
+  assign("sectionSummary", metadata.sectionSummary);
+  assign("sectionLevel", metadata.sectionLevel);
+
+  return values;
+}
+
 function parseTimestamp(value) {
   const raw = normalizeLabel(value);
   if (!raw) return { value: null, precision: "unknown", sane: false };
@@ -395,6 +433,7 @@ function promotedRawSidecarId(runId, clientRequestId) {
 
 function toSourceUnitRecord({ runId, row, lineNumber }) {
   const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const hybridMetadata = pickHybridMetadata(metadata);
   const clientRequestId =
     normalizeLabel(row.clientRequestId) ||
     deriveRecordId("src_req", [runId, normalizeLabel(row.unitId), normalizeWhitespace(row.content || "")]);
@@ -434,6 +473,14 @@ function toSourceUnitRecord({ runId, row, lineNumber }) {
           mailboxPath: normalizeLabel(metadata.mailboxPath) || null,
           mailbox: normalizeLabel(metadata.mailbox) || null,
           providerFolder: normalizeLabel(metadata.providerFolder) || null,
+          projectLane: hybridMetadata.projectLane || null,
+          docPath: hybridMetadata.docPath || null,
+          headingPath: hybridMetadata.headingPath || null,
+          chunkId: hybridMetadata.chunkId || null,
+          contentHash: hybridMetadata.contentHash || null,
+          sessionFile: hybridMetadata.sessionFile || null,
+          conversationId: hybridMetadata.conversationId || null,
+          messageNodeId: hybridMetadata.messageNodeId || null,
           lineNumber,
         },
         rawMetadataRef: rawSidecarId,
@@ -485,6 +532,7 @@ function toSourceUnitRecord({ runId, row, lineNumber }) {
           localMediaFiles: Array.isArray(metadata.localMediaFiles) ? metadata.localMediaFiles : [],
           endorsementWeight: Number(metadata.endorsementWeight || 0) || 0,
           affinityWeight: Number(metadata.affinityWeight || 0) || 0,
+          ...hybridMetadata,
         },
         attachmentRefs: Array.isArray(metadata.attachmentRefs)
           ? metadata.attachmentRefs
@@ -530,6 +578,7 @@ function toSourceUnitRecord({ runId, row, lineNumber }) {
 
 function toFactEventRecord({ runId, row, lineNumber, sourceIdByClientRequestId }) {
   const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const hybridMetadata = pickHybridMetadata(metadata);
   const clientRequestId =
     normalizeLabel(row.clientRequestId) || deriveRecordId("fact_req", [runId, normalizeWhitespace(row.content || "")]);
   const occurred = parseTimestamp(row.occurredAt || metadata.sourceSentAt || metadata.sourceReceivedAt);
@@ -569,6 +618,14 @@ function toFactEventRecord({ runId, row, lineNumber, sourceIdByClientRequestId }
         sourceLocation: {
           threadKey: normalizeLabel(metadata.threadKey) || null,
           sourceClientRequestIds: collectSourceRequestIds(metadata),
+          projectLane: hybridMetadata.projectLane || null,
+          docPath: hybridMetadata.docPath || null,
+          headingPath: hybridMetadata.headingPath || null,
+          chunkId: hybridMetadata.chunkId || null,
+          contentHash: hybridMetadata.contentHash || null,
+          sessionFile: hybridMetadata.sessionFile || null,
+          conversationId: hybridMetadata.conversationId || null,
+          messageNodeId: hybridMetadata.messageNodeId || null,
           lineNumber,
         },
         rawMetadataRef: rawSidecarId,
@@ -632,6 +689,9 @@ function toFactEventRecord({ runId, row, lineNumber, sourceIdByClientRequestId }
         contextSignals: metadata.contextSignals && typeof metadata.contextSignals === "object" ? metadata.contextSignals : {},
         structureSignalCount: Number(metadata.structureSignalCount || 0) || 0,
         rawMetadataRef: rawSidecarId,
+        sourceMetadata: {
+          ...hybridMetadata,
+        },
       },
     },
   };
@@ -754,6 +814,8 @@ function buildHypotheses({ runId, factEvents }) {
         reasoningMethod: "heuristic:event-and-thread-patterns.v1",
         status: "provisional",
         reviewNotes: "Aggressive inference is allowed, but hypotheses remain distinct from fact records.",
+        sourceMetadata:
+          fact?.payload?.sourceMetadata && typeof fact.payload.sourceMetadata === "object" ? fact.payload.sourceMetadata : {},
       },
     });
 

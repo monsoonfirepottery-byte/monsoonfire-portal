@@ -595,7 +595,7 @@ function createPhaseProfiles() {
       },
       {
         id: "production-portal-smoke-command",
-        command: "node ./scripts/portal-playwright-smoke.mjs --base-url https://monsoonfire-portal.web.app --output-dir output/playwright/prod-smoke",
+        command: "node ./scripts/portal-playwright-smoke.mjs --base-url https://portal.monsoonfire.com --output-dir output/playwright/prod-smoke",
         severity: "error",
         category: "smoke",
         commandExists: true,

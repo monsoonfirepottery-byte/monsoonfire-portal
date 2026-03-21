@@ -462,14 +462,22 @@ function enrichCaptureMetadata(payload) {
         normalizeText(enriched.thread) ||
         normalizeText(enriched.thread_id) ||
         normalizeText(enriched.conversationId);
+    const supportsDerivedThreading = Boolean(isEmailLike || normalizedMessageId || inReplyToNormalized || referenceMessageIds.length > 0);
     const inferredThreadKey = existingThreadKey ||
-        normalizePatternKey([
-            "mail-thread",
-            subjectKey.slice(0, 80) || participantDomains[0] || "unknown",
-            referenceMessageIds[0] || inReplyToNormalized || normalizedMessageId || "",
-        ]
-            .filter(Boolean)
-            .join(":"));
+        (supportsDerivedThreading
+            ? normalizePatternKey([
+                "mail-thread",
+                subjectKey.slice(0, 80) || participantDomains[0] || "unknown",
+                referenceMessageIds[0] || inReplyToNormalized || normalizedMessageId || "",
+            ]
+                .filter(Boolean)
+                .join(":"))
+            : "");
+    const threadEvidence = existingThreadKey
+        ? "explicit"
+        : inferredThreadKey
+            ? "derived"
+            : "none";
     const tickets = mergeUniqueStrings(enriched.mentionedTickets, `${subject}\n${payload.content}`.match(TICKET_PATTERN) ?? [], 24).map((value) => String(value).toUpperCase());
     const urls = mergeUniqueStrings(enriched.mentionedUrls, `${subject}\n${payload.content}`.match(URL_PATTERN) ?? [], 24).map((value) => String(value).toLowerCase());
     const topicTokens = mergeUniqueStrings(enriched.topicTokens, subjectKey
@@ -478,14 +486,18 @@ function enrichCaptureMetadata(payload) {
         .filter((token) => token.length >= 4)
         .slice(0, 18), 32).map((value) => String(value).toLowerCase());
     const inferredLoopState = inferLoopStateFromContent(subject, payload.content.slice(0, 14_000));
-    const loopClusterKey = inferLoopClusterKeyFromEmail({
-        existing: normalizeText(enriched.loopClusterKey),
-        threadKey: inferredThreadKey,
-        subjectKey,
-        tickets,
-        participantDomains,
-    });
+    const loopClusterKey = threadEvidence !== "none"
+        ? inferLoopClusterKeyFromEmail({
+            existing: normalizeText(enriched.loopClusterKey),
+            threadKey: inferredThreadKey,
+            subjectKey,
+            tickets,
+            participantDomains,
+        })
+        : "";
     const deterministicThreadSignature = (() => {
+        if (threadEvidence === "none")
+            return "";
         const signatureBasis = [
             inferredThreadKey,
             normalizedMessageId,
@@ -521,9 +533,9 @@ function enrichCaptureMetadata(payload) {
     }
     if (inReplyToNormalized || referenceMessageIds.length > 0)
         patternHints.add("structure:has-references");
-    if (inferredThreadKey)
+    if (threadEvidence !== "none" && inferredThreadKey)
         patternHints.add("structure:has-thread");
-    if (deterministicThreadSignature)
+    if (threadEvidence !== "none" && deterministicThreadSignature)
         patternHints.add(`thread-signature:${deterministicThreadSignature}`);
     if (normalizedMessageId && (inReplyToNormalized || referenceMessageIds.length > 0)) {
         patternHints.add("structure:deterministic-thread-link");
@@ -534,9 +546,9 @@ function enrichCaptureMetadata(payload) {
         entityHints.add(`message-ref:${inReplyToNormalized}`);
     for (const ref of referenceMessageIds.slice(0, 16))
         entityHints.add(`message-ref:${ref}`);
-    if (inferredThreadKey)
+    if (threadEvidence !== "none" && inferredThreadKey)
         entityHints.add(`thread:${inferredThreadKey}`);
-    if (deterministicThreadSignature)
+    if (threadEvidence !== "none" && deterministicThreadSignature)
         entityHints.add(`thread-signature:${deterministicThreadSignature}`);
     if (participantKey)
         entityHints.add(`participants:${participantKey}`);
@@ -559,6 +571,8 @@ function enrichCaptureMetadata(payload) {
     messageStructure.hasReplyTo = Boolean(inReplyToNormalized);
     messageStructure.hasReferences = referenceMessageIds.length > 0;
     messageStructure.hasThreadKey = Boolean(inferredThreadKey);
+    messageStructure.sourceFamily = isEmailLike ? "mail" : "generic";
+    messageStructure.threadEvidence = threadEvidence;
     const structureSignalCount = Number(messageStructure.hasMessageId === true) +
         Number(messageStructure.hasReplyTo === true) +
         Number(messageStructure.hasReferences === true) +
@@ -592,12 +606,13 @@ function enrichCaptureMetadata(payload) {
         enriched.inReplyToNormalized = inReplyToNormalized;
     if (referenceMessageIds.length > 0)
         enriched.referenceMessageIds = referenceMessageIds;
-    if (inferredThreadKey)
+    if (threadEvidence !== "none" && inferredThreadKey)
         enriched.threadKey = inferredThreadKey;
-    if (loopClusterKey)
+    if (threadEvidence !== "none" && loopClusterKey)
         enriched.loopClusterKey = loopClusterKey;
-    if (deterministicThreadSignature)
+    if (threadEvidence !== "none" && deterministicThreadSignature)
         enriched.threadDeterministicSignature = deterministicThreadSignature;
+    enriched.threadEvidence = threadEvidence;
     if (!normalizeText(enriched.loopState) && inferredLoopState)
         enriched.loopState = inferredLoopState;
     if (tickets.length > 0)
@@ -628,6 +643,7 @@ function enrichCaptureMetadata(payload) {
         hasMessageId: Boolean(normalizedMessageId),
         inferredLoopState: inferredLoopState ?? null,
         sourceFamily: isEmailLike ? "mail" : "generic",
+        threadEvidence,
     };
     return enriched;
 }
@@ -967,7 +983,7 @@ function deriveSignalIndex(payload) {
     for (const tag of payload.tags.slice(0, 24)) {
         appendEntity(entities, entitySeen, "tag", tag, tag, 0.55);
     }
-    const threadKey = normalizeText(metadata.threadKey || metadata.thread || metadata.conversationId || metadata.thread_id);
+    const threadKey = threadKeyFromMetadata(metadata);
     if (threadKey)
         appendEntity(entities, entitySeen, "thread", threadKey, threadKey, 0.9);
     if (threadKey)
@@ -982,7 +998,7 @@ function deriveSignalIndex(payload) {
         appendEntity(entities, entitySeen, "participants", participantKey, participantKey, 0.82);
     if (participantKey)
         appendPattern(patterns, patternSeen, "participants", participantKey, participantKey, 0.78);
-    const loopClusterKey = normalizeText(metadata.loopClusterKey);
+    const loopClusterKey = loopClusterKeyFromMetadata(metadata);
     if (loopClusterKey)
         appendPattern(patterns, patternSeen, "loop-cluster", loopClusterKey, loopClusterKey, 0.92);
     const normalizedMessageId = normalizeMessageReferenceList([metadata.normalizedMessageId, metadata.messageId, metadata.rawMessageId], 1)[0] ?? "";
@@ -1258,8 +1274,175 @@ function extractRelationIds(metadata) {
     }
     return Array.from(ids).filter((value) => value.length > 0 && value.length <= 128);
 }
+function metadataHasThreadSignals(metadata) {
+    const messageStructure = normalizeMetadata(metadata.messageStructure);
+    if (messageStructure.hasMessageId === true ||
+        messageStructure.hasReplyTo === true ||
+        messageStructure.hasReferences === true) {
+        return true;
+    }
+    const normalizedMessageId = normalizeMessageReferenceList([metadata.normalizedMessageId, metadata.messageId, metadata.rawMessageId], 1)[0] ?? "";
+    if (normalizedMessageId)
+        return true;
+    return normalizeMessageReferenceList([metadata.referenceMessageIds, metadata.inReplyToNormalized, metadata.inReplyTo, metadata.replyTo, metadata.references], 2).length > 0;
+}
+function normalizeThreadEvidence(metadata) {
+    const explicit = normalizeText(metadata.threadEvidence);
+    if (explicit === "explicit" || explicit === "derived" || explicit === "none") {
+        return explicit;
+    }
+    const emailSignalSummary = normalizeMetadata(metadata.emailSignalSummary);
+    const sourceFamily = normalizeText(emailSignalSummary.sourceFamily) ||
+        normalizeText(normalizeMetadata(metadata.messageStructure).sourceFamily) ||
+        normalizeText(metadata.sourceFamily);
+    if (sourceFamily === "mail" || metadataHasThreadSignals(metadata)) {
+        return "derived";
+    }
+    return "none";
+}
+function threadRelationshipsAllowed(metadata) {
+    const evidence = normalizeThreadEvidence(metadata);
+    if (evidence === "explicit")
+        return true;
+    if (evidence !== "derived")
+        return false;
+    const emailSignalSummary = normalizeMetadata(metadata.emailSignalSummary);
+    const sourceFamily = normalizeText(emailSignalSummary.sourceFamily) ||
+        normalizeText(normalizeMetadata(metadata.messageStructure).sourceFamily) ||
+        normalizeText(metadata.sourceFamily);
+    return sourceFamily === "mail" || metadataHasThreadSignals(metadata);
+}
 function threadKeyFromMetadata(metadata) {
-    return normalizeText(metadata.threadKey) || normalizeText(metadata.thread) || normalizeText(metadata.thread_id);
+    if (!threadRelationshipsAllowed(metadata))
+        return "";
+    return (normalizeText(metadata.threadKey) ||
+        normalizeText(metadata.thread) ||
+        normalizeText(metadata.thread_id) ||
+        normalizeText(metadata.conversationId));
+}
+function loopClusterKeyFromMetadata(metadata) {
+    if (!threadRelationshipsAllowed(metadata))
+        return "";
+    return normalizeText(metadata.loopClusterKey);
+}
+function isMailLikeThreadSource(source, metadata) {
+    const normalized = normalizeSource(source);
+    if (normalized.startsWith("mail:") || normalized.includes("email") || normalized.startsWith("message-signal:")) {
+        return true;
+    }
+    const emailSignalSummary = normalizeMetadata(metadata.emailSignalSummary);
+    const sourceFamily = normalizeText(emailSignalSummary.sourceFamily) ||
+        normalizeText(normalizeMetadata(metadata.messageStructure).sourceFamily) ||
+        normalizeText(metadata.sourceFamily);
+    return sourceFamily === "mail";
+}
+function isThreadEntityHint(value) {
+    const normalized = normalizeText(value);
+    return normalized.startsWith("thread:") || normalized.startsWith("thread-signature:");
+}
+function isThreadPatternHint(value) {
+    const normalized = normalizeText(value);
+    return (normalized === "structure:has-thread" ||
+        normalized === "thread:shallow" ||
+        normalized.startsWith("thread:") ||
+        normalized.startsWith("thread-signature:") ||
+        normalized.startsWith("loop-cluster:") ||
+        normalized.startsWith("loop-state:") ||
+        normalized.startsWith("loop:thread:"));
+}
+function scrubThreadMetadata(metadata) {
+    const before = normalizeMetadata(metadata);
+    const beforeThreadKey = normalizeText(before.threadKey) || null;
+    const beforeLoopClusterKey = normalizeText(before.loopClusterKey) || null;
+    const beforeThreadSignature = normalizeText(before.threadDeterministicSignature);
+    const beforeThreadEvidence = normalizeThreadEvidence(before);
+    const entityHints = readStringValues(before.entityHints, 128);
+    const patternHints = readStringValues(before.patternHints, 192);
+    const hadThreadHints = entityHints.some(isThreadEntityHint) || patternHints.some(isThreadPatternHint);
+    const hadThreadArtifacts = Boolean(beforeThreadKey || beforeLoopClusterKey || beforeThreadSignature || hadThreadHints);
+    const hasUnknownThreadKey = (beforeThreadKey?.includes("mail-thread:unknown") ?? false) ||
+        (beforeThreadKey?.endsWith(":unknown") ?? false) ||
+        (beforeLoopClusterKey?.includes("mail-thread:unknown") ?? false) ||
+        (beforeLoopClusterKey?.endsWith(":unknown") ?? false);
+    const relationshipsAllowed = threadRelationshipsAllowed(before);
+    if (!hadThreadArtifacts || (beforeThreadEvidence === "explicit" && !hasUnknownThreadKey) || (relationshipsAllowed && !hasUnknownThreadKey)) {
+        return {
+            changed: false,
+            reason: "",
+            metadata: before,
+            beforeThreadKey,
+            afterThreadKey: beforeThreadKey,
+            beforeLoopClusterKey,
+            afterLoopClusterKey: beforeLoopClusterKey,
+            beforeThreadEvidence,
+            afterThreadEvidence: beforeThreadEvidence,
+        };
+    }
+    const next = { ...before };
+    delete next.threadKey;
+    delete next.thread;
+    delete next.thread_id;
+    delete next.loopClusterKey;
+    delete next.threadDeterministicSignature;
+    next.threadEvidence = "none";
+    const filteredEntityHints = entityHints.filter((value) => !isThreadEntityHint(value));
+    if (filteredEntityHints.length > 0)
+        next.entityHints = filteredEntityHints;
+    else
+        delete next.entityHints;
+    const filteredPatternHints = patternHints.filter((value) => !isThreadPatternHint(value));
+    if (filteredPatternHints.length > 0)
+        next.patternHints = filteredPatternHints;
+    else
+        delete next.patternHints;
+    const workstreamKey = normalizeText(next.workstreamKey);
+    if (workstreamKey.startsWith("thread:")) {
+        delete next.workstreamKey;
+    }
+    const messageStructure = normalizeMetadata(next.messageStructure);
+    if (Object.keys(messageStructure).length > 0) {
+        messageStructure.hasThreadKey = false;
+        messageStructure.threadEvidence = "none";
+        if (messageStructure.sourceFamily === "mail" && !metadataHasThreadSignals(before)) {
+            messageStructure.sourceFamily = "generic";
+        }
+        next.messageStructure = messageStructure;
+    }
+    const threadSignals = normalizeMetadata(next.threadReconstructionSignals);
+    if (Object.keys(threadSignals).length > 0) {
+        threadSignals.deterministicSignature = "";
+        threadSignals.hasLinkableMessagePath = false;
+        if (!metadataHasThreadSignals(before)) {
+            threadSignals.messageIdCount = 0;
+            threadSignals.replyReferenceCount = 0;
+            threadSignals.participantCount = 0;
+        }
+        next.threadReconstructionSignals = threadSignals;
+    }
+    const after = normalizeMetadata(next);
+    const afterThreadEvidence = normalizeThreadEvidence(after);
+    const reasons = [];
+    if (hasUnknownThreadKey)
+        reasons.push("unknown-thread-key");
+    if (!relationshipsAllowed)
+        reasons.push("unsupported-thread-source");
+    if (beforeThreadSignature)
+        reasons.push("thread-signature");
+    if (hadThreadHints)
+        reasons.push("thread-hints");
+    if (workstreamKey.startsWith("thread:"))
+        reasons.push("thread-workstream");
+    return {
+        changed: stableStringify(before) !== stableStringify(after),
+        reason: reasons.join(",") || "synthetic-thread-metadata",
+        metadata: after,
+        beforeThreadKey,
+        afterThreadKey: normalizeText(after.threadKey) || null,
+        beforeLoopClusterKey,
+        afterLoopClusterKey: normalizeText(after.loopClusterKey) || null,
+        beforeThreadEvidence,
+        afterThreadEvidence,
+    };
 }
 function halfLifeDays(memoryType) {
     if (memoryType === "working")
@@ -1330,14 +1513,11 @@ function inferImportance(tags, metadata) {
 }
 function buildContextualizedContent(payload) {
     const metadata = normalizeMetadata(payload.metadata);
-    const threadKey = normalizeText(metadata.threadKey) ||
-        normalizeText(metadata.conversationId) ||
-        normalizeText(metadata.thread) ||
-        normalizeText(metadata.thread_id);
+    const threadKey = threadKeyFromMetadata(metadata);
     const subject = normalizeText(metadata.subject);
     const from = normalizeText(metadata.from);
     const participantKey = normalizeText(metadata.participantKey);
-    const loopClusterKey = normalizeText(metadata.loopClusterKey);
+    const loopClusterKey = loopClusterKeyFromMetadata(metadata);
     const loopState = normalizeText(metadata.loopState);
     const contextSignals = normalizeMetadata(metadata.contextSignals);
     const signalKeys = Object.entries(contextSignals)
@@ -1542,7 +1722,7 @@ function computeSignalBoost(row, query) {
             participantKey.includes("|");
         if (hasManyParticipants)
             boost += 0.07;
-        if (normalizeText(metadata.threadKey))
+        if (threadKeyFromMetadata(metadata))
             boost += 0.04;
         if (participantDomains.length >= 2)
             boost += Math.min(0.06, participantDomains.length * 0.018);
@@ -1585,7 +1765,7 @@ function computeSignalBoost(row, query) {
             boost += Math.min(0.04, emailThreadDepth * 0.007);
     }
     if (querySignals.relationship) {
-        const hasThread = normalizeText(metadata.threadKey) ||
+        const hasThread = threadKeyFromMetadata(metadata) ||
             normalizeText(metadata.conversationId) ||
             normalizeText(metadata.inReplyTo) ||
             normalizeText(metadata.references);
@@ -1652,7 +1832,7 @@ function applyRelatedBoost(row, hit) {
 }
 function loopKeyFromRow(row) {
     const metadata = normalizeMetadata(row.metadata);
-    return normalizeText(metadata.loopClusterKey);
+    return loopClusterKeyFromMetadata(metadata);
 }
 function applyLoopStateBoost(row, loopState, query) {
     if (!loopState)
@@ -2178,7 +2358,7 @@ function computeLoopFeedbackAdjustment(feedback, query) {
 }
 function diversityGroupForRow(row) {
     const metadata = normalizeMetadata(row.metadata);
-    const threadKey = normalizeText(metadata.threadKey);
+    const threadKey = threadKeyFromMetadata(metadata);
     if (threadKey)
         return `thread:${threadKey}`;
     const subjectKey = normalizeText(metadata.subjectKey);
@@ -3312,7 +3492,7 @@ function createMemoryService(options) {
             if (!pointer)
                 continue;
             const metadata = normalizeMetadata(pointer.metadata);
-            const threadKey = normalizeText(metadata.threadKey);
+            const threadKey = threadKeyFromMetadata(metadata);
             const participantKey = normalizeText(metadata.participantKey);
             const actorTokens = Array.from(new Set([
                 ...readStringTokens(metadata.participantKey, 12),
@@ -3367,7 +3547,7 @@ function createMemoryService(options) {
             const pointerMemoryId = pointerMemoryIdForLoopState(row);
             const pointerRow = pointerMemoryId ? pointerRowsById.get(pointerMemoryId) : undefined;
             const metadata = normalizeMetadata(pointerRow?.metadata);
-            const threadKey = normalizeText(metadata.threadKey);
+            const threadKey = threadKeyFromMetadata(metadata);
             const participantKey = normalizeText(metadata.participantKey);
             const actorTokens = Array.from(new Set([
                 ...readStringTokens(metadata.participantKey, 12),
@@ -3739,7 +3919,7 @@ function createMemoryService(options) {
                 const pointerId = String(entry.pointerMemoryId ?? "").trim();
                 const pointer = pointerId ? pointerRowsById.get(pointerId) : undefined;
                 const metadata = normalizeMetadata(pointer?.metadata);
-                const threadKey = normalizeText(metadata.threadKey);
+                const threadKey = threadKeyFromMetadata(metadata);
                 const actorTokens = Array.from(new Set([
                     ...readStringTokens(metadata.participantKey, 12),
                     ...readStringTokens(metadata.participants, 16),
@@ -6262,6 +6442,169 @@ function createMemoryService(options) {
             errors,
         };
     };
+    const scrubSyntheticThreadMetadata = async (raw) => {
+        let parsed;
+        try {
+            parsed = contracts_1.memoryThreadMetadataScrubRequestSchema.parse(raw ?? {});
+        }
+        catch (error) {
+            throw normalizeError(error);
+        }
+        const startedAt = new Date().toISOString();
+        const tenantId = normalizeTenant(parsed.tenantId);
+        const sourcePrefixes = sanitizeStringList(parsed.sourcePrefixes).slice(0, 24);
+        const rows = await (options.store.recentCreated
+            ? options.store.recentCreated({
+                tenantId,
+                limit: parsed.limit,
+            })
+            : options.store.recent({
+                tenantId,
+                limit: parsed.limit,
+            }));
+        let scanned = 0;
+        let eligible = 0;
+        let updated = 0;
+        let skipped = 0;
+        let failed = 0;
+        let writesAttempted = 0;
+        let timeoutErrors = 0;
+        let consecutiveTimeoutErrors = 0;
+        let stopReason = null;
+        const maxWrites = Math.max(1, Math.min(parsed.maxWrites, parsed.limit));
+        const writeDelayMs = Math.max(0, parsed.writeDelayMs);
+        const stopAfterTimeoutErrors = Math.max(1, parsed.stopAfterTimeoutErrors);
+        const sample = [];
+        const errors = [];
+        const pushSample = (entry) => {
+            if (sample.length >= 40)
+                return;
+            sample.push(entry);
+        };
+        const sleep = async (ms) => new Promise((resolve) => {
+            setTimeout(resolve, Math.max(0, ms));
+        });
+        for (const row of rows) {
+            if (!parsed.dryRun && writesAttempted >= maxWrites) {
+                stopReason = "max-writes-reached";
+                break;
+            }
+            scanned += 1;
+            const metadataBefore = normalizeMetadata(row.metadata);
+            const normalizedSource = normalizeSource(row.source);
+            if (sourcePrefixes.length > 0 && !sourcePrefixes.some((prefix) => normalizedSource.startsWith(prefix))) {
+                skipped += 1;
+                continue;
+            }
+            if (!parsed.includeMailLike && isMailLikeThreadSource(normalizedSource, metadataBefore)) {
+                skipped += 1;
+                continue;
+            }
+            const scrubbed = scrubThreadMetadata(metadataBefore);
+            if (!scrubbed.changed) {
+                skipped += 1;
+                continue;
+            }
+            eligible += 1;
+            if (parsed.dryRun) {
+                pushSample({
+                    id: row.id,
+                    source: row.source,
+                    reason: scrubbed.reason,
+                    beforeThreadKey: scrubbed.beforeThreadKey,
+                    afterThreadKey: scrubbed.afterThreadKey,
+                    beforeLoopClusterKey: scrubbed.beforeLoopClusterKey,
+                    afterLoopClusterKey: scrubbed.afterLoopClusterKey,
+                    beforeThreadEvidence: scrubbed.beforeThreadEvidence,
+                    afterThreadEvidence: scrubbed.afterThreadEvidence,
+                });
+                continue;
+            }
+            try {
+                writesAttempted += 1;
+                await capture({
+                    id: row.id,
+                    tenantId: row.tenantId ?? undefined,
+                    agentId: row.agentId,
+                    runId: row.runId,
+                    content: row.content,
+                    source: row.source,
+                    tags: row.tags,
+                    metadata: scrubbed.metadata,
+                    clientRequestId: `thread-scrub:${row.id}`.slice(0, 120),
+                    occurredAt: row.occurredAt ?? undefined,
+                    status: row.status,
+                    memoryType: row.memoryType,
+                    sourceConfidence: row.sourceConfidence,
+                    importance: row.importance,
+                }, {
+                    bypassRunWriteBurstLimit: true,
+                });
+                updated += 1;
+                consecutiveTimeoutErrors = 0;
+                pushSample({
+                    id: row.id,
+                    source: row.source,
+                    reason: scrubbed.reason,
+                    beforeThreadKey: scrubbed.beforeThreadKey,
+                    afterThreadKey: scrubbed.afterThreadKey,
+                    beforeLoopClusterKey: scrubbed.beforeLoopClusterKey,
+                    afterLoopClusterKey: scrubbed.afterLoopClusterKey,
+                    beforeThreadEvidence: scrubbed.beforeThreadEvidence,
+                    afterThreadEvidence: scrubbed.afterThreadEvidence,
+                });
+            }
+            catch (error) {
+                failed += 1;
+                if (isTransientStoreTimeoutError(error)) {
+                    timeoutErrors += 1;
+                    consecutiveTimeoutErrors += 1;
+                }
+                else {
+                    consecutiveTimeoutErrors = 0;
+                }
+                errors.push({
+                    id: row.id,
+                    message: error instanceof Error ? error.message : String(error),
+                });
+                if (consecutiveTimeoutErrors >= stopAfterTimeoutErrors) {
+                    stopReason = "timeout-error-threshold";
+                    break;
+                }
+            }
+            if (!parsed.dryRun && writeDelayMs > 0) {
+                await sleep(writeDelayMs);
+            }
+        }
+        return {
+            tenantId,
+            dryRun: parsed.dryRun,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            scanned,
+            eligible,
+            updated,
+            skipped,
+            failed,
+            writesAttempted,
+            maxWrites,
+            stoppedEarly: stopReason !== null,
+            stopReason,
+            timeoutErrors,
+            convergence: {
+                windowScanned: scanned,
+                windowEligible: eligible,
+                windowUpdated: updated,
+                windowRemainingEligible: Math.max(0, eligible - updated),
+                windowRemainingRatio: scanned > 0 ? Math.max(0, eligible - updated) / scanned : 0,
+                writeUtilization: maxWrites > 0 ? Math.min(1, writesAttempted / maxWrites) : 0,
+                timeoutRate: writesAttempted > 0 ? timeoutErrors / writesAttempted : 0,
+                exhaustedWithinWindow: Math.max(0, eligible - updated) === 0,
+            },
+            sample,
+            errors,
+        };
+    };
     const importBatch = async (raw) => {
         let parsed;
         try {
@@ -6422,6 +6765,7 @@ function createMemoryService(options) {
         context,
         backfillEmailThreading,
         backfillSignalIndexing,
+        scrubSyntheticThreadMetadata,
         importBatch,
     };
 }

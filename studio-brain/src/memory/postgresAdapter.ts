@@ -575,6 +575,62 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       return result.rows.map(mapRowToRecord);
     },
 
+    async recentCreated(input): Promise<MemoryRecord[]> {
+      const values: unknown[] = [];
+      const predicates: string[] = [];
+      if (input.tenantId !== undefined) {
+        values.push(input.tenantId);
+        predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
+      }
+      const agentId = String(input.agentId ?? "").trim();
+      if (agentId) {
+        values.push(agentId);
+        predicates.push(`agent_id = $${values.length}`);
+      }
+      const runId = String(input.runId ?? "").trim();
+      if (runId) {
+        values.push(runId);
+        predicates.push(`run_id = $${values.length}`);
+      }
+      const allow = sanitizeSourceList(input.sourceAllowlist);
+      if (allow.length > 0) {
+        values.push(allow);
+        predicates.push(`COALESCE(metadata->>'source', 'manual') = ANY($${values.length}::text[])`);
+      }
+      const deny = sanitizeSourceList(input.sourceDenylist);
+      if (deny.length > 0) {
+        values.push(deny);
+        predicates.push(`COALESCE(metadata->>'source', 'manual') <> ALL($${values.length}::text[])`);
+      }
+      const excludedStatuses = sanitizeStatusList(input.excludeStatuses);
+      if (excludedStatuses.length > 0) {
+        values.push(excludedStatuses);
+        predicates.push(`status <> ALL($${values.length}::text[])`);
+      }
+      values.push(input.limit);
+      const query = `
+        SELECT
+          memory_id,
+          agent_id,
+          run_id,
+          tenant_id,
+          content,
+          metadata,
+          created_at,
+          occurred_at,
+          status,
+          memory_type,
+          source_confidence,
+          importance
+          FROM ${tableName}
+         ${predicates.length ? `WHERE ${predicates.join(" AND ")}` : ""}
+         ORDER BY created_at DESC
+         LIMIT $${values.length}
+      `;
+      const result = await pool.query(query, values);
+      return result.rows.map(mapRowToRecord);
+    },
+
     async getByIds(input): Promise<MemoryRecord[]> {
       const ids = Array.from(new Set((input.ids ?? []).map((value) => String(value ?? "").trim()).filter(Boolean)));
       if (!ids.length) return [];

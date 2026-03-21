@@ -118,6 +118,149 @@ test("memory service importBatch honors explicit sourceOverride when intentional
   assert.equal(row?.source, "import");
 });
 
+test("repo markdown rows do not synthesize thread lineage without real thread evidence", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-thread-evidence",
+  });
+
+  const row = await service.capture({
+    content: "Portal dashboard documentation notes and implementation outline.",
+    source: "repo-markdown",
+    metadata: {
+      subject: "Portal dashboard docs",
+    },
+  });
+
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.threadEvidence, "none");
+  assert.equal(typeof metadata.threadKey, "undefined");
+  assert.equal(Array.isArray(metadata.patternHints), true);
+  assert.equal((metadata.patternHints as string[]).includes("structure:has-thread"), false);
+});
+
+test("mail-like rows retain derived thread evidence for relationship indexing", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-mail-thread-evidence",
+  });
+
+  const row = await service.capture({
+    content: "Re: kiln queue blocker follow-up with references and next action.",
+    source: "email",
+    metadata: {
+      subject: "Re: Kiln queue blocker",
+      from: "owner@example.com",
+      to: "team@example.com",
+      normalizedMessageId: "<msg-2@example.com>",
+      inReplyToNormalized: "<msg-1@example.com>",
+      referenceMessageIds: ["<msg-1@example.com>"],
+    },
+  });
+
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.threadEvidence, "derived");
+  assert.equal(typeof metadata.threadKey, "string");
+  assert.notEqual(String(metadata.threadKey || "").length, 0);
+});
+
+test("synthetic thread metadata scrubber rewrites legacy non-threaded rows", async () => {
+  const store = createInMemoryMemoryStoreAdapter();
+  const service = createMemoryService({
+    store,
+    defaultTenantId: "tenant-thread-scrub",
+  });
+
+  await store.upsert({
+    id: "mem-legacy-thread-noise",
+    tenantId: "tenant-thread-scrub",
+    agentId: "agent:import",
+    runId: "import:legacy",
+    content: "Imported repo notes that should not behave like an email thread.",
+    source: "repo-markdown",
+    tags: ["import"],
+    metadata: {
+      source: "repo-markdown",
+      threadKey: "mail-thread:unknown",
+      loopClusterKey: "thread:mail-thread:unknown",
+      threadDeterministicSignature: "threadsig_legacy_noise",
+      threadEvidence: "derived",
+      entityHints: ["thread:mail-thread:unknown", "thread-signature:threadsig_legacy_noise"],
+      patternHints: ["loop-cluster:thread:mail-thread:unknown", "structure:has-thread"],
+      workstreamKey: "thread:mail-thread:unknown",
+      messageStructure: {
+        hasThreadKey: true,
+        sourceFamily: "generic",
+      },
+      threadReconstructionSignals: {
+        deterministicSignature: "threadsig_legacy_noise",
+        hasLinkableMessagePath: false,
+      },
+    },
+    embedding: null,
+    occurredAt: null,
+    clientRequestId: "legacy-thread-noise-1",
+    status: "accepted",
+    memoryType: "semantic",
+    sourceConfidence: 0.75,
+    importance: 0.6,
+    contextualizedContent: "Imported repo notes that should not behave like an email thread.",
+    fingerprint: null,
+    embeddingModel: null,
+    embeddingVersion: 1,
+  });
+
+  const result = await service.scrubSyntheticThreadMetadata({
+    dryRun: false,
+    limit: 10,
+  });
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.sample[0]?.beforeThreadKey, "mail-thread:unknown");
+  assert.equal(result.sample[0]?.afterThreadKey, null);
+
+  const [row] = await service.getByIds({
+    ids: ["mem-legacy-thread-noise"],
+    includeArchived: true,
+  });
+
+  const metadata = (row?.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.threadEvidence, "none");
+  assert.equal(typeof metadata.threadKey, "undefined");
+  assert.equal(typeof metadata.loopClusterKey, "undefined");
+  assert.equal(typeof metadata.threadDeterministicSignature, "undefined");
+  assert.equal((metadata.patternHints as string[]).includes("structure:has-thread"), false);
+});
+
+test("synthetic thread metadata scrubber leaves legitimate mail threading alone", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-thread-scrub-mail",
+  });
+
+  await service.capture({
+    content: "Re: real thread with actual message references.",
+    source: "email",
+    metadata: {
+      subject: "Re: Kiln notice",
+      from: "owner@example.com",
+      to: "team@example.com",
+      normalizedMessageId: "<msg-10@example.com>",
+      inReplyToNormalized: "<msg-9@example.com>",
+      referenceMessageIds: ["<msg-9@example.com>"],
+    },
+  });
+
+  const result = await service.scrubSyntheticThreadMetadata({
+    dryRun: true,
+    limit: 10,
+    includeMailLike: true,
+  });
+
+  assert.equal(result.eligible, 0);
+  assert.equal(result.updated, 0);
+});
+
 test("memory nanny reroutes non-allowlisted tenant and derives stable namespace", async () => {
   const service = createMemoryService({
     store: createInMemoryMemoryStoreAdapter(),

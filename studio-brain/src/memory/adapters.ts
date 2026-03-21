@@ -238,6 +238,7 @@ export type MemoryStoreAdapter = {
   upsert: (input: MemoryUpsertInput) => Promise<MemoryRecord>;
   search: (input: MemorySearchInput) => Promise<MemorySearchResult[]>;
   recent: (input: MemoryRecentInput) => Promise<MemoryRecord[]>;
+  recentCreated?: (input: MemoryRecentInput) => Promise<MemoryRecord[]>;
   getByIds: (input: MemoryGetByIdsInput) => Promise<MemoryRecord[]>;
   stats: (input: MemoryStatsInput) => Promise<MemoryStats>;
   indexSignals?: (input: MemoryIndexInput) => Promise<void>;

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.memoryLoopAutomationTickRequestSchema = exports.memoryLoopActionPlanRequestSchema = exports.memoryLoopOwnerQueuesRequestSchema = exports.memoryLoopFeedbackStatsRequestSchema = exports.memoryLoopIncidentActionBatchRequestSchema = exports.memoryLoopIncidentActionRequestSchema = exports.memoryLoopsRequestSchema = exports.memorySignalIndexBackfillRequestSchema = exports.memoryEmailThreadBackfillRequestSchema = exports.memoryImportRequestSchema = exports.memoryContextRequestSchema = exports.memoryStatsRequestSchema = exports.memoryRecentRequestSchema = exports.memorySearchRequestSchema = exports.memoryCaptureRequestSchema = exports.memoryLoopSortSchema = exports.memoryLoopActionPrioritySchema = exports.memoryLoopIncidentActionTypeSchema = exports.memoryLoopLaneSchema = exports.memoryLoopStateSchema = exports.memoryTypeSchema = exports.memoryStatusSchema = exports.memoryQueryLaneSchema = exports.retrievalModeSchema = exports.embeddingSchema = exports.MAX_MEMORY_IMPORT_ITEMS = exports.MAX_MEMORY_LIMIT = exports.MAX_MEMORY_CONTENT_CHARS = void 0;
+exports.memoryLoopAutomationTickRequestSchema = exports.memoryLoopActionPlanRequestSchema = exports.memoryLoopOwnerQueuesRequestSchema = exports.memoryLoopFeedbackStatsRequestSchema = exports.memoryLoopIncidentActionBatchRequestSchema = exports.memoryLoopIncidentActionRequestSchema = exports.memoryLoopsRequestSchema = exports.memoryThreadMetadataScrubRequestSchema = exports.memorySignalIndexBackfillRequestSchema = exports.memoryEmailThreadBackfillRequestSchema = exports.memoryImportRequestSchema = exports.memoryContextRequestSchema = exports.memoryStatsRequestSchema = exports.memoryRecentRequestSchema = exports.memorySearchRequestSchema = exports.memoryCaptureRequestSchema = exports.memoryLoopSortSchema = exports.memoryLoopActionPrioritySchema = exports.memoryLoopIncidentActionTypeSchema = exports.memoryLoopLaneSchema = exports.memoryLoopStateSchema = exports.memoryTypeSchema = exports.memoryStatusSchema = exports.memoryQueryLaneSchema = exports.retrievalModeSchema = exports.embeddingSchema = exports.MAX_MEMORY_IMPORT_ITEMS = exports.MAX_MEMORY_LIMIT = exports.MAX_MEMORY_CONTENT_CHARS = void 0;
 const zod_1 = require("zod");
 exports.MAX_MEMORY_CONTENT_CHARS = 65_536;
 exports.MAX_MEMORY_LIMIT = 100;
@@ -128,6 +128,16 @@ exports.memorySignalIndexBackfillRequestSchema = zod_1.z.object({
     relationshipProbeLimit: zod_1.z.number().int().min(2).max(128).default(24),
     maxInferredEdgesPerMemory: zod_1.z.number().int().min(0).max(128).default(16),
     minRelatedSignalScore: zod_1.z.number().min(0).max(2).default(0.12),
+    maxWrites: zod_1.z.number().int().min(1).max(20_000).default(500),
+    writeDelayMs: zod_1.z.number().int().min(0).max(60_000).default(20),
+    stopAfterTimeoutErrors: zod_1.z.number().int().min(1).max(100).default(5),
+});
+exports.memoryThreadMetadataScrubRequestSchema = zod_1.z.object({
+    tenantId: zod_1.z.string().trim().min(1).max(128).nullable().optional(),
+    limit: zod_1.z.number().int().min(1).max(20_000).default(2_000),
+    dryRun: zod_1.z.boolean().default(false),
+    sourcePrefixes: zod_1.z.array(zod_1.z.string().trim().min(1).max(64)).max(24).default([]),
+    includeMailLike: zod_1.z.boolean().default(false),
     maxWrites: zod_1.z.number().int().min(1).max(20_000).default(500),
     writeDelayMs: zod_1.z.number().int().min(0).max(60_000).default(20),
     stopAfterTimeoutErrors: zod_1.z.number().int().min(1).max(100).default(5),

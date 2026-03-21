@@ -205,6 +205,7 @@ async function main() {
         "  node ./scripts/open-memory.mjs backfill-email-threading [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes mail:,email]",
         "  node ./scripts/open-memory.mjs backfill-email-intelligence [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes mail:,email]",
         "  node ./scripts/open-memory.mjs backfill-signal-indexing [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes mail:,email] [--min-signals 2]",
+        "  node ./scripts/open-memory.mjs scrub-thread-metadata [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes import,replay:,repo-markdown]",
         "  node ./scripts/open-memory.mjs ingest --text \"...\" --source discord --client-request-id msg-123 [--discord-guild-id ...] [--discord-channel-id ...]",
         "",
         "Optional flags:",
@@ -220,11 +221,12 @@ async function main() {
         "  --relationship-preview-max-chars <n> Search mode: context payload chars per seed (default: 10000).",
         "  --disable-run-burst-limit true|false  Disable run-write burst limiter for this import batch (default: false).",
         "  --post-import-briefing true|false  Generate loop/action briefing after import (default: auto for mail-like sources).",
-        "  --dry-run true|false  For backfill-email-threading/backfill-signal-indexing, preview changes without writing.",
-        "  --max-writes <n>  For backfill-email-threading/backfill-signal-indexing, cap write operations per run (default: 500).",
+        "  --dry-run true|false  For backfill-email-threading/backfill-signal-indexing/scrub-thread-metadata, preview changes without writing.",
+        "  --max-writes <n>  For backfill-email-threading/backfill-signal-indexing/scrub-thread-metadata, cap write operations per run (default: 500).",
         "  --write-delay-ms <n>  Delay between backfill writes to reduce load (default: 20).",
         "  --stop-after-timeout-errors <n>  Stop backfill after consecutive timeout errors (default: 5).",
         "  --include-non-mail-like true|false  Include non-mail sources in backfill-signal-indexing (default: false).",
+        "  --include-mail-like true|false  Include mail-like rows in scrub-thread-metadata (default: false).",
         "  --min-signals <n>  For backfill-signal-indexing, minimum derived signal items per memory (default: 1).",
         "  --skip-already-indexed true|false  For backfill-signal-indexing, skip rows whose signal index already appears populated (default: true).",
         "  --infer-relationships true|false  For backfill-signal-indexing, infer high-signal edges using related-memory probes (default: true).",
@@ -946,6 +948,22 @@ async function main() {
       stopAfterTimeoutErrors: intFlag(flags["stop-after-timeout-errors"], 5),
     };
     const result = await request("/api/memory/backfill-signal-indexing", "POST", payload);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+
+  if (command === "scrub-thread-metadata") {
+    const payload = {
+      tenantId: flags["tenant-id"] ? String(flags["tenant-id"]).trim() : undefined,
+      limit: intFlag(flags.limit, 2000),
+      dryRun: boolFlag(flags["dry-run"], false),
+      sourcePrefixes: flags["source-prefixes"] ? parseCsv(flags["source-prefixes"]) : undefined,
+      includeMailLike: boolFlag(flags["include-mail-like"], false),
+      maxWrites: intFlag(flags["max-writes"], 500),
+      writeDelayMs: intFlag(flags["write-delay-ms"], 20),
+      stopAfterTimeoutErrors: intFlag(flags["stop-after-timeout-errors"], 5),
+    };
+    const result = await request("/api/memory/scrub-thread-metadata", "POST", payload);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }

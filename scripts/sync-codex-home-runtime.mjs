@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -10,21 +11,54 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const HOME_ROOT = homedir();
 
+function listWorktreeRoots() {
+  const result = spawnSync("git", ["worktree", "list", "--porcelain"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  if (result.status !== 0) {
+    return [REPO_ROOT];
+  }
+
+  const roots = [];
+  for (const rawLine of String(result.stdout || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("worktree ")) continue;
+    roots.push(resolve(line.slice("worktree ".length)));
+  }
+
+  return roots.length > 0 ? Array.from(new Set([REPO_ROOT, ...roots])) : [REPO_ROOT];
+}
+
+const sourceRoots = listWorktreeRoots();
+
+function resolveSourcePath(...parts) {
+  for (const root of sourceRoots) {
+    const candidate = resolve(root, ...parts);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return resolve(REPO_ROOT, ...parts);
+}
+
 const syncPairs = [
   {
-    source: resolve(REPO_ROOT, "secrets", "portal", "portal-agent-staff.json"),
+    source: resolveSourcePath("secrets", "portal", "portal-agent-staff.json"),
     destination: resolve(HOME_ROOT, "secrets", "portal", "portal-agent-staff.json"),
   },
   {
-    source: resolve(REPO_ROOT, "secrets", "portal", "portal-automation.env"),
+    source: resolveSourcePath("secrets", "portal", "portal-automation.env"),
     destination: resolve(HOME_ROOT, "secrets", "portal", "portal-automation.env"),
   },
   {
-    source: resolve(REPO_ROOT, "secrets", "studio-brain", "studio-brain-mcp.env"),
+    source: resolveSourcePath("secrets", "studio-brain", "studio-brain-mcp.env"),
     destination: resolve(HOME_ROOT, "secrets", "studio-brain", "studio-brain-mcp.env"),
   },
   {
-    source: resolve(REPO_ROOT, "secrets", "studio-brain", "studio-brain-mcp.env"),
+    source: resolveSourcePath("secrets", "studio-brain", "studio-brain-mcp.env"),
     destination: resolve(HOME_ROOT, "secrets", "studio-brain", "studio-brain-automation.env"),
   },
 ];
@@ -57,6 +91,7 @@ process.stdout.write(
       schema: "codex-home-runtime-sync-report.v1",
       homeRoot: HOME_ROOT,
       repoRoot: REPO_ROOT,
+      sourceRoots,
       results,
     },
     null,

@@ -814,9 +814,11 @@ export default function DashboardView({
             <button className="btn btn-ghost" onClick={onOpenQueues}>
               View the queues
             </button>
-            <button className="btn btn-ghost" onClick={onOpenFirings}>
-              Firings
-            </button>
+            {isStaff ? (
+              <button className="btn btn-ghost" onClick={onOpenFirings}>
+                Firings
+              </button>
+            ) : null}
             <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
               Glaze inspiration
             </button>

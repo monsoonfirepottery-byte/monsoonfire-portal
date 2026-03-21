@@ -73,64 +73,6 @@ function formatTimeRange(startDate: Date, endDate: Date) {
   return `${startLabel} - ${endLabel}`;
 }
 
-function formatIcsDate(date: Date) {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-}
-
-function escapeIcsText(text: string) {
-  return text
-    .replace(/\\/g, "\\\\")
-    .replace(/\n/g, "\\n")
-    .replace(/,/g, "\\,")
-    .replace(/;/g, "\\;");
-}
-
-function downloadCalendarInvite(firing: NormalizedFiring, kiln: Kiln | undefined) {
-  const summary = `${kiln?.name ?? "Kiln"} — ${firing.title}`;
-  const details = [
-    `Cycle: ${firing.cycleType}`,
-    `Status: ${firing.status}`,
-    firing.notes ? `Notes: ${firing.notes}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const start = formatIcsDate(firing.startDate);
-  const end = formatIcsDate(firing.endDate);
-  const stamp = formatIcsDate(new Date());
-  const uid = `monsoonfire-${firing.id}@monsoonfire.com`;
-
-  const icsLines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Monsoon Fire//Kiln Schedule//EN",
-    "CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    `UID:${uid}`,
-    `DTSTAMP:${stamp}`,
-    `SUMMARY:${escapeIcsText(summary)}`,
-    `DESCRIPTION:${escapeIcsText(details)}`,
-    `LOCATION:${escapeIcsText(kiln?.name ?? "Monsoon Fire Studio")}`,
-    `DTSTART:${start}`,
-    `DTEND:${end}`,
-    "BEGIN:VALARM",
-    "TRIGGER:-P1D",
-    "ACTION:DISPLAY",
-    "DESCRIPTION:Kiln firing reminder",
-    "END:VALARM",
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ];
-
-  const blob = new Blob([icsLines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `monsoonfire-firing-${firing.id}.ics`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function useKilnSchedule(): ScheduleState {
   const [kilns, setKilns] = useState<Kiln[]>([]);
   const [firings, setFirings] = useState<KilnFiring[]>([]);
@@ -393,13 +335,11 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                 {formatDateTime(nextOverallFiring.startDate)} ·{" "}
                 {formatTimeRange(nextOverallFiring.startDate, nextOverallFiring.endDate)}
               </div>
-              <button
-                className="btn btn-primary"
-                onClick={() => downloadCalendarInvite(nextOverallFiring, kilnById.get(nextOverallFiring.kilnId))}
-              >
-                Add to my calendar
-              </button>
-              <p className="muted">Includes a 1‑day reminder.</p>
+              {!isStaff ? (
+                <p className="muted">
+                  Live queue movement and queued-load forecasts now live under View the Queues.
+                </p>
+              ) : null}
             </>
           ) : (
             <div className="empty-state">No upcoming firings scheduled yet.</div>
@@ -408,13 +348,14 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
         <RevealCard className="card card-3d" index={1} enabled={motionEnabled}>
           <div className="card-title">How to use this page</div>
           <div className="page-subtitle">
-            Check the next firing, pick the one that fits your timing, and we will confirm details at
-            drop‑off.
+            {isStaff
+              ? "Use this as the reference view for staff-scheduled firing windows and follow-through."
+              : "Reference firings staff have already scheduled. For live queue movement and upcoming forecasts, use View the Queues."}
           </div>
           <ul className="kiln-steps">
-            <li>Scan the next firing for each kiln.</li>
-            <li>Use “Add to my calendar” for a reminder.</li>
-            <li>Drop off by the posted cutoff time.</li>
+            <li>Scan the next scheduled firing for each kiln.</li>
+            <li>Use this view as reference once staff has placed a firing on the calendar.</li>
+            <li>Check View the Queues for live load movement and next-slot forecasts.</li>
           </ul>
         </RevealCard>
       </section>
@@ -542,18 +483,11 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                     >
                       {isSelected ? "Selected" : "View details"}
                     </button>
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => downloadCalendarInvite(firing, kiln)}
-                    >
-                      Add to my calendar
-                    </button>
                   </div>
                 );
               })}
             </div>
           )}
-          <p className="muted">Calendar invites add a 1‑day reminder.</p>
         </RevealCard>
         <RevealCard className="card card-3d kiln-details" index={5} enabled={motionEnabled}>
           <div className="card-title">Selected firing</div>
@@ -576,14 +510,8 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                   Unloaded {formatDateTime(unloadedAt)}.
                 </div>
               ) : null}
-              <div className="details-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => downloadCalendarInvite(selectedFiring, kilnById.get(selectedFiring.kilnId))}
-                >
-                  Add to my calendar
-                </button>
-                {isStaff && user ? (
+              {isStaff && user ? (
+                <div className="details-actions">
                   <button
                     className="btn btn-secondary"
                     disabled={unloadBusy || Boolean(unloadedAt)}
@@ -610,8 +538,8 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                   >
                     {unloadedAt ? "Unloaded" : unloadBusy ? "Marking..." : "Mark unloaded"}
                   </button>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               {isStaff && user ? (
                 <div className="details-actions">
                   <div className="details-subtitle">Staff actions</div>
@@ -667,7 +595,6 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                   {staffStatus ? <div className="notice">{staffStatus}</div> : null}
                 </div>
               ) : null}
-              <p className="muted">Includes a 1‑day reminder.</p>
               {unloadError ? <div className="alert">{unloadError}</div> : null}
               {unloadStatus ? <div className="notice">{unloadStatus}</div> : null}
             </div>

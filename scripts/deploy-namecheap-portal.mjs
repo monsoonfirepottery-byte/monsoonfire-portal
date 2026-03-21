@@ -4,18 +4,23 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  loadPortalAutomationEnv,
+  resolveNamecheapSshKeyPath,
+  resolvePortalAutomationEnvPath,
+} from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
-const defaultPortalAutomationEnvPath = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+const defaultPortalAutomationEnvPath = resolvePortalAutomationEnvPath();
 
-loadPortalAutomationEnv();
+const portalEnvLoad = loadPortalAutomationEnv();
 
 const defaults = {
   server: process.env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
   port: Number.parseInt(process.env.WEBSITE_DEPLOY_PORT || "", 10) || 21098,
-  key: process.env.WEBSITE_DEPLOY_KEY || "~/.ssh/namecheap-portal",
+  key: process.env.WEBSITE_DEPLOY_KEY || "",
   remotePath: process.env.WEBSITE_DEPLOY_REMOTE_PATH || "portal/",
   portalUrl: process.env.PORTAL_DEPLOY_URL || "https://portal.monsoonfire.com",
   noBuild: false,
@@ -54,10 +59,18 @@ if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535)
   fail(`Invalid --port value: ${options.port}`);
 }
 
-const keyPath = expandHome(options.key);
-if (!existsSync(keyPath)) {
-  fail(`SSH key not found: ${keyPath}`);
+const keyResolution = resolveNamecheapSshKeyPath({
+  explicitPath: options.key,
+  server: options.server,
+});
+const keyPath = keyResolution.path;
+if (!keyResolution.exists) {
+  fail(`SSH key not found: ${keyPath}\nChecked source: ${keyResolution.source}`);
 }
+if (portalEnvLoad.loaded) {
+  process.stdout.write(`Loaded portal automation env: ${portalEnvLoad.path}\n`);
+}
+process.stdout.write(`Using SSH key source: ${keyResolution.source} (${keyPath})\n`);
 
 const webDist = resolve(repoRoot, "web", "dist");
 const htaccessTemplate = resolve(repoRoot, "web", "deploy", "namecheap", ".htaccess");
@@ -457,14 +470,6 @@ function readValue(argv, idx, name) {
   return value;
 }
 
-function expandHome(pathValue) {
-  if (pathValue === "~") return process.env.HOME || pathValue;
-  if (pathValue.startsWith("~/")) {
-    return resolve(process.env.HOME || "", pathValue.slice(2));
-  }
-  return pathValue;
-}
-
 function shellQuote(raw) {
   return `'${String(raw).replace(/'/g, "'\"'\"'")}'`;
 }
@@ -655,7 +660,7 @@ function printHelp() {
       "Options:\n" +
       "  --server <user@host>       default: monsggbd@66.29.137.142\n" +
       "  --port <ssh-port>          default: 21098\n" +
-      "  --key <private-key-path>   default: ~/.ssh/namecheap-portal\n" +
+      "  --key <private-key-path>   default: WEBSITE_DEPLOY_KEY -> ~/.ssh/namecheap-portal -> ~/.ssh/config Host monsoonfire IdentityFile\n" +
       "  --remote-path <path>       default: portal/\n" +
       "  --portal-url <url>         default: https://portal.monsoonfire.com\n" +
       "  --no-build                 skip web build\n" +
@@ -676,38 +681,11 @@ function printHelp() {
       "Env auto-load:\n" +
       `  If present, ${defaultPortalAutomationEnvPath} is loaded before preflight/build.\n` +
       "  Override path with PORTAL_AUTOMATION_ENV_PATH.\n" +
+      "  Shared runtime fallback lives under ~/secrets/portal/.\n" +
+      "  Refresh that shared copy with: node ./scripts/sync-codex-home-runtime.mjs\n" +
       "\n" +
       "Any unknown args are forwarded to verify-cutover when --verify is enabled.\n"
   );
-}
-
-function loadPortalAutomationEnv() {
-  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
-  const envPath = configuredPath || defaultPortalAutomationEnvPath;
-  if (!envPath || !existsSync(envPath)) return;
-
-  const raw = readFileSync(envPath, "utf8");
-  const lines = raw.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const separatorIndex = trimmed.indexOf("=");
-    if (separatorIndex <= 0) continue;
-
-    const key = trimmed.slice(0, separatorIndex).trim();
-    if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-    if (String(process.env[key] || "").trim()) continue;
-
-    let value = trimmed.slice(separatorIndex + 1).trim();
-    if (
-      (value.startsWith("\"") && value.endsWith("\"")) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    process.env[key] = value;
-  }
 }
 
 function fail(message) {

@@ -6,14 +6,19 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import {
+  loadPortalAutomationEnv,
+  resolvePortalAgentStaffCredentialsPath,
+} from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
+loadPortalAutomationEnv();
 
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-authenticated-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
-const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_STAFF_CREDENTIALS_PATH = resolvePortalAgentStaffCredentialsPath();
 const DEFAULT_FIREBASE_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
 const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;

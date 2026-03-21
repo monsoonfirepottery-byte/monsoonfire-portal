@@ -208,6 +208,7 @@ describe("DashboardView kiln reload", () => {
       />
     );
 
+    expect(screen.queryByRole("button", { name: /^Firings$/i })).toBeNull();
     const retryButton = await screen.findByRole("button", { name: /Retry loading kiln status/i });
     expect(screen.getByText("Unable to load kiln schedules. Permissions may not be configured yet.")).toBeDefined();
 
@@ -423,5 +424,35 @@ describe("DashboardView kiln reload", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Open workshop calendar/i }));
     expect(onOpenWorkshops).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the firings quick action available for staff dashboards", () => {
+    setupGetDocsEmptySuccess();
+    const onOpenFirings = vi.fn();
+
+    render(
+      <DashboardView
+        user={createUser()}
+        isStaff={true}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={onOpenFirings}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenWorkshops={vi.fn()}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Firings$/i }));
+    expect(onOpenFirings).toHaveBeenCalledTimes(1);
   });
 });

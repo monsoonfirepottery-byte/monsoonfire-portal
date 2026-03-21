@@ -50,15 +50,30 @@ Notes:
 ## 6) Namecheap Portal Deploy Defaults
 - Primary portal deploy command:
   - `npm run deploy:namecheap:portal`
-- Deploy script now auto-loads `secrets/portal/portal-automation.env` before preflight/build/promotion gate.
-  - Optional override: `PORTAL_AUTOMATION_ENV_PATH=/abs/path/to/env npm run deploy:namecheap:portal`
+- Shared runtime secrets path for Codex/worktrees:
+  - `~/secrets/portal/portal-automation.env`
+  - `~/secrets/portal/portal-agent-staff.json`
+  - Refresh that shared copy from the repo checkout with:
+    - `npm run secrets:sync:runtime`
+  - The sync command scans sibling git worktrees for the first checkout that actually has `secrets/`, so it still works from clean feature worktrees.
+- Deploy script auto-load order:
+  - `PORTAL_AUTOMATION_ENV_PATH` override, if set
+  - `~/secrets/portal/portal-automation.env`, when present
+  - `./secrets/portal/portal-automation.env`, when present
 - Default SSH target is now configured in deploy tooling:
   - `monsggbd@66.29.137.142:21098`
+- SSH key auto-discovery order:
+  - `WEBSITE_DEPLOY_KEY`, if set
+  - `~/.ssh/namecheap-portal`, when present
+  - `IdentityFile` under `Host monsoonfire` in `~/.ssh/config`
 - Post-deploy promotion gate now runs by default after sync:
   - Authenticated portal canary
   - Virtual staff backend regression
   - Firestore index contract guard
   - Override only when intentionally needed: `--skip-promotion-gate`
+- Promotion gate credential note:
+  - `portal-agent-staff.json` is enough for refresh-token backend flows, but the authenticated canary still needs an email+password pair.
+  - Provide that via `PORTAL_STAFF_EMAIL` / `PORTAL_STAFF_PASSWORD`, or add `email` + `password` to the shared credentials JSON used for deploy automation.
 - Optional overrides (if infra changes):
   - `WEBSITE_DEPLOY_SERVER`
   - `WEBSITE_DEPLOY_PORT`

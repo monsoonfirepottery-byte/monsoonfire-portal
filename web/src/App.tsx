@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FacebookAuthProvider,
   GoogleAuthProvider,
@@ -988,6 +988,15 @@ export default function App() {
   const navIsHorizontalDock = isHorizontalNavDock(navDock);
   const navSupportsCollapse = !navIsHorizontalDock;
   const navIsCollapsed = navSupportsCollapse && navCollapsed;
+  const navSections = useMemo(
+    () =>
+      NAV_SECTIONS.map((section) =>
+        !staffUi && section.key === "kilnRentals"
+          ? { ...section, items: section.items.filter((item) => item.key !== "kiln") }
+          : section
+      ),
+    [staffUi]
+  );
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
     : NAV_BOTTOM_ITEMS;
@@ -2288,7 +2297,7 @@ export default function App() {
             onOpenKilnRentals={() => setNav("kilnRentals")}
             onOpenCheckin={() => setNav("wareCheckIn")}
             onOpenQueues={() => setNav("kilnLaunch")}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenFirings={() => openStaffWorkspace("firings")}
             onOpenStudioResources={() => setNav("studioResources")}
             onOpenGlazeBoard={() => setNav("glazes")}
             onOpenCommunity={() => setNav("community")}
@@ -2377,7 +2386,6 @@ export default function App() {
         return (
           <KilnRentalsView
             onOpenKilnLaunch={() => setNav("kilnLaunch")}
-            onOpenKilnSchedule={() => setNav("kiln")}
             onOpenWorkSubmission={() => setNav("wareCheckIn")}
           />
         );
@@ -2414,7 +2422,14 @@ export default function App() {
         return (
           <NotificationsView
             user={user}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenKilnStatus={() => {
+              if (staffUi) {
+                openStaffWorkspace("firings");
+                return;
+              }
+              setNav("kilnLaunch");
+            }}
+            kilnActionLabel={staffUi ? "View firings" : "View queues"}
             onOpenReservations={openReservations}
             notifications={notifications}
             loading={notificationsLoading}
@@ -2445,7 +2460,7 @@ export default function App() {
             onOpenReservation={() => setNav("wareCheckIn")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenFirings={() => openStaffWorkspace("firings")}
             onStartFiring={() => setNav("kilnLaunch")}
             onOpenStaffWorkspace={openStaffWorkspace}
             initialTaskAction={staffInitialTaskAction}
@@ -2603,7 +2618,7 @@ export default function App() {
                   <span className="nav-label">{item.label}</span>
                 </button>
               ))}
-              {NAV_SECTIONS.map((section) => (
+              {navSections.map((section) => (
                 <div
                   key={section.key}
                   className={`nav-section ${openSection === section.key ? "open" : "closed"}`}

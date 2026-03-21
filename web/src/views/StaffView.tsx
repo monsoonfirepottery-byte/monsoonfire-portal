@@ -107,6 +107,13 @@ import LendingIntakeModule, { type LendingScanSubmitResult } from "./staff/Lendi
 import LendingModule from "./staff/LendingModule";
 import OperationsCockpitModule from "./staff/OperationsCockpitModule";
 import StudioReservationsModule from "./staff/StudioReservationsModule";
+import TaskHomeModule, {
+  type StaffTaskHomeAttentionItem,
+  type StaffTaskHomeCard,
+  type StaffTaskHomeLane,
+  type StaffTaskHomeMoreAction,
+  type StaffTaskHomeTone,
+} from "./staff/TaskHomeModule";
 import { resolveOperationsOverview } from "./staff/operationsOverview";
 import { resolveShiftStatusSummary } from "./staff/shiftStatus";
 import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
@@ -133,6 +140,7 @@ type Props = {
   initialModule?: ModuleKey;
   forceCockpitWorkspace?: boolean;
   onOpenStaffWorkspace?: (target: string) => void;
+  initialTaskAction?: "announcementComposer" | null;
   messageThreads?: DirectMessageThread[];
   messageThreadsLoading?: boolean;
   messageThreadsError?: string;
@@ -140,6 +148,18 @@ type Props = {
   announcementsLoading?: boolean;
   announcementsError?: string;
   unreadAnnouncements?: number;
+  onAnnouncementsChanged?: () => void;
+};
+
+type StaffAnnouncementDraft = {
+  title: string;
+  summary: string;
+  body: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  publishAt: string;
+  expiresAt: string;
+  pinned: boolean;
 };
 
 const MODULE_REGISTRY = {
@@ -384,6 +404,13 @@ function resolveStaffCockpitModuleFromPath(pathname: string): ModuleKey | null {
 function resolveStaffCockpitTabFromPath(pathname: string): CockpitTabKey | undefined {
   const segment = resolveStaffCockpitWorkspaceTabSegment(pathname);
   return segment ? COCKPIT_PATH_TAB_BY_SEGMENT[segment] : undefined;
+}
+
+function toStaffTaskTone(tone: string | undefined): StaffTaskHomeTone {
+  if (tone === "action" || tone === "watch" || tone === "clear" || tone === "reference") {
+    return tone;
+  }
+  return "reference";
 }
 
 type ModuleUsageStat = {
@@ -1941,6 +1968,19 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+function makeEmptyStaffAnnouncementDraft(): StaffAnnouncementDraft {
+  return {
+    title: "",
+    summary: "",
+    body: "",
+    ctaLabel: "",
+    ctaUrl: "",
+    publishAt: "",
+    expiresAt: "",
+    pinned: false,
+  };
+}
+
 function inferWorkshopProgrammingTechnique(title: string): WorkshopProgrammingTechnique {
   const normalized = title.trim().toLowerCase();
   if (!normalized) return WORKSHOP_PROGRAMMING_TECHNIQUES[WORKSHOP_PROGRAMMING_TECHNIQUES.length - 1];
@@ -2230,6 +2270,7 @@ export default function StaffView({
   onOpenFirings,
   onStartFiring,
   onOpenStaffWorkspace,
+  initialTaskAction = null,
   initialModule = "cockpit",
   forceCockpitWorkspace = false,
   messageThreads = [],
@@ -2239,6 +2280,7 @@ export default function StaffView({
   announcementsLoading = false,
   announcementsError = "",
   unreadAnnouncements = 0,
+  onAnnouncementsChanged,
 }: Props) {
   const initialCockpitModule = useMemo<ModuleKey | null>(() => {
     if (typeof window === "undefined") return null;
@@ -2260,6 +2302,10 @@ export default function StaffView({
       window.location.pathname;
     return resolveStaffCockpitTabFromPath(requestedPath);
   }, []);
+  const initialRequestedStaffPath = useMemo(() => {
+    if (typeof window === "undefined") return STAFF_PATH;
+    return resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ?? STAFF_PATH;
+  }, []);
   const requestedInitialCockpitModule = initialCockpitModule ?? initialModule;
   const resolvedInitialCockpitModule = COCKPIT_CONTENT_ONLY_MODULE_KEYS.has(requestedInitialCockpitModule)
     ? "cockpit"
@@ -2270,6 +2316,9 @@ export default function StaffView({
       ? COCKPIT_MODULE_TAB_BY_KEY[requestedInitialCockpitModule]
       : undefined;
   const [moduleKey, setModuleKey] = useState<ModuleKey>(resolvedInitialCockpitModule);
+  const [isTaskHomeRoute, setIsTaskHomeRoute] = useState<boolean>(
+    !forceCockpitWorkspace && initialRequestedStaffPath === STAFF_PATH
+  );
   const [moduleUsage, setModuleUsage] = useState<Record<ModuleKey, ModuleUsageStat>>(() => loadModuleUsageSnapshot());
   const [adaptiveNavEnabled, setAdaptiveNavEnabled] = useState<boolean>(() => loadAdaptiveNavPreference());
   const moduleSessionRef = useRef<{ key: ModuleKey; enteredAtMs: number } | null>(null);
@@ -2409,6 +2458,12 @@ export default function StaffView({
     capacity: "12",
     priceCents: "0",
   });
+  const [announcementComposerOpen, setAnnouncementComposerOpen] = useState(false);
+  const [announcementDraft, setAnnouncementDraft] = useState<StaffAnnouncementDraft>(() =>
+    makeEmptyStaffAnnouncementDraft()
+  );
+  const [announcementPublishStatus, setAnnouncementPublishStatus] = useState("");
+  const [announcementPublishError, setAnnouncementPublishError] = useState("");
   const [publishOverrideReason, setPublishOverrideReason] = useState("");
   const [eventStatusReason, setEventStatusReason] = useState("");
   const [signupSearch, setSignupSearch] = useState("");
@@ -7834,13 +7889,17 @@ export default function StaffView({
 
     if (!requestedPath) return;
     if (requestedPath === STAFF_PATH) {
+      setIsTaskHomeRoute(true);
       setModuleKey("cockpit");
       setCockpitTab("triage");
+      setCockpitWorkspaceMode(true);
       return;
     }
+    setIsTaskHomeRoute(false);
     if (requestedPath === STAFF_COCKPIT_PATH) {
       setModuleKey("cockpit");
       setCockpitTab((prev) => prev);
+      setCockpitWorkspaceMode(true);
       return;
     }
 
@@ -7907,7 +7966,18 @@ export default function StaffView({
   }, [onOpenStaffWorkspace, syncWorkspaceStateFromUrl]);
 
   const openCockpitWorkspace = useCallback(() => {
+    setIsTaskHomeRoute(false);
+    setModuleKey("cockpit");
+    setCockpitWorkspaceMode(true);
     openStaffWorkspace(STAFF_COCKPIT_PATH);
+  }, [openStaffWorkspace]);
+
+  const openTaskHome = useCallback(() => {
+    setIsTaskHomeRoute(true);
+    setModuleKey("cockpit");
+    setCockpitTab("triage");
+    setCockpitWorkspaceMode(true);
+    openStaffWorkspace(STAFF_PATH);
   }, [openStaffWorkspace]);
 
   useEffect(() => {
@@ -8241,6 +8311,503 @@ export default function StaffView({
     },
     [onOpenMessageThread, openMessagesInbox]
   );
+
+  const openAnnouncementWorkflow = useCallback(() => {
+    setAnnouncementComposerOpen(true);
+    setAnnouncementPublishError("");
+    setAnnouncementPublishStatus("");
+    if (forceCockpitWorkspace) {
+      setModuleKey("cockpit");
+      setCockpitTab("triage");
+      setCockpitWorkspaceMode(true);
+      setIsTaskHomeRoute(false);
+      return;
+    }
+    openCockpitWorkspace();
+  }, [forceCockpitWorkspace, openCockpitWorkspace]);
+
+  useEffect(() => {
+    if (initialTaskAction !== "announcementComposer") return;
+    openAnnouncementWorkflow();
+  }, [initialTaskAction, openAnnouncementWorkflow]);
+
+  const taskHomeAttentionItems = useMemo<StaffTaskHomeAttentionItem[]>(() => {
+    const items: StaffTaskHomeAttentionItem[] = operationsOverview.priorityItems.map((item) => ({
+      id: item.id,
+      tone: item.tone,
+      title: item.title,
+      detail: item.detail,
+      actionLabel: item.actionLabel,
+      actionTarget: item.actionTarget,
+    }));
+
+    if (messagesDegraded) {
+      items.push({
+        id: "messages-degraded",
+        tone: "action",
+        title: "Messages need review",
+        detail: firstNonBlankString(
+          messageThreadsError,
+          announcementsError,
+          "Messages or announcements are temporarily degraded."
+        ),
+        actionLabel: "Open messages",
+        actionTarget: "messages",
+      });
+    } else if (unreadMessageCount > 0) {
+      const latestThread = cockpitTodayMessageRows[0];
+      items.push({
+        id: "messages-unread",
+        tone: unreadMessageCount >= 4 ? "action" : "watch",
+        title: `${unreadMessageCount} unread conversation${unreadMessageCount === 1 ? "" : "s"}`,
+        detail: latestThread
+          ? `Latest from ${latestThread.sender} at ${formatDateTime(latestThread.atMs)}.`
+          : "Open Messages to triage replies, support requests, and staff handoffs.",
+        actionLabel: "Open messages",
+        actionTarget: "messages",
+      });
+    }
+
+    const highestPaymentAlert = paymentAlerts[0];
+    if (highestPaymentAlert) {
+      items.push({
+        id: highestPaymentAlert.id,
+        tone: highestPaymentAlert.severity === "P0" ? "action" : "watch",
+        title: highestPaymentAlert.title,
+        detail: highestPaymentAlert.detail,
+        actionLabel: "Open finance",
+        actionTarget: "finance",
+      });
+    }
+
+    return items.slice(0, 6);
+  }, [
+    announcementsError,
+    cockpitTodayMessageRows,
+    messageThreadsError,
+    messagesDegraded,
+    operationsOverview.priorityItems,
+    paymentAlerts,
+    unreadMessageCount,
+  ]);
+
+  const taskHomeLanes = useMemo<StaffTaskHomeLane[]>(() => {
+    const areaCardByKey = new Map(operationsOverview.areaCards.map((card) => [card.key, card]));
+    const checkinsCard = areaCardByKey.get("checkins");
+    const membersCard = areaCardByKey.get("members");
+    const piecesCard = areaCardByKey.get("pieces");
+    const firingsCard = areaCardByKey.get("firings");
+    const eventsCard = areaCardByKey.get("events");
+    const lendingCard = areaCardByKey.get("lending");
+    const reservationsWithNotesCount = todayReservations.filter((reservation) => reservation.notes.trim()).length;
+    const latestMessage = cockpitTodayMessageRows[0];
+    const financeBadge = paymentAlerts.length
+      ? `${paymentAlerts.length} alert${paymentAlerts.length === 1 ? "" : "s"}`
+      : paymentDegraded
+        ? "Needs review"
+        : "On track";
+    const financeTone: StaffTaskHomeTone = paymentAlerts[0]
+      ? paymentAlerts[0].severity === "P0"
+        ? "action"
+        : "watch"
+      : paymentDegraded
+        ? "watch"
+        : "clear";
+
+    const reservationsCard: StaffTaskHomeCard = {
+      id: "reservations-today",
+      eyebrow: "Today",
+      title: "Reservations today",
+      badge: todayReservationsLoading ? "Loading..." : `${todayReservations.length} due`,
+      tone: todayReservationsError ? "action" : todayReservations.length > 0 ? "watch" : "clear",
+      summary: todayReservationsError
+        ? "Reservations are temporarily unavailable for the shift board."
+        : todayReservations.length > 0
+          ? `${todayReservations.length} reservation${todayReservations.length === 1 ? "" : "s"} are scheduled today${operationsNextReservationLabel ? `. Next arrival ${operationsNextReservationLabel}.` : "."}`
+          : "No reservations are due today.",
+      note: todayReservationsError
+        ? todayReservationsError
+        : reservationsWithNotesCount > 0
+          ? `${reservationsWithNotesCount} reservation${reservationsWithNotesCount === 1 ? "" : "s"} include staff notes or prep context.`
+          : "Open the full reservations calendar when you need date changes, staffing look-ahead, or the wider queue.",
+      metrics: [
+        { label: "Due today", value: todayReservationsLoading ? "..." : String(todayReservations.length) },
+        { label: "Next arrival", value: operationsNextReservationLabel || "-" },
+        { label: "With notes", value: todayReservationsLoading ? "..." : String(reservationsWithNotesCount) },
+      ],
+      actions: [
+        { label: "Open today's queue", target: "checkins" },
+        { label: "Open reservations calendar", target: "studioReservations", emphasis: "secondary" },
+      ],
+    };
+
+    const messagesCard: StaffTaskHomeCard = {
+      id: "messages",
+      eyebrow: "Member communication",
+      title: "Messages",
+      badge: messagesDegraded ? "Needs review" : unreadMessageCount > 0 ? `${unreadMessageCount} unread` : "Inbox clear",
+      tone: messagesDegraded ? "action" : unreadMessageCount > 0 ? "watch" : "clear",
+      summary: messagesDegraded
+        ? "Messages or announcement delivery signals need review."
+        : latestMessage
+          ? `Latest from ${latestMessage.sender} at ${formatDateTime(latestMessage.atMs)}.`
+          : "No unread conversations are waiting right now.",
+      note: messagesDegraded
+        ? firstNonBlankString(
+            messageThreadsError,
+            announcementsError,
+            "Open Messages for full diagnostics and retry paths."
+          )
+        : "Use Messages for member replies, support follow-up, and direct operational handoffs.",
+      metrics: [
+        { label: "Unread", value: String(unreadMessageCount) },
+        { label: "Unread announcements", value: String(unreadAnnouncements) },
+        { label: "Announcements", value: String(announcements.length) },
+      ],
+      actions: [{ label: "Open messages", target: "messages" }],
+    };
+
+    const announcementCard: StaffTaskHomeCard = {
+      id: "announcements",
+      eyebrow: "Member communication",
+      title: "Studio announcements",
+      badge: announcementComposerOpen ? "Composer open" : announcementsLoading ? "Loading..." : `${announcements.length} live`,
+      tone: announcementsError ? "action" : announcementComposerOpen ? "watch" : announcements.length > 0 ? "reference" : "clear",
+      summary: "Publish a member-facing studio update without digging through cockpit tabs.",
+      note: announcementsError
+        ? announcementsError
+        : unreadAnnouncements > 0
+          ? `${unreadAnnouncements} announcement${unreadAnnouncements === 1 ? "" : "s"} are still unread in this staff session.`
+          : "The existing announcement composer opens ready-to-publish in one click.",
+      metrics: [
+        { label: "Live", value: announcementsLoading ? "..." : String(announcements.length) },
+        { label: "Unread by you", value: String(unreadAnnouncements) },
+      ],
+      actions: [
+        { label: "Create studio announcement", target: "announcementComposer" },
+        { label: "Open messages", target: "messages", emphasis: "secondary" },
+      ],
+    };
+
+    const financeCard: StaffTaskHomeCard = {
+      id: "finance",
+      eyebrow: "Programs & money",
+      title: "Payments & billing",
+      badge: financeBadge,
+      tone: financeTone,
+      summary: paymentAlerts[0]
+        ? paymentAlerts[0].title
+        : "No payment or billing blockers are active right now.",
+      note: paymentAlerts[0]
+        ? paymentAlerts[0].detail
+        : paymentDegraded
+          ? firstNonBlankString(commerceError, "Finance data is degraded. Open the finance workspace for full detail.")
+          : "Open finance for unpaid check-ins, order follow-up, receipts, and payment reliability checks.",
+      metrics: [
+        { label: "Pending orders", value: String(commerceKpis.pendingOrders) },
+        { label: "Unpaid check-ins", value: String(commerceKpis.unpaidCheckIns) },
+        { label: "Receipts", value: String(commerceKpis.receiptsTotal) },
+      ],
+      actions: [{ label: "Open finance", target: "finance" }],
+    };
+
+    return [
+      {
+        id: "studio-floor",
+        title: "Studio floor",
+        subtitle: "Live work first: intake, today’s queue, pieces, and firings.",
+        cards: [
+          {
+            id: "checkins",
+            eyebrow: "Live ops",
+            title: "Check-ins",
+            badge: checkinsCard?.label ?? "Queue",
+            tone: toStaffTaskTone(checkinsCard?.tone),
+            summary: checkinsCard?.headline ?? "Open the intake queue and today’s arrivals.",
+            note: checkinsCard?.note ?? "Use Check-ins for the active intake queue and day-of handling.",
+            metrics: checkinsCard?.metrics,
+            actions: [
+              { label: checkinsCard?.actionLabel ?? "Open check-ins", target: "checkins" },
+              { label: "View reservations", target: "studioReservations", emphasis: "secondary" },
+            ],
+          },
+          reservationsCard,
+          {
+            id: "pieces",
+            eyebrow: "Production",
+            title: "Pieces & batches",
+            badge: piecesCard?.label ?? "Production",
+            tone: toStaffTaskTone(piecesCard?.tone),
+            summary: piecesCard?.headline ?? "Open pieces for triage, inventory, and lifecycle changes.",
+            note: piecesCard?.note ?? "Focused cleanup and batch detail stay inside the pieces workspace.",
+            metrics: piecesCard?.metrics,
+            actions: [{ label: piecesCard?.actionLabel ?? "Open pieces & batches", target: "pieces" }],
+          },
+          {
+            id: "firings",
+            eyebrow: "Kiln ops",
+            title: "Firings",
+            badge: firingsCard?.label ?? "Kiln queue",
+            tone: toStaffTaskTone(firingsCard?.tone),
+            summary: firingsCard?.headline ?? "Open firings for live kiln state and schedule follow-through.",
+            note: firingsCard?.note ?? "Use the firings workspace for stale runs, timing windows, and status updates.",
+            metrics: firingsCard?.metrics,
+            actions: [
+              { label: firingsCard?.actionLabel ?? "Open firings", target: "firings" },
+              { label: "Open cockpit", target: "cockpit", emphasis: "ghost" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "member-comms",
+        title: "Member communication",
+        subtitle: "Handle replies, publish updates, and look up member context without leaving the board.",
+        cards: [
+          messagesCard,
+          announcementCard,
+          {
+            id: "members",
+            eyebrow: "Member ops",
+            title: "Members",
+            badge: membersCard?.label ?? "Roster",
+            tone: toStaffTaskTone(membersCard?.tone),
+            summary: membersCard?.headline ?? "Open the member roster for account and profile follow-up.",
+            note: membersCard?.note ?? "Use Members for profile edits, permissions, and activity lookup.",
+            metrics: membersCard?.metrics,
+            actions: [{ label: membersCard?.actionLabel ?? "Open members", target: "members" }],
+          },
+        ],
+      },
+      {
+        id: "programs-and-money",
+        title: "Programs & money",
+        subtitle: "Workshops, lending, and payment follow-through stay one click away.",
+        cards: [
+          {
+            id: "events",
+            eyebrow: "Program ops",
+            title: "Events & workshops",
+            badge: eventsCard?.label ?? "Programs",
+            tone: toStaffTaskTone(eventsCard?.tone),
+            summary: eventsCard?.headline ?? "Open events for workshop publishing, roster check-ins, and review.",
+            note: eventsCard?.note ?? "Use Events for publishing, waitlist review, and program edits.",
+            metrics: eventsCard?.metrics,
+            actions: [{ label: eventsCard?.actionLabel ?? "Open events", target: "events" }],
+          },
+          {
+            id: "lending",
+            eyebrow: "Library ops",
+            title: "Lending",
+            badge: lendingCard?.label ?? "Library",
+            tone: toStaffTaskTone(lendingCard?.tone),
+            summary: lendingCard?.headline ?? "Open lending for inventory, borrowers, and review queues.",
+            note: lendingCard?.note ?? "Keep intake scans separate from the heavier lending workspace until you need them.",
+            metrics: lendingCard?.metrics,
+            actions: [
+              { label: lendingCard?.actionLabel ?? "Open lending", target: "lending" },
+              { label: "Open lending intake", target: "lending-intake", emphasis: "secondary" },
+            ],
+          },
+          financeCard,
+        ],
+      },
+    ];
+  }, [
+    announcementComposerOpen,
+    announcements.length,
+    announcementsError,
+    announcementsLoading,
+    cockpitTodayMessageRows,
+    commerceError,
+    commerceKpis.pendingOrders,
+    commerceKpis.receiptsTotal,
+    commerceKpis.unpaidCheckIns,
+    messageThreadsError,
+    messagesDegraded,
+    operationsNextReservationLabel,
+    operationsOverview.areaCards,
+    paymentAlerts,
+    paymentDegraded,
+    todayReservations,
+    todayReservationsError,
+    todayReservationsLoading,
+    unreadAnnouncements,
+    unreadMessageCount,
+  ]);
+
+  const taskHomeMoreActions = useMemo<StaffTaskHomeMoreAction[]>(
+    () => [
+      {
+        id: "cockpit",
+        label: "Cockpit",
+        description: "Open the full operations cockpit and automation panels.",
+        target: "cockpit",
+      },
+      {
+        id: "reservations",
+        label: "Reservations calendar",
+        description: "Open the full studio reservations workspace.",
+        target: "studioReservations",
+      },
+      {
+        id: "community-blogs",
+        label: "Community blogs",
+        description: "Edit and review blog content for community publishing.",
+        target: "communityBlogs",
+      },
+      {
+        id: "reports",
+        label: "Reports",
+        description: "Open trust, moderation, and report follow-up tools.",
+        target: "reports",
+      },
+      {
+        id: "system",
+        label: "System",
+        description: "Inspect platform health, incidents, and service checks.",
+        target: "system",
+      },
+      {
+        id: "policy-agent-ops",
+        label: "Policy & agent ops",
+        description: "Open governance, agent, and policy operations surfaces.",
+        target: "policy-agent-ops",
+      },
+      {
+        id: "module-telemetry",
+        label: "Telemetry",
+        description: "Review module telemetry and engagement snapshots.",
+        target: "module-telemetry",
+      },
+    ],
+    []
+  );
+
+  const handleTaskHomeAction = useCallback(
+    (target: string) => {
+      switch (target) {
+        case "messages":
+          openMessagesInbox();
+          return;
+        case "announcementComposer":
+          openAnnouncementWorkflow();
+          return;
+        case "taskHome":
+          openTaskHome();
+          return;
+        case "cockpit":
+          openCockpitWorkspace();
+          return;
+        default:
+          openModuleFromCockpit(target);
+      }
+    },
+    [openAnnouncementWorkflow, openCockpitWorkspace, openMessagesInbox, openModuleFromCockpit, openTaskHome]
+  );
+
+  const updateAnnouncementDraft = useCallback(
+    (field: keyof StaffAnnouncementDraft, value: string | boolean) => {
+      setAnnouncementDraft((current) => ({
+        ...current,
+        [field]: value,
+      }));
+    },
+    []
+  );
+
+  const publishAnnouncement = useCallback(async () => {
+    if (busyRef.current) return;
+
+    const parseScheduleIso = (value: string, label: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      const parsed = new Date(trimmed);
+      if (!Number.isFinite(parsed.getTime())) {
+        throw new Error(`${label} is invalid.`);
+      }
+      return parsed.toISOString();
+    };
+
+    const title = announcementDraft.title.trim();
+    const body = announcementDraft.body.trim();
+    const summary = announcementDraft.summary.trim() || body.replace(/\s+/g, " ").trim().slice(0, 160);
+    const ctaLabel = announcementDraft.ctaLabel.trim();
+    const ctaUrl = announcementDraft.ctaUrl.trim();
+
+    setAnnouncementPublishError("");
+    setAnnouncementPublishStatus("");
+    setError("");
+    setStatus("");
+
+    if (!title) {
+      setAnnouncementPublishError("Announcement title is required.");
+      return;
+    }
+    if (!body) {
+      setAnnouncementPublishError("Announcement body is required.");
+      return;
+    }
+    if ((ctaLabel && !ctaUrl) || (!ctaLabel && ctaUrl)) {
+      setAnnouncementPublishError("Add both a call-to-action label and URL, or leave both blank.");
+      return;
+    }
+    if (ctaUrl && !isValidHttpUrl(ctaUrl)) {
+      setAnnouncementPublishError("Call-to-action URL must start with http:// or https://.");
+      return;
+    }
+
+    let publishAtIso = "";
+    let expiresAtIso = "";
+    try {
+      publishAtIso = parseScheduleIso(announcementDraft.publishAt, "Publish time");
+      expiresAtIso = parseScheduleIso(announcementDraft.expiresAt, "Expiration time");
+      if (
+        publishAtIso &&
+        expiresAtIso &&
+        new Date(expiresAtIso).getTime() <= new Date(publishAtIso).getTime()
+      ) {
+        setAnnouncementPublishError("Expiration time must be after publish time.");
+        return;
+      }
+    } catch (error: unknown) {
+      setAnnouncementPublishError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+
+    busyRef.current = "publishAnnouncement";
+    setBusy("publishAnnouncement");
+
+    try {
+      await addDoc(collection(db, "announcements"), {
+        title,
+        summary,
+        body,
+        type: "studio_update",
+        category: "studio",
+        source: "staff_console",
+        audience: "members",
+        authorName: user.displayName || user.email || "Staff",
+        createdAt: serverTimestamp(),
+        ...(publishAtIso ? { publishAt: publishAtIso } : {}),
+        ...(expiresAtIso ? { expiresAt: expiresAtIso } : {}),
+        ...(ctaLabel && ctaUrl ? { ctaLabel, ctaUrl } : {}),
+        pinned: announcementDraft.pinned,
+        archived: false,
+        readBy: [],
+      });
+      setAnnouncementPublishStatus("Studio announcement published.");
+      setStatus("Studio announcement published.");
+      setAnnouncementDraft(makeEmptyStaffAnnouncementDraft());
+      setAnnouncementComposerOpen(false);
+      onAnnouncementsChanged?.();
+    } catch (error: unknown) {
+      setAnnouncementPublishError(error instanceof Error ? error.message : String(error));
+    } finally {
+      busyRef.current = "";
+      setBusy("");
+    }
+  }, [announcementDraft, onAnnouncementsChanged, user.displayName, user.email]);
 
   const openFiringsWorkspace = useCallback(() => {
     if (onOpenFirings) {
@@ -8834,6 +9401,18 @@ export default function StaffView({
       messageThreadsError={messageThreadsError}
       announcementsError={announcementsError}
       todayMessageRows={cockpitTodayMessageRows}
+      announcementComposerOpen={announcementComposerOpen}
+      announcementDraft={announcementDraft}
+      announcementPublishBusy={busy === "publishAnnouncement"}
+      announcementPublishStatus={announcementPublishStatus}
+      announcementPublishError={announcementPublishError}
+      toggleAnnouncementComposer={() => {
+        setAnnouncementComposerOpen((current) => !current);
+        setAnnouncementPublishError("");
+        setAnnouncementPublishStatus("");
+      }}
+      updateAnnouncementDraft={updateAnnouncementDraft}
+      publishAnnouncement={publishAnnouncement}
       firingsLoading={firingsLoading}
       firingsError={firingsError}
       activeFiring={cockpitActiveFiring}
@@ -8849,8 +9428,22 @@ export default function StaffView({
     />
   );
 
+  const taskHomeContent = (
+    <TaskHomeModule
+      title="Staff tasks"
+      summary="Open the workflow you need by task, not by module tree. The most common staff jobs stay one click away."
+      clickBudgetNote="Click budget: every primary action below opens its workflow in one click. A second click is only for refinement inside that workspace."
+      attentionItems={taskHomeAttentionItems}
+      lanes={taskHomeLanes}
+      moreActions={taskHomeMoreActions}
+      onAction={handleTaskHomeAction}
+    />
+  );
+
   const moduleContent =
-    moduleKey === "studioReservations"
+    isTaskHomeRoute && !forceCockpitWorkspace
+      ? taskHomeContent
+      : moduleKey === "studioReservations"
       ? studioReservationsContent
       : moduleKey === "communityBlogs"
         ? communityBlogsContent
@@ -8875,9 +9468,11 @@ export default function StaffView({
   return (
     <div className="staff-console">
       <section className="staff-console-toolbar">
-        <div className="staff-console-title">Staff console</div>
+        <div className="staff-console-title">{isTaskHomeRoute && !forceCockpitWorkspace ? "Staff tasks" : "Staff console"}</div>
         <p className="staff-console-description">
-          Manage members, pieces, firings, events, billing, lending, and system health.
+          {isTaskHomeRoute && !forceCockpitWorkspace
+            ? "A task-first board for live staff work. Open the workflow you need without hunting through cockpit tabs."
+            : "Manage members, pieces, firings, events, billing, lending, and system health."}
         </p>
         <div className="staff-actions-row">
           {toolbarRefreshPlan.visible ? (
@@ -8889,12 +9484,17 @@ export default function StaffView({
               {busy === toolbarRefreshPlan.key ? "Refreshing..." : "Refresh visible data"}
             </button>
           ) : null}
+          {!isTaskHomeRoute ? (
+            <button className="btn btn-ghost" type="button" onClick={openTaskHome}>
+              Open task home
+            </button>
+          ) : null}
           {onOpenCheckin ? (
             <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
               Open ware check-in
             </button>
           ) : null}
-          {isCockpitModule && !forceCockpitWorkspace ? (
+          {isCockpitModule && !forceCockpitWorkspace && !isTaskHomeRoute ? (
             <button
               className="btn btn-ghost"
               type="button"
@@ -8903,7 +9503,7 @@ export default function StaffView({
               {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
             </button>
           ) : null}
-          {(isCockpitModule || forceCockpitWorkspace) ? (
+          {!isTaskHomeRoute && (isCockpitModule || forceCockpitWorkspace) ? (
             <button
               className="btn btn-ghost"
               type="button"
@@ -8917,7 +9517,9 @@ export default function StaffView({
           ) : null}
         </div>
         <div className="staff-mini">
-          {toolbarRefreshPlan.visible
+          {isTaskHomeRoute && !forceCockpitWorkspace
+            ? "The main board is task-first. Use More tools for rare admin surfaces, and use cockpit only when you want the full operations shell."
+            : toolbarRefreshPlan.visible
             ? "Data loads lazily. Use Refresh visible data for the current cockpit surface, and keep deep module refreshes inside their cards."
             : "Data loads lazily. Use the refresh controls inside the visible module cards to avoid runaway reload chains."}
         </div>

@@ -51,6 +51,11 @@ describe("resolveStaffWorkspaceMatch", () => {
     });
   });
 
+  it("does not treat task shortcuts that leave staff as staff workspaces", () => {
+    expect(resolveStaffWorkspaceMatch("/staff/messages")).toBeNull();
+    expect(resolveStaffWorkspaceMatch("/staff/communication")).toBeNull();
+  });
+
   it("consolidates legacy root module routes to cockpit module paths", () => {
     expect(resolveStaffWorkspaceMatch("/staff/workshop")).toEqual({
       canonicalPath: "/staff/cockpit/operations",
@@ -1004,6 +1009,11 @@ describe("resolveStaffWorkspaceRequestedPath", () => {
     expect(resolveStaffWorkspaceRequestedPath(null, null)).toBeNull();
   });
 
+  it("does not turn staff message shortcuts into generic staff workspace requests", () => {
+    expect(resolveStaffWorkspaceRequestedPath("/staff/messages", "")).toBeNull();
+    expect(resolveStaffWorkspaceRequestedPath("/dashboard", "#/staff/messages")).toBeNull();
+  });
+
   it("returns null when launch path/hash are missing", () => {
     expect(resolveStaffWorkspaceLaunch(undefined, undefined)).toBeNull();
     expect(resolveStaffWorkspaceLaunch(null, "#finance")).toBeNull();
@@ -1015,6 +1025,7 @@ describe("isStaffWorkspaceRequest", () => {
     expect(isStaffWorkspaceRequest("/dashboard", "/#requests")).toBe(false);
     expect(isStaffWorkspaceRequest("/staff", "")).toBe(true);
     expect(isStaffWorkspaceRequest("/staff/does-not-exist", "/")).toBe(true);
+    expect(isStaffWorkspaceRequest("/staff/messages", "")).toBe(false);
     expect(isStaffWorkspaceRequest("/", "/staff/system")).toBe(true);
     expect(isStaffWorkspaceRequest(undefined, undefined)).toBe(false);
   });

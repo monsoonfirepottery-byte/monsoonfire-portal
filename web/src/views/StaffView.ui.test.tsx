@@ -71,8 +71,17 @@ vi.mock("../api/functionsClient", () => ({
 }));
 
 vi.mock("./staff/CockpitModule", () => ({
-  default: ({ cockpitOpsContent }: { cockpitOpsContent: ReactNode }) => (
-    <div data-testid="cockpit-module">{cockpitOpsContent}</div>
+  default: ({
+    cockpitOpsContent,
+    announcementComposerOpen,
+  }: {
+    cockpitOpsContent: ReactNode;
+    announcementComposerOpen?: boolean;
+  }) => (
+    <div data-testid="cockpit-module">
+      {announcementComposerOpen ? <div data-testid="cockpit-announcement-composer-open">Announcement composer open</div> : null}
+      {cockpitOpsContent}
+    </div>
   ),
 }));
 
@@ -104,7 +113,9 @@ function buildUser(): User {
     uid: "staff-1",
     email: "staff@example.com",
     displayName: "Staff User",
+    isAnonymous: false,
     getIdToken: vi.fn(async () => "test-token"),
+    getIdTokenResult: vi.fn(async () => ({ claims: {} })),
   } as unknown as User;
 }
 
@@ -126,6 +137,93 @@ describe("StaffView cockpit routing", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("renders a task-first home on /staff and keeps rare tools behind More", async () => {
+    window.history.replaceState({}, "", "/staff");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+      />
+    );
+
+    expect(await screen.findByTestId("staff-task-home")).toBeTruthy();
+    expect(screen.getByTestId("staff-task-home-lane-studio-floor")).toBeTruthy();
+    expect(screen.getByTestId("staff-task-home-lane-member-comms")).toBeTruthy();
+    expect(screen.getByTestId("staff-task-home-lane-programs-and-money")).toBeTruthy();
+
+    const moreTools = screen.getByTestId("staff-task-home-more") as HTMLDetailsElement;
+    expect(moreTools.open).toBe(false);
+    fireEvent.click(screen.getByText("More tools"));
+    expect(moreTools.open).toBe(true);
+    expect(screen.getByTestId("staff-task-home-more-system")).toBeTruthy();
+  });
+
+  it("opens check-ins from the task home in one click", async () => {
+    window.history.replaceState({}, "", "/staff");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open today's queue" }));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/staff/cockpit/checkins");
+    });
+    expect(screen.getByTestId("operations-focus-checkins")).toBeTruthy();
+  });
+
+  it("routes messages directly from the task home using the app callback", async () => {
+    const onOpenMessages = vi.fn();
+    window.history.replaceState({}, "", "/staff");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+        onOpenMessages={onOpenMessages}
+      />
+    );
+
+    const messagesCard = await screen.findByTestId("staff-task-home-card-messages");
+    fireEvent.click(within(messagesCard).getByRole("button", { name: "Open messages" }));
+    expect(onOpenMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("promotes the studio announcement workflow from the task home into cockpit", async () => {
+    window.history.replaceState({}, "", "/staff");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Create studio announcement" }));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/staff/cockpit");
+    });
+    expect(screen.getByTestId("cockpit-announcement-composer-open")).toBeTruthy();
   });
 
   it("opens lending from operations overview without falling back to the generic cockpit overview", async () => {

@@ -44,7 +44,8 @@ if (options.help) {
 const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
 const FIREBASE_PROJECT_ID = "monsoonfire-portal";
 const FIREBASE_API_KEY_REGEX = /^AIza[0-9A-Za-z_-]{20,}$/;
-const FIREBASE_EMBEDDED_KEY_REGEX = /VITE_FIREBASE_API_KEY["']?\s*:\s*["']AIza[0-9A-Za-z_-]{20,}["']/;
+const FIREBASE_COMPILED_KEY_REGEX = /AIza[0-9A-Za-z_-]{20,}/g;
+const FIREBASE_MISSING_KEY_TOKEN = "MISSING_VITE_FIREBASE_API_KEY";
 
 if (!options.server.trim()) {
   fail("Missing --server (or WEBSITE_DEPLOY_SERVER).");
@@ -468,11 +469,34 @@ function shellQuote(raw) {
   return `'${String(raw).replace(/'/g, "'\"'\"'")}'`;
 }
 
+function resolveCommand(command) {
+  if (process.platform !== "win32") {
+    return command;
+  }
+  if (command === "npm" || command === "npx") {
+    return `${command}.cmd`;
+  }
+  if (command === "rsync") {
+    const candidates = [
+      "C:/msys64/usr/bin/rsync.exe",
+      "C:/Program Files/Git/usr/bin/rsync.exe",
+      "C:/Program Files/Git/bin/rsync.exe",
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return command;
+}
+
 function run(command, args, options = {}) {
   if (options.label) {
     process.stdout.write(`${options.label}...\n`);
   }
-  const result = spawnSync(command, args, {
+  const resolvedCommand = resolveCommand(command);
+  const result = spawnSync(resolvedCommand, args, {
     stdio: "inherit",
     shell: false,
     env: options.env || process.env,
@@ -485,12 +509,12 @@ function run(command, args, options = {}) {
         status: 1,
       };
     }
-    throw new Error(`${command} failed: ${result.error.message}`);
+    throw new Error(`${resolvedCommand} failed: ${result.error.message}`);
   }
 
   const status = typeof result.status === "number" ? result.status : 1;
   if (status !== 0 && !options.allowFailure) {
-    throw new Error(`${command} exited with status ${status}`);
+    throw new Error(`${resolvedCommand} exited with status ${status}`);
   }
 
   return {
@@ -500,7 +524,8 @@ function run(command, args, options = {}) {
 }
 
 function runCapture(command, args, options = {}) {
-  return spawnSync(command, args, {
+  const resolvedCommand = resolveCommand(command);
+  return spawnSync(resolvedCommand, args, {
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
     encoding: "utf8",
@@ -586,23 +611,36 @@ function collectFiles(rootDir, includeFile) {
 
 function assertFirebaseApiKeyIsEmbedded(distDir) {
   const buildFiles = collectFiles(distDir, (filePath) => filePath.endsWith(".js"));
-  const matchingFiles = [];
+  const compiledApiKeyFiles = [];
+  const placeholderTokenFiles = [];
 
   for (const filePath of buildFiles) {
     const text = readFileSync(filePath, "utf8");
-    if (FIREBASE_EMBEDDED_KEY_REGEX.test(text)) {
-      matchingFiles.push(filePath);
+    if (extractCompiledFirebaseApiKeys(text).length > 0) {
+      compiledApiKeyFiles.push(filePath);
+    }
+    if (text.includes(FIREBASE_MISSING_KEY_TOKEN)) {
+      placeholderTokenFiles.push(filePath);
     }
   }
 
-  if (matchingFiles.length > 0) {
-    return;
+  if (placeholderTokenFiles.length > 0) {
+    fail(
+      `Build output still contains ${FIREBASE_MISSING_KEY_TOKEN}; refusing deploy.\n` +
+        `Affected files:\n - ${placeholderTokenFiles.join("\n - ")}`
+    );
   }
+  if (compiledApiKeyFiles.length === 0) {
+    fail(
+      "Build output does not include a compiled Firebase API key value; refusing deploy.\n" +
+        "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
+    );
+  }
+}
 
-  fail(
-    "Build output does not include a compiled VITE_FIREBASE_API_KEY value; refusing deploy.\n" +
-      "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
-  );
+function extractCompiledFirebaseApiKeys(text) {
+  const matches = String(text || "").match(FIREBASE_COMPILED_KEY_REGEX) || [];
+  return [...new Set(matches)];
 }
 
 function writeJson(path, payload) {

@@ -61,6 +61,12 @@ jobs:
           FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
         run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
 
+      - name: Verify deployed bundle and auth bootstrap
+        run: |
+          node ./web/deploy/namecheap/verify-cutover.mjs \
+            --portal-url "${{ steps.base_url.outputs.value }}" \
+            --report-path output/qa/portal-prod-cutover-verify.json
+
       - name: Build production smoke feedback profile
         continue-on-error: true
         env:
@@ -160,6 +166,15 @@ jobs:
         with:
           name: portal-virtual-staff-regression
           path: output/qa/portal-virtual-staff-regression-prod.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload production cutover verify report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-prod-cutover-verify
+          path: output/qa/portal-prod-cutover-verify.json
           if-no-files-found: ignore
           retention-days: 14
 

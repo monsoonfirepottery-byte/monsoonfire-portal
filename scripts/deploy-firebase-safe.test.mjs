@@ -62,22 +62,22 @@ test("inspectFirebaseBuildArtifacts passes when key is embedded", () => {
   const result = inspectFirebaseBuildArtifacts([
     {
       path: "/tmp/index.js",
-      content: `const ENV={VITE_FIREBASE_API_KEY:"${SAMPLE_KEY}"};`,
+      content: `const firebaseConfig={apiKey:"${SAMPLE_KEY}"};`,
     },
   ]);
   assert.equal(result.ok, true);
   assert.equal(result.code, "firebase_api_key_embedded");
 });
 
-test("inspectFirebaseBuildArtifacts allows fallback token when key is embedded", () => {
+test("inspectFirebaseBuildArtifacts blocks placeholder token even when key is embedded", () => {
   const result = inspectFirebaseBuildArtifacts([
     {
       path: "/tmp/index.js",
-      content: `const ENV={VITE_FIREBASE_API_KEY:"${SAMPLE_KEY}"};const x="MISSING_VITE_FIREBASE_API_KEY";`,
+      content: `const firebaseConfig={apiKey:"${SAMPLE_KEY}"};const x="MISSING_VITE_FIREBASE_API_KEY";`,
     },
   ]);
-  assert.equal(result.ok, true);
-  assert.equal(result.code, "firebase_api_key_embedded_with_fallback_token");
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "firebase_api_key_placeholder_token_detected");
 });
 
 test("parseJsonObjectFromMixedOutput tolerates prefixed logs", () => {

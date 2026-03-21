@@ -6,8 +6,10 @@ import * as logger from "firebase-functions/logger";
 
 import {
   db,
+  adminAuth,
   applyCors,
   requireAdmin,
+  requireAdminRole,
   requireAuthUid,
   requireAuthContext,
   nowTs,
@@ -20,6 +22,9 @@ import {
   FieldValue,
   Timestamp,
   logIntegrationTokenAudit,
+  buildClaimsForPortalRole,
+  isAdminFromDecoded,
+  isStaffFromDecoded,
 } from "./shared";
 import {
   enforceAppCheckIfEnabled,
@@ -371,6 +376,21 @@ const staffUpdateUserProfileSchema = z.object({
     staffNotes: z.string().max(2000).optional().nullable(),
   }),
 });
+
+const staffUpdateUserRoleSchema = z.object({
+  uid: z.string().min(1),
+  role: z.enum(["member", "staff", "admin"]),
+  reason: z.string().max(240).optional().nullable(),
+});
+
+function normalizePortalRoleValue(value: unknown): "member" | "staff" | "admin" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "member" || normalized === "client" || normalized === "user") return "member";
+  if (normalized === "staff") return "staff";
+  if (normalized === "admin") return "admin";
+  return null;
+}
 
 const staffBatchArtifactCategorySchema = z.enum([
   "fixture_like",
@@ -736,6 +756,121 @@ export const staffUpdateUserProfile = onRequest(
       const message = error instanceof Error ? error.message : String(error);
       const code = message === "User not found" ? 404 : 500;
       logger.error("staffUpdateUserProfile failed", { message });
+      res.status(code).json({ ok: false, message });
+    }
+  }
+);
+
+export const staffUpdateUserRole = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const adminRole = await requireAdminRole(req);
+    if (!adminRole.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const parsed = parseBody(staffUpdateUserRoleSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    if (parsed.data.uid === auth.uid) {
+      res.status(400).json({
+        ok: false,
+        message: "Use another admin session to change your own role.",
+      });
+      return;
+    }
+
+    try {
+      const targetUser = await adminAuth.getUser(parsed.data.uid);
+      const existingClaims = (targetUser.customClaims ?? {}) as Record<string, unknown>;
+      const currentRole =
+        isAdminFromDecoded(existingClaims)
+          ? "admin"
+          : isStaffFromDecoded(existingClaims)
+          ? "staff"
+          : normalizePortalRoleValue(existingClaims.role) ?? "member";
+      const nextRole = parsed.data.role;
+      const nextClaims = buildClaimsForPortalRole(existingClaims, nextRole);
+
+      if (currentRole === nextRole) {
+        res.status(200).json({
+          ok: true,
+          role: nextRole,
+          unchanged: true,
+          tokenNeedsRefresh: false,
+        });
+        return;
+      }
+
+      await adminAuth.setCustomUserClaims(targetUser.uid, nextClaims);
+
+      const userRef = db.collection("users").doc(targetUser.uid);
+      const auditRef = db.collection("staffRoleEdits").doc();
+      await db.runTransaction(async (tx) => {
+        const userSnap = await tx.get(userRef);
+        const currentUserData = (userSnap.data() ?? {}) as Record<string, unknown>;
+        const beforeFallbackRole = [
+          currentUserData.role,
+          currentUserData.userRole,
+          currentUserData.memberRole,
+          currentUserData.staffRole,
+          currentUserData.profileRole,
+          currentUserData.accountRole,
+        ].map((value) => normalizePortalRoleValue(value)).find((value) => value !== null) ?? currentRole;
+
+        tx.set(
+          userRef,
+          {
+            customClaims: nextClaims ?? null,
+            claims: nextClaims ?? null,
+            role: nextRole,
+            staffRole: nextRole,
+            roleUpdatedAt: nowTs(),
+            roleUpdatedByUid: auth.uid,
+            updatedAt: nowTs(),
+          },
+          { merge: true }
+        );
+        tx.set(auditRef, {
+          uid: targetUser.uid,
+          targetEmail: targetUser.email ?? null,
+          editedByUid: auth.uid,
+          editedByMode: adminRole.mode,
+          reason: parsed.data.reason ?? null,
+          beforeRole: beforeFallbackRole,
+          afterRole: nextRole,
+          beforeClaims: existingClaims,
+          afterClaims: nextClaims ?? null,
+          at: nowTs(),
+        });
+      });
+
+      res.status(200).json({
+        ok: true,
+        role: nextRole,
+        tokenNeedsRefresh: true,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = message.includes("There is no user record") ? 404 : 500;
+      logger.error("staffUpdateUserRole failed", { message });
       res.status(code).json({ ok: false, message });
     }
   }

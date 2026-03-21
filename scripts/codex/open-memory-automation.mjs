@@ -117,6 +117,7 @@ function normalizeRetrievalMode(raw) {
 
 function defaultBootstrapSourceAllowlist() {
   return [
+    "codex-compaction-promoted",
     "codex",
     "codex-handoff",
     "codex-resumable-session",
@@ -124,6 +125,8 @@ function defaultBootstrapSourceAllowlist() {
     "mcp",
     "manual",
     "context-slice:automation",
+    "codex-compaction-window",
+    "codex-compaction-raw",
   ];
 }
 
@@ -164,15 +167,18 @@ function isPreferredStartupSource(source) {
 
 function preferredStartupSourcePriority(source) {
   const normalized = normalizeSource(source || "");
+  if (normalized === "codex-compaction-promoted") return 0;
   if (normalized === "codex-handoff") return 0;
   if (normalized === "codex-resumable-session") return 1;
   if (normalized === "codex-friction-feedback-loop") return 2;
   if (normalized === "codex") return 3;
-  if (normalized.startsWith("codex-")) return 4;
-  if (normalized === "manual") return 5;
-  if (normalized === "context-slice:automation") return 6;
-  if (normalized.startsWith("context-slice:")) return 7;
-  if (normalized === "mcp") return 8;
+  if (normalized === "manual") return 4;
+  if (normalized === "context-slice:automation") return 5;
+  if (normalized.startsWith("context-slice:")) return 6;
+  if (normalized === "codex-compaction-window") return 7;
+  if (normalized === "codex-compaction-raw") return 8;
+  if (normalized.startsWith("codex-")) return 9;
+  if (normalized === "mcp") return 10;
   return 99;
 }
 

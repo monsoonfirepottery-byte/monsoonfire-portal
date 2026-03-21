@@ -6,7 +6,7 @@ on:
       base_url:
         description: "Portal base URL"
         required: false
-        default: "https://monsoonfire-portal.web.app"
+        default: "https://portal.monsoonfire.com"
       run_deep_smoke:
         description: "Run deep endpoint probes (production)"
         required: false
@@ -51,8 +51,21 @@ jobs:
           if [ -n "${{ github.event.inputs.base_url }}" ]; then
             echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
+            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Resolve Firebase API key
+        id: firebase_api_key
+        env:
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+
+      - name: Verify deployed bundle and auth bootstrap
+        run: |
+          node ./web/deploy/namecheap/verify-cutover.mjs \
+            --portal-url "${{ steps.base_url.outputs.value }}" \
+            --report-path output/qa/portal-prod-cutover-verify.json
 
       - name: Build production smoke feedback profile
         continue-on-error: true
@@ -91,6 +104,7 @@ jobs:
         env:
           FIREBASE_RULES_API_TOKEN: ${{ steps.rules_token.outputs.access_token || secrets.FIREBASE_RULES_API_TOKEN }}
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+          PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
         run: |
           if [ -z "$FIREBASE_RULES_API_TOKEN" ]; then
             echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2
@@ -98,6 +112,10 @@ jobs:
           fi
           if [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
             echo "Missing required secret: PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+          if [ -z "$PORTAL_FIREBASE_API_KEY" ]; then
+            echo "Missing resolved PORTAL_FIREBASE_API_KEY" >&2
             exit 1
           fi
           npm run portal:regression:virtual-staff -- \
@@ -148,6 +166,15 @@ jobs:
         with:
           name: portal-virtual-staff-regression
           path: output/qa/portal-virtual-staff-regression-prod.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload production cutover verify report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-prod-cutover-verify
+          path: output/qa/portal-prod-cutover-verify.json
           if-no-files-found: ignore
           retention-days: 14
 

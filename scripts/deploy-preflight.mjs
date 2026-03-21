@@ -8,18 +8,25 @@ import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  loadPortalAutomationEnv,
+  resolveNamecheapSshKeyPath,
+  resolvePortalAgentStaffCredentialsPath,
+  resolvePortalAutomationEnvPath,
+} from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
 const DEFAULT_NAMECHEAP_SERVER = "monsggbd@66.29.137.142";
 const DEFAULT_NAMECHEAP_PORT = 21098;
-const DEFAULT_NAMECHEAP_KEY = resolve(homedir(), ".ssh", "namecheap-portal");
 const DEFAULT_NAMECHEAP_REMOTE_PATH = "portal/";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "deploy-preflight.json");
 const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
 const FIREBASE_PROJECT_ID = "monsoonfire-portal";
 const FIREBASE_API_KEY_REGEX = /^AIza[0-9A-Za-z_-]{20,}$/;
+
+loadPortalAutomationEnv();
 
 function parseArgs(argv) {
   const options = {
@@ -114,6 +121,17 @@ function readJsonFileSafe(path) {
   }
 }
 
+function readPortalStaffCredentialHints(path) {
+  const parsed = readJsonFileSafe(path);
+  return {
+    exists: Boolean(parsed),
+    email: String(parsed?.email || parsed?.staffEmail || "").trim(),
+    password: String(parsed?.password || parsed?.staffPassword || "").trim(),
+    refreshToken: String(parsed?.refreshToken || parsed?.tokens?.refresh_token || "").trim(),
+    uid: String(parsed?.uid || "").trim(),
+  };
+}
+
 function parseAgentCredentialPayload(raw) {
   if (!raw) return { ok: false, reason: "Empty payload." };
   try {
@@ -143,6 +161,14 @@ function hasFirebaseCliSession() {
     encoding: "utf8",
   });
   return probe.status === 0;
+}
+
+function hasFirebaseCliTokenCache() {
+  const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
+  const parsed = readJsonFileSafe(configPath);
+  return Boolean(
+    String(parsed?.tokens?.access_token || "").trim() || String(parsed?.tokens?.refresh_token || "").trim()
+  );
 }
 
 function looksLikeFirebaseApiKey(value) {
@@ -202,8 +228,23 @@ function canResolveFirebaseWebApiKey() {
 function runNamecheapPortalChecks(summary, options) {
   const server = String(process.env.WEBSITE_DEPLOY_SERVER || DEFAULT_NAMECHEAP_SERVER).trim();
   const port = Number.parseInt(process.env.WEBSITE_DEPLOY_PORT || "", 10) || DEFAULT_NAMECHEAP_PORT;
-  const keyPath = expandHomePath(process.env.WEBSITE_DEPLOY_KEY || DEFAULT_NAMECHEAP_KEY);
+  const portalEnvPath = resolvePortalAutomationEnvPath();
+  const keyResolution = resolveNamecheapSshKeyPath({
+    explicitPath: process.env.WEBSITE_DEPLOY_KEY || "",
+    server,
+  });
+  const keyPath = keyResolution.path;
   const remotePath = String(process.env.WEBSITE_DEPLOY_REMOTE_PATH || DEFAULT_NAMECHEAP_REMOTE_PATH).trim();
+  const defaultCredentialsPath = resolvePortalAgentStaffCredentialsPath();
+  const credentialHints = existsSync(defaultCredentialsPath)
+    ? readPortalStaffCredentialHints(defaultCredentialsPath)
+    : { exists: false, email: "", password: "", refreshToken: "", uid: "" };
+
+  addCheck(summary, "portal automation env file is discoverable", existsSync(portalEnvPath), {
+    required: false,
+    detail: existsSync(portalEnvPath) ? `Resolved env path: ${portalEnvPath}` : `No env file found at ${portalEnvPath}.`,
+    hint: "Sync repo secrets to ~/secrets with node ./scripts/sync-codex-home-runtime.mjs, or set PORTAL_AUTOMATION_ENV_PATH.",
+  });
 
   addCheck(summary, "deploy target server is configured", server.length > 0, {
     detail: server ? `Resolved server: ${server}` : "No deploy server resolved.",
@@ -215,9 +256,9 @@ function runNamecheapPortalChecks(summary, options) {
     hint: "Set WEBSITE_DEPLOY_PORT to an integer between 1 and 65535.",
   });
 
-  addCheck(summary, "deploy SSH key exists", existsSync(keyPath), {
-    detail: `Resolved key path: ${keyPath}`,
-    hint: "Set WEBSITE_DEPLOY_KEY to a valid private key path.",
+  addCheck(summary, "deploy SSH key exists", keyResolution.exists, {
+    detail: `Resolved key path: ${keyPath} (${keyResolution.source})`,
+    hint: "Set WEBSITE_DEPLOY_KEY, create ~/.ssh/namecheap-portal, or add IdentityFile under Host monsoonfire in ~/.ssh/config.",
   });
 
   addCheck(summary, "remote deploy path is configured", remotePath.length > 0, {
@@ -252,23 +293,40 @@ function runNamecheapPortalChecks(summary, options) {
   }
 
   if (options.requirePromotionGate) {
-    const staffEmail = String(process.env.PORTAL_STAFF_EMAIL || "").trim();
-    const staffPassword = String(process.env.PORTAL_STAFF_PASSWORD || "").trim();
+    const staffEmail = String(process.env.PORTAL_STAFF_EMAIL || "").trim() || credentialHints.email;
+    const staffPassword = String(process.env.PORTAL_STAFF_PASSWORD || "").trim() || credentialHints.password;
+    const staffEmailSource = String(process.env.PORTAL_STAFF_EMAIL || "").trim()
+      ? "PORTAL_STAFF_EMAIL"
+      : credentialHints.email
+        ? defaultCredentialsPath
+        : "";
+    const staffPasswordSource = String(process.env.PORTAL_STAFF_PASSWORD || "").trim()
+      ? "PORTAL_STAFF_PASSWORD"
+      : credentialHints.password
+        ? defaultCredentialsPath
+        : "";
 
     addCheck(summary, "promotion gate staff email is present", staffEmail.length > 0, {
-      detail: staffEmail ? "Staff email detected." : "PORTAL_STAFF_EMAIL is missing.",
-      hint: "Set PORTAL_STAFF_EMAIL for authenticated canary.",
+      detail: staffEmail ? `Staff email resolved from ${staffEmailSource || "unknown source"}.` : "No staff email found in env or credential file.",
+      hint: "Set PORTAL_STAFF_EMAIL or add email to the shared portal-agent-staff credentials file.",
     });
 
     addCheck(summary, "promotion gate staff password is present", staffPassword.length > 0, {
-      detail: staffPassword ? "Staff password detected." : "PORTAL_STAFF_PASSWORD is missing.",
-      hint: "Set PORTAL_STAFF_PASSWORD for authenticated canary.",
+      detail: staffPassword
+        ? `Staff password resolved from ${staffPasswordSource || "unknown source"}.`
+        : `No staff password found in env or ${defaultCredentialsPath}.`,
+      hint: "Set PORTAL_STAFF_PASSWORD or add password to the shared portal-agent-staff credentials file for authenticated canary runs.",
     });
 
     const rulesToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
-    addCheck(summary, "promotion gate Firestore Rules API token is present", rulesToken.length > 0, {
-      detail: rulesToken ? "FIREBASE_RULES_API_TOKEN detected." : "FIREBASE_RULES_API_TOKEN is missing.",
-      hint: "Set FIREBASE_RULES_API_TOKEN for backend regression/rules checks.",
+    const hasRulesToken = rulesToken.length > 0 || hasFirebaseCliTokenCache();
+    addCheck(summary, "promotion gate Firestore Rules API token is present", hasRulesToken, {
+      detail: rulesToken
+        ? "FIREBASE_RULES_API_TOKEN detected."
+        : hasRulesToken
+          ? "Firebase CLI token cache detected."
+          : "FIREBASE_RULES_API_TOKEN is missing and firebase-tools token cache was not found.",
+      hint: "Set FIREBASE_RULES_API_TOKEN or refresh the local Firebase CLI login before backend regression/rules checks.",
     });
 
     const firebaseToken = String(process.env.FIREBASE_TOKEN || "").trim();
@@ -304,8 +362,7 @@ function runNamecheapPortalChecks(summary, options) {
     });
 
     const credsJson = String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim();
-    const credsPathEnv = String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS || "").trim();
-    const credsPath = credsPathEnv ? resolve(process.cwd(), credsPathEnv) : "";
+    const credsPath = defaultCredentialsPath;
 
     if (credsJson) {
       const parsed = parseAgentCredentialPayload(credsJson);
@@ -317,7 +374,7 @@ function runNamecheapPortalChecks(summary, options) {
       const exists = existsSync(credsPath);
       addCheck(summary, "agent staff credentials path exists", exists, {
         detail: exists ? credsPath : `Missing file: ${credsPath}`,
-        hint: "Set PORTAL_AGENT_STAFF_CREDENTIALS to a readable JSON credentials file.",
+        hint: "Sync repo secrets to ~/secrets with node ./scripts/sync-codex-home-runtime.mjs, or set PORTAL_AGENT_STAFF_CREDENTIALS to a readable JSON credentials file.",
       });
       if (exists) {
         const parsed = readJsonFileSafe(credsPath);
@@ -338,7 +395,11 @@ function runNamecheapPortalChecks(summary, options) {
 
 function runNamecheapWebsiteChecks(summary) {
   const server = String(process.env.WEBSITE_DEPLOY_SERVER || DEFAULT_NAMECHEAP_SERVER).trim();
-  const keyPath = expandHomePath(process.env.WEBSITE_DEPLOY_KEY || DEFAULT_NAMECHEAP_KEY);
+  const keyResolution = resolveNamecheapSshKeyPath({
+    explicitPath: process.env.WEBSITE_DEPLOY_KEY || "",
+    server,
+  });
+  const keyPath = keyResolution.path;
   const source = resolve(repoRoot, "website", "ncsitebuilder");
 
   addCheck(summary, "website deploy target server is configured", server.length > 0, {
@@ -346,9 +407,9 @@ function runNamecheapWebsiteChecks(summary) {
     hint: "Set WEBSITE_DEPLOY_SERVER before website deploy.",
   });
 
-  addCheck(summary, "website deploy SSH key exists", existsSync(keyPath), {
-    detail: `Resolved key path: ${keyPath}`,
-    hint: "Set WEBSITE_DEPLOY_KEY to a valid private key path.",
+  addCheck(summary, "website deploy SSH key exists", keyResolution.exists, {
+    detail: `Resolved key path: ${keyPath} (${keyResolution.source})`,
+    hint: "Set WEBSITE_DEPLOY_KEY, create ~/.ssh/namecheap-portal, or add IdentityFile under Host monsoonfire in ~/.ssh/config.",
   });
 
   addCheck(summary, "website deploy source directory exists", existsSync(source), {

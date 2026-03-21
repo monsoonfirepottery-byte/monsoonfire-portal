@@ -33,7 +33,8 @@ type Props = {
   notifications: NotificationItem[];
   loading: boolean;
   error: string;
-  onOpenFirings: () => void;
+  onOpenKilnStatus: () => void;
+  kilnActionLabel?: string;
   onOpenReservations: (routePath?: string | null) => void;
 };
 
@@ -159,7 +160,8 @@ export default function NotificationsView({
   notifications,
   loading,
   error,
-  onOpenFirings,
+  onOpenKilnStatus,
+  kilnActionLabel = "View queues",
   onOpenReservations,
 }: Props) {
   const [readFilter, setReadFilter] = useState<ReadFilter>("inbox");
@@ -355,7 +357,7 @@ export default function NotificationsView({
       onOpenReservations(item.data.routePath ?? undefined);
       return;
     }
-    onOpenFirings();
+    onOpenKilnStatus();
   };
 
   return (
@@ -427,7 +429,7 @@ export default function NotificationsView({
                   {item.data?.firingType ? `${item.data.firingType} firing` : "firing"}
                 </span>
               ) : null;
-            const actionLabel = item.data?.destination === "reservations" ? "Open reservations" : "View firings";
+            const actionLabel = item.data?.destination === "reservations" ? "Open reservations" : kilnActionLabel;
 
             return (
               <article

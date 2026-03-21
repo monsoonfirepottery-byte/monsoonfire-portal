@@ -52,7 +52,7 @@ flows are not reached), `/readyz` probe is still recorded as skipped and non-aut
 You can also pass custom endpoints explicitly:
 ```bash
 node ./scripts/portal-playwright-smoke.mjs \
-  --base-url https://monsoonfire-portal.web.app \
+  --base-url https://portal.monsoonfire.com \
   --deep \
   --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net \
   --studio-brain-base-url https://monsoonfire-studio-brain.example.com \
@@ -62,7 +62,7 @@ node ./scripts/portal-playwright-smoke.mjs \
 If you need endpoint probes to include explicit auth context:
 ```bash
 node ./scripts/portal-playwright-smoke.mjs \
-  --base-url https://monsoonfire-portal.web.app \
+  --base-url https://portal.monsoonfire.com \
   --deep \
   --probe-bearer "$ID_TOKEN" \
   --probe-admin-token "$X_ADMIN_TOKEN" \
@@ -73,7 +73,7 @@ node ./scripts/portal-playwright-smoke.mjs \
 If you need to force the deep probe against an observed studio-brain local URL (for reproducing `127.0.0.1`/`localhost` regressions), pass it explicitly:
 ```bash
 node ./scripts/portal-playwright-smoke.mjs \
-  --base-url https://monsoonfire-portal.web.app \
+  --base-url https://portal.monsoonfire.com \
   --deep \
   --studio-brain-base-url http://127.0.0.1:8787 \
   --probe-credential-mode same-origin \
@@ -83,7 +83,7 @@ node ./scripts/portal-playwright-smoke.mjs \
 For full browser parity (login-gated staff routes) run with real credentials:
 ```bash
 node ./scripts/portal-playwright-smoke.mjs \
-  --base-url https://monsoonfire-portal.web.app \
+  --base-url https://portal.monsoonfire.com \
   --deep \
   --with-auth \
   --staff-email "$STAFF_EMAIL" \

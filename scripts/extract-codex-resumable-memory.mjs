@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 const args = process.argv.slice(2);
@@ -107,7 +108,7 @@ function parseLines(filePath) {
   return parsed;
 }
 
-const sessionsRoot = resolve(readFlag("sessions-root", "/home/wuff/.codex/sessions"));
+const sessionsRoot = resolve(readFlag("sessions-root", resolve(homedir(), ".codex", "sessions")));
 const outputPath = resolve(readFlag("output", "./imports/codex-resumable-memory.jsonl"));
 const source = String(readFlag("source", "codex-resumable-session"));
 const tenantIdFlag = readFlag("tenant-id", "");

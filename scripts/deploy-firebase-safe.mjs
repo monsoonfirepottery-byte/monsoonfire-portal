@@ -20,7 +20,7 @@ const DEFAULT_QUOTA_RETRIES = 1;
 
 const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
 const FIREBASE_API_KEY_REGEX = /^AIza[0-9A-Za-z_-]{20,}$/;
-const FIREBASE_EMBEDDED_KEY_REGEX = /VITE_FIREBASE_API_KEY["']?\s*:\s*["']AIza[0-9A-Za-z_-]{20,}["']/;
+const FIREBASE_COMPILED_KEY_REGEX = /AIza[0-9A-Za-z_-]{20,}/;
 const FIREBASE_MISSING_KEY_TOKEN = "MISSING_VITE_FIREBASE_API_KEY";
 
 const QUOTA_SENSITIVE_FUNCTIONS = new Set([
@@ -362,7 +362,7 @@ function inspectFirebaseBuildArtifacts(jsAssets) {
     if (content.includes(FIREBASE_MISSING_KEY_TOKEN)) {
       placeholderTokenFiles.push(path);
     }
-    if (FIREBASE_EMBEDDED_KEY_REGEX.test(content)) {
+    if (FIREBASE_COMPILED_KEY_REGEX.test(content)) {
       compiledApiKeyFiles.push(path);
     }
   }
@@ -376,8 +376,8 @@ function inspectFirebaseBuildArtifacts(jsAssets) {
           : "firebase_api_key_not_embedded",
       message:
         placeholderTokenFiles.length > 0
-          ? `Build output contains ${FIREBASE_MISSING_KEY_TOKEN} without an embedded VITE_FIREBASE_API_KEY value.`
-          : "Build output does not contain a compiled VITE_FIREBASE_API_KEY value.",
+          ? `Build output contains ${FIREBASE_MISSING_KEY_TOKEN} without a compiled Firebase API key value.`
+          : "Build output does not contain a compiled Firebase API key value.",
       placeholderTokenFiles,
       compiledApiKeyFiles,
     };
@@ -385,9 +385,9 @@ function inspectFirebaseBuildArtifacts(jsAssets) {
 
   if (placeholderTokenFiles.length > 0) {
     return {
-      ok: true,
-      code: "firebase_api_key_embedded_with_fallback_token",
-      message: `Build output embeds a Firebase API key; ${FIREBASE_MISSING_KEY_TOKEN} is present as a fallback literal.`,
+      ok: false,
+      code: "firebase_api_key_placeholder_token_detected",
+      message: `Build output still contains ${FIREBASE_MISSING_KEY_TOKEN}.`,
       placeholderTokenFiles,
       compiledApiKeyFiles,
     };

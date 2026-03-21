@@ -311,6 +311,24 @@ function createInMemoryMemoryStoreAdapter() {
                 .filter((row) => (excludedStatuses.size > 0 ? !excludedStatuses.has(row.status) : true))
                 .slice(0, Math.max(1, input.limit));
         },
+        async recentCreated(input) {
+            const normalizedAllow = new Set((input.sourceAllowlist ?? []).map((value) => value.trim()).filter(Boolean));
+            const normalizedDeny = new Set((input.sourceDenylist ?? []).map((value) => value.trim()).filter(Boolean));
+            const excludedStatuses = new Set((input.excludeStatuses ?? []).map((value) => String(value ?? "").trim()).filter(Boolean));
+            return toArray()
+                .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
+                .filter((row) => (input.agentId ? row.agentId === input.agentId : true))
+                .filter((row) => (input.runId ? row.runId === input.runId : true))
+                .filter((row) => (normalizedAllow.size > 0 ? normalizedAllow.has(row.source) : true))
+                .filter((row) => (normalizedDeny.size > 0 ? !normalizedDeny.has(row.source) : true))
+                .filter((row) => (excludedStatuses.size > 0 ? !excludedStatuses.has(row.status) : true))
+                .sort((left, right) => {
+                const rightCreated = Date.parse(right.createdAt || "") || 0;
+                const leftCreated = Date.parse(left.createdAt || "") || 0;
+                return rightCreated - leftCreated;
+            })
+                .slice(0, Math.max(1, input.limit));
+        },
         async stats(input) {
             return stats(input.tenantId);
         },

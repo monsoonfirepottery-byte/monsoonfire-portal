@@ -2,6 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mintStaffIdTokenFromPortalEnv } from "./lib/firebase-auth-token.mjs";
@@ -11,6 +12,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const args = process.argv.slice(2);
+
+function resolveRepoPath(target) {
+  return resolve(REPO_ROOT, String(target || "").trim());
+}
+
+function resolveHomeOrRepoDefault(...relativeCandidates) {
+  for (const relativePath of relativeCandidates) {
+    const homePath = resolve(homedir(), relativePath);
+    if (existsSync(homePath)) return homePath;
+    const repoPath = resolve(REPO_ROOT, relativePath);
+    if (existsSync(repoPath)) return repoPath;
+  }
+  return resolve(homedir(), relativeCandidates[0]);
+}
 
 function readFlag(name, fallback = undefined) {
   const key = `--${name}`;
@@ -265,8 +280,8 @@ function maybeForward(flagName, target) {
 const today = new Date().toISOString().slice(0, 10);
 const source = String(readFlag("source", `context-slice:${today}`));
 const runScope = String(readFlag("run-scope", new Date().toISOString().replace(/[:.]/g, "-"))).trim();
-const outputPath = resolve(readFlag("output", "./imports/memory-context-slice.jsonl"));
-const summaryOutputPath = resolve(readFlag("summary-output", "./output/open-memory/context-sync-latest.json"));
+const outputPath = resolveRepoPath(readFlag("output", "./imports/memory-context-slice.jsonl"));
+const summaryOutputPath = resolveRepoPath(readFlag("summary-output", "./output/open-memory/context-sync-latest.json"));
 const importBatchSizeRaw = Number(readFlag("import-batch-size", "400"));
 const importBatchSize =
   Number.isFinite(importBatchSizeRaw) && importBatchSizeRaw > 0
@@ -277,16 +292,34 @@ const doImport = readBool("import", true);
 const strictImport = readBool("strict-import", false);
 const disableRunBurstLimit = readBool("disable-run-burst-limit", false);
 const loadEnvFileFlag = readBool("load-env-file", true);
-const envFilePath = resolve(readFlag("env-file", "./secrets/studio-brain/studio-brain-automation.env"));
+const envFilePath = resolveRepoPath(
+  readFlag(
+    "env-file",
+    resolveHomeOrRepoDefault("secrets/studio-brain/studio-brain-automation.env", "secrets/studio-brain/studio-brain-mcp.env")
+  )
+);
 const loadPortalEnvFileFlag = readBool("load-portal-env-file", true);
-const portalEnvFilePath = resolve(readFlag("portal-env-file", "./secrets/portal/portal-automation.env"));
+const portalEnvFilePath = resolveRepoPath(
+  readFlag("portal-env-file", resolveHomeOrRepoDefault("secrets/portal/portal-automation.env"))
+);
 const mintStaffTokenFlag = readBool("mint-staff-token", true);
 const includeResumable = readBool("include-resumable", false);
 const resumableSource = String(readFlag("resumable-source", "codex-resumable-session"));
-const resumableOutputPath = resolve(readFlag("resumable-output", "./imports/codex-resumable-memory.latest.jsonl"));
-const resumableSessionsRoot = String(readFlag("sessions-root", "/home/wuff/.codex/sessions"));
+const resumableOutputPath = resolveRepoPath(readFlag("resumable-output", "./imports/codex-resumable-memory.latest.jsonl"));
+const resumableSessionsRoot = resolveRepoPath(readFlag("sessions-root", resolve(homedir(), ".codex", "sessions")));
 const resumableMaxItems = String(readFlag("resumable-max-items", "1200"));
 const resumableExcludeRecentMinutes = String(readFlag("resumable-exclude-recent-minutes", "30"));
+const includeRepoMarkdown = readBool("include-repo-markdown", false);
+const repoMarkdownSource = String(readFlag("repo-markdown-source", "repo-markdown"));
+const repoMarkdownOutputPath = resolveRepoPath(readFlag("repo-markdown-output", "./imports/repo-markdown-memory.latest.jsonl"));
+const repoMarkdownRepoRoot = resolveRepoPath(readFlag("repo-root", REPO_ROOT));
+const includeHistoryExport = readBool("include-history-export", false);
+const historySource = String(readFlag("history-source", "codex-history-export"));
+const historyOutputPath = resolveRepoPath(readFlag("history-output", "./imports/codex-history-memory.latest.jsonl"));
+const historyInputPath = resolveRepoPath(readFlag("history-input", resolve(homedir(), ".codex", "memory", "raw", "conversations.json")));
+const historySharedInputPath = resolveRepoPath(
+  readFlag("history-shared-input", resolve(homedir(), ".codex", "memory", "raw", "shared_conversations.json"))
+);
 const runStats = readBool("stats", true);
 
 const summary = {
@@ -297,6 +330,8 @@ const summary = {
     contextSlice: outputPath,
     summary: summaryOutputPath,
     resumableSlice: includeResumable ? resumableOutputPath : null,
+    repoMarkdownSlice: includeRepoMarkdown ? repoMarkdownOutputPath : null,
+    historySlice: includeHistoryExport ? historyOutputPath : null,
   },
   env: {
     loadEnvFile: loadEnvFileFlag,
@@ -324,6 +359,16 @@ const summary = {
     ok: false,
     extracted: 0,
   },
+  repoMarkdown: {
+    enabled: includeRepoMarkdown,
+    ok: false,
+    extracted: 0,
+  },
+  history: {
+    enabled: includeHistoryExport,
+    ok: false,
+    extracted: 0,
+  },
   import: {
     enabled: doImport,
     attempted: false,
@@ -337,6 +382,18 @@ const summary = {
       failed: 0,
     },
     resumable: {
+      attempted: false,
+      ok: false,
+      imported: 0,
+      failed: 0,
+    },
+    repoMarkdown: {
+      attempted: false,
+      ok: false,
+      imported: 0,
+      failed: 0,
+    },
+    history: {
       attempted: false,
       ok: false,
       imported: 0,
@@ -401,6 +458,58 @@ if (includeResumable) {
   }
 }
 
+if (includeRepoMarkdown) {
+  const repoMarkdownResult = runNode(
+    "scripts/repo-markdown-corpus-export.mjs",
+    [
+      "--run-id",
+      `context-sync-repo-markdown-${runScope}`.slice(0, 120),
+      "--repo-root",
+      repoMarkdownRepoRoot,
+      "--run-root",
+      resolve(`./output/open-memory/context-sync/${runScope}/repo-markdown`),
+      "--adapter-output",
+      repoMarkdownOutputPath,
+      "--skip-sqlite",
+      "true",
+      "--json",
+    ],
+    { allowFailure: true }
+  );
+  summary.repoMarkdown.ok = repoMarkdownResult.ok && fileHasContent(repoMarkdownOutputPath);
+  summary.repoMarkdown.extracted = Number(repoMarkdownResult.parsed?.counts?.adapterRows ?? 0);
+  if (!summary.repoMarkdown.ok) {
+    summary.warnings.push("Repo markdown export did not produce adapter rows. Continuing without repo markdown import.");
+  }
+}
+
+if (includeHistoryExport) {
+  const historyResult = runNode(
+    "scripts/codex-history-corpus-export.mjs",
+    [
+      "--run-id",
+      `context-sync-history-${runScope}`.slice(0, 120),
+      "--input",
+      historyInputPath,
+      "--shared-input",
+      historySharedInputPath,
+      "--run-root",
+      resolve(`./output/open-memory/context-sync/${runScope}/codex-history`),
+      "--adapter-output",
+      historyOutputPath,
+      "--skip-sqlite",
+      "true",
+      "--json",
+    ],
+    { allowFailure: true }
+  );
+  summary.history.ok = historyResult.ok && fileHasContent(historyOutputPath);
+  summary.history.extracted = Number(historyResult.parsed?.counts?.adapterRows ?? 0);
+  if (!summary.history.ok) {
+    summary.warnings.push("Historical conversation export did not produce adapter rows. Continuing without history import.");
+  }
+}
+
 if (loadEnvFileFlag) {
   const envLoad = loadEnvFile(envFilePath);
   summary.env.envFileLoaded = envLoad.loaded;
@@ -426,7 +535,7 @@ if (!existingAuth && mintStaffTokenFlag) {
   summary.env.mintStaffTokenAttempted = true;
   const minted = await mintStaffIdTokenFromPortalEnv({
     env: process.env,
-    defaultCredentialsPath: resolve(REPO_ROOT, "secrets", "portal", "portal-agent-staff.json"),
+    defaultCredentialsPath: resolveHomeOrRepoDefault("secrets/portal/portal-agent-staff.json"),
     preferRefreshToken: true,
   });
   summary.env.mintStaffTokenOk = minted.ok;
@@ -490,6 +599,42 @@ if (doImport) {
       summary.import.totalFailed += resumableImport.failed;
     }
 
+    if (includeRepoMarkdown && summary.repoMarkdown.ok && fileHasContent(repoMarkdownOutputPath)) {
+      summary.import.repoMarkdown.attempted = true;
+      const repoMarkdownImport = importJsonlInBatches({
+        inputPath: repoMarkdownOutputPath,
+        source: repoMarkdownSource,
+        continueOnError,
+        strictImport,
+        batchSize: importBatchSize,
+        disableRunBurstLimit,
+        warnings: summary.warnings,
+      });
+      summary.import.repoMarkdown.ok = repoMarkdownImport.ok;
+      summary.import.repoMarkdown.imported = repoMarkdownImport.imported;
+      summary.import.repoMarkdown.failed = repoMarkdownImport.failed;
+      summary.import.totalImported += repoMarkdownImport.imported;
+      summary.import.totalFailed += repoMarkdownImport.failed;
+    }
+
+    if (includeHistoryExport && summary.history.ok && fileHasContent(historyOutputPath)) {
+      summary.import.history.attempted = true;
+      const historyImport = importJsonlInBatches({
+        inputPath: historyOutputPath,
+        source: historySource,
+        continueOnError,
+        strictImport,
+        batchSize: importBatchSize,
+        disableRunBurstLimit,
+        warnings: summary.warnings,
+      });
+      summary.import.history.ok = historyImport.ok;
+      summary.import.history.imported = historyImport.imported;
+      summary.import.history.failed = historyImport.failed;
+      summary.import.totalImported += historyImport.imported;
+      summary.import.totalFailed += historyImport.failed;
+    }
+
     if (runStats) {
       const statsResult = runNode("scripts/open-memory.mjs", ["stats"], { allowFailure: true });
       summary.stats.attempted = true;
@@ -511,7 +656,10 @@ if (
   strictImport &&
   doImport &&
   summary.import.attempted &&
-  (!summary.import.contextSlice.ok || (summary.import.resumable.attempted && !summary.import.resumable.ok))
+  (!summary.import.contextSlice.ok ||
+    (summary.import.resumable.attempted && !summary.import.resumable.ok) ||
+    (summary.import.repoMarkdown.attempted && !summary.import.repoMarkdown.ok) ||
+    (summary.import.history.attempted && !summary.import.history.ok))
 ) {
   process.exit(1);
 }

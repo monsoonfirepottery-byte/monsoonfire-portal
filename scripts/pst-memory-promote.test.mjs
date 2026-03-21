@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { stableHash } from "./lib/pst-memory-utils.mjs";
 
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(SCRIPT_DIR, "..");
+
 function runPromote(args) {
-  return spawnSync("node", ["./scripts/pst-memory-promote.mjs", "--json", ...args], {
-    cwd: "/home/wuff/monsoonfire-portal",
+  return spawnSync(process.execPath, ["./scripts/pst-memory-promote.mjs", "--json", ...args], {
+    cwd: REPO_ROOT,
     encoding: "utf8",
   });
 }

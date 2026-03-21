@@ -17,7 +17,7 @@ This package is intentionally isolated from the main `studio-brain/` app so it c
 ## Environment
 
 - `STUDIO_BRAIN_MCP_BASE_URL`
-  - default: `http://127.0.0.1:8787`
+  - default: `http://192.168.1.226:8787`
 - `STUDIO_BRAIN_MCP_ID_TOKEN`
   - Firebase ID token for Studio Brain staff auth
 - `STUDIO_BRAIN_MCP_ADMIN_TOKEN`
@@ -36,6 +36,15 @@ Use the launcher to merge that file into the process environment before the MCP 
 ```bash
 node D:\monsoonfire-portal\studio-brain-mcp\launch.mjs
 ```
+
+The launcher also checks these optional auth sources at startup:
+
+- `D:\monsoonfire-portal\secrets\studio-brain\studio-brain-automation.env`
+- `D:\monsoonfire-portal\secrets\portal\portal-automation.env`
+- `D:\monsoonfire-portal\secrets\portal\portal-agent-staff.json`
+- `~/.ssh/portal-agent-staff.json`
+
+If `STUDIO_BRAIN_MCP_ID_TOKEN` is missing, the launcher will try to mint a fresh Firebase staff ID token from the portal automation credentials and inject it into the MCP process for that session. The server will also retry once with a freshly minted token if Studio Brain reports an expired or missing bearer token mid-session.
 
 ## Local run
 
@@ -56,7 +65,7 @@ Add a local MCP entry like this:
 [mcp_servers.studio-brain-memory]
 command = "node"
 args = ["D:\\monsoonfire-portal\\studio-brain-mcp\\launch.mjs"]
-startup_timeout_sec = 30
+startup_timeout_sec = 60
 ```
 
 The launcher reads `secrets/studio-brain/studio-brain-mcp.env` and merges it with the ambient process environment.

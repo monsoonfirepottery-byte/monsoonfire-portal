@@ -4,7 +4,7 @@
     "intentSchema": "400cf76c55079f23690993fe76a661f11ebc451016f2462b4bd5cd7d7a26fc5f",
     "policyConfig": "1b376142dd8cb4efb789b83a949155381574e565b81a3f38a8fa83b5d6a5b4eb",
     "budgetConfig": "54dd893f7affaa280b4faaafe32cf2c0f834f854bf833369c8e36e95fd6c6989",
-    "memoryGovernanceConfig": "15bf3034e45631a57fca01056e66714939904486b1c3e42d50bc3a6ab4a2d39f",
+    "memoryGovernanceConfig": "520813baac55024ea0aab3b219a1c670075c28f511f3161a5696327e0246a69b",
     "safetyRailsConfig": "bbc21b745c69da277eb938200646ee4c035efc8c9c48c548cfc19bce3fd29e9b",
     "hardeningRegistry": "fbe47eaad2b7ddb416bf0f977321543ab0ed1fb16ffd4dbef97b8370ed1a3f59"
   },
@@ -1456,8 +1456,8 @@
       "authorityTier": "T2"
     }
   ],
-  "generatedAt": "2026-03-06T20:49:58.106Z",
+  "generatedAt": "2026-03-20T18:35:16.621Z",
   "intentCount": 8,
   "taskCount": 24,
-  "planDigestSha256": "1bd780fb0713024ed116b9f27f831b900728fa54501f3d161757800e1cff4e7d"
+  "planDigestSha256": "c1e421cce609adaafe5520ac34a38d6759bdb0c41c6a491cc6694bd100f0227e"
 }

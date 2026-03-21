@@ -163,6 +163,14 @@ function hasFirebaseCliSession() {
   return probe.status === 0;
 }
 
+function hasFirebaseCliTokenCache() {
+  const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
+  const parsed = readJsonFileSafe(configPath);
+  return Boolean(
+    String(parsed?.tokens?.access_token || "").trim() || String(parsed?.tokens?.refresh_token || "").trim()
+  );
+}
+
 function looksLikeFirebaseApiKey(value) {
   return FIREBASE_API_KEY_REGEX.test(String(value || "").trim());
 }
@@ -311,9 +319,14 @@ function runNamecheapPortalChecks(summary, options) {
     });
 
     const rulesToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
-    addCheck(summary, "promotion gate Firestore Rules API token is present", rulesToken.length > 0, {
-      detail: rulesToken ? "FIREBASE_RULES_API_TOKEN detected." : "FIREBASE_RULES_API_TOKEN is missing.",
-      hint: "Set FIREBASE_RULES_API_TOKEN for backend regression/rules checks.",
+    const hasRulesToken = rulesToken.length > 0 || hasFirebaseCliTokenCache();
+    addCheck(summary, "promotion gate Firestore Rules API token is present", hasRulesToken, {
+      detail: rulesToken
+        ? "FIREBASE_RULES_API_TOKEN detected."
+        : hasRulesToken
+          ? "Firebase CLI token cache detected."
+          : "FIREBASE_RULES_API_TOKEN is missing and firebase-tools token cache was not found.",
+      hint: "Set FIREBASE_RULES_API_TOKEN or refresh the local Firebase CLI login before backend regression/rules checks.",
     });
 
     const firebaseToken = String(process.env.FIREBASE_TOKEN || "").trim();

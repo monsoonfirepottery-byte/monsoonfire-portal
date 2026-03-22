@@ -6,6 +6,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import {
+  buildFirebaseCliInvocation,
+  prependPathEntries,
+  resolvePlatformCommand,
+} from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -83,7 +88,8 @@ function truncate(value, max = 16000) {
 
 function runStep(label, command, args, env = {}, remediation = "") {
   const startedAt = Date.now();
-  const result = spawnSync(command, args, {
+  const resolvedCommand = resolvePlatformCommand(command);
+  const result = spawnSync(resolvedCommand, args, {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -102,7 +108,7 @@ function runStep(label, command, args, env = {}, remediation = "") {
     exitCode,
     durationMs,
     remediation,
-    command: [command, ...args].join(" "),
+    command: [resolvedCommand, ...args].join(" "),
     stdout: truncate(result.stdout || ""),
     stderr: truncate(result.stderr || ""),
   };
@@ -183,14 +189,15 @@ async function main() {
   steps.push(javaRuntime.step);
 
   const javaEnv = javaRuntime.ok
-    ? {
+    ? prependPathEntries([resolve(javaRuntime.javaHome, "bin")], {
+        ...process.env,
         JAVA_HOME: javaRuntime.javaHome,
-        PATH: `${resolve(javaRuntime.javaHome, "bin")}:${String(process.env.PATH || "")}`,
-      }
+      })
     : {};
+  const firebaseCli = buildFirebaseCliInvocation(repoRoot, { env: javaEnv });
 
-  const firestoreSuiteStep = runStep("firestore emulator functional rules suite", "npx", [
-      "firebase",
+  const firestoreSuiteStep = runStep("firestore emulator functional rules suite", firebaseCli.command, [
+      ...firebaseCli.args,
       "emulators:exec",
       "--config",
       "firebase.emulators.local.json",

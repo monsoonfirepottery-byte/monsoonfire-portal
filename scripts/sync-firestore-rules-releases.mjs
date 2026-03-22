@@ -5,18 +5,18 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import {
+  exchangePortalRulesRefreshToken,
+  looksLikeRefreshToken,
+  loadGoogleAuthorizedUserCredentials,
+} from "./lib/google-oauth-refresh.mjs";
 
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const LEGACY_RELEASE_ID = "cloud.firestore";
 const DEFAULT_DB_RELEASE_ID = "cloud.firestore/default";
-const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
 const DEFAULT_GCLOUD_ADC_PATH = process.env.APPDATA
   ? resolve(process.env.APPDATA, "gcloud", "application_default_credentials.json")
   : resolve(homedir(), ".config", "gcloud", "application_default_credentials.json");
-// Firebase CLI OAuth client values (mirrors firebase-tools defaults).
-const FIREBASE_CLI_OAUTH_CLIENT_ID =
-  "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
-const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
 
 function parseArgs(argv) {
   const options = {
@@ -99,135 +99,19 @@ async function loadFirebaseCliToken() {
   };
 }
 
-async function loadGoogleAuthorizedUserCredentials() {
-  const explicitPath = String(process.env.GOOGLE_APPLICATION_CREDENTIALS || "").trim();
-  const candidatePaths = [explicitPath, DEFAULT_GCLOUD_ADC_PATH].filter(Boolean);
-
-  for (const configPath of candidatePaths) {
-    try {
-      const raw = await readFile(configPath, "utf8");
-      const parsed = JSON.parse(raw);
-      const refreshToken = String(parsed?.refresh_token || "").trim();
-      const clientId = String(parsed?.client_id || "").trim();
-      const clientSecret = String(parsed?.client_secret || "").trim();
-      if (
-        String(parsed?.type || "").trim() === "authorized_user" &&
-        refreshToken &&
-        clientId &&
-        clientSecret
-      ) {
-        return {
-          configPath,
-          refreshToken,
-          clientId,
-          clientSecret,
-          source: "google-application-default-credentials",
-        };
-      }
-    } catch {
-      // Ignore missing or unreadable ADC candidates and keep searching.
-    }
-  }
-
-  return null;
-}
-
-function looksLikeRefreshToken(token) {
-  return token.startsWith("1//");
-}
-
-async function exchangeRefreshToken(refreshToken, source, oauthClient = {}) {
-  const clientId = String(oauthClient.clientId || FIREBASE_CLI_OAUTH_CLIENT_ID || "").trim();
-  const clientSecret = String(
-    oauthClient.clientSecret ?? FIREBASE_CLI_OAUTH_CLIENT_SECRET ?? ""
-  ).trim();
-  const form = new URLSearchParams({
-    refresh_token: refreshToken,
-    client_id: clientId,
-    grant_type: "refresh_token",
-  });
-  if (clientSecret) {
-    form.set("client_secret", clientSecret);
-  }
-
-  const resp = await fetch(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: form.toString(),
-  });
-
-  const text = await resp.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = { raw: text.slice(0, 600) };
-  }
-
-  const expiresInSec =
-    typeof json?.expires_in === "number"
-      ? json.expires_in
-      : typeof json?.expires_in === "string"
-        ? Number.parseInt(json.expires_in, 10)
-        : Number.NaN;
-
-  if (!resp.ok || typeof json?.access_token !== "string") {
-    const details =
-      typeof json?.error === "string"
-        ? json.error
-        : typeof json?.error_description === "string"
-          ? json.error_description
-          : "token exchange failed";
-    throw new Error(`Unable to exchange refresh token (${source}): ${details}`);
-  }
-
-  return {
-    accessToken: json.access_token,
-    expiresAtMs: Number.isFinite(expiresInSec) ? Date.now() + expiresInSec * 1000 : Number.NaN,
-  };
-}
-
-async function exchangeRefreshTokenWithCandidates(refreshToken, candidates) {
-  let lastError = null;
-  for (const candidate of candidates) {
-    try {
-      const exchanged = await exchangeRefreshToken(refreshToken, candidate.source, candidate);
-      return {
-        ...exchanged,
-        source: candidate.resultSource || candidate.source,
-      };
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error("token exchange failed");
-}
-
 async function resolveAccessToken(options) {
-  const adcCredentials = await loadGoogleAuthorizedUserCredentials();
+  const adcCredentials = await loadGoogleAuthorizedUserCredentials({
+    explicitPath: String(process.env.GOOGLE_APPLICATION_CREDENTIALS || "").trim() || DEFAULT_GCLOUD_ADC_PATH,
+  });
   const directToken = String(options.accessToken || "").trim();
   if (directToken) {
     if (looksLikeRefreshToken(directToken)) {
       try {
-        const exchanged = await exchangeRefreshTokenWithCandidates(directToken, [
-          {
-            source: "env-refresh-token",
-            resultSource: "env-refresh-token",
-            clientId: FIREBASE_CLI_OAUTH_CLIENT_ID,
-            clientSecret: FIREBASE_CLI_OAUTH_CLIENT_SECRET,
-          },
-          ...(adcCredentials
-            ? [{
-                source: "env-refresh-token-adc-client",
-                resultSource: "env-refresh-token-adc-client",
-                clientId: adcCredentials.clientId,
-                clientSecret: adcCredentials.clientSecret,
-              }]
-            : []),
-        ]);
+        const exchanged = await exchangePortalRulesRefreshToken(directToken, {
+          source: "env-refresh-token",
+          adcCredentials,
+          adcResultSource: "env-refresh-token-adc-client",
+        });
         return {
           configPath: adcCredentials?.configPath || null,
           accessToken: exchanged.accessToken,
@@ -248,12 +132,11 @@ async function resolveAccessToken(options) {
 
     if (adcCredentials?.refreshToken) {
       try {
-        const exchanged = await exchangeRefreshTokenWithCandidates(adcCredentials.refreshToken, [{
+        const exchanged = await exchangePortalRulesRefreshToken(adcCredentials.refreshToken, {
           source: adcCredentials.source,
-          resultSource: "google-application-default-credentials-refresh-token",
-          clientId: adcCredentials.clientId,
-          clientSecret: adcCredentials.clientSecret,
-        }]);
+          adcCredentials,
+          adcResultSource: "google-application-default-credentials-refresh-token",
+        });
         return {
           configPath: adcCredentials.configPath,
           accessToken: exchanged.accessToken,
@@ -275,12 +158,11 @@ async function resolveAccessToken(options) {
 
   if (adcCredentials?.refreshToken) {
     try {
-      const exchanged = await exchangeRefreshTokenWithCandidates(adcCredentials.refreshToken, [{
+      const exchanged = await exchangePortalRulesRefreshToken(adcCredentials.refreshToken, {
         source: adcCredentials.source,
-        resultSource: "google-application-default-credentials-refresh-token",
-        clientId: adcCredentials.clientId,
-        clientSecret: adcCredentials.clientSecret,
-      }]);
+        adcCredentials,
+        adcResultSource: "google-application-default-credentials-refresh-token",
+      });
       return {
         configPath: adcCredentials.configPath,
         accessToken: exchanged.accessToken,
@@ -295,12 +177,11 @@ async function resolveAccessToken(options) {
   const cliToken = await loadFirebaseCliToken();
   if (typeof cliToken.refreshToken === "string" && cliToken.refreshToken) {
     try {
-      const exchanged = await exchangeRefreshTokenWithCandidates(cliToken.refreshToken, [{
+      const exchanged = await exchangePortalRulesRefreshToken(cliToken.refreshToken, {
         source: "firebase-tools-config",
-        resultSource: "firebase-tools-refresh-token",
-        clientId: FIREBASE_CLI_OAUTH_CLIENT_ID,
-        clientSecret: FIREBASE_CLI_OAUTH_CLIENT_SECRET,
-      }]);
+        adcCredentials,
+        adcResultSource: "firebase-tools-refresh-token",
+      });
       return {
         configPath: cliToken.configPath,
         accessToken: exchanged.accessToken,

@@ -54,7 +54,7 @@ Notes:
   - `~/secrets/portal/portal-automation.env`
   - `~/secrets/portal/portal-agent-staff.json`
   - Refresh that shared copy from 1Password with:
-    - `npm run secrets:portal:sync`
+  - `npm run secrets:portal:sync`
     - Machine-readable output is also supported via npm on Windows:
       - `npm run secrets:portal:sync --json`
   - Advanced home-cache-only refresh without worktree mirroring:
@@ -79,6 +79,7 @@ Notes:
 - Promotion gate credential note:
   - `portal-agent-staff.json` is now the normal-path credential source for both backend checks and the authenticated canary.
   - Raw `PORTAL_STAFF_PASSWORD` is optional and only used for explicit deep-diagnostic `--auth-mode password-ui` runs.
+  - `FIREBASE_RULES_API_TOKEN` should be a durable `1//...` refresh token in the 1Password `portal-automation-env` item, not a short-lived `ya29...` access token.
 - Optional overrides (if infra changes):
   - `WEBSITE_DEPLOY_SERVER`
   - `WEBSITE_DEPLOY_PORT`

@@ -11,6 +11,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { mintStaffIdTokenFromPortalEnv } from "./lib/firebase-auth-token.mjs";
+import {
+  exchangePortalRulesRefreshToken,
+  looksLikeRefreshToken,
+  loadGoogleAuthorizedUserCredentials,
+} from "./lib/google-oauth-refresh.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -19,10 +24,6 @@ const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-studio-digest.json");
 const DEFAULT_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
 const DEFAULT_PORTAL_AUTOMATION_ENV_PATH = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
-const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
-const FIREBASE_CLI_OAUTH_CLIENT_ID =
-  "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
-const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
 const DAILY_DIGEST_ID_PREFIX = "studio-digest-";
 const QA_ANNOUNCEMENT_ID_PREFIX = "qa-fixture-studio-update-";
 const LEGACY_QA_ANNOUNCEMENT_ID_PREFIX = "qa-studio-update-";
@@ -321,35 +322,6 @@ async function mintServiceAccessToken(serviceAccount) {
   return safeString(response.json.access_token);
 }
 
-function looksLikeRefreshToken(token) {
-  return safeString(token).startsWith("1//");
-}
-
-async function exchangeRefreshToken(refreshToken, source) {
-  const form = new URLSearchParams({
-    refresh_token: refreshToken,
-    client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
-    grant_type: "refresh_token",
-  });
-  if (FIREBASE_CLI_OAUTH_CLIENT_SECRET) {
-    form.set("client_secret", FIREBASE_CLI_OAUTH_CLIENT_SECRET);
-  }
-
-  const response = await requestJson(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: form.toString(),
-  });
-
-  if (!response.ok || !response.json?.access_token) {
-    const message =
-      response.json?.error_description || response.json?.error || response.json?.raw || `HTTP ${response.status}`;
-    throw new Error(`Unable to exchange refresh token from ${source}: ${String(message)}`);
-  }
-
-  return safeString(response.json.access_token);
-}
-
 function loadFirebaseCliTokens() {
   try {
     const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
@@ -375,6 +347,7 @@ function loadFirebaseCliTokens() {
 
 async function resolveEnvAdminTokenCandidates() {
   const firebaseCliTokens = loadFirebaseCliTokens();
+  const adcCredentials = await loadGoogleAuthorizedUserCredentials();
   const candidateSources = [
     { source: "FIREBASE_RULES_API_TOKEN", value: process.env.FIREBASE_RULES_API_TOKEN },
     { source: "FIREBASE_ACCESS_TOKEN", value: process.env.FIREBASE_ACCESS_TOKEN },
@@ -399,10 +372,14 @@ async function resolveEnvAdminTokenCandidates() {
     if (!raw) continue;
     if (looksLikeRefreshToken(raw)) {
       try {
-        const accessToken = await exchangeRefreshToken(raw, entry.source);
+        const exchanged = await exchangePortalRulesRefreshToken(raw, {
+          source: entry.source,
+          adcCredentials,
+          adcResultSource: `${entry.source} (adc-client exchange)`,
+        });
         candidates.push({
-          source: `${entry.source} (refresh-token exchange)`,
-          token: accessToken,
+          source: `${exchanged.source} (refresh-token exchange)`,
+          token: safeString(exchanged.accessToken),
           error: "",
         });
       } catch (error) {

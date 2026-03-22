@@ -1,0 +1,29 @@
+{
+  "request": "Plan the rollout of a customer-facing ops status module so support and staff can inspect planning packets without affecting execution flows.",
+  "requestedBy": "fixture-customer",
+  "docket": {
+    "objective": "Deliver a reviewable rollout plan for a customer-facing ops status surface.",
+    "whyNow": "Support needs visibility into planning outputs before the next round of operator tooling lands.",
+    "successCriteria": [
+      "Support load is considered",
+      "Validation gates are explicit",
+      "Customer-facing failure modes are documented"
+    ],
+    "constraints": [
+      "Read-only in v1",
+      "Do not add execution affordances"
+    ],
+    "knownFacts": [
+      "Studio Brain already exposes read-only status endpoints",
+      "Staff cockpit modules exist"
+    ],
+    "unknowns": [
+      "How much customer-facing language needs support review"
+    ],
+    "assumptions": [
+      { "statement": "A read-only surface can ship before final execution handoff tooling exists.", "evidenceLabel": "inferred" }
+    ],
+    "affectedSystems": ["studio-brain/src/http/server.ts", "web/src/views/staff"],
+    "humanPriorities": ["clarity", "supportability"]
+  }
+}

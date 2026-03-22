@@ -5,19 +5,39 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mintStaffIdTokenFromPortalEnv } from "../scripts/lib/firebase-auth-token.mjs";
 import {
+  STARTUP_REASON_CODES,
+  classifyStartupReason,
+  inspectTokenFreshness,
+  startupRecoveryStep,
+} from "../scripts/lib/codex-startup-reliability.mjs";
+import {
   buildStartupContextSearchPayload,
-  buildLocalBootstrapContext,
   buildThreadBootstrapQuery,
   compactionSettingsFromEnv,
   filterExpiredRows,
+  normalizeContinuityEnvelope,
+  normalizeHandoffArtifact,
+  normalizeStartupBlocker,
+  resolveBootstrapContinuityState,
+  loadBootstrapArtifacts,
   parseRolloutEntries,
   rankBootstrapRows,
   readThreadHistoryLines,
   readThreadName,
   resolveStartupBootstrapPolicy,
   resolveCodexThreadContext,
+  runtimePathsForThread,
   writeBootstrapArtifacts,
+  writeContinuityEnvelope,
+  writeStartupBlocker,
 } from "../scripts/lib/codex-session-memory-utils.mjs";
+import {
+  attachMachineToolProfileContext,
+  shouldAttachMachineToolProfile,
+  syncMachineToolProfile,
+} from "../scripts/lib/codex-machine-tool-profile.mjs";
+import { studioBrainRequestJson } from "../scripts/lib/studio-brain-memory-write.mjs";
+import { stableHash } from "../scripts/lib/pst-memory-utils.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -75,6 +95,266 @@ function buildEmptyBootstrapContext({ threadInfo, query, diagnostics } = {}) {
     summary: "",
     items: [],
     diagnostics: diagnostics && typeof diagnostics === "object" ? diagnostics : {},
+  };
+}
+
+function summarizeText(value, maxChars = 220) {
+  return clean(value).replace(/\s+/g, " ").slice(0, maxChars);
+}
+
+function summarizeRows(rows, maxItems = 4, maxChars = 480) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice(0, Math.max(1, maxItems))
+    .map((row, index) => `${index + 1}. [${clean(row?.source || row?.metadata?.source || "memory")}] ${summarizeText(row?.content || row?.summary || "", 140)}`)
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, maxChars);
+}
+
+function resolveGitState(cwd) {
+  const normalizedCwd = clean(cwd);
+  if (!normalizedCwd) {
+    return {
+      state: "unavailable",
+      summary: "No cwd available for git inspection.",
+      branch: "",
+      detached: false,
+      dirty: false,
+      dirtyCount: 0,
+    };
+  }
+
+  const result = spawnSync("git", ["-C", normalizedCwd, "status", "--porcelain", "--branch"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    return {
+      state: "not-a-repo",
+      summary: `No git worktree resolved for ${normalizedCwd}.`,
+      branch: "",
+      detached: false,
+      dirty: false,
+      dirtyCount: 0,
+      error: clean(result.stderr || result.stdout),
+    };
+  }
+
+  const lines = String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const branchLine = lines[0] || "";
+  const statusLines = lines.slice(1);
+  const detached = /^(##\s+HEAD\b|##\s+\(HEAD detached)/i.test(branchLine);
+  const branchMatch = /^##\s+([^.\s]+)/.exec(branchLine);
+  const branch = detached ? "HEAD" : clean(branchMatch?.[1]);
+  const dirtyCount = statusLines.length;
+  return {
+    state: "ready",
+    summary: dirtyCount > 0 ? `${branch || "HEAD"} has ${dirtyCount} local change(s).` : `${branch || "HEAD"} is clean.`,
+    branch,
+    detached,
+    dirty: dirtyCount > 0,
+    dirtyCount,
+  };
+}
+
+function synthesizeContextFromHandoff({ handoff, continuityEnvelope, threadInfo, query }) {
+  const normalizedHandoff = normalizeHandoffArtifact(handoff, { threadId: clean(threadInfo?.threadId) });
+  const normalizedEnvelope = normalizeContinuityEnvelope(continuityEnvelope, { threadId: clean(threadInfo?.threadId) });
+  const summary = summarizeText(
+    normalizedHandoff.summary
+      || normalizedHandoff.workCompleted
+      || normalizedEnvelope.lastHandoffSummary
+      || normalizedEnvelope.currentGoal
+      || normalizedHandoff.activeGoal
+      || normalizedHandoff.nextRecommendedAction
+      || normalizedEnvelope.nextRecommendedAction
+      || "",
+    600
+  );
+  if (!summary) return null;
+  return {
+    schema: "codex-startup-bootstrap-context.v1",
+    createdAt: new Date().toISOString(),
+    threadId: clean(threadInfo?.threadId),
+    query: clean(query),
+    summary,
+    items: [
+      {
+        id: `handoff-${stableHash(`${clean(threadInfo?.threadId)}|${summary}`, 24)}`,
+        source: "codex-handoff",
+        score: 0.96,
+        content: summary,
+        matchedBy: ["trusted-envelope"],
+        metadata: {
+          ...normalizedEnvelope,
+          ...normalizedHandoff,
+          threadId: clean(threadInfo?.threadId),
+          cwd: clean(threadInfo?.cwd),
+        },
+      },
+    ],
+    diagnostics: {
+      startupSourceBias: "preferred-startup-sources",
+      strictStartupAllowlist: true,
+      fallbackUsed: true,
+      fallbackStrategy: "validated-local-continuity",
+      bootstrapContextLoaded: true,
+    },
+  };
+}
+
+function resolveValidatedPriorScaffold(threadInfo, query, prior = loadBootstrapArtifacts(threadInfo?.threadId || "")) {
+  const contextItems = Array.isArray(prior.context?.items) ? prior.context.items : [];
+  if (contextItems.length > 0) {
+    return {
+      ok: true,
+      prior,
+      satisfiedBy: "validated-local-continuity",
+      context: {
+        ...(prior.context && typeof prior.context === "object" ? prior.context : {}),
+        query: clean(query) || clean(prior.context?.query),
+        diagnostics: {
+          ...(prior.context?.diagnostics && typeof prior.context.diagnostics === "object"
+            ? prior.context.diagnostics
+            : {}),
+          bootstrapContextLoaded: true,
+          fallbackUsed: true,
+          fallbackStrategy: "validated-local-continuity",
+        },
+      },
+    };
+  }
+
+  const synthesized = synthesizeContextFromHandoff({
+    handoff: prior.handoff,
+    continuityEnvelope: prior.continuityEnvelope,
+    threadInfo,
+    query,
+  });
+  if (!synthesized) {
+    return { ok: false, prior };
+  }
+  return {
+    ok: true,
+    prior,
+    satisfiedBy: "validated-local-continuity",
+    context: synthesized,
+  };
+}
+
+function classifyStartupBlocker({ remote, threadInfo, query, gitState, localDiagnosticsAvailable, tokenFreshness }) {
+  const remoteError = clean(remote?.error);
+  const reason = classifyStartupReason({
+    attempted: Boolean(remote && !remote?.skipped),
+    reason: remoteError ? "context-request-failed" : "empty-context",
+    error: remoteError,
+    status: Number(remote?.status || 0),
+    itemCount: 0,
+    tokenFreshness,
+  });
+  const unblockStep = startupRecoveryStep(reason);
+  return {
+    schema: "codex-startup-blocker.v1",
+    createdAt: new Date().toISOString(),
+    status: "blocked",
+    failureClass: reason,
+    threadId: clean(threadInfo?.threadId),
+    cwd: clean(threadInfo?.cwd),
+    query: clean(query),
+    queryFingerprint: stableHash(clean(query), 24),
+    firstSignal: remoteError || "No trusted continuity scaffold is available for this thread.",
+    remoteError,
+    unblockStep,
+    localDiagnosticsAvailable: Boolean(localDiagnosticsAvailable),
+    git: gitState,
+  };
+}
+
+function extractSignalRows(rows, matcher, limit = 3) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => matcher(String(row?.source || ""), row?.metadata && typeof row.metadata === "object" ? row.metadata : {}, String(row?.content || "")))
+    .slice(0, limit)
+    .map((row) => ({
+      source: clean(row?.source || row?.metadata?.source),
+      summary: summarizeText(row?.content || row?.summary || "", 180),
+    }))
+    .filter((row) => row.summary);
+}
+
+function buildContinuityEnvelope({ threadInfo, query, contextPayload, metadata, blocker, satisfiedBy, continuityState, gitState, priorArtifacts }) {
+  const items = Array.isArray(contextPayload?.items) ? contextPayload.items : [];
+  const handoffItem = items.find((row) => clean(row?.source) === "codex-handoff");
+  const handoffSummary =
+    summarizeText(
+      handoffItem?.content
+        || priorArtifacts?.handoff?.summary
+        || priorArtifacts?.handoff?.workCompleted
+        || priorArtifacts?.continuityEnvelope?.lastHandoffSummary
+        || "",
+      320
+    );
+  const frustrationSignals = extractSignalRows(
+    items,
+    (source, metadataValue, content) =>
+      source === "codex-friction-feedback-loop" ||
+      Array.isArray(metadataValue?.tags) && metadataValue.tags.some((tag) => /friction|frustration/i.test(String(tag))) ||
+      /friction|frustrat/i.test(content),
+  );
+  const ratholeSignals = extractSignalRows(
+    items,
+    (source, metadataValue, content) =>
+      /rathole/i.test(source) ||
+      Array.isArray(metadataValue?.tags) && metadataValue.tags.some((tag) => /rathole/i.test(String(tag))) ||
+      /rathole/i.test(content),
+  );
+  const blockers = blocker?.status === "blocked"
+    ? [{ reason: blocker.failureClass, summary: blocker.firstSignal, unblockStep: blocker.unblockStep }]
+    : [];
+  const currentGoal =
+    summarizeText(
+      clean(threadInfo?.firstUserMessage) ||
+        clean(threadInfo?.title) ||
+        summarizeText(contextPayload?.summary || handoffSummary, 280),
+      280
+    );
+  const nextRecommendedAction =
+    continuityState === "blocked"
+      ? blocker.unblockStep
+      : summarizeText(priorArtifacts?.handoff?.nextRecommendedAction || "Use studio_brain_startup_context as the first continuity lookup for this thread.", 220);
+  return {
+    schema: "codex-continuity-envelope.v1",
+    createdAt: new Date().toISOString(),
+    threadId: clean(threadInfo?.threadId),
+    cwd: clean(threadInfo?.cwd),
+    rolloutPath: clean(threadInfo?.rolloutPath),
+    threadTitle: clean(metadata?.threadTitle || threadInfo?.title),
+    firstUserMessage: clean(threadInfo?.firstUserMessage),
+    query: clean(query),
+    continuityState,
+    startupSatisfiedBy: clean(satisfiedBy),
+    startup: {
+      satisfiedBy: clean(satisfiedBy),
+      continuityState,
+      continuityAvailable: continuityState === "ready",
+      remoteError: clean(metadata?.remoteError),
+    },
+    currentGoal,
+    lastHandoffSummary: handoffSummary,
+    blockers,
+    git: gitState,
+    frustrationSignals,
+    ratholeSignals,
+    nextRecommendedAction,
+    trustedSources: [...new Set(items.map((row) => clean(row?.source || row?.metadata?.source)).filter(Boolean))].slice(0, 12),
+    bootstrapSummary: summarizeText(contextPayload?.summary || summarizeRows(items), 600),
+    artifactPointers: {
+      bootstrapContextPath: clean(process.env.STUDIO_BRAIN_BOOTSTRAP_CONTEXT_PATH),
+      bootstrapMetadataPath: clean(process.env.STUDIO_BRAIN_BOOTSTRAP_METADATA_PATH),
+      priorHandoffPath: clean(priorArtifacts?.paths?.handoffPath),
+    },
   };
 }
 
@@ -234,6 +514,19 @@ async function bootstrapThreadContext(env) {
     threadName,
     historyLines,
   });
+  const toolProfileSync = await syncMachineToolProfile({
+    env,
+    shell: env.SHELL || env.ComSpec || env.COMSPEC || "powershell",
+    threadSnapshotPath: runtimePathsForThread(resolvedThread.threadId).toolProfileSnapshotPath,
+    requestJson: studioBrainRequestJson,
+    baseUrl: env.STUDIO_BRAIN_MCP_BASE_URL,
+    timeoutMs: Math.min(settings.bootstrapTimeoutMs, 4_000),
+  });
+  toolProfileSync.remoteWritePromise?.catch((error) => {
+    process.stderr.write(
+      `[studio-brain-mcp] Warning: tool profile refresh failed (${error instanceof Error ? error.message : String(error)}).\n`
+    );
+  });
   const remote = policy.remoteEnabled
     ? await requestRemoteBootstrapContext({
         env,
@@ -248,69 +541,181 @@ async function bootstrapThreadContext(env) {
         skipped: true,
         error: "",
       };
+  const tokenFreshness = inspectTokenFreshness(
+    env.STUDIO_BRAIN_MCP_ID_TOKEN || env.STUDIO_BRAIN_ID_TOKEN || env.STUDIO_BRAIN_AUTH_TOKEN || ""
+  );
 
+  const priorArtifacts = loadBootstrapArtifacts(resolvedThread.threadId);
   let contextPayload = remote.ok ? remote.context : null;
   let satisfiedBy = remote.ok ? "studio-brain" : policy.remoteEnabled ? "studio-brain-unmet" : "bootstrap-disabled";
-  if (
-    policy.localFallbackEnabled &&
-    (!contextPayload || !Array.isArray(contextPayload.items) || contextPayload.items.length === 0)
-  ) {
-    const rolloutEntries = parseRolloutEntries(resolvedThread.rolloutPath);
-    contextPayload = buildLocalBootstrapContext({
-      threadInfo: resolvedThread,
-      threadName,
-      historyLines,
-      rolloutEntries,
-      maxItems: 10,
-      maxChars: 8000,
-      strictStartupAllowlist: policy.strictStartupAllowlist,
-    });
-    satisfiedBy = policy.remoteEnabled ? "local-fallback" : "local-only";
-  }
+  let blocker = null;
+  const continuityDecision = resolveBootstrapContinuityState({
+    remoteContextAvailable: Boolean(contextPayload && Array.isArray(contextPayload.items) && contextPayload.items.length > 0),
+    startupBlocker: priorArtifacts.startupBlocker,
+    continuityEnvelope: priorArtifacts.continuityEnvelope,
+    handoff: priorArtifacts.handoff,
+    query,
+  });
+  const priorScaffold = continuityDecision.continuityState === "ready" && (!contextPayload || !Array.isArray(contextPayload.items) || contextPayload.items.length === 0)
+    ? resolveValidatedPriorScaffold(resolvedThread, query, priorArtifacts)
+    : { ok: false, prior: priorArtifacts };
   if (!contextPayload || !Array.isArray(contextPayload.items) || contextPayload.items.length === 0) {
-    contextPayload = buildEmptyBootstrapContext({
-      threadInfo: resolvedThread,
-      query,
-      diagnostics: {
-        startupSourceBias: policy.remoteEnabled
-          ? policy.strictStartupAllowlist
-            ? "preferred-startup-sources"
-            : "startup-ranking-only"
-          : "bootstrap-disabled",
-        strictStartupAllowlist: policy.strictStartupAllowlist,
-        fallbackUsed: false,
-        fallbackStrategy: null,
-        itemCount: 0,
-      },
-    });
-    satisfiedBy = policy.remoteEnabled ? "unmet" : "disabled";
+    if (continuityDecision.blockerActive) {
+      blocker = normalizeStartupBlocker(priorArtifacts.startupBlocker, {
+        threadId: resolvedThread.threadId,
+        cwd: resolvedThread.cwd,
+      });
+      contextPayload = buildEmptyBootstrapContext({
+        threadInfo: resolvedThread,
+        query,
+        diagnostics: {
+          startupSourceBias: "preferred-startup-sources",
+          strictStartupAllowlist: policy.strictStartupAllowlist,
+          fallbackUsed: true,
+          fallbackStrategy: "startup-blocker",
+          itemCount: 0,
+          continuityState: "blocked",
+          continuityAvailable: false,
+          continuityReason: blocker.failureClass,
+          continuityReasonCode: blocker.failureClass,
+        },
+      });
+      satisfiedBy = "blocked";
+    } else if (priorScaffold.ok) {
+      contextPayload = priorScaffold.context;
+      satisfiedBy = priorScaffold.satisfiedBy;
+    } else if (clean(remote.error)) {
+      const rolloutEntries = parseRolloutEntries(resolvedThread.rolloutPath);
+      const gitState = resolveGitState(resolvedThread.cwd);
+      blocker = classifyStartupBlocker({
+        remote,
+        threadInfo: resolvedThread,
+        query,
+        gitState,
+        localDiagnosticsAvailable: rolloutEntries.length > 0 || historyLines.length > 0,
+        tokenFreshness,
+      });
+      contextPayload = buildEmptyBootstrapContext({
+        threadInfo: resolvedThread,
+        query,
+        diagnostics: {
+          startupSourceBias: "preferred-startup-sources",
+          strictStartupAllowlist: policy.strictStartupAllowlist,
+          fallbackUsed: false,
+          fallbackStrategy: null,
+          itemCount: 0,
+          continuityState: "blocked",
+          continuityAvailable: false,
+          continuityReason: blocker.failureClass,
+          continuityReasonCode: blocker.failureClass,
+        },
+      });
+      satisfiedBy = "blocked";
+    } else {
+      contextPayload = buildEmptyBootstrapContext({
+        threadInfo: resolvedThread,
+        query,
+        diagnostics: {
+          startupSourceBias: "preferred-startup-sources",
+          strictStartupAllowlist: policy.strictStartupAllowlist,
+          fallbackUsed: false,
+          fallbackStrategy: null,
+          itemCount: 0,
+          continuityState: "missing",
+          continuityAvailable: false,
+          continuityReason: "empty_context",
+          continuityReasonCode: "empty_context",
+        },
+      });
+      satisfiedBy = "missing";
+    }
   }
+  const continuityStateForToolProfile =
+    blocker?.status === "blocked"
+      ? "blocked"
+      : Array.isArray(contextPayload?.items) && contextPayload.items.length > 0
+        ? "ready"
+        : "missing";
+  contextPayload = attachMachineToolProfileContext(contextPayload, toolProfileSync.profile, {
+    include: shouldAttachMachineToolProfile({
+      threadInfo: resolvedThread,
+      continuityState: continuityStateForToolProfile,
+    }),
+  });
 
+  const gitState = resolveGitState(resolvedThread.cwd);
+  const metadata = {
+    schema: "codex-startup-bootstrap-metadata.v1",
+    createdAt: new Date().toISOString(),
+    threadId: resolvedThread.threadId,
+    rolloutPath: resolvedThread.rolloutPath,
+    cwd: resolvedThread.cwd,
+    threadTitle: threadName || resolvedThread.title,
+    firstUserMessage: resolvedThread.firstUserMessage,
+    query,
+    itemCount: Array.isArray(contextPayload?.items) ? contextPayload.items.length : 0,
+    startupGateSatisfiedBy: satisfiedBy,
+    startupGateMode: policy.bootstrapMode,
+    startupGateFailureMode: policy.bootstrapFailureMode,
+    remoteError: remote.ok || remote.skipped ? "" : clean(remote.error),
+    remoteReasonCode:
+      remote.ok || remote.skipped
+        ? STARTUP_REASON_CODES.OK
+        : classifyStartupReason({
+            attempted: true,
+            reason: "context-request-failed",
+            error: remote.error,
+            status: remote.status,
+            itemCount: 0,
+            tokenFreshness,
+          }),
+    toolProfileFingerprint: clean(toolProfileSync.profile?.toolFingerprint),
+    toolProfileIncluded: shouldAttachMachineToolProfile({
+      threadInfo: resolvedThread,
+      continuityState: continuityStateForToolProfile,
+    }),
+  };
   const paths = writeBootstrapArtifacts({
     threadId: resolvedThread.threadId,
     contextPayload,
-    metadata: {
-      schema: "codex-startup-bootstrap-metadata.v1",
-      createdAt: new Date().toISOString(),
-      threadId: resolvedThread.threadId,
-      rolloutPath: resolvedThread.rolloutPath,
-      cwd: resolvedThread.cwd,
-      threadTitle: threadName || resolvedThread.title,
-      firstUserMessage: resolvedThread.firstUserMessage,
-      query,
-      itemCount: Array.isArray(contextPayload?.items) ? contextPayload.items.length : 0,
-      startupGateSatisfiedBy: satisfiedBy,
-      startupGateMode: policy.bootstrapMode,
-      startupGateFailureMode: policy.bootstrapFailureMode,
-      remoteError: remote.ok || remote.skipped ? "" : clean(remote.error),
-    },
+    metadata,
   });
+  const continuityEnvelope = buildContinuityEnvelope({
+    threadInfo: resolvedThread,
+    query,
+    contextPayload,
+    metadata,
+    blocker,
+    satisfiedBy,
+    continuityState: continuityStateForToolProfile,
+    gitState,
+    priorArtifacts,
+  });
+  writeContinuityEnvelope(resolvedThread.threadId, continuityEnvelope);
+  writeStartupBlocker(
+    resolvedThread.threadId,
+    blocker || {
+      schema: "codex-startup-blocker.v1",
+      createdAt: new Date().toISOString(),
+      status: "clear",
+      threadId: resolvedThread.threadId,
+      cwd: resolvedThread.cwd,
+      query,
+      queryFingerprint: stableHash(clean(query), 24),
+      firstSignal: "",
+      remoteError: "",
+      git: gitState,
+    }
+  );
 
   return {
     threadInfo: resolvedThread,
     query,
     paths,
     satisfiedBy,
+    ready: continuityStateForToolProfile === "ready",
+    blocker,
+    continuityEnvelope,
   };
 }
 
@@ -346,7 +751,7 @@ if (!clean(mergedEnv.STUDIO_BRAIN_BOOTSTRAP_TIMEOUT_MS)) {
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_TIMEOUT_MS = "8000";
 }
 if (!clean(mergedEnv.STUDIO_BRAIN_BOOTSTRAP_FAILURE_MODE)) {
-  mergedEnv.STUDIO_BRAIN_BOOTSTRAP_FAILURE_MODE = "local-fallback";
+  mergedEnv.STUDIO_BRAIN_BOOTSTRAP_FAILURE_MODE = "none";
 }
 if (!clean(mergedEnv.STUDIO_BRAIN_COMPACTION_WINDOW_BEFORE)) {
   mergedEnv.STUDIO_BRAIN_COMPACTION_WINDOW_BEFORE = "40";
@@ -418,9 +823,18 @@ if (bootstrapState?.paths) {
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_CONTEXT_PATH = bootstrapState.paths.bootstrapContextJsonPath;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_MARKDOWN_PATH = bootstrapState.paths.bootstrapContextMarkdownPath;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_METADATA_PATH = bootstrapState.paths.bootstrapMetadataPath;
+  mergedEnv.STUDIO_BRAIN_CONTINUITY_ENVELOPE_PATH = bootstrapState.paths.continuityEnvelopePath;
+  mergedEnv.STUDIO_BRAIN_STARTUP_BLOCKER_PATH = bootstrapState.paths.startupBlockerPath;
+  mergedEnv.STUDIO_BRAIN_HANDOFF_PATH = bootstrapState.paths.handoffPath;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_THREAD_ID = bootstrapState.threadInfo.threadId;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_QUERY = bootstrapState.query;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_SATISFIED_BY = bootstrapState.satisfiedBy;
+  mergedEnv.STUDIO_BRAIN_BOOTSTRAP_READY = bootstrapState.ready ? "1" : "0";
+  if (!bootstrapState.ready && bootstrapState.blocker) {
+    process.stderr.write(
+      `[studio-brain-mcp] Continuity blocked for thread ${bootstrapState.threadInfo.threadId} (${bootstrapState.blocker.failureClass}): ${bootstrapState.blocker.firstSignal}\n`
+    );
+  }
 }
 
 const child = spawn(process.execPath, [resolve(__dirname, "server.mjs")], {

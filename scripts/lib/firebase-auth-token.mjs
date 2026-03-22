@@ -49,40 +49,25 @@ export function normalizeBearer(token) {
   return /^bearer\s+/i.test(raw) ? raw : `Bearer ${raw}`;
 }
 
-function normalizeAgentStaffCredentials(parsed) {
-  if (!parsed || typeof parsed !== "object") return null;
-  return {
-    ...parsed,
-    email: clean(parsed.email || parsed.staffEmail),
-    password: clean(parsed.password || parsed.staffPassword),
-    uid: clean(parsed.uid),
-    refreshToken: clean(parsed.refreshToken || parsed.tokens?.refresh_token),
-  };
-}
-
-export function resolvePortalAgentStaffCredentials({
+function readAgentStaffCredentialsFromEnv({
   env = process.env,
-  credentialsJson = "",
-  credentialsPath = "",
   defaultCredentialsPath = resolvePreferredSecretPath("secrets", "portal", "portal-agent-staff.json"),
 } = {}) {
-  const inlineCandidates = [credentialsJson, env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON];
-  for (const candidate of inlineCandidates) {
-    const parsed = parseJsonSafely(clean(candidate));
-    if (parsed) {
-      return normalizeAgentStaffCredentials(parsed);
-    }
+  const credentialsJsonEnv = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON);
+  if (credentialsJsonEnv) {
+    const parsed = parseJsonSafely(credentialsJsonEnv);
+    if (parsed) return parsed;
   }
 
-  const configuredPath = clean(credentialsPath || env.PORTAL_AGENT_STAFF_CREDENTIALS || defaultCredentialsPath);
-  const resolvedCredentialsPath = isAbsolute(configuredPath)
+  const configuredPath = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS || defaultCredentialsPath);
+  const credentialsPath = isAbsolute(configuredPath)
     ? configuredPath
     : resolveCredentialPath(configuredPath);
-  if (!resolvedCredentialsPath || !existsSync(resolvedCredentialsPath)) {
+  if (!credentialsPath || !existsSync(credentialsPath)) {
     return null;
   }
-  const parsed = parseJsonSafely(readFileSync(resolvedCredentialsPath, "utf8"));
-  return normalizeAgentStaffCredentials(parsed);
+  const parsed = parseJsonSafely(readFileSync(credentialsPath, "utf8"));
+  return parsed && typeof parsed === "object" ? parsed : null;
 }
 
 async function exchangeRefreshToken(apiKey, refreshToken) {
@@ -186,8 +171,6 @@ async function signInWithPassword(apiKey, email, password) {
 
 export async function mintStaffIdTokenFromPortalEnv({
   env = process.env,
-  credentialsJson = "",
-  credentialsPath = "",
   defaultCredentialsPath = resolvePreferredSecretPath("secrets", "portal", "portal-agent-staff.json"),
   preferRefreshToken = true,
 } = {}) {
@@ -196,12 +179,7 @@ export async function mintStaffIdTokenFromPortalEnv({
     return { ok: false, reason: "missing-portal-api-key", token: "", source: null };
   }
 
-  const credentials = resolvePortalAgentStaffCredentials({
-    env,
-    credentialsJson,
-    credentialsPath,
-    defaultCredentialsPath,
-  });
+  const credentials = readAgentStaffCredentialsFromEnv({ env, defaultCredentialsPath });
   const refreshCandidates = dedupeNonEmpty([
     env.PORTAL_STAFF_REFRESH_TOKEN,
     credentials?.refreshToken,

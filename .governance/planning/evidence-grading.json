@@ -1,0 +1,15 @@
+{
+  "schema": "planning-evidence-grading.v1",
+  "labels": {
+    "verified": "Supported by direct repo evidence, deterministic command output, or trusted human confirmation.",
+    "inferred": "Derived from partial evidence and still suitable for planning with explicit caveats.",
+    "speculative": "Plausible but weakly supported. Must not silently harden into a fact.",
+    "unknown": "Not yet known. Must be surfaced as an open question or validation gate.",
+    "requires_human_confirmation": "Needs an explicit human answer before execution confidence is acceptable."
+  },
+  "policy": {
+    "factsMayUse": ["verified", "inferred"],
+    "mustEscalateLabels": ["unknown", "requires_human_confirmation"],
+    "speculativeClaimsRequireExplicitTagging": true
+  }
+}

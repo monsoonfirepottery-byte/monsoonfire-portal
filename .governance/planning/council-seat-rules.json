@@ -1,0 +1,24 @@
+{
+  "schema": "planning-council-seat-rules.v1",
+  "baselineSeats": [
+    { "seatName": "Lead Planner", "roleId": "lead-planner.v1", "stakeholderClass": "requester-sponsor", "mandatory": true },
+    { "seatName": "Skeptic / Red Team", "roleId": "skeptic-red-team.v1", "stakeholderClass": "future-executor", "mandatory": true },
+    { "seatName": "Evidence Marshal", "roleId": "evidence-marshal.v1", "stakeholderClass": "system-owner", "mandatory": true },
+    { "seatName": "Constraint Guardian", "roleId": "constraint-guardian.v1", "stakeholderClass": "future-executor", "mandatory": true },
+    { "seatName": "Human Intent Interpreter", "roleId": "human-intent-interpreter.v1", "stakeholderClass": "requester-sponsor", "mandatory": true },
+    { "seatName": "Synthesizer", "roleId": "synthesizer.v1", "stakeholderClass": "requester-sponsor", "mandatory": true }
+  ],
+  "conditionalSeats": [
+    { "seatName": "Security Reviewer", "roleId": "security-reviewer.v1", "stakeholderClass": "security-owner", "whenAnyTouchpoints": ["security", "auth"], "mandatory": true },
+    { "seatName": "Privacy / Data Reviewer", "roleId": "privacy-reviewer.v1", "stakeholderClass": "privacy-data-owner", "whenAnyTouchpoints": ["privacy", "data"], "mandatory": true },
+    { "seatName": "Reliability / Failure Mode Reviewer", "roleId": "reliability-reviewer.v1", "stakeholderClass": "rollback-recovery-owner", "whenAnyTouchpoints": ["reliability", "infra", "operations"], "mandatory": false },
+    { "seatName": "Operations Reviewer", "roleId": "operations-reviewer.v1", "stakeholderClass": "operator-maintainer", "whenAnyTouchpoints": ["operations", "support"], "mandatory": false },
+    { "seatName": "Cost / Scope Reviewer", "roleId": "cost-scope-reviewer.v1", "stakeholderClass": "business-owner", "whenAnyTouchpoints": ["cost", "payments"], "mandatory": false },
+    { "seatName": "Compliance Reviewer", "roleId": "compliance-reviewer.v1", "stakeholderClass": "compliance-legal-owner", "whenAnyTouchpoints": ["compliance"], "mandatory": true },
+    { "seatName": "Customer / UX Reviewer", "roleId": "customer-reviewer.v1", "stakeholderClass": "support-owner", "whenAnyTouchpoints": ["customer"], "mandatory": false },
+    { "seatName": "Dependency Reviewer", "roleId": "dependency-reviewer.v1", "stakeholderClass": "system-owner", "whenAnyTouchpoints": ["platform", "process", "infra"], "mandatory": false },
+    { "seatName": "Infra / Platform Reviewer", "roleId": "platform-reviewer.v1", "stakeholderClass": "platform-infrastructure-owner", "whenAnyTouchpoints": ["platform", "infra"], "mandatory": false },
+    { "seatName": "Domain Specialist", "roleId": "domain-specialist.v1", "stakeholderClass": "domain-specialist", "whenAnyTouchpoints": ["domain", "novelty"], "mandatory": false },
+    { "seatName": "Trust & Safety Reviewer", "roleId": "trust-safety-reviewer.v1", "stakeholderClass": "community-trust-safety-owner", "whenAnyTouchpoints": ["trust-safety"], "mandatory": false }
+  ]
+}

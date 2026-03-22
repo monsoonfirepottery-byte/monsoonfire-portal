@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadAutomationStartupMemoryContext } from "./codex/open-memory-automation.mjs";
+import { writeHandoffArtifact } from "./lib/codex-session-memory-utils.mjs";
+import { buildIntentProcHandoff } from "./lib/intent-codex-proc-handoff.mjs";
+import { rememberWithStudioBrain } from "./lib/studio-brain-memory-write.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -204,17 +206,93 @@ function buildStartupMemoryQuery(args) {
     .trim();
 }
 
-async function loadStartupMemoryContext(args) {
+function readJsonFile(path, fallback = null) {
+  if (!path || !existsSync(path)) return fallback;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function loadInheritedContinuity(args) {
+  const satisfiedBy = cleanText(process.env.STUDIO_BRAIN_BOOTSTRAP_SATISFIED_BY || "");
+  const ready = String(process.env.STUDIO_BRAIN_BOOTSTRAP_READY || "") === "1";
+  if (!ready || !satisfiedBy || ["blocked", "unmet", "disabled", "bootstrap-disabled", "studio-brain-unmet"].includes(satisfiedBy)) {
+    throw new Error(
+      "Parent continuity bootstrap was not satisfied; intent child runs are blocked until Studio Brain startup context is ready."
+    );
+  }
+
+  const threadId = cleanText(process.env.STUDIO_BRAIN_BOOTSTRAP_THREAD_ID || "");
+  const continuityEnvelopePath = cleanText(process.env.STUDIO_BRAIN_CONTINUITY_ENVELOPE_PATH || "");
+  const bootstrapContextPath = cleanText(process.env.STUDIO_BRAIN_BOOTSTRAP_CONTEXT_PATH || "");
+  const bootstrapMetadataPath = cleanText(process.env.STUDIO_BRAIN_BOOTSTRAP_METADATA_PATH || "");
+  const handoffPath = cleanText(process.env.STUDIO_BRAIN_HANDOFF_PATH || "");
+  const continuityEnvelope = readJsonFile(continuityEnvelopePath, {});
+  const bootstrapContext = readJsonFile(bootstrapContextPath, {});
+  const bootstrapMetadata = readJsonFile(bootstrapMetadataPath, {});
+  const handoff = readJsonFile(handoffPath, {});
   const runId = buildShellStartupRunId(args);
-  const query = cleanText(buildStartupMemoryQuery(args)) || "codex intent task continuity";
-  const startupMemoryContext = await loadAutomationStartupMemoryContext({
-    tool: "intent-codex-proc",
+  const query = cleanText(buildStartupMemoryQuery(args)) || cleanText(process.env.STUDIO_BRAIN_BOOTSTRAP_QUERY) || "codex intent task continuity";
+  return {
+    threadId,
     runId,
     query,
-    maxItems: 10,
-    maxChars: 3000,
+    continuityEnvelopePath,
+    bootstrapContextPath,
+    bootstrapMetadataPath,
+    handoffPath,
+    continuityEnvelope,
+    bootstrapContext,
+    bootstrapMetadata,
+    handoff,
+    satisfiedBy,
+  };
+}
+
+async function writeIntentHandoff(args, report, inheritedContinuity) {
+  const threadId = cleanText(
+    inheritedContinuity?.threadId ||
+      process.env.STUDIO_BRAIN_BOOTSTRAP_THREAD_ID ||
+      inheritedContinuity?.bootstrapMetadata?.threadId ||
+      inheritedContinuity?.handoff?.threadId
+  );
+  if (!threadId) return;
+  const handoff = buildIntentProcHandoff(args, report, inheritedContinuity, {
+    env: process.env,
+    threadId,
   });
-  return { runId, query, startupMemoryContext };
+  try {
+    await rememberWithStudioBrain(
+      {
+        kind: "handoff",
+        content: handoff.summary || handoff.workCompleted || "Child intent run completed without a summary.",
+        rememberForStartup: true,
+        metadata: {
+          ...handoff,
+          status: handoff.completionStatus,
+          activeGoal: handoff.activeGoal,
+          nextRecommendedAction: handoff.nextRecommendedAction,
+          blockers: handoff.blockers,
+          artifactPointers: handoff.artifactPointers,
+          startupProvenance: handoff.startupProvenance,
+          agentId: handoff.agentId,
+          runId: handoff.runId,
+        },
+      },
+      {
+        env: process.env,
+        threadId,
+        cwd: REPO_ROOT,
+        threadTitle: cleanText(inheritedContinuity?.bootstrapMetadata?.threadTitle),
+        firstUserMessage: cleanText(inheritedContinuity?.bootstrapMetadata?.firstUserMessage),
+        capturedFrom: "codex-child-run",
+      }
+    );
+  } catch {
+    writeHandoffArtifact(threadId, handoff);
+  }
 }
 
 function truncate(value, max = 6000) {
@@ -232,12 +310,17 @@ function slug(value) {
     .slice(0, 100);
 }
 
-async function buildPrompt(args) {
+async function buildPrompt(args, inheritedContinuity) {
   if (args.promptOverride && args.promptOverride.trim().length > 0) {
     return args.promptOverride.trim();
   }
 
-  const { runId, query, startupMemoryContext } = await loadStartupMemoryContext(args);
+  const { runId, query } = inheritedContinuity;
+  const continuitySummary = cleanText(
+    inheritedContinuity?.continuityEnvelope?.bootstrapSummary ||
+      inheritedContinuity?.continuityEnvelope?.lastHandoffSummary ||
+      inheritedContinuity?.bootstrapContext?.summary
+  );
 
   const lines = [
     "Execute this intent task in the local repository with autonomous delivery.",
@@ -260,28 +343,27 @@ async function buildPrompt(args) {
     "Memory continuity bootstrap for this run:",
     `- runId: ${runId}`,
     `- startupQuery: ${query}`,
-    `- memoryLookupTool: open_memory.startup_memory_context`,
+    `- startupContextTool: studio_brain_startup_context`,
+    `- startupGateSatisfiedBy: ${inheritedContinuity?.satisfiedBy || "(unknown)"}`,
   ];
 
-  if (startupMemoryContext?.ok && startupMemoryContext.contextSummary) {
-    lines.push("", "Loaded memory context:", startupMemoryContext.contextSummary);
-  } else if (startupMemoryContext?.attempted && startupMemoryContext.error) {
-    lines.push("", `Startup memory lookup unavailable: ${startupMemoryContext.error} (status ${startupMemoryContext.status}).`);
-  } else if (!startupMemoryContext?.attempted) {
-    lines.push("", `Startup memory lookup unavailable: ${startupMemoryContext?.reason || "disabled"}.`);
+  if (continuitySummary) {
+    lines.push("", "Loaded continuity context:", continuitySummary);
   }
 
   lines.push("", "Use these semantics if additional context is needed during execution:");
-  lines.push("- Call open_memory.startup_memory_context with query terms when context is missing.");
-  lines.push("- Always pass runId when chaining to keep cross-run continuity.");
-  lines.push("- Use expandRelationships true with up to 3 hops for relationship-aware follow-ups.");
+  lines.push("- Call studio_brain_startup_context first when continuity feels stale or incomplete.");
+  lines.push("- Use studio_brain_remember to save durable decisions, blockers, progress, and handoff-worthy state in one batched write.");
+  lines.push("- Keep work anchored to the inherited thread lineage and do not invent a new continuity chain.");
+  lines.push("- Preserve the same runId/thread continuity in any follow-up notes or handoff.");
 
   return lines.join("\n");
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const prompt = await buildPrompt(args);
+  const inheritedContinuity = loadInheritedContinuity(args);
+  const prompt = await buildPrompt(args, inheritedContinuity);
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outputDir = resolve(REPO_ROOT, args.outputDir);
@@ -377,6 +459,7 @@ async function main() {
   };
 
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  await writeIntentHandoff(args, report, inheritedContinuity);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
   if (exitCode !== 0) {

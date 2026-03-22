@@ -1,0 +1,29 @@
+{
+  "request": "Plan a finance/compliance review path for new role-corpus imports so no external role content becomes trusted without curation.",
+  "requestedBy": "fixture-finance",
+  "docket": {
+    "objective": "Create a governed planning path for importing and curating external role material.",
+    "whyNow": "External role corpora are useful, but trust, spend, and policy implications need a formal review path.",
+    "successCriteria": [
+      "Imported sources are pinned",
+      "Uncurated roles cannot become seats",
+      "Human approvals are isolated"
+    ],
+    "constraints": [
+      "No live execution from imported roles",
+      "Reference-only sources stay reference-only until promoted"
+    ],
+    "knownFacts": [
+      "Internal curated manifests are allowed runtime seats",
+      "External corpora are only source material in v1"
+    ],
+    "unknowns": [
+      "Whether future paid source feeds will change procurement requirements"
+    ],
+    "assumptions": [
+      { "statement": "A pinned-snapshot strategy is adequate for v1 governance.", "evidenceLabel": "verified" }
+    ],
+    "affectedSystems": [".governance/planning", "studio-brain/src/planning"],
+    "humanPriorities": ["governance", "cost control", "legitimacy"]
+  }
+}

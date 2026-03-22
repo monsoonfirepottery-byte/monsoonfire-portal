@@ -17,6 +17,11 @@ import {
   fetchLatestIssueCommentBody,
   listRepoIssues,
 } from "./lib/github-issues.mjs";
+import {
+  exchangePortalRulesRefreshToken,
+  looksLikeRefreshToken,
+  loadGoogleAuthorizedUserCredentials,
+} from "./lib/google-oauth-refresh.mjs";
 import { loadPortalAutomationEnv } from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,10 +31,6 @@ const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "credential-health-check.json");
 const PORTAL_INFRA_FAMILY = getAutomationFamily("portal-infra");
-const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
-const FIREBASE_CLI_OAUTH_CLIENT_ID =
-  "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
-const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
 loadPortalAutomationEnv();
 
 function parseBoolEnv(value, fallback = false) {
@@ -253,10 +254,6 @@ function decodeJwtExp(token) {
   }
 }
 
-function looksLikeRefreshToken(token) {
-  return String(token || "").startsWith("1//");
-}
-
 async function loadFirebaseCliTokens() {
   const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
   const raw = await readFile(configPath, "utf8");
@@ -270,52 +267,22 @@ async function loadFirebaseCliTokens() {
   };
 }
 
-async function exchangeRefreshToken(refreshToken, source) {
-  const form = new URLSearchParams({
-    refresh_token: refreshToken,
-    client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
-    grant_type: "refresh_token",
-  });
-  if (FIREBASE_CLI_OAUTH_CLIENT_SECRET) {
-    form.set("client_secret", FIREBASE_CLI_OAUTH_CLIENT_SECRET);
-  }
-
-  const response = await fetch(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: form.toString(),
-  });
-
-  const text = await response.text();
-  let parsed = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = { raw: text.slice(0, 600) };
-  }
-
-  if (!response.ok || typeof parsed?.access_token !== "string") {
-    const message =
-      String(parsed?.error_description || parsed?.error || parsed?.message || "").trim() ||
-      "token exchange failed";
-    throw new Error(`Unable to exchange rules token (${source}): ${message}`);
-  }
-
-  return String(parsed.access_token).trim();
-}
-
 async function resolveRulesApiToken() {
   const envToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
   let envRefreshError = null;
+  const adcCredentials = await loadGoogleAuthorizedUserCredentials();
 
   if (envToken) {
     if (looksLikeRefreshToken(envToken)) {
       try {
-        return {
+        const exchanged = await exchangePortalRulesRefreshToken(envToken, {
           source: "env_refresh_token",
-          token: await exchangeRefreshToken(envToken, "env_refresh_token"),
+          adcCredentials,
+          adcResultSource: "env_refresh_token_adc_client",
+        });
+        return {
+          source: exchanged.source,
+          token: exchanged.accessToken,
         };
       } catch (error) {
         envRefreshError = error instanceof Error ? error : new Error(String(error));
@@ -337,9 +304,14 @@ async function resolveRulesApiToken() {
       };
     }
     if (cli.refreshToken) {
-      return {
+      const exchanged = await exchangePortalRulesRefreshToken(cli.refreshToken, {
         source: "firebase_tools_refresh_token",
-        token: await exchangeRefreshToken(cli.refreshToken, "firebase_tools_refresh_token"),
+        adcCredentials,
+        adcResultSource: "firebase_tools_refresh_token_adc_client",
+      });
+      return {
+        source: exchanged.source,
+        token: exchanged.accessToken,
       };
     }
   } catch {

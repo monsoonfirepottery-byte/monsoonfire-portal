@@ -219,7 +219,7 @@ The `portal-automation.env` file should define at least:
 
 - `PORTAL_AGENT_STAFF_CREDENTIALS`
 - `PORTAL_STAFF_EMAIL`
-- `FIREBASE_RULES_API_TOKEN` (supports OAuth access token or Firebase CLI refresh token format `1//...`)
+- `FIREBASE_RULES_API_TOKEN` (supports OAuth access token or durable OAuth refresh token format `1//...`)
 - `PORTAL_FIREBASE_API_KEY`
 - `FIREBASE_WEB_API_KEY` (local compatibility mirror; keep equal to `PORTAL_FIREBASE_API_KEY`)
 
@@ -232,7 +232,8 @@ Recommended for full promotion/deploy coverage:
 
 Local baseline note:
 - As of March 1, 2026, `secrets/portal/portal-automation.env` includes populated `PORTAL_FIREBASE_API_KEY` and `FIREBASE_WEB_API_KEY` entries for promotion-gate and script compatibility.
-- `FIREBASE_RULES_API_TOKEN` is expected to use the Firebase CLI refresh token (`1//...`) in local setups so rules checks can mint fresh access tokens on each run.
+- `FIREBASE_RULES_API_TOKEN` is expected to use a durable `1//...` refresh token in local setups so rules checks can mint fresh access tokens on each run.
+- The refresh token may come from Firebase CLI or Google authorized-user credentials, but it should not be stored as a short-lived `ya29...` access token in the dedicated 1Password item.
 - The rotated GitHub Actions service-account JSON is stored at `secrets/portal/firebase-service-account-monsoonfire-portal-github-action.json` and referenced via `GOOGLE_APPLICATION_CREDENTIALS` in `portal-automation.env`.
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` remains optional locally when `GOOGLE_APPLICATION_CREDENTIALS` is set.
 
@@ -257,7 +258,7 @@ Reference provenance:
 
 - staff credential bootstrap/run metadata: `docs/DRILL_EXECUTION_LOG.md`
 - staff claim setup contract: `docs/STAFF_CLAIMS_SETUP.md`
-- local rules-token source: `~/.config/configstore/firebase-tools.json` (`tokens.refresh_token`)
+- local rules-token source of truth: 1Password item `portal-automation-env` in vault `Monsoon Fire Portal Automation`
 
 ## Required secrets (CI)
 

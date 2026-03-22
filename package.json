@@ -33,6 +33,7 @@
     "deploy:namecheap:website": "node ./scripts/deploy-namecheap-website.mjs",
     "deploy:namecheap:portal:quick": "npm run deploy:namecheap:portal -- --no-build",
     "deploy:namecheap:portal:live": "bash ./scripts/deploy-namecheap-portal-live.sh",
+    "secrets:portal:sync": "node ./scripts/sync-portal-secrets-from-1password.mjs",
     "secrets:sync:runtime": "node ./scripts/sync-codex-home-runtime.mjs",
     "deploy:preflight": "node ./scripts/deploy-preflight.mjs --target namecheap-portal --json",
     "policy:sot:check": "node ./scripts/policy-single-source-of-truth-check.mjs --json",

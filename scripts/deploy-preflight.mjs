@@ -14,6 +14,7 @@ import {
   resolvePortalAgentStaffCredentialsPath,
   resolvePortalAutomationEnvPath,
 } from "./lib/runtime-secrets.mjs";
+import { PORTAL_SECRET_SYNC_COMMAND } from "./lib/portal-automation-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -136,9 +137,9 @@ function parseAgentCredentialPayload(raw) {
   if (!raw) return { ok: false, reason: "Empty payload." };
   try {
     const parsed = JSON.parse(raw);
-    const refreshToken = String(parsed?.refreshToken || "").trim();
+    const refreshToken = String(parsed?.refreshToken || parsed?.tokens?.refresh_token || "").trim();
     const uid = String(parsed?.uid || "").trim();
-    const email = String(parsed?.email || "").trim();
+    const email = String(parsed?.email || parsed?.staffEmail || "").trim();
     if (!refreshToken || !uid || !email) {
       return {
         ok: false,
@@ -243,7 +244,7 @@ function runNamecheapPortalChecks(summary, options) {
   addCheck(summary, "portal automation env file is discoverable", existsSync(portalEnvPath), {
     required: false,
     detail: existsSync(portalEnvPath) ? `Resolved env path: ${portalEnvPath}` : `No env file found at ${portalEnvPath}.`,
-    hint: "Sync repo secrets to ~/secrets with node ./scripts/sync-codex-home-runtime.mjs, or set PORTAL_AUTOMATION_ENV_PATH.",
+    hint: `Refresh the shared cache with ${PORTAL_SECRET_SYNC_COMMAND}, or set PORTAL_AUTOMATION_ENV_PATH.`,
   });
 
   addCheck(summary, "deploy target server is configured", server.length > 0, {
@@ -293,16 +294,38 @@ function runNamecheapPortalChecks(summary, options) {
   }
 
   if (options.requirePromotionGate) {
-    const staffEmail = String(process.env.PORTAL_STAFF_EMAIL || "").trim() || credentialHints.email;
+    const credsJson = String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim();
+    let inlineCredentialHints = { email: "", password: "", refreshToken: "", uid: "" };
+    if (credsJson) {
+      try {
+        const parsed = JSON.parse(credsJson);
+        inlineCredentialHints = {
+          email: String(parsed?.email || parsed?.staffEmail || "").trim(),
+          password: String(parsed?.password || parsed?.staffPassword || "").trim(),
+          refreshToken: String(parsed?.refreshToken || parsed?.tokens?.refresh_token || "").trim(),
+          uid: String(parsed?.uid || "").trim(),
+        };
+      } catch {
+        inlineCredentialHints = { email: "", password: "", refreshToken: "", uid: "" };
+      }
+    }
+    const effectiveCredentialHints = credsJson ? inlineCredentialHints : credentialHints;
+    const staffEmail = String(process.env.PORTAL_STAFF_EMAIL || "").trim() || effectiveCredentialHints.email;
     const staffPassword = String(process.env.PORTAL_STAFF_PASSWORD || "").trim() || credentialHints.password;
+    const staffRefreshToken =
+      String(process.env.PORTAL_STAFF_REFRESH_TOKEN || "").trim() || effectiveCredentialHints.refreshToken;
     const staffEmailSource = String(process.env.PORTAL_STAFF_EMAIL || "").trim()
       ? "PORTAL_STAFF_EMAIL"
-      : credentialHints.email
+      : credsJson && effectiveCredentialHints.email
+        ? "PORTAL_AGENT_STAFF_CREDENTIALS_JSON"
+      : effectiveCredentialHints.email
         ? defaultCredentialsPath
         : "";
-    const staffPasswordSource = String(process.env.PORTAL_STAFF_PASSWORD || "").trim()
-      ? "PORTAL_STAFF_PASSWORD"
-      : credentialHints.password
+    const refreshTokenSource = String(process.env.PORTAL_STAFF_REFRESH_TOKEN || "").trim()
+      ? "PORTAL_STAFF_REFRESH_TOKEN"
+      : credsJson && effectiveCredentialHints.refreshToken
+        ? "PORTAL_AGENT_STAFF_CREDENTIALS_JSON"
+      : credentialHints.refreshToken
         ? defaultCredentialsPath
         : "";
 
@@ -311,11 +334,25 @@ function runNamecheapPortalChecks(summary, options) {
       hint: "Set PORTAL_STAFF_EMAIL or add email to the shared portal-agent-staff credentials file.",
     });
 
-    addCheck(summary, "promotion gate staff password is present", staffPassword.length > 0, {
+    addCheck(
+      summary,
+      "promotion gate refresh-token staff credentials are present",
+      staffEmail.length > 0 && staffRefreshToken.length > 0 && effectiveCredentialHints.uid.length > 0,
+      {
+        detail:
+          staffEmail.length > 0 && staffRefreshToken.length > 0 && effectiveCredentialHints.uid.length > 0
+            ? `Staff refresh-token credentials resolved from ${refreshTokenSource || defaultCredentialsPath}.`
+            : `Need email + uid + refreshToken in ${defaultCredentialsPath} (or equivalent env overrides).`,
+        hint: `Refresh the shared cache with ${PORTAL_SECRET_SYNC_COMMAND}, or provide PORTAL_AGENT_STAFF_CREDENTIALS_JSON / PORTAL_STAFF_REFRESH_TOKEN.`,
+      }
+    );
+
+    addCheck(summary, "promotion gate password fallback is present", staffPassword.length > 0, {
+      required: false,
       detail: staffPassword
-        ? `Staff password resolved from ${staffPasswordSource || "unknown source"}.`
-        : `No staff password found in env or ${defaultCredentialsPath}.`,
-      hint: "Set PORTAL_STAFF_PASSWORD or add password to the shared portal-agent-staff credentials file for authenticated canary runs.",
+        ? "Optional password fallback is available for explicit deep diagnostics."
+        : "No password fallback detected; default deploy path will use refresh-token auth.",
+      hint: "PORTAL_STAFF_PASSWORD is optional and only needed for explicit password-ui diagnostics.",
     });
 
     const rulesToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
@@ -361,7 +398,6 @@ function runNamecheapPortalChecks(summary, options) {
       hint: "Set FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL (recommended), FIREBASE_TOKEN, or ensure local Firebase CLI login before deploy.",
     });
 
-    const credsJson = String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim();
     const credsPath = defaultCredentialsPath;
 
     if (credsJson) {
@@ -374,7 +410,7 @@ function runNamecheapPortalChecks(summary, options) {
       const exists = existsSync(credsPath);
       addCheck(summary, "agent staff credentials path exists", exists, {
         detail: exists ? credsPath : `Missing file: ${credsPath}`,
-        hint: "Sync repo secrets to ~/secrets with node ./scripts/sync-codex-home-runtime.mjs, or set PORTAL_AGENT_STAFF_CREDENTIALS to a readable JSON credentials file.",
+        hint: `Refresh the shared cache with ${PORTAL_SECRET_SYNC_COMMAND}, or set PORTAL_AGENT_STAFF_CREDENTIALS to a readable JSON credentials file.`,
       });
       if (exists) {
         const parsed = readJsonFileSafe(credsPath);

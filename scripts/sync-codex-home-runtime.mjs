@@ -46,41 +46,60 @@ function resolveSourcePath(...parts) {
 
 const syncPairs = [
   {
-    source: resolveSourcePath("secrets", "portal", "portal-agent-staff.json"),
-    destination: resolve(HOME_ROOT, "secrets", "portal", "portal-agent-staff.json"),
+    repoPath: resolve(REPO_ROOT, "secrets", "portal", "portal-agent-staff.json"),
+    fallbackRepoSource: resolveSourcePath("secrets", "portal", "portal-agent-staff.json"),
+    homePath: resolve(HOME_ROOT, "secrets", "portal", "portal-agent-staff.json"),
   },
   {
-    source: resolveSourcePath("secrets", "portal", "portal-automation.env"),
-    destination: resolve(HOME_ROOT, "secrets", "portal", "portal-automation.env"),
+    repoPath: resolve(REPO_ROOT, "secrets", "portal", "portal-automation.env"),
+    fallbackRepoSource: resolveSourcePath("secrets", "portal", "portal-automation.env"),
+    homePath: resolve(HOME_ROOT, "secrets", "portal", "portal-automation.env"),
   },
   {
-    source: resolveSourcePath("secrets", "studio-brain", "studio-brain-mcp.env"),
-    destination: resolve(HOME_ROOT, "secrets", "studio-brain", "studio-brain-mcp.env"),
+    repoPath: resolve(REPO_ROOT, "secrets", "studio-brain", "studio-brain-mcp.env"),
+    fallbackRepoSource: resolveSourcePath("secrets", "studio-brain", "studio-brain-mcp.env"),
+    homePath: resolve(HOME_ROOT, "secrets", "studio-brain", "studio-brain-mcp.env"),
   },
   {
-    source: resolveSourcePath("secrets", "studio-brain", "studio-brain-mcp.env"),
-    destination: resolve(HOME_ROOT, "secrets", "studio-brain", "studio-brain-automation.env"),
+    repoPath: resolve(REPO_ROOT, "secrets", "studio-brain", "studio-brain-automation.env"),
+    fallbackRepoSource: resolveSourcePath("secrets", "studio-brain", "studio-brain-mcp.env"),
+    homePath: resolve(HOME_ROOT, "secrets", "studio-brain", "studio-brain-automation.env"),
   },
 ];
 
 const results = [];
 
 for (const pair of syncPairs) {
-  if (!existsSync(pair.source)) {
+  if (existsSync(pair.homePath)) {
+    mkdirSync(dirname(pair.repoPath), { recursive: true });
+    copyFileSync(pair.homePath, pair.repoPath);
+    results.push({
+      ok: true,
+      source: pair.homePath,
+      destination: pair.repoPath,
+      direction: "home-to-repo",
+      status: "copied",
+    });
+    continue;
+  }
+
+  if (!existsSync(pair.fallbackRepoSource)) {
     results.push({
       ok: false,
-      source: pair.source,
-      destination: pair.destination,
+      source: pair.fallbackRepoSource,
+      destination: pair.homePath,
+      direction: "repo-to-home",
       status: "missing-source",
     });
     continue;
   }
-  mkdirSync(dirname(pair.destination), { recursive: true });
-  copyFileSync(pair.source, pair.destination);
+  mkdirSync(dirname(pair.homePath), { recursive: true });
+  copyFileSync(pair.fallbackRepoSource, pair.homePath);
   results.push({
     ok: true,
-    source: pair.source,
-    destination: pair.destination,
+    source: pair.fallbackRepoSource,
+    destination: pair.homePath,
+    direction: "repo-to-home",
     status: "copied",
   });
 }

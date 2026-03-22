@@ -106,7 +106,6 @@ jobs:
       - name: Run post-deploy promotion gate
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
-          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
           PORTAL_CANARY_ADMIN_TOKEN: ${{ secrets.PORTAL_CANARY_ADMIN_TOKEN }}
           PORTAL_ADMIN_TOKEN: ${{ secrets.PORTAL_ADMIN_TOKEN }}
           FIREBASE_RULES_API_TOKEN: ${{ steps.rules_token.outputs.access_token || secrets.FIREBASE_RULES_API_TOKEN }}

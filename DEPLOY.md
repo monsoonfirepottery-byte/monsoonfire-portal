@@ -53,9 +53,10 @@ Notes:
 - Shared runtime secrets path for Codex/worktrees:
   - `~/secrets/portal/portal-automation.env`
   - `~/secrets/portal/portal-agent-staff.json`
-  - Refresh that shared copy from the repo checkout with:
+  - Refresh that shared copy from 1Password with:
+    - `npm run secrets:portal:sync`
+  - Mirror the shared cache into the current worktree with:
     - `npm run secrets:sync:runtime`
-  - The sync command scans sibling git worktrees for the first checkout that actually has `secrets/`, so it still works from clean feature worktrees.
 - Deploy script auto-load order:
   - `PORTAL_AUTOMATION_ENV_PATH` override, if set
   - `~/secrets/portal/portal-automation.env`, when present
@@ -72,8 +73,8 @@ Notes:
   - Firestore index contract guard
   - Override only when intentionally needed: `--skip-promotion-gate`
 - Promotion gate credential note:
-  - `portal-agent-staff.json` is enough for refresh-token backend flows, but the authenticated canary still needs an email+password pair.
-  - Provide that via `PORTAL_STAFF_EMAIL` / `PORTAL_STAFF_PASSWORD`, or add `email` + `password` to the shared credentials JSON used for deploy automation.
+  - `portal-agent-staff.json` is now the normal-path credential source for both backend checks and the authenticated canary.
+  - Raw `PORTAL_STAFF_PASSWORD` is optional and only used for explicit deep-diagnostic `--auth-mode password-ui` runs.
 - Optional overrides (if infra changes):
   - `WEBSITE_DEPLOY_SERVER`
   - `WEBSITE_DEPLOY_PORT`

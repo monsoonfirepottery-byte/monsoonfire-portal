@@ -682,7 +682,8 @@ function printHelp() {
       `  If present, ${defaultPortalAutomationEnvPath} is loaded before preflight/build.\n` +
       "  Override path with PORTAL_AUTOMATION_ENV_PATH.\n" +
       "  Shared runtime fallback lives under ~/secrets/portal/.\n" +
-      "  Refresh that shared copy with: node ./scripts/sync-codex-home-runtime.mjs\n" +
+      "  Refresh that shared copy from 1Password with: npm run secrets:portal:sync\n" +
+      "  Mirror the shared cache into the current worktree with: npm run secrets:sync:runtime\n" +
       "\n" +
       "Any unknown args are forwarded to verify-cutover when --verify is enabled.\n"
   );

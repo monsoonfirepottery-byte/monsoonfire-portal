@@ -14,7 +14,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Includes `continueJourney` endpoint runtime checks (success + input/authz/ownership denial cases) via `functions/lib/continueJourneyEndpoint.test.js`.
 
 2. Daily authenticated production canary (`.github/workflows/portal-daily-authenticated-canary.yml`)
-- Signs in using staff credentials.
+- Bootstraps auth from the shared agent refresh-token bundle by default.
 - Verifies:
   - Navigation dock controls switch cleanly across `left`, `top`, `right`, and `bottom` positions with screenshot evidence.
   - Top/bottom dock flyout menus open and remain clickable.
@@ -71,7 +71,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 
 8. Credential health guard (`.github/workflows/portal-credential-health.yml`)
 - Validates required deploy/auth secrets are present.
-- Probes staff sign-in, agent refresh-token exchange, and Firestore Rules API token health.
+- Probes staff token minting (refresh-token preferred), optional password fallback sign-in, agent refresh-token exchange, and Firestore Rules API token health.
 - Posts rolling status comments for early incident visibility.
 
 9. Rules + index drift blocker (`.github/workflows/rules-index-drift-blocker.yml`)
@@ -196,24 +196,28 @@ npm run events:industry:freshness:audit
 npm run events:industry:canary
 ```
 
-`portal:canary:auth` and `portal:theme:contrast` auto-resolve staff credentials from:
-- `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD`
-- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (expects `email` + `password`)
-- `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `secrets/portal/portal-agent-staff.json`)
+`portal:canary:auth` and `portal:theme:contrast` now prefer refresh-token credentials from:
+- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (expects `email` + `uid` + `refreshToken`)
+- `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `~/secrets/portal/portal-agent-staff.json`)
+- `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD` remain optional for explicit `--auth-mode password-ui` diagnostics
 
 ## Local secrets directory (gitignored)
 
-For local execution, keep credentials in the repo-local `secrets/` bundle:
+For local execution, keep the canonical shared cache under `~/secrets/portal/` and mirror into repo-local `secrets/portal/` only when a worktree needs local copies:
 
-- `secrets/portal/portal-agent-staff.json`
-- `secrets/portal/portal-automation.env`
+- `~/secrets/portal/portal-agent-staff.json`
+- `~/secrets/portal/portal-automation.env`
 - `secrets/portal/firebase-service-account-monsoonfire-portal-github-action.json`
+
+Refresh with:
+
+- `npm run secrets:portal:sync`
+- `npm run secrets:sync:runtime`
 
 The `portal-automation.env` file should define at least:
 
 - `PORTAL_AGENT_STAFF_CREDENTIALS`
 - `PORTAL_STAFF_EMAIL`
-- `PORTAL_STAFF_PASSWORD`
 - `FIREBASE_RULES_API_TOKEN` (supports OAuth access token or Firebase CLI refresh token format `1//...`)
 - `PORTAL_FIREBASE_API_KEY`
 - `FIREBASE_WEB_API_KEY` (local compatibility mirror; keep equal to `PORTAL_FIREBASE_API_KEY`)
@@ -223,6 +227,7 @@ Recommended for full promotion/deploy coverage:
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` or `GOOGLE_APPLICATION_CREDENTIALS` (index deploy auth for promotion gate)
 - `WEBSITE_DEPLOY_KEY` (Namecheap deploy SSH key path; usually `~/.ssh/namecheap-portal`)
 - `PORTAL_CANARY_ADMIN_TOKEN` (preferred) or `PORTAL_ADMIN_TOKEN` so journey cleanup can always use lifecycle close path (`pickedUpAndClose`) during promotion canary runs
+- `PORTAL_STAFF_PASSWORD` only when you want the explicit password-ui fallback
 
 Local baseline note:
 - As of March 1, 2026, `secrets/portal/portal-automation.env` includes populated `PORTAL_FIREBASE_API_KEY` and `FIREBASE_WEB_API_KEY` entries for promotion-gate and script compatibility.
@@ -240,7 +245,7 @@ Load into your shell before running automation commands:
 
 ```bash
 set -a
-source /home/wuff/monsoonfire-portal/secrets/portal/portal-automation.env
+source ~/secrets/portal/portal-automation.env
 set +a
 ```
 
@@ -255,8 +260,8 @@ Reference provenance:
 
 ## Required secrets (CI)
 
-- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (required for backend regression and credential health probes; can also satisfy canary auth when it includes `email` + `password`)
-- `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD` (canary fallback when JSON payload does not include email/password fields)
+- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (required for backend regression, credential health, and authenticated canary bootstrap; must include `email`, `uid`, and `refreshToken`)
+- `PORTAL_STAFF_EMAIL` (kept for operator clarity and optional fallback flows)
 - `FIREBASE_RULES_API_TOKEN`
 - `PORTAL_FIREBASE_API_KEY` (required for token-exchange probes and fixture stewardship; keep in sync with `FIREBASE_WEB_API_KEY`)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)
@@ -272,19 +277,19 @@ Scope:
 - `PORTAL_CANARY_ADMIN_TOKEN`
 - `PORTAL_ADMIN_TOKEN`
 - `PORTAL_STAFF_EMAIL`
-- `PORTAL_STAFF_PASSWORD`
 - `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`
+- `PORTAL_STAFF_PASSWORD` (optional fallback only)
 
 Rotation cadence:
 - `PORTAL_CANARY_ADMIN_TOKEN`: every 30 days
 - `PORTAL_ADMIN_TOKEN`: every 30 days (match canary token unless split is required)
-- Staff credentials (`PORTAL_STAFF_EMAIL`, `PORTAL_STAFF_PASSWORD`, `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`): every 60 days
+- Staff credentials (`PORTAL_STAFF_EMAIL`, `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`, optional `PORTAL_STAFF_PASSWORD`): every 60 days
 - Immediate rotation on leak suspicion, offboarding, or auth anomalies
 
 Rotation procedure:
 1. Generate new token/credentials.
 2. Update GitHub Actions secrets first.
-3. Update local `secrets/portal/portal-automation.env` and secure vault entries.
+3. Update the dedicated 1Password vault, run `npm run secrets:portal:sync`, then mirror into any active worktree with `npm run secrets:sync:runtime`.
 4. Run `Portal Credential Health` and `Portal Post-Deploy Promotion Gate`.
 5. Confirm both workflows are green before closing the rotation task.
 

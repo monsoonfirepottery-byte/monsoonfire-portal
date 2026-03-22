@@ -1,11 +1,11 @@
 # Local Secrets Layout (Gitignored)
 
-Purpose: keep local automation secrets in canonical, repo-local paths while keeping values out of source control.
+Purpose: keep local automation secrets in canonical gitignored cache paths while keeping values out of source control.
 
 ## Paths
 
-- `secrets/portal/portal-automation.env`
-- `secrets/portal/portal-agent-staff.json`
+- `~/secrets/portal/portal-automation.env`
+- `~/secrets/portal/portal-agent-staff.json`
 - `secrets/portal/firebase-service-account-monsoonfire-portal-github-action.json`
 - `secrets/studio-brain/studio-brain-automation.env`
 
@@ -14,6 +14,8 @@ Purpose: keep local automation secrets in canonical, repo-local paths while keep
 - Store secret values only in `secrets/` (gitignored), never in tracked docs/code.
 - In docs, record variable names and file paths only.
 - If a script adds a new required secret, update this runbook and the relevant feature runbook in the same change.
+- Portal automation source of truth is the dedicated 1Password vault `Monsoon Fire Portal Automation`.
+- Refresh the shared local cache with `npm run secrets:portal:sync`, then mirror it into the current worktree with `npm run secrets:sync:runtime` when needed.
 
 ## Portal Automation Variables
 
@@ -21,7 +23,6 @@ Required:
 
 - `PORTAL_AGENT_STAFF_CREDENTIALS`
 - `PORTAL_STAFF_EMAIL`
-- `PORTAL_STAFF_PASSWORD`
 - `FIREBASE_RULES_API_TOKEN` (supports OAuth access token or Firebase CLI refresh token format `1//...`)
 - `PORTAL_FIREBASE_API_KEY`
 - `FIREBASE_WEB_API_KEY` (mirror of `PORTAL_FIREBASE_API_KEY` for tool compatibility)
@@ -36,6 +37,14 @@ Recommended:
 
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` or `GOOGLE_APPLICATION_CREDENTIALS`
 - `WEBSITE_DEPLOY_KEY`
+- `PORTAL_STAFF_PASSWORD` (optional deep-diagnostic fallback only)
+
+## Dedicated 1Password Items
+
+- Vault: `Monsoon Fire Portal Automation`
+- Secure note: `portal-automation-env`
+- Secure note or document: `portal-agent-staff`
+- Optional login item: `portal-staff-password`
 
 ## Studio Brain Automation Variables
 
@@ -57,7 +66,7 @@ Optional integrations:
 
 ```bash
 set -a
-source /home/wuff/monsoonfire-portal/secrets/portal/portal-automation.env
+source ~/secrets/portal/portal-automation.env
 source /home/wuff/monsoonfire-portal/secrets/studio-brain/studio-brain-automation.env
 set +a
 ```

@@ -10,12 +10,14 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import { mintStaffIdTokenFromPortalEnv, resolvePortalAgentStaffCredentials } from "./lib/firebase-auth-token.mjs";
 import {
   ensureGhLabels,
   ensureIssueWithMarker,
   fetchLatestIssueCommentBody,
   listRepoIssues,
 } from "./lib/github-issues.mjs";
+import { loadPortalAutomationEnv } from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -28,6 +30,7 @@ const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token"
 const FIREBASE_CLI_OAUTH_CLIENT_ID =
   "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
 const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
+loadPortalAutomationEnv();
 
 function parseBoolEnv(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -358,19 +361,24 @@ function addCheck(summary, label, ok, detail, required = true) {
   });
 }
 
-async function resolveAgentCredentialSource(summary) {
-  const credsJsonEnv = String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim();
-  const credsPathEnv = String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS || "").trim();
+async function resolveAgentCredentialSource(summary, env) {
+  const credsJsonEnv = String(env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim();
+  const credsPathEnv = String(env.PORTAL_AGENT_STAFF_CREDENTIALS || "").trim();
 
   if (credsJsonEnv) {
     try {
-      const parsed = JSON.parse(credsJsonEnv);
+      const parsed = resolvePortalAgentStaffCredentials({ env, credentialsJson: credsJsonEnv });
       const refreshToken = String(parsed?.refreshToken || "").trim();
       const uid = String(parsed?.uid || "").trim();
       const email = String(parsed?.email || "").trim();
       const ok = Boolean(refreshToken && uid && email);
-      addCheck(summary, "agent credentials payload is valid JSON", ok, ok ? "PORTAL_AGENT_STAFF_CREDENTIALS_JSON parsed." : "Missing refreshToken/uid/email.");
-      return ok ? { refreshToken, uid, email, source: "env_json" } : null;
+      addCheck(
+        summary,
+        "agent credentials payload is valid JSON",
+        ok,
+        ok ? "PORTAL_AGENT_STAFF_CREDENTIALS_JSON parsed." : "Missing refreshToken/uid/email."
+      );
+      return ok ? { ...parsed, source: "env_json" } : null;
     } catch (error) {
       addCheck(
         summary,
@@ -387,27 +395,14 @@ async function resolveAgentCredentialSource(summary) {
     const exists = existsSync(path);
     addCheck(summary, "agent credentials path exists", exists, exists ? path : `Missing file: ${path}`);
     if (!exists) return null;
-    try {
-      const raw = await readFile(path, "utf8");
-      const parsed = JSON.parse(raw);
-      const refreshToken = String(parsed?.refreshToken || "").trim();
-      const uid = String(parsed?.uid || "").trim();
-      const email = String(parsed?.email || "").trim();
-      const ok = Boolean(refreshToken && uid && email);
-      addCheck(summary, "agent credentials file content is valid", ok, ok ? "Credential file parsed." : "Missing refreshToken/uid/email.");
-      return ok ? { refreshToken, uid, email, source: `file:${path}` } : null;
-    } catch (error) {
-      addCheck(summary, "agent credentials file content is valid", false, `Credential file parse failed (${error instanceof Error ? error.message : String(error)}).`);
-      return null;
-    }
+
+    const parsed = resolvePortalAgentStaffCredentials({ env, credentialsPath: path });
+    const ok = Boolean(parsed?.refreshToken && parsed?.uid && parsed?.email);
+    addCheck(summary, "agent credentials file content is valid", ok, ok ? "Credential file parsed." : "Missing refreshToken/uid/email.");
+    return ok ? { ...parsed, source: `file:${path}` } : null;
   }
 
-  addCheck(
-    summary,
-    "agent credentials source is configured",
-    false,
-    "Set PORTAL_AGENT_STAFF_CREDENTIALS_JSON or PORTAL_AGENT_STAFF_CREDENTIALS."
-  );
+  addCheck(summary, "agent credentials source is configured", false, "Set PORTAL_AGENT_STAFF_CREDENTIALS_JSON or PORTAL_AGENT_STAFF_CREDENTIALS.");
   return null;
 }
 
@@ -443,6 +438,10 @@ function buildIssueComment(summary, signatureMarker = "") {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const runtimeEnv = { ...process.env };
+  if (options.apiKey) {
+    runtimeEnv.PORTAL_FIREBASE_API_KEY = options.apiKey;
+  }
 
   const summary = {
     status: "passed",
@@ -461,8 +460,6 @@ async function main() {
     },
   };
 
-  const staffEmail = String(process.env.PORTAL_STAFF_EMAIL || "").trim();
-  const staffPassword = String(process.env.PORTAL_STAFF_PASSWORD || "").trim();
   let rulesTokenResolution = null;
   let rulesTokenError = "";
   try {
@@ -471,8 +468,18 @@ async function main() {
     rulesTokenError = error instanceof Error ? error.message : String(error);
   }
 
-  addCheck(summary, "staff email is configured", staffEmail.length > 0, staffEmail ? "PORTAL_STAFF_EMAIL detected." : "PORTAL_STAFF_EMAIL missing.");
-  addCheck(summary, "staff password is configured", staffPassword.length > 0, staffPassword ? "PORTAL_STAFF_PASSWORD detected." : "PORTAL_STAFF_PASSWORD missing.");
+  const agentCreds = await resolveAgentCredentialSource(summary, runtimeEnv);
+  const staffEmail = String(runtimeEnv.PORTAL_STAFF_EMAIL || "").trim() || String(agentCreds?.email || "").trim();
+  const staffPassword = String(runtimeEnv.PORTAL_STAFF_PASSWORD || "").trim() || String(agentCreds?.password || "").trim();
+
+  addCheck(summary, "staff email is configured", staffEmail.length > 0, staffEmail ? "Staff email resolved." : "No staff email found in env or agent credential source.");
+  addCheck(
+    summary,
+    "staff password fallback is configured",
+    staffPassword.length > 0,
+    staffPassword ? "Optional password fallback is available." : "Password fallback is not configured; refresh-token auth is expected.",
+    false
+  );
   addCheck(
     summary,
     "rules API token is configured",
@@ -483,8 +490,16 @@ async function main() {
     options.rulesProbeRequired
   );
   addCheck(summary, "Firebase Web API key is configured", options.apiKey.length > 0, options.apiKey ? "PORTAL_FIREBASE_API_KEY detected." : "PORTAL_FIREBASE_API_KEY missing.");
-
-  const agentCreds = await resolveAgentCredentialSource(summary);
+  const mintedStaffToken = await mintStaffIdTokenFromPortalEnv({ env: runtimeEnv });
+  const staffExpIso = mintedStaffToken.ok ? decodeJwtExp(mintedStaffToken.token) : null;
+  summary.probes.push({
+    label: "staff auth token mint",
+    required: true,
+    status: mintedStaffToken.ok ? "passed" : "failed",
+    detail: mintedStaffToken.ok
+      ? `Firebase staff token minted via ${mintedStaffToken.source}${staffExpIso ? ` (exp ${staffExpIso})` : ""}.`
+      : `Could not mint Firebase staff token: ${mintedStaffToken.reason}`,
+  });
 
   if (staffEmail && staffPassword && options.apiKey) {
     const signinResp = await requestJson(
@@ -504,19 +519,19 @@ async function main() {
     const idToken = String(signinResp.json?.idToken || "").trim();
     const expIso = idToken ? decodeJwtExp(idToken) : null;
     summary.probes.push({
-      label: "staff email/password sign-in",
-      required: true,
+      label: "staff password fallback sign-in",
+      required: false,
       status: signinResp.ok && idToken ? "passed" : "failed",
       detail: signinResp.ok && idToken
-        ? `Sign-in token minted${expIso ? ` (exp ${expIso})` : ""}.`
-        : `Sign-in failed: ${summarizeError(signinResp)}`,
+        ? `Password fallback is still valid${expIso ? ` (exp ${expIso})` : ""}.`
+        : `Password fallback failed: ${summarizeError(signinResp)}`,
     });
   } else {
     summary.probes.push({
-      label: "staff email/password sign-in",
-      required: true,
+      label: "staff password fallback sign-in",
+      required: false,
       status: "failed",
-      detail: "Skipped probe because staff credentials or API key are missing.",
+      detail: "Skipped because no password fallback is configured.",
     });
   }
 

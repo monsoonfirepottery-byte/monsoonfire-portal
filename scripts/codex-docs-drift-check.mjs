@@ -83,8 +83,8 @@ function pushFinding(report, severity, type, message, details = null) {
   if (severity === "info") report.summary.infos += 1;
 }
 
-function scanFile(report, filePath, installedVersion) {
-  const absolute = resolve(REPO_ROOT, filePath);
+function scanFile(report, filePath, installedVersion, repoRoot = REPO_ROOT) {
+  const absolute = resolve(repoRoot, filePath);
   if (!existsSync(absolute)) {
     pushFinding(report, "warning", "missing-file", `Target file missing: ${filePath}`);
     return;
@@ -173,12 +173,16 @@ function printHumanSummary(report) {
   process.stdout.write(`  status: ${report.status}\n`);
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const artifactPath = resolve(REPO_ROOT, args.artifact);
-  const codexResolution = resolveCodexCliCandidates(REPO_ROOT);
+export function runCodexDocsDriftCheck({
+  strict = false,
+  artifact = "output/codex-docs-drift/latest.json",
+  codexResolution = resolveCodexCliCandidates(REPO_ROOT),
+  targets = DEFAULT_TARGETS,
+  repoRoot = REPO_ROOT,
+} = {}) {
+  const artifactPath = resolve(repoRoot, artifact);
   const installedVersion = codexResolution.preferred?.version || null;
-  const report = createReport(args.strict, artifactPath, codexResolution);
+  const report = createReport(strict, artifactPath, codexResolution);
 
   if (!installedVersion) {
     pushFinding(
@@ -205,17 +209,25 @@ function main() {
     );
   }
 
-  for (const filePath of DEFAULT_TARGETS) {
-    scanFile(report, filePath, installedVersion);
+  for (const filePath of targets) {
+    scanFile(report, filePath, installedVersion, repoRoot);
   }
 
   const hasErrors = report.summary.errors > 0;
   const hasWarnings = report.summary.warnings > 0;
-  report.status = hasErrors || (args.strict && hasWarnings) ? "fail" : "pass";
+  report.status = hasErrors || (strict && hasWarnings) ? "fail" : "pass";
 
   mkdirSync(dirname(artifactPath), { recursive: true });
   writeFileSync(artifactPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  return report;
+}
 
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const report = runCodexDocsDriftCheck({
+    strict: args.strict,
+    artifact: args.artifact,
+  });
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
@@ -227,4 +239,6 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main();
+}

@@ -34,6 +34,8 @@ npm run codex:shell
 npm run codex:resume
 npm run codex:resume:fresh
 npm run codex:resume:status
+npm run codex:worktree
+npm run codex:startup:preflight
 
 # Optional: provide a focused session query and stable run id
 node ./scripts/codex-shell.mjs --query "continue yesterday's coding context" --run-id my-shell-123
@@ -44,6 +46,9 @@ node ./scripts/codex-shell.mjs --query "handoff state" --expand-relationships --
 
 # Optional: always inject local context from a file
 node ./scripts/codex-shell.mjs --context-path output/codex-shell-context.md --context-max-chars 2400
+
+# Optional: stay in the current dirty repo instead of the default clean Codex worktree
+node ./scripts/codex-shell.mjs --current-worktree
 ```
 
 You can also set defaults globally by exporting:
@@ -59,6 +64,8 @@ export CODEX_OPEN_MEMORY_SESSION_STATE_PATH=output/codex-shell-state.json
 export CODEX_SHELL_CONTEXT_PATH=output/codex-shell-context.md
 export CODEX_SHELL_CONTEXT_MAX_CHARS=2400
 export CODEX_SHELL_CONTEXT_BOOTSTRAP=true
+export CODEX_SHELL_USE_CLEAN_WORKTREE=true
+export CODEX_CLEAN_WORKTREE_ROOT="$HOME/.codex/worktrees"
 export CODEX_ENABLE_CONTEXT7_ON_SHELL=true
 ```
 
@@ -156,8 +163,17 @@ To force a clean context when useful:
 ./scripts/codex-mcp.sh shell --no-bootstrap
 ```
 
+To inspect or pre-create the default clean Codex worktree:
+
+```bash
+npm run codex:worktree
+node ./scripts/codex-worktree-launcher.mjs --json
+```
+
 What it does:
 - Uses the global PATH `codex` binary by default (repo-local binary is fallback only).
+- Creates or reuses a dedicated clean Codex worktree by default for mutation-heavy shell sessions.
+- Prints repo root, launch cwd, clean-worktree state, and codex-branch prefix validity before launch.
 - Runs `codex --profile <profile> -c 'mcp_servers.<id>.enabled=true' ... mcp list`
 - Includes read-only smoke checks for `docs` and `cloudflare`
 
@@ -269,6 +285,26 @@ Use strict mode when you want warnings to fail:
 npm run codex:doctor:strict
 ```
 
+Startup readiness preflight:
+
+```bash
+npm run codex:startup:preflight
+```
+
+The startup preflight and Codex shell now normalize startup blockers into stable reason codes:
+- `missing_token`
+- `expired_token`
+- `transport_unreachable`
+- `timeout`
+- `empty_context`
+
+Recovery contract:
+- Retry the same `query + runId` only after one explicit unblock step.
+- For `missing_token` or `expired_token`, refresh or mint the Studio Brain staff bearer token first.
+- For `transport_unreachable` or `timeout`, restore Studio Brain / MCP reachability first.
+- For `empty_context`, proceed repo-first or create a trusted handoff/checkpoint before retrying.
+- When Codex shell falls back, it should say `memory unavailable due to <reasonCode>; proceeding repo-first` instead of implying continuity exists.
+
 Open Memory primary health probe:
 
 ```bash
@@ -312,6 +348,8 @@ npm run codex:memory:accept -- --id <memory-id>
 ```
 
 This workspace is intentionally git-ignored (`memory/`, `*.jsonl`).
+Use it as fallback only when remote Open Memory is unavailable or when you want a repo-local scratch memory lane.
+`npm run codex:memory:init` is a one-time workspace bootstrap for the ignored local layout, not a tracked repo change and not something `codex:doctor` should do automatically.
 
 ## Open Memory MCP Bridge
 For Studio Brain-backed agent memory tools over stdio MCP:
@@ -325,6 +363,7 @@ Auth note:
 - `open-memory:mcp:launch` reads `secrets/studio-brain/studio-brain-automation.env`.
 - It also reads `secrets/portal/portal-automation.env` and mints a fresh staff Firebase ID token by default.
 - Set `STUDIO_BRAIN_PREFER_EXISTING_AUTH_TOKEN=true` to keep an existing auth token instead of reminting.
+- Remote Open Memory health is the primary signal for Codex startup and doctor checks; the local `memory/` workspace is only fallback coverage.
 
 Tools exposed:
 - `capture_thought`

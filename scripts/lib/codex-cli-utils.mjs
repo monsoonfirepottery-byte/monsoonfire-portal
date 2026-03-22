@@ -1,6 +1,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, lstatSync } from "node:fs";
-import { delimiter, resolve } from "node:path";
+import { delimiter, extname, resolve } from "node:path";
+import { readAllCommandPaths, readCommandPath } from "./command-runner.mjs";
 
 function normalizeVersionInput(value) {
   const match = String(value || "").match(/(\d+\.\d+\.\d+)/);
@@ -38,44 +39,22 @@ function canInspectPath(candidatePath) {
   }
 }
 
-function readCommandPath(command, env) {
-  const lookup = process.platform === "win32" ? `where ${command}` : `command -v ${command}`;
+function defaultReadBinaryVersion(binaryPath, env, { platform = process.platform } = {}) {
   try {
-    const output = execSync(lookup, {
-      encoding: "utf8",
-      env,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .trim()
-      .split(/\r?\n/)
-      .filter(Boolean);
-    return output[0] || "";
-  } catch {
-    return "";
-  }
-}
-
-function readAllCommandPaths(command, env) {
-  const lookup = process.platform === "win32" ? `where ${command}` : `which -a ${command}`;
-  try {
-    const output = execSync(lookup, {
-      encoding: "utf8",
-      env,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return Array.from(new Set(output.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean)));
-  } catch {
-    return [];
-  }
-}
-
-function readBinaryVersion(binaryPath, env) {
-  try {
-    const output = execFileSync(binaryPath, ["--version"], {
-      encoding: "utf8",
-      env,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    const extension = extname(binaryPath).toLowerCase();
+    const requiresCmdShell = platform === "win32" && (extension === ".cmd" || extension === ".bat");
+    const output = requiresCmdShell
+      ? execSync(`"${binaryPath}" --version`, {
+          encoding: "utf8",
+          env,
+          shell: process.env.ComSpec || true,
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim()
+      : execFileSync(binaryPath, ["--version"], {
+          encoding: "utf8",
+          env,
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
     return {
       version: parseVersionOutput(output),
       raw: output,
@@ -88,6 +67,38 @@ function readBinaryVersion(binaryPath, env) {
   }
 }
 
+function appendUniquePath(target, candidatePath, { platform = process.platform } = {}) {
+  const pathValue = String(candidatePath || "").trim();
+  if (!pathValue) return;
+  const normalizedKey = platform === "win32" ? pathValue.toLowerCase() : pathValue;
+  const seen = target.__seen || (target.__seen = new Set());
+  if (seen.has(normalizedKey)) return;
+  seen.add(normalizedKey);
+  target.push(pathValue);
+}
+
+export function expandWindowsCommandVariants(binaryPath, { platform = process.platform } = {}) {
+  const pathValue = String(binaryPath || "").trim();
+  if (!pathValue) return [];
+  if (platform !== "win32") return [pathValue];
+
+  const variants = [];
+  const extension = extname(pathValue).toLowerCase();
+  const hasKnownWindowsExtension = extension === ".cmd" || extension === ".exe" || extension === ".bat";
+  if (hasKnownWindowsExtension) {
+    appendUniquePath(variants, pathValue, { platform });
+    delete variants.__seen;
+    return variants;
+  }
+
+  appendUniquePath(variants, `${pathValue}.cmd`, { platform });
+  appendUniquePath(variants, `${pathValue}.exe`, { platform });
+  appendUniquePath(variants, `${pathValue}.bat`, { platform });
+  appendUniquePath(variants, pathValue, { platform });
+  delete variants.__seen;
+  return variants;
+}
+
 export function stripNodeModulesBinFromPath(pathValue) {
   return String(pathValue || "")
     .split(delimiter)
@@ -95,35 +106,46 @@ export function stripNodeModulesBinFromPath(pathValue) {
     .join(delimiter);
 }
 
-function addCandidate(candidateMap, source, binaryPath, env, repoRoot) {
+function addCandidate(
+  candidateMap,
+  source,
+  binaryPath,
+  env,
+  repoRoot,
+  { platform = process.platform, versionReader = defaultReadBinaryVersion } = {}
+) {
   const pathValue = String(binaryPath || "").trim();
-  if (!pathValue || !canInspectPath(pathValue)) return;
+  if (!pathValue) return;
 
-  const existing =
-    candidateMap.get(pathValue) ||
-    {
-      path: pathValue,
-      sources: new Set(),
-      version: null,
-      rawVersionOutput: "",
-      isLocal: false,
-    };
+  for (const candidatePath of expandWindowsCommandVariants(pathValue, { platform })) {
+    if (!canInspectPath(candidatePath)) continue;
 
-  existing.sources.add(source);
-  const localPrefix = `${resolve(repoRoot, "node_modules", ".bin")}`;
-  if (pathValue.startsWith(localPrefix) || /[\\/]node_modules[\\/]\.bin[\\/]/.test(pathValue)) {
-    existing.isLocal = true;
-  }
+    const existing =
+      candidateMap.get(candidatePath) ||
+      {
+        path: candidatePath,
+        sources: new Set(),
+        version: null,
+        rawVersionOutput: "",
+        isLocal: false,
+      };
 
-  if (!existing.version) {
-    const versionResult = readBinaryVersion(pathValue, env);
-    if (versionResult.version) {
-      existing.version = versionResult.version;
-      existing.rawVersionOutput = versionResult.raw;
+    existing.sources.add(source);
+    const localPrefix = `${resolve(repoRoot, "node_modules", ".bin")}`;
+    if (candidatePath.startsWith(localPrefix) || /[\\/]node_modules[\\/]\.bin[\\/]/.test(candidatePath)) {
+      existing.isLocal = true;
     }
-  }
 
-  candidateMap.set(pathValue, existing);
+    if (!existing.version) {
+      const versionResult = versionReader(candidatePath, env, { platform });
+      if (versionResult.version) {
+        existing.version = versionResult.version;
+        existing.rawVersionOutput = versionResult.raw;
+      }
+    }
+
+    candidateMap.set(candidatePath, existing);
+  }
 }
 
 export function selectPreferredCodexCandidate(candidates) {
@@ -144,29 +166,33 @@ export function selectPreferredCodexCandidate(candidates) {
   return candidates.find((candidate) => candidate.sources.includes("active-path")) || candidates[0] || null;
 }
 
-export function resolveCodexCliCandidates(repoRoot, env = process.env) {
+export function resolveCodexCliCandidates(repoRoot, env = process.env, options = {}) {
+  const platform = options.platform || process.platform;
+  const readCommandPathFn = options.readCommandPathFn || readCommandPath;
+  const readAllCommandPathsFn = options.readAllCommandPathsFn || readAllCommandPaths;
+  const versionReader = options.versionReader || defaultReadBinaryVersion;
   const candidateMap = new Map();
   const localBinaryCandidates =
-    process.platform === "win32"
+    platform === "win32"
       ? [resolve(repoRoot, "node_modules", ".bin", "codex.cmd"), resolve(repoRoot, "node_modules", ".bin", "codex")]
       : [resolve(repoRoot, "node_modules", ".bin", "codex")];
 
   for (const localBinary of localBinaryCandidates) {
-    addCandidate(candidateMap, "local-node-modules-bin", localBinary, env, repoRoot);
+    addCandidate(candidateMap, "local-node-modules-bin", localBinary, env, repoRoot, { platform, versionReader });
   }
 
-  const activePath = readCommandPath("codex", env);
-  addCandidate(candidateMap, "active-path", activePath, env, repoRoot);
+  const activePath = readCommandPathFn("codex", { env, platform });
+  addCandidate(candidateMap, "active-path", activePath, env, repoRoot, { platform, versionReader });
 
-  for (const discoveredPath of readAllCommandPaths("codex", env)) {
-    addCandidate(candidateMap, "path-scan", discoveredPath, env, repoRoot);
+  for (const discoveredPath of readAllCommandPathsFn("codex", { env, platform })) {
+    addCandidate(candidateMap, "path-scan", discoveredPath, env, repoRoot, { platform, versionReader });
   }
 
   const sanitizedPath = stripNodeModulesBinFromPath(env.PATH || "");
   if (sanitizedPath && sanitizedPath !== String(env.PATH || "")) {
     const nonLocalEnv = { ...env, PATH: sanitizedPath };
-    const nonLocalPath = readCommandPath("codex", nonLocalEnv);
-    addCandidate(candidateMap, "non-local-path", nonLocalPath, nonLocalEnv, repoRoot);
+    const nonLocalPath = readCommandPathFn("codex", { env: nonLocalEnv, platform });
+    addCandidate(candidateMap, "non-local-path", nonLocalPath, nonLocalEnv, repoRoot, { platform, versionReader });
   }
 
   const candidates = [...candidateMap.values()]

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
+import { buildFirebaseCliInvocation, prependPathEntries } from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -148,7 +149,8 @@ const ensureJavaRuntime = () => {
     const parsed = JSON.parse(String(result.stdout || "").trim());
     if (parsed?.status === "ok" && parsed?.javaHome) {
       process.env.JAVA_HOME = String(parsed.javaHome);
-      process.env.PATH = `${resolve(parsed.javaHome, "bin")}:${String(process.env.PATH || "")}`;
+      const javaEnv = prependPathEntries([resolve(parsed.javaHome, "bin")], process.env);
+      process.env.PATH = javaEnv.PATH;
       console.log(`Using Java runtime: ${parsed.versionLine || "unknown version"} (${parsed.source || "unknown source"})`);
       return;
     }
@@ -323,10 +325,12 @@ const maybeApplyHostToConfig = (configPath, selectedEmulators, targetHost) => {
 };
 
 const runtimeConfigPath = maybeApplyHostToConfig(resolvedConfig, only, emulatorHost);
+const firebaseCli = buildFirebaseCliInvocation(repoRoot, { env: process.env });
 
 const result = spawnSync(
-  "firebase",
+  firebaseCli.command,
   [
+    ...firebaseCli.args,
     "emulators:start",
     "--config",
     runtimeConfigPath,

@@ -14,6 +14,7 @@ import {
   extractOnePasswordLoginCredentials,
   mergePortalAutomationEnv,
   parsePortalAgentStaffPayload,
+  resolvePortalSecretSyncOptions,
   resolvePortalSecretProviderConfig,
   validatePortalAgentStaffCredentials,
   validatePortalAutomationEnv,
@@ -22,26 +23,6 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..");
 const HOME_ROOT = homedir();
-
-function parseArgs(argv) {
-  const options = {
-    asJson: false,
-    skipRuntimeMirror: false,
-  };
-
-  for (const arg of argv) {
-    if (arg === "--json") {
-      options.asJson = true;
-      continue;
-    }
-    if (arg === "--skip-runtime-mirror") {
-      options.skipRuntimeMirror = true;
-      continue;
-    }
-  }
-
-  return options;
-}
 
 function fail(message, { cause = "", extra = "" } = {}) {
   const details = [message, cause, extra].map((value) => String(value || "").trim()).filter(Boolean).join(" ");
@@ -293,7 +274,7 @@ async function main(options) {
   );
 }
 
-const cliOptions = parseArgs(process.argv.slice(2));
+const cliOptions = resolvePortalSecretSyncOptions(process.argv.slice(2), process.env);
 
 main(cliOptions).catch((error) => {
   const message = error instanceof Error ? error.message : String(error);

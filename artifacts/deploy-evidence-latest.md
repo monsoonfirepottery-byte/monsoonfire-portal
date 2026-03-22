@@ -1,24 +1,24 @@
 # Deploy Evidence Pack
 
-- Generated: 2026-03-01T17:25:26.126Z
+- Generated: 2026-03-22T04:55:12.164Z
 - Target: namecheap-portal
 - Status: passed
 - Base URL: https://portal.monsoonfire.com
-- Commit: 687397ba972b291197ad08478f1a5518f06618d1
-- Branch: main
+- Commit: 9cc585b367832f85b82057e9424cf1458eb9ceae
+- Branch: codex/1password-hardening
 
 ## Artifact Status
 
 | Artifact | Required | Status | Path |
 | --- | --- | --- | --- |
-| Deploy preflight | no | pass | output/qa/deploy-preflight.json |
-| Cutover verify | yes | pass | output/qa/post-deploy-cutover-verify.json |
-| Post-deploy promotion gate | yes | pass | output/qa/post-deploy-promotion-gate.json |
-| Post-deploy authenticated canary | no | pass | output/qa/post-deploy-authenticated-canary.json |
-| Post-deploy virtual staff regression | no | pass | output/qa/post-deploy-virtual-staff-regression.json |
-| Post-deploy Firestore index guard | no | pass | output/qa/post-deploy-index-guard.json |
-| Auto rollback report | no | unk | output/qa/post-deploy-rollback.json |
-| Post-rollback verify | no | pass | output/qa/post-deploy-rollback-verify.json |
+| Deploy preflight | no | pass | D:\tmp\mf-portal-firings-page\output\qa\deploy-preflight.json |
+| Cutover verify | yes | pass | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-cutover-verify.json |
+| Post-deploy promotion gate | yes | pass | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-promotion-gate.json |
+| Post-deploy authenticated canary | no | pass | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-authenticated-canary.json |
+| Post-deploy virtual staff regression | no | pass | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-virtual-staff-regression.json |
+| Post-deploy Firestore index guard | no | pass | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-index-guard.json |
+| Auto rollback report | no | unk | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-rollback.json |
+| Post-rollback verify | no | pass | D:\tmp\mf-portal-firings-page\output\qa\post-deploy-rollback-verify.json |
 
 ## Notes
 

@@ -5,6 +5,7 @@ import {
   extractOnePasswordLoginCredentials,
   mergePortalAutomationEnv,
   parsePortalAgentStaffPayload,
+  resolvePortalSecretSyncOptions,
   validatePortalAgentStaffCredentials,
   validatePortalAutomationEnv,
 } from "./portal-automation-secrets.mjs";
@@ -84,5 +85,25 @@ test("extractOnePasswordLoginCredentials reads username and password fields", ()
   assert.deepEqual(creds, {
     email: "helixwuff@gmail.com",
     password: "nP$6mdKUUjssd8vB",
+  });
+});
+
+test("resolvePortalSecretSyncOptions honors npm-consumed flags and explicit argv", () => {
+  const envDriven = resolvePortalSecretSyncOptions([], {
+    npm_config_json: "true",
+    npm_config_skip_runtime_mirror: "1",
+  });
+  assert.deepEqual(envDriven, {
+    asJson: true,
+    skipRuntimeMirror: true,
+  });
+
+  const argvDriven = resolvePortalSecretSyncOptions(["--json"], {
+    npm_config_json: "",
+    npm_config_skip_runtime_mirror: "",
+  });
+  assert.deepEqual(argvDriven, {
+    asJson: true,
+    skipRuntimeMirror: false,
   });
 });

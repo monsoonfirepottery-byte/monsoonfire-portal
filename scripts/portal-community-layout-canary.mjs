@@ -6,14 +6,20 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { mintStaffIdTokenFromPortalEnv } from "./lib/firebase-auth-token.mjs";
+import {
+  loadPortalAutomationEnv,
+  resolvePortalAgentStaffCredentialsPath,
+} from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
+loadPortalAutomationEnv();
 
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-community-layout-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-community-layout-canary.json");
-const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_STAFF_CREDENTIALS_PATH = resolvePortalAgentStaffCredentialsPath();
 
 function parseArgs(argv) {
   const options = {
@@ -22,8 +28,10 @@ function parseArgs(argv) {
     reportPath: process.env.PORTAL_CANARY_REPORT || DEFAULT_REPORT_PATH,
     staffEmail: String(process.env.PORTAL_STAFF_EMAIL || "").trim(),
     staffPassword: String(process.env.PORTAL_STAFF_PASSWORD || "").trim(),
+    staffRefreshToken: String(process.env.PORTAL_STAFF_REFRESH_TOKEN || "").trim(),
     credentialsPath: process.env.PORTAL_AGENT_STAFF_CREDENTIALS || DEFAULT_STAFF_CREDENTIALS_PATH,
     credentialsJson: String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim(),
+    firebaseApiKey: String(process.env.PORTAL_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || "").trim(),
     requireAuth: true,
     headless: true,
     asJson: false,
@@ -82,6 +90,13 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--api-key") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --api-key");
+      options.firebaseApiKey = String(next).trim();
+      index += 1;
+      continue;
+    }
     if (arg === "--no-require-auth") {
       options.requireAuth = false;
       continue;
@@ -109,24 +124,36 @@ async function pathExists(path) {
 }
 
 function parseStaffCredentialPayload(raw) {
-  if (!raw || typeof raw !== "object") return { email: "", password: "" };
+  if (!raw || typeof raw !== "object") return { email: "", password: "", uid: "", refreshToken: "" };
   return {
     email: String(raw.email ?? raw.staffEmail ?? "").trim(),
     password: String(raw.password ?? raw.staffPassword ?? "").trim(),
+    uid: String(raw.uid ?? "").trim(),
+    refreshToken: String(raw.refreshToken ?? raw.tokens?.refresh_token ?? "").trim(),
   };
 }
 
 async function resolveStaffCredentials(options) {
   let staffEmail = String(options.staffEmail || "").trim();
   let staffPassword = String(options.staffPassword || "").trim();
+  let staffUid = "";
+  let staffRefreshToken = String(options.staffRefreshToken || "").trim();
   const warnings = [];
-  let source = staffEmail || staffPassword ? "PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" : "";
+  let source = staffEmail || staffPassword
+    ? "PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD"
+    : staffRefreshToken
+      ? "PORTAL_STAFF_REFRESH_TOKEN"
+      : "";
 
   const applyCandidate = (candidate, sourceLabel) => {
     if (!candidate) return;
     if (!staffEmail && candidate.email) staffEmail = String(candidate.email || "").trim();
     if (!staffPassword && candidate.password) staffPassword = String(candidate.password || "").trim();
-    if (!source && staffEmail && staffPassword) source = sourceLabel;
+    if (!staffUid && candidate.uid) staffUid = String(candidate.uid || "").trim();
+    if (!staffRefreshToken && candidate.refreshToken) {
+      staffRefreshToken = String(candidate.refreshToken || "").trim();
+    }
+    if (!source && (staffEmail || staffPassword || staffUid || staffRefreshToken)) source = sourceLabel;
   };
 
   if ((!staffEmail || !staffPassword) && options.credentialsJson) {
@@ -159,6 +186,8 @@ async function resolveStaffCredentials(options) {
   return {
     staffEmail,
     staffPassword,
+    staffUid,
+    staffRefreshToken,
     source: source || "unresolved",
     warnings,
   };
@@ -215,6 +244,139 @@ async function signInWithEmail(page, email, password) {
     }
     throw new Error("Sign in did not transition to authenticated shell.");
   }
+}
+
+function safeJsonParse(raw, fallback = null) {
+  try {
+    return JSON.parse(String(raw || ""));
+  } catch {
+    return fallback;
+  }
+}
+
+function buildRuntimeEnv(options, credentialResolution) {
+  const env = { ...process.env };
+  if (options.firebaseApiKey) {
+    env.PORTAL_FIREBASE_API_KEY = options.firebaseApiKey;
+  }
+  if (options.credentialsJson) {
+    env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON = options.credentialsJson;
+  }
+  if (options.credentialsPath) {
+    env.PORTAL_AGENT_STAFF_CREDENTIALS = options.credentialsPath;
+  }
+  if (credentialResolution.staffEmail) {
+    env.PORTAL_STAFF_EMAIL = credentialResolution.staffEmail;
+  }
+  if (credentialResolution.staffPassword) {
+    env.PORTAL_STAFF_PASSWORD = credentialResolution.staffPassword;
+  }
+  if (credentialResolution.staffRefreshToken) {
+    env.PORTAL_STAFF_REFRESH_TOKEN = credentialResolution.staffRefreshToken;
+  }
+  return env;
+}
+
+function decodeJwtExp(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    const exp = Number(payload?.exp);
+    return Number.isFinite(exp) ? exp : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildPasswordSignInResponse({ email, uid, idToken, refreshToken }) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const exp = decodeJwtExp(idToken);
+  const expiresIn = exp && exp > nowSeconds ? String(exp - nowSeconds) : "3600";
+  return {
+    kind: "identitytoolkit#VerifyPasswordResponse",
+    localId: uid,
+    email,
+    registered: true,
+    idToken,
+    refreshToken,
+    expiresIn,
+  };
+}
+
+function resolveBrowserAuthStrategy(options, credentialResolution) {
+  const refreshReady = Boolean(
+    options.firebaseApiKey &&
+      credentialResolution.staffEmail &&
+      credentialResolution.staffUid &&
+      credentialResolution.staffRefreshToken
+  );
+  const passwordReady = Boolean(credentialResolution.staffEmail && credentialResolution.staffPassword);
+
+  if (refreshReady) {
+    return { mode: "refresh-token", passwordFallbackReady: passwordReady };
+  }
+  if (passwordReady) {
+    return { mode: "password-ui", passwordFallbackReady: true };
+  }
+  return {
+    mode: "unavailable",
+    reason: "Need refresh-token credentials (api key + email + uid + refreshToken) or an explicit password fallback.",
+  };
+}
+
+async function installRefreshTokenSignInRoute(page, { apiKey, email, uid, idToken, refreshToken }) {
+  const expectedEmail = String(email || "").trim().toLowerCase();
+  const expectedApiKey = String(apiKey || "").trim();
+  const responseBody = JSON.stringify(buildPasswordSignInResponse({ email, uid, idToken, refreshToken }));
+  let handled = false;
+
+  const handler = async (route, request) => {
+    const url = request.url();
+    if (!url.includes("accounts:signInWithPassword") || !url.includes(`key=${expectedApiKey}`)) {
+      await route.continue();
+      return;
+    }
+
+    const payload = safeJsonParse(request.postData() || "", {});
+    const requestEmail = String(payload?.email || "").trim().toLowerCase();
+    if (expectedEmail && requestEmail && requestEmail !== expectedEmail) {
+      await route.continue();
+      return;
+    }
+
+    handled = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: responseBody,
+    });
+  };
+
+  await page.route("**/accounts:signInWithPassword?key=*", handler);
+  return {
+    wasHandled: () => handled,
+    remove: async () => {
+      await page.unroute("**/accounts:signInWithPassword?key=*", handler);
+    },
+  };
+}
+
+async function mintPortalStaffIdToken(options, credentialResolution) {
+  const env = buildRuntimeEnv(options, credentialResolution);
+  const minted = await mintStaffIdTokenFromPortalEnv({
+    env,
+    credentialsJson: options.credentialsJson,
+    credentialsPath: options.credentialsPath,
+    defaultCredentialsPath: DEFAULT_STAFF_CREDENTIALS_PATH,
+  });
+  if (!minted.ok || !minted.token) {
+    throw new Error(`Could not mint Firebase ID token for community layout canary: ${minted.reason}`);
+  }
+  return {
+    ...minted,
+    refreshToken: String(env.PORTAL_STAFF_REFRESH_TOKEN || credentialResolution.staffRefreshToken || "").trim(),
+  };
 }
 
 function regexSafe(value) {
@@ -323,6 +485,7 @@ async function main() {
       required: options.requireAuth,
       source: "",
       warnings: [],
+      resolvedBrowserAuthMode: options.requireAuth ? "pending" : "none",
     },
     checks: [],
     errors: [],
@@ -342,8 +505,14 @@ async function main() {
     summary.auth.warnings.forEach((warning) => summary.errors.push(`auth warning: ${warning}`));
   }
 
-  if (options.requireAuth && (!creds.staffEmail || !creds.staffPassword)) {
-    throw new Error("Community layout canary requires staff credentials (email + password).");
+  const browserAuthStrategy = options.requireAuth
+    ? resolveBrowserAuthStrategy(options, creds)
+    : { mode: "none", passwordFallbackReady: false };
+
+  if (options.requireAuth && browserAuthStrategy.mode === "unavailable") {
+    throw new Error(
+      `Community layout canary requires refresh-token credentials (api key + email + uid + refreshToken) or an explicit password fallback. ${browserAuthStrategy.reason}`
+    );
   }
 
   await ensureDir(options.outputDir);
@@ -368,7 +537,42 @@ async function main() {
     await check(summary, "authenticate", async () => {
       const isSignedOut = await waitForAuthReady(page);
       if (isSignedOut) {
-        await signInWithEmail(page, creds.staffEmail, creds.staffPassword);
+        if (browserAuthStrategy.mode === "refresh-token") {
+          try {
+            const minted = await mintPortalStaffIdToken(options, creds);
+            const route = await installRefreshTokenSignInRoute(page, {
+              apiKey: options.firebaseApiKey,
+              email: creds.staffEmail,
+              uid: creds.staffUid,
+              idToken: minted.token,
+              refreshToken: minted.refreshToken || creds.staffRefreshToken,
+            });
+            try {
+              await signInWithEmail(page, creds.staffEmail, creds.staffPassword || "refresh-token-bootstrap");
+              if (!route.wasHandled()) {
+                throw new Error("Refresh-token bootstrap route was not exercised during sign-in.");
+              }
+              summary.auth.resolvedBrowserAuthMode = "refresh-token";
+            } finally {
+              await route.remove();
+            }
+          } catch (error) {
+            if (!browserAuthStrategy.passwordFallbackReady) {
+              throw error;
+            }
+            addWarning(
+              summary,
+              `Refresh-token bootstrap failed; falling back to password-ui auth. ${error instanceof Error ? error.message : String(error)}`
+            );
+            await signInWithEmail(page, creds.staffEmail, creds.staffPassword);
+            summary.auth.resolvedBrowserAuthMode = "password-ui-fallback";
+          }
+        } else {
+          await signInWithEmail(page, creds.staffEmail, creds.staffPassword);
+          summary.auth.resolvedBrowserAuthMode = "password-ui";
+        }
+      } else {
+        summary.auth.resolvedBrowserAuthMode = "existing-session";
       }
     });
 

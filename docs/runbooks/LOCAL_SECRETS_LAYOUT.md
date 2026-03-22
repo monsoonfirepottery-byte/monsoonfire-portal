@@ -16,6 +16,8 @@ Purpose: keep local automation secrets in canonical gitignored cache paths while
 - If a script adds a new required secret, update this runbook and the relevant feature runbook in the same change.
 - Portal automation source of truth is the dedicated 1Password vault `Monsoon Fire Portal Automation`.
 - Refresh the shared local cache with `npm run secrets:portal:sync`, then mirror it into the current worktree with `npm run secrets:sync:runtime` when needed.
+- `npm run secrets:portal:sync --json` emits machine-readable JSON even on Windows/npm setups where `npm` consumes the flag before Node sees it.
+- For home-cache-only refresh without repo mirroring, use `node ./scripts/sync-portal-secrets-from-1password.mjs --skip-runtime-mirror --json`.
 
 ## Portal Automation Variables
 

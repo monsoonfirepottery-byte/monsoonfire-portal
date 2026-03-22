@@ -71,6 +71,12 @@ if (portalEnvLoad.loaded) {
   process.stdout.write(`Loaded portal automation env: ${portalEnvLoad.path}\n`);
 }
 process.stdout.write(`Using SSH key source: ${keyResolution.source} (${keyPath})\n`);
+const remotePathWithSlash = ensureTrailingSlash(options.remotePath);
+const remoteTarget = `${options.server}:${options.remotePath}`;
+const remoteRollbackPath = buildRemoteRollbackPath(options.remotePath);
+const remoteRollbackPathWithSlash = ensureTrailingSlash(remoteRollbackPath);
+const remoteUploadDirName = "staging";
+const remoteUploadPath = `${remotePathWithSlash}${remoteUploadDirName}`;
 
 const webDist = resolve(repoRoot, "web", "dist");
 const htaccessTemplate = resolve(repoRoot, "web", "deploy", "namecheap", ".htaccess");
@@ -91,10 +97,9 @@ for (const fileName of requiredWellKnownFiles) {
 
 const stageRoot = mkdtempSync(join(tmpdir(), "mf-namecheap-portal-"));
 const stageDir = resolve(stageRoot, "staging");
-const rollbackBackupDir = resolve(stageRoot, "rollback-backup");
-
 let deploymentError = null;
 let promotionGateFailure = null;
+let remoteRollbackSnapshotCreated = false;
 let rollbackSummary = {
   status: "not_needed",
   triggeredBy: "",
@@ -150,10 +155,6 @@ try {
   cpSync(wellKnownSourceDir, resolve(stageDir, ".well-known"), { recursive: true });
   cpSync(wellKnownSourceDir, resolve(stageDir, "well-known"), { recursive: true });
 
-  const sshTransport = `ssh -i ${keyPath} -p ${String(options.port)} -o StrictHostKeyChecking=accept-new`;
-  const remotePathWithSlash = ensureTrailingSlash(options.remotePath);
-  const remoteTarget = `${options.server}:${options.remotePath}`;
-
   run("ssh", [
     "-i",
     keyPath,
@@ -168,21 +169,55 @@ try {
   });
 
   if (options.autoRollback && options.promotionGate) {
-    mkdirSync(rollbackBackupDir, { recursive: true });
-    run(
-      "rsync",
-      ["-az", "--delete", "-e", sshTransport, `${options.server}:${remotePathWithSlash}`, `${rollbackBackupDir}/`],
-      {
-        label: "Capturing pre-deploy rollback snapshot",
-      }
-    );
+    run("ssh", [
+      "-i",
+      keyPath,
+      "-p",
+      String(options.port),
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      options.server,
+      [
+        `rm -rf ${shellQuote(remoteRollbackPath)}`,
+        `mkdir -p ${shellQuote(remoteRollbackPath)}`,
+        `if [ -d ${shellQuote(options.remotePath)} ]; then cp -a ${shellQuote(`${remotePathWithSlash}.`)} ${shellQuote(remoteRollbackPathWithSlash)}; fi`,
+      ].join(" && "),
+    ], {
+      label: "Capturing pre-deploy rollback snapshot",
+    });
+    remoteRollbackSnapshotCreated = true;
   }
 
   run(
-    "rsync",
-    ["-az", "--delete", "-e", sshTransport, `${stageDir}/`, remoteTarget],
-    { label: `Syncing ${stageDir} -> ${remoteTarget}` }
+    "scp",
+    [
+      "-i",
+      keyPath,
+      "-P",
+      String(options.port),
+      "-r",
+      stageDir,
+      `${options.server}:${options.remotePath}`,
+    ],
+    { label: `Uploading ${stageDir} -> ${remoteTarget}` }
   );
+
+  run("ssh", [
+    "-i",
+    keyPath,
+    "-p",
+    String(options.port),
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    options.server,
+    [
+      `mkdir -p ${shellQuote(options.remotePath)}`,
+      `find ${shellQuote(options.remotePath)} -mindepth 1 -maxdepth 1 ! -name ${shellQuote(remoteUploadDirName)} -exec rm -rf -- {} +`,
+      `if [ -d ${shellQuote(remoteUploadPath)} ]; then cp -a ${shellQuote(`${remoteUploadPath}/.`)} ${shellQuote(remotePathWithSlash)} && rm -rf ${shellQuote(remoteUploadPath)}; else exit 1; fi`,
+    ].join(" && "),
+  ], {
+    label: `Promoting uploaded bundle into ${remoteTarget}`,
+  });
 
   if (options.verify) {
     const verifyScript = resolve(repoRoot, "web", "deploy", "namecheap", "verify-cutover.mjs");
@@ -233,8 +268,21 @@ try {
 
       if (options.autoRollback) {
         const rollbackResult = run(
-          "rsync",
-          ["-az", "--delete", "-e", sshTransport, `${rollbackBackupDir}/`, remoteTarget],
+          "ssh",
+          [
+            "-i",
+            keyPath,
+            "-p",
+            String(options.port),
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            options.server,
+            [
+              `mkdir -p ${shellQuote(options.remotePath)}`,
+              `find ${shellQuote(options.remotePath)} -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +`,
+              `if [ -d ${shellQuote(remoteRollbackPath)} ]; then cp -a ${shellQuote(`${remoteRollbackPathWithSlash}.`)} ${shellQuote(remotePathWithSlash)}; fi`,
+            ].join(" && "),
+          ],
           {
             label: "Auto-rollback: restoring pre-deploy snapshot",
             allowFailure: true,
@@ -318,6 +366,22 @@ try {
 
     run("node", evidenceArgs, {
       label: "Generating deploy evidence pack",
+      allowFailure: true,
+    });
+  }
+
+  if (remoteRollbackSnapshotCreated) {
+    run("ssh", [
+      "-i",
+      keyPath,
+      "-p",
+      String(options.port),
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      options.server,
+      `rm -rf ${shellQuote(remoteRollbackPath)}`,
+    ], {
+      label: "Cleaning remote rollback snapshot",
       allowFailure: true,
     });
   }
@@ -462,6 +526,15 @@ function ensureTrailingSlash(value) {
   return raw.endsWith("/") ? raw : `${raw}/`;
 }
 
+function buildRemoteRollbackPath(value) {
+  const trimmed = String(value || "").replace(/\/+$/, "");
+  return `${trimmed}.__rollback__`;
+}
+
+function toPortableShellPath(value) {
+  return process.platform === "win32" ? String(value || "").replace(/\\/g, "/") : String(value || "");
+}
+
 function readValue(argv, idx, name) {
   const value = argv[idx + 1];
   if (!value || value.startsWith("--")) {
@@ -478,9 +551,6 @@ function resolveCommand(command) {
   if (process.platform !== "win32") {
     return command;
   }
-  if (command === "npm" || command === "npx") {
-    return `${command}.cmd`;
-  }
   if (command === "rsync") {
     const candidates = [
       "C:/msys64/usr/bin/rsync.exe",
@@ -496,16 +566,48 @@ function resolveCommand(command) {
   return command;
 }
 
+function shouldUseShell(command, resolvedCommand) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  if (command === "npm" || command === "npx") {
+    return true;
+  }
+  return /\.(cmd|bat)$/i.test(String(resolvedCommand || ""));
+}
+
+function shouldPipeOutput(command, resolvedCommand) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  if (command === "rsync") {
+    return true;
+  }
+  return /(?:^|[\\/])rsync(?:\.exe)?$/i.test(String(resolvedCommand || ""));
+}
+
 function run(command, args, options = {}) {
   if (options.label) {
     process.stdout.write(`${options.label}...\n`);
   }
   const resolvedCommand = resolveCommand(command);
+  const shell = shouldUseShell(command, resolvedCommand);
+  const pipeOutput = shouldPipeOutput(command, resolvedCommand);
   const result = spawnSync(resolvedCommand, args, {
-    stdio: "inherit",
-    shell: false,
+    stdio: pipeOutput ? ["ignore", "pipe", "pipe"] : "inherit",
+    shell,
+    encoding: pipeOutput ? "utf8" : undefined,
     env: options.env || process.env,
   });
+
+  if (pipeOutput) {
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+  }
 
   if (result.error) {
     if (options.allowFailure) {
@@ -530,9 +632,10 @@ function run(command, args, options = {}) {
 
 function runCapture(command, args, options = {}) {
   const resolvedCommand = resolveCommand(command);
+  const shell = shouldUseShell(command, resolvedCommand);
   return spawnSync(resolvedCommand, args, {
     stdio: ["ignore", "pipe", "pipe"],
-    shell: false,
+    shell,
     encoding: "utf8",
     env: options.env || process.env,
     cwd: options.cwd || process.cwd(),

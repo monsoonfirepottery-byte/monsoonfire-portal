@@ -82,12 +82,17 @@ function parseServiceAccount(raw) {
 }
 
 function hasFirebaseCliSession() {
-  const probe = spawnSync("npx", ["firebase-tools", "projects:list", "--non-interactive", "--json"], {
-    cwd: repoRoot,
-    env: process.env,
-    encoding: "utf8",
-  });
+  const probe = runNpx(["firebase-tools", "projects:list", "--non-interactive", "--json"], process.env);
   return probe.status === 0;
+}
+
+function runNpx(args, env) {
+  return spawnSync("npx", args, {
+    cwd: repoRoot,
+    env,
+    encoding: "utf8",
+    shell: process.platform === "win32",
+  });
 }
 
 async function resolveAuthEnv() {
@@ -213,18 +218,17 @@ async function main() {
     ];
     summary.command = `npx ${args.join(" ")}`;
 
-    const result = spawnSync("npx", args, {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ...auth.extraEnv,
-      },
-      encoding: "utf8",
+    const result = runNpx(args, {
+      ...process.env,
+      ...auth.extraEnv,
     });
 
     summary.exitCode = typeof result.status === "number" ? result.status : 1;
     summary.stdout = truncate(result.stdout || "");
     summary.stderr = truncate(result.stderr || "");
+    if (result.error) {
+      summary.stderr = truncate([summary.stderr, result.error.message].filter(Boolean).join("\n"));
+    }
     summary.status = summary.exitCode === 0 ? "passed" : "failed";
   } finally {
     if (auth.cleanupDir) {

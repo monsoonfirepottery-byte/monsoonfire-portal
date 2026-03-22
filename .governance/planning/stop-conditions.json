@@ -1,0 +1,27 @@
+{
+  "schema": "planning-stop-conditions.v1",
+  "readyForHumanCriteria": [
+    "all_major_assumptions_classified",
+    "dependencies_mapped",
+    "validation_gates_defined",
+    "failure_modes_documented",
+    "rollback_or_recovery_documented_when_needed",
+    "required_human_decisions_isolated",
+    "dissent_preserved",
+    "all_unresolved_critical_objections_escalated"
+  ],
+  "confidenceRules": {
+    "high": {
+      "maxRequiresHumanDecision": 1,
+      "maxSpeculativeAssumptions": 2
+    },
+    "moderate": {
+      "maxRequiresHumanDecision": 3,
+      "maxSpeculativeAssumptions": 5
+    },
+    "guarded": {
+      "maxRequiresHumanDecision": 12,
+      "maxSpeculativeAssumptions": 12
+    }
+  }
+}

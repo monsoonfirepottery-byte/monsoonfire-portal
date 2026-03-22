@@ -1,0 +1,83 @@
+{
+  "schema": "planning-role-source-catalog.v1",
+  "sources": [
+    {
+      "sourceId": "awesome-ai-agents",
+      "displayName": "awesome-ai-agents",
+      "kind": "discovery-index",
+      "status": "allowlisted",
+      "provenance": {
+        "repoUrl": "https://github.com/e2b-dev/awesome-ai-agents",
+        "ref": "main"
+      },
+      "extraction": {
+        "mode": "catalog",
+        "notes": "Discovery/index source. Good for finding role families and frameworks, not direct trusted seats."
+      },
+      "sampleRoleSignals": [
+        {
+          "roleName": "Research Agent",
+          "purpose": "Research-heavy role pattern that gathers evidence and compares options.",
+          "stakeholderLenses": ["domain-specialist", "requester-sponsor"],
+          "domainTags": ["research", "analysis"]
+        },
+        {
+          "roleName": "Data Analyst Agent",
+          "purpose": "Analyst pattern for evidence gathering, metrics, and comparative tradeoff framing.",
+          "stakeholderLenses": ["business-owner", "finance-owner"],
+          "domainTags": ["analytics", "finance", "operations"]
+        }
+      ]
+    },
+    {
+      "sourceId": "500-ai-agents-projects",
+      "displayName": "500 AI Agents Projects",
+      "kind": "example-corpus",
+      "status": "allowlisted",
+      "provenance": {
+        "repoUrl": "https://github.com/ashishpatel26/500-AI-Agents-Projects",
+        "ref": "main"
+      },
+      "extraction": {
+        "mode": "examples",
+        "notes": "Example corpus source. Use for implicit role templates, domain framing, and stakeholder lenses."
+      },
+      "sampleRoleSignals": [
+        {
+          "roleName": "Finance Analyst Agent",
+          "purpose": "Identifies cost, budget, and payment implications hidden in implementation plans.",
+          "stakeholderLenses": ["finance-owner", "business-owner"],
+          "domainTags": ["finance", "payments", "cost"]
+        },
+        {
+          "roleName": "Writer / Synthesizer Agent",
+          "purpose": "Transforms raw review output into a coherent, decision-ready artifact.",
+          "stakeholderLenses": ["requester-sponsor", "future-executor"],
+          "domainTags": ["documentation", "synthesis"]
+        }
+      ]
+    },
+    {
+      "sourceId": "ruflo",
+      "displayName": "Ruflo / Claude Flow",
+      "kind": "topology-reference",
+      "status": "reference-only",
+      "provenance": {
+        "repoUrl": "https://github.com/ruvnet/ruflo",
+        "ref": "main"
+      },
+      "extraction": {
+        "mode": "reference",
+        "notes": "Topology/orchestration reference only in v1. Not promoted into runtime seats without stronger curation."
+      },
+      "sampleRoleSignals": [
+        {
+          "roleName": "Swarm Coordinator",
+          "purpose": "Reference topology for multi-round orchestration and consensus handling.",
+          "stakeholderLenses": ["system-owner"],
+          "domainTags": ["orchestration", "swarm"]
+        }
+      ]
+    }
+  ]
+}

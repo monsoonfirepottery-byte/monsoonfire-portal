@@ -1,0 +1,37 @@
+{
+  "schema": "planning-role-quality-rubric.v1",
+  "weights": {
+    "structuralQuality": 0.34,
+    "governanceQuality": 0.4,
+    "swarmUsability": 0.26
+  },
+  "structuralChecks": [
+    "purpose",
+    "goal",
+    "instructions",
+    "tools",
+    "memoryAccess",
+    "collaborationBehavior",
+    "expectedInputs",
+    "expectedOutputs"
+  ],
+  "governanceChecks": [
+    "stakeholderLenses",
+    "activationTriggers",
+    "abstentionConditions",
+    "objectionClasses",
+    "evidenceStandards",
+    "provenance"
+  ],
+  "swarmUsabilityChecks": [
+    "boundedMandate",
+    "predictableOutputs",
+    "clearAbstention",
+    "lowPromptAmbiguity"
+  ],
+  "promotionThresholds": {
+    "minimumStructuralQuality": 0.7,
+    "minimumGovernanceQuality": 0.75,
+    "minimumSwarmUsability": 0.65
+  }
+}

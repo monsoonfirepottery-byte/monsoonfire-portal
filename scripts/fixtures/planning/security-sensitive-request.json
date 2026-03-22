@@ -1,0 +1,30 @@
+{
+  "request": "Plan a planning-only refactor of the Studio Brain capability approval flow so auth and privileged write paths can be reviewed without executing anything.",
+  "requestedBy": "fixture-security",
+  "docket": {
+    "objective": "Produce a secure, reviewable plan for capability approval hardening.",
+    "whyNow": "The approval flow is expanding and auth assumptions need explicit review before more write paths arrive.",
+    "successCriteria": [
+      "Auth boundaries are documented",
+      "Human approvals are isolated",
+      "Rollback and dry-run paths are explicit"
+    ],
+    "constraints": [
+      "Planning-only",
+      "Do not reuse execution proposals",
+      "Preserve current capability execution boundary"
+    ],
+    "knownFacts": [
+      "Capability proposals already exist",
+      "Pilot write execution is separately gated"
+    ],
+    "unknowns": [
+      "Whether admin-token enforcement remains sufficient for future write paths"
+    ],
+    "assumptions": [
+      { "statement": "Existing auth helpers remain the correct base for planning endpoints.", "evidenceLabel": "inferred" }
+    ],
+    "affectedSystems": ["studio-brain/src/http/server.ts", "studio-brain/src/capabilities"],
+    "humanPriorities": ["safety", "auditability"]
+  }
+}

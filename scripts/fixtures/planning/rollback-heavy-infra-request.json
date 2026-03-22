@@ -1,0 +1,29 @@
+{
+  "request": "Plan a planning-only migration of shared Studio Brain storage contracts with clear rollback and recovery steps.",
+  "requestedBy": "fixture-infra",
+  "docket": {
+    "objective": "Produce a rollback-safe infrastructure migration plan.",
+    "whyNow": "The storage surface is growing and needs a clearer compatibility story before more services land.",
+    "successCriteria": [
+      "Dependencies are mapped",
+      "Rollback exists",
+      "Partial completion is survivable"
+    ],
+    "constraints": [
+      "No destructive cutover in v1",
+      "Shared platform blast radius must stay low"
+    ],
+    "knownFacts": [
+      "Studio Brain is local-first",
+      "State is persisted in Postgres"
+    ],
+    "unknowns": [
+      "Which consumers rely on current schema assumptions"
+    ],
+    "assumptions": [
+      { "statement": "A staged migration is feasible if compatibility rows are preserved.", "evidenceLabel": "inferred" }
+    ],
+    "affectedSystems": ["studio-brain/migrations", "studio-brain/src/stores"],
+    "humanPriorities": ["reversibility", "stability"]
+  }
+}

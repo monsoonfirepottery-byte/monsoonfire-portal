@@ -1,0 +1,28 @@
+{
+  "schema": "planning-council-auditor-rules.v1",
+  "maxRecommendedSeats": 10,
+  "requiredBaselineSeatNames": [
+    "Lead Planner",
+    "Skeptic / Red Team",
+    "Evidence Marshal",
+    "Constraint Guardian",
+    "Human Intent Interpreter",
+    "Synthesizer"
+  ],
+  "criticalStakeholderClasses": [
+    "requester-sponsor",
+    "future-executor",
+    "security-owner",
+    "privacy-data-owner",
+    "compliance-legal-owner",
+    "rollback-recovery-owner"
+  ],
+  "autoAddMissingMandatorySeats": true,
+  "flagRedundantStakeholderSeatCountAbove": 2,
+  "plannerBiasChecks": [
+    "skeptic-present",
+    "evidence-marshal-present",
+    "specialists-not-chosen-only-by-lead-planner",
+    "mandatory-stakeholders-represented"
+  ]
+}

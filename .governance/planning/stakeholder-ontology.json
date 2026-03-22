@@ -1,0 +1,117 @@
+{
+  "schema": "planning-stakeholder-ontology.v1",
+  "stakeholders": [
+    {
+      "stakeholderClass": "requester-sponsor",
+      "protects": ["intent fidelity", "timing", "business outcome"],
+      "concerns": ["goal drift", "why-now mismatch", "misread priorities"],
+      "triggerTouchpoints": ["always"],
+      "omissionRisk": "The plan may solve the wrong problem or optimize for the wrong success signal.",
+      "roleTypes": ["lead-planner", "human-intent-interpreter"]
+    },
+    {
+      "stakeholderClass": "future-executor",
+      "protects": ["implementability", "handoff clarity", "sequence realism"],
+      "concerns": ["missing interfaces", "unclear order of operations", "unowned follow-up"],
+      "triggerTouchpoints": ["always"],
+      "omissionRisk": "The plan may be elegant but not executable without further decision-making.",
+      "roleTypes": ["lead-planner", "constraint-guardian"]
+    },
+    {
+      "stakeholderClass": "system-owner",
+      "protects": ["service boundaries", "ownership", "compatibility"],
+      "concerns": ["cross-module breakage", "unowned dependencies", "source-of-truth drift"],
+      "triggerTouchpoints": ["platform", "infra", "data", "process"],
+      "omissionRisk": "The plan may cut across systems without a legitimate owner or compatibility story.",
+      "roleTypes": ["dependency-reviewer", "platform-reviewer"]
+    },
+    {
+      "stakeholderClass": "operator-maintainer",
+      "protects": ["operability", "steady-state load", "maintenance burden"],
+      "concerns": ["manual toil", "unclear runbooks", "monitoring blind spots"],
+      "triggerTouchpoints": ["operations", "reliability", "platform"],
+      "omissionRisk": "The plan may work once but be expensive or fragile to operate.",
+      "roleTypes": ["operations-reviewer", "reliability-reviewer"]
+    },
+    {
+      "stakeholderClass": "security-owner",
+      "protects": ["trust boundaries", "credential safety", "authz integrity"],
+      "concerns": ["untrusted input", "privilege escalation", "sensitive data exposure"],
+      "triggerTouchpoints": ["security", "auth"],
+      "omissionRisk": "Critical safety or authorization holes may be left outside the plan.",
+      "roleTypes": ["security-reviewer"]
+    },
+    {
+      "stakeholderClass": "privacy-data-owner",
+      "protects": ["data handling", "retention", "least-necessary data use"],
+      "concerns": ["PII spread", "unclear retention", "source/provenance ambiguity"],
+      "triggerTouchpoints": ["privacy", "data"],
+      "omissionRisk": "The plan may create durable data risk or misuse data sources.",
+      "roleTypes": ["privacy-reviewer"]
+    },
+    {
+      "stakeholderClass": "finance-owner",
+      "protects": ["cost exposure", "billing integrity", "budget realism"],
+      "concerns": ["runaway spend", "unbudgeted work", "payments risk"],
+      "triggerTouchpoints": ["payments", "cost"],
+      "omissionRisk": "The plan may be technically sound but fiscally unsafe or underspecified.",
+      "roleTypes": ["cost-scope-reviewer"]
+    },
+    {
+      "stakeholderClass": "compliance-legal-owner",
+      "protects": ["policy fit", "regulatory posture", "approval legitimacy"],
+      "concerns": ["missing approvals", "non-compliant handling", "unclear policy boundary"],
+      "triggerTouchpoints": ["compliance", "privacy", "payments"],
+      "omissionRisk": "A plan can appear ready even though it lacks required policy review.",
+      "roleTypes": ["compliance-reviewer"]
+    },
+    {
+      "stakeholderClass": "support-owner",
+      "protects": ["supportability", "incident load", "communications readiness"],
+      "concerns": ["customer confusion", "missing runbooks", "escalation gaps"],
+      "triggerTouchpoints": ["customer", "support", "operations"],
+      "omissionRisk": "Downstream support burden may be ignored until after rollout.",
+      "roleTypes": ["customer-reviewer", "operations-reviewer"]
+    },
+    {
+      "stakeholderClass": "platform-infrastructure-owner",
+      "protects": ["shared platform health", "resource contention", "deployment safety"],
+      "concerns": ["cross-tenant load", "migration order", "rollback gaps"],
+      "triggerTouchpoints": ["platform", "infra", "reliability"],
+      "omissionRisk": "Shared infrastructure may be destabilized by an otherwise local-looking plan.",
+      "roleTypes": ["platform-reviewer", "reliability-reviewer"]
+    },
+    {
+      "stakeholderClass": "rollback-recovery-owner",
+      "protects": ["reversibility", "partial-failure handling", "recovery speed"],
+      "concerns": ["irreversible rollout", "stuck half-state", "missing recovery drills"],
+      "triggerTouchpoints": ["reliability", "infra", "operations"],
+      "omissionRisk": "The plan may be unable to safely stop or reverse when assumptions fail.",
+      "roleTypes": ["reliability-reviewer", "constraint-guardian"]
+    },
+    {
+      "stakeholderClass": "business-owner",
+      "protects": ["value delivery", "scope realism", "deadline fit"],
+      "concerns": ["low-value complexity", "overbuilt v1", "late tradeoff discovery"],
+      "triggerTouchpoints": ["cost", "customer", "process"],
+      "omissionRisk": "The plan may maximize detail while missing the actual business tradeoff.",
+      "roleTypes": ["cost-scope-reviewer", "human-intent-interpreter"]
+    },
+    {
+      "stakeholderClass": "community-trust-safety-owner",
+      "protects": ["abuse resistance", "user trust", "community impact"],
+      "concerns": ["harm escalation", "moderation blind spots", "unsafe defaults"],
+      "triggerTouchpoints": ["trust-safety", "customer", "security"],
+      "omissionRisk": "The plan may create harm vectors without an explicit owner.",
+      "roleTypes": ["trust-safety-reviewer"]
+    },
+    {
+      "stakeholderClass": "domain-specialist",
+      "protects": ["domain correctness", "local nuance", "terminology accuracy"],
+      "concerns": ["generic plan bias", "invalid assumptions", "shallow examples"],
+      "triggerTouchpoints": ["domain", "novelty"],
+      "omissionRisk": "The plan may be broadly competent but wrong in domain-specific ways.",
+      "roleTypes": ["domain-specialist"]
+    }
+  ]
+}

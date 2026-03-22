@@ -33,18 +33,23 @@ const BOILERPLATE_PATTERNS = [
 ];
 
 const STARTUP_SOURCE_PREFERENCE = [
-  "codex-compaction-promoted",
-  "codex-resumable-session",
+  "codex-continuity-envelope",
   "codex-handoff",
-  "repo-markdown",
-  "codex-history-export",
+  "codex-startup-blocker",
+  "codex-friction-feedback-loop",
   "codex",
   "manual",
-  "context-slice:automation",
-  "context-slice",
-  "codex-compaction-window",
-  "codex-compaction-raw",
 ];
+
+const PROFILE_FAST_LANE_SOURCE_PREFERENCE = [
+  "manual",
+  "codex-handoff",
+  "codex-continuity-envelope",
+  "codex",
+];
+
+const TRUSTED_STARTUP_SATISFIERS = new Set(["studio-brain", "trusted-envelope", "validated-local-continuity"]);
+const STARTUP_BLOCKER_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 const STARTUP_SOURCE_DENYLIST = [
   "memory-pack-mined-memories-unique-runid",
@@ -66,6 +71,10 @@ function normalizeSource(value) {
     .replace(/_/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
+}
+
+function toRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function dedupeStrings(values, limit = 64) {
@@ -91,7 +100,18 @@ export function normalizeThreadCwd(value) {
   return trimmed.replace(/^\\\\\?\\/, "");
 }
 
-export function preferredStartupSources() {
+function normalizeContinuityProfile(profile) {
+  const normalized = clean(profile).toLowerCase();
+  if (normalized === "profile-fast-lane") return "profile-fast-lane";
+  if (normalized === "task-broad") return "task-broad";
+  return "startup-strict";
+}
+
+export function preferredStartupSources(profile = "startup-strict") {
+  const normalized = normalizeContinuityProfile(profile);
+  if (normalized === "profile-fast-lane") {
+    return [...PROFILE_FAST_LANE_SOURCE_PREFERENCE];
+  }
   return [...STARTUP_SOURCE_PREFERENCE];
 }
 
@@ -99,13 +119,14 @@ export function preferredStartupSourceDenylist() {
   return [...STARTUP_SOURCE_DENYLIST];
 }
 
-export function preferredStartupSourcePriority(source) {
+export function preferredStartupSourcePriority(source, profile = "startup-strict") {
+  const preferredSources = preferredStartupSources(profile);
   const normalized = normalizeSource(source);
-  const directIndex = STARTUP_SOURCE_PREFERENCE.indexOf(normalized);
+  const directIndex = preferredSources.indexOf(normalized);
   if (directIndex >= 0) return directIndex;
   if (normalized.startsWith("context-slice:")) {
-    return STARTUP_SOURCE_PREFERENCE.indexOf("context-slice") >= 0
-      ? STARTUP_SOURCE_PREFERENCE.indexOf("context-slice")
+    return preferredSources.indexOf("context-slice") >= 0
+      ? preferredSources.indexOf("context-slice")
       : 99;
   }
   return 99;
@@ -121,7 +142,7 @@ function normalizeBootstrapMode(mode) {
 
 function normalizeBootstrapFailureMode(mode) {
   const normalized = clean(mode).toLowerCase();
-  if (!normalized) return "local-fallback";
+  if (!normalized) return "none";
   if (["none", "disabled", "off", "strict", "hard-fail", "fail", "error"].includes(normalized)) return "none";
   return "local-fallback";
 }
@@ -151,7 +172,7 @@ export function buildStartupContextSearchPayload({ query, strictStartupAllowlist
     sourceDenylist: preferredStartupSourceDenylist(),
   };
   if (strictStartupAllowlist) {
-    payload.sourceAllowlist = preferredStartupSources();
+    payload.sourceAllowlist = preferredStartupSources("startup-strict");
   }
   return payload;
 }
@@ -162,9 +183,15 @@ export function runtimePathsForThread(threadId) {
   return {
     threadId: stableThreadId,
     runtimeDir,
+    sharedToolProfileCachePath: codexHomePath("memory", "runtime", "tool-profile-cache.json"),
+    toolProfileSnapshotPath: resolve(runtimeDir, "tool-profile.json"),
     bootstrapContextJsonPath: resolve(runtimeDir, "bootstrap-context.json"),
     bootstrapContextMarkdownPath: resolve(runtimeDir, "bootstrap-context.md"),
     bootstrapMetadataPath: resolve(runtimeDir, "bootstrap-metadata.json"),
+    continuityEnvelopePath: resolve(runtimeDir, "continuity-envelope.json"),
+    startupBlockerPath: resolve(runtimeDir, "startup-blocker.json"),
+    handoffPath: resolve(runtimeDir, "handoff.json"),
+    writesJsonlPath: resolve(runtimeDir, "writes.jsonl"),
     compactionWatermarkPath: resolve(runtimeDir, "compaction-watermark.json"),
     pendingDir: resolve(runtimeDir, "pending"),
   };
@@ -188,6 +215,255 @@ function normalizeIsoTimestamp(value, fallback = "") {
     if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
   }
   return fallback || new Date().toISOString();
+}
+
+function normalizeArtifactPointers(value) {
+  const record = toRecord(value);
+  return Object.fromEntries(
+    Object.entries(record)
+      .map(([key, entry]) => [clean(key), clean(entry)])
+      .filter(([key, entry]) => key && entry)
+  );
+}
+
+function normalizeSignalRows(value, keyName = "summary", limit = 12) {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const normalized = [];
+  for (const row of rows) {
+    const record = toRecord(row);
+    const primary = clean(record[keyName] || record.summary || record.reason || JSON.stringify(record));
+    if (!primary || seen.has(primary)) continue;
+    seen.add(primary);
+    normalized.push({
+      ...record,
+      [keyName]: clean(record[keyName] || record.summary || primary),
+      ...(record.summary || keyName === "summary" ? { summary: clean(record.summary || primary) } : {}),
+      ...(record.reason ? { reason: clean(record.reason) } : {}),
+    });
+    if (normalized.length >= limit) break;
+  }
+  return normalized;
+}
+
+function normalizeBlockers(value, limit = 12) {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const normalized = [];
+  for (const row of rows) {
+    const record = toRecord(row);
+    const summary = clean(record.summary || record.firstSignal || record.blocker || record.reason);
+    if (!summary || seen.has(summary)) continue;
+    seen.add(summary);
+    normalized.push({
+      summary,
+      ...(clean(record.reason) ? { reason: clean(record.reason) } : {}),
+      ...(clean(record.unblockStep) ? { unblockStep: clean(record.unblockStep) } : {}),
+      ...(clean(record.occurredAt) ? { occurredAt: normalizeIsoTimestamp(record.occurredAt) } : {}),
+      ...(clean(record.source) ? { source: clean(record.source) } : {}),
+    });
+    if (normalized.length >= limit) break;
+  }
+  return normalized;
+}
+
+export function normalizeContinuityState(value, fallback = "missing") {
+  const normalized = clean(value).toLowerCase();
+  if (normalized === "ready") return "ready";
+  if (normalized === "blocked") return "blocked";
+  if (normalized === "missing") return "missing";
+  return fallback;
+}
+
+export function isFreshStartupArtifact(value, maxAgeMs = STARTUP_BLOCKER_MAX_AGE_MS, nowMs = Date.now()) {
+  const parsed = Date.parse(clean(value));
+  if (!Number.isFinite(parsed)) return false;
+  return parsed >= nowMs - Math.max(1000, maxAgeMs);
+}
+
+export function normalizeResumeHints(value, limit = 12) {
+  const hints = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const normalized = [];
+  for (const hint of hints) {
+    if (typeof hint === "string") {
+      const summary = clean(hint);
+      if (!summary || seen.has(summary)) continue;
+      seen.add(summary);
+      normalized.push({ summary });
+    } else if (hint && typeof hint === "object") {
+      const record = toRecord(hint);
+      const summary = clean(record.summary || record.nextStep || record.label || JSON.stringify(record));
+      if (!summary || seen.has(summary)) continue;
+      seen.add(summary);
+      normalized.push({
+        ...record,
+        summary,
+        ...(clean(record.nextStep) ? { nextStep: clean(record.nextStep) } : {}),
+        ...(clean(record.path) ? { path: clean(record.path) } : {}),
+      });
+    }
+    if (normalized.length >= limit) break;
+  }
+  return normalized;
+}
+
+export function normalizeContinuityEnvelope(envelope = {}, { threadId = "", cwd = "", existing = null, now = new Date().toISOString() } = {}) {
+  const source = toRecord(envelope);
+  const prior = toRecord(existing);
+  const continuityState = normalizeContinuityState(
+    source.continuityState || source.startup?.continuityState || prior.continuityState || prior.startup?.continuityState,
+    "missing"
+  );
+  const startupSatisfiedBy = clean(
+    source.startupSatisfiedBy || source.startup?.satisfiedBy || prior.startupSatisfiedBy || prior.startup?.satisfiedBy
+  );
+  return {
+    ...prior,
+    ...source,
+    schema: "codex-continuity-envelope.v1",
+    createdAt: normalizeIsoTimestamp(source.createdAt || prior.createdAt, now),
+    updatedAt: normalizeIsoTimestamp(source.updatedAt || now, now),
+    threadId: clean(source.threadId || prior.threadId || threadId),
+    cwd: normalizeThreadCwd(source.cwd || prior.cwd || cwd),
+    continuityState,
+    startupSatisfiedBy,
+    currentGoal: clean(source.currentGoal || prior.currentGoal),
+    lastHandoffSummary: clean(source.lastHandoffSummary || prior.lastHandoffSummary),
+    blockers: normalizeBlockers(source.blockers ?? prior.blockers),
+    nextRecommendedAction: clean(source.nextRecommendedAction || prior.nextRecommendedAction),
+    bootstrapSummary: clean(source.bootstrapSummary || prior.bootstrapSummary),
+    threadTitle: clean(source.threadTitle || prior.threadTitle),
+    firstUserMessage: clean(source.firstUserMessage || prior.firstUserMessage),
+    query: clean(source.query || prior.query),
+    rolloutPath: clean(source.rolloutPath || prior.rolloutPath),
+    trustedSources: dedupeStrings([...(Array.isArray(prior.trustedSources) ? prior.trustedSources : []), ...(Array.isArray(source.trustedSources) ? source.trustedSources : [])], 12),
+    frustrationSignals: normalizeSignalRows(source.frustrationSignals ?? prior.frustrationSignals, "summary"),
+    ratholeSignals: normalizeSignalRows(source.ratholeSignals ?? prior.ratholeSignals, "summary"),
+    artifactPointers: normalizeArtifactPointers(source.artifactPointers || prior.artifactPointers),
+    startup: {
+      ...toRecord(prior.startup),
+      ...toRecord(source.startup),
+      satisfiedBy: startupSatisfiedBy,
+      continuityState,
+      continuityAvailable: continuityState === "ready",
+      remoteError: clean(source.startup?.remoteError || source.remoteError || prior.startup?.remoteError),
+    },
+    git: Object.keys(toRecord(source.git)).length > 0 ? toRecord(source.git) : toRecord(prior.git),
+  };
+}
+
+export function normalizeStartupBlocker(blocker = {}, { threadId = "", cwd = "", existing = null, now = new Date().toISOString() } = {}) {
+  const source = toRecord(blocker);
+  const prior = toRecord(existing);
+  const status = clean(source.status || prior.status).toLowerCase() === "blocked" ? "blocked" : "clear";
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(source, key);
+  return {
+    ...prior,
+    ...source,
+    schema: "codex-startup-blocker.v1",
+    createdAt: normalizeIsoTimestamp(source.createdAt || prior.createdAt, now),
+    threadId: clean(source.threadId || prior.threadId || threadId),
+    cwd: normalizeThreadCwd(source.cwd || prior.cwd || cwd),
+    status,
+    failureClass: hasOwn("failureClass") ? clean(source.failureClass) : clean(prior.failureClass),
+    query: hasOwn("query") ? clean(source.query) : clean(prior.query),
+    queryFingerprint: hasOwn("queryFingerprint") ? clean(source.queryFingerprint) : clean(prior.queryFingerprint),
+    firstSignal: hasOwn("firstSignal") ? clean(source.firstSignal) : clean(prior.firstSignal),
+    remoteError: hasOwn("remoteError") ? clean(source.remoteError) : clean(prior.remoteError),
+    unblockStep: hasOwn("unblockStep") ? clean(source.unblockStep) : clean(prior.unblockStep),
+    localDiagnosticsAvailable:
+      source.localDiagnosticsAvailable === undefined
+        ? Boolean(prior.localDiagnosticsAvailable)
+        : Boolean(source.localDiagnosticsAvailable),
+    blockers: normalizeBlockers(source.blockers ?? prior.blockers),
+    git: Object.keys(toRecord(source.git)).length > 0 ? toRecord(source.git) : toRecord(prior.git),
+  };
+}
+
+export function normalizeHandoffArtifact(handoff = {}, { threadId = "", existing = null, now = new Date().toISOString() } = {}) {
+  const source = toRecord(handoff);
+  const prior = toRecord(existing);
+  const summary = clean(source.summary || prior.summary || source.workCompleted || prior.workCompleted);
+  return {
+    ...prior,
+    ...source,
+    schema: "codex-handoff.v1",
+    createdAt: normalizeIsoTimestamp(source.createdAt || prior.createdAt, now),
+    threadId: clean(source.threadId || prior.threadId || threadId),
+    runId: clean(source.runId || prior.runId),
+    agentId: clean(source.agentId || prior.agentId),
+    startupProvenance: {
+      ...toRecord(prior.startupProvenance),
+      ...toRecord(source.startupProvenance),
+    },
+    completionStatus: clean(source.completionStatus || prior.completionStatus || "complete"),
+    activeGoal: clean(source.activeGoal || prior.activeGoal),
+    summary,
+    workCompleted: clean(source.workCompleted || prior.workCompleted || summary),
+    blockers: normalizeBlockers(source.blockers ?? prior.blockers),
+    nextRecommendedAction: clean(source.nextRecommendedAction || prior.nextRecommendedAction),
+    artifactPointers: normalizeArtifactPointers(source.artifactPointers || prior.artifactPointers),
+    parentRunId: clean(source.parentRunId || prior.parentRunId),
+    handoffOwner: clean(source.handoffOwner || prior.handoffOwner),
+    sourceShellId: clean(source.sourceShellId || prior.sourceShellId),
+    targetShellId: clean(source.targetShellId || prior.targetShellId),
+    resumeHints: normalizeResumeHints(source.resumeHints ?? prior.resumeHints),
+  };
+}
+
+export function resolveBootstrapContinuityState({
+  remoteContextAvailable = false,
+  startupBlocker = null,
+  continuityEnvelope = null,
+  handoff = null,
+  query = "",
+  nowMs = Date.now(),
+} = {}) {
+  const blocker = normalizeStartupBlocker(startupBlocker);
+  const envelope = normalizeContinuityEnvelope(continuityEnvelope);
+  const handoffArtifact = normalizeHandoffArtifact(handoff);
+  const supplementalHandoffSummary = clean(
+    envelope.lastHandoffSummary || handoffArtifact.summary || handoffArtifact.workCompleted || handoffArtifact.activeGoal
+  );
+  const matchingBlocker =
+    blocker.status === "blocked"
+    && blocker.queryFingerprint
+    && blocker.queryFingerprint === stableHash(clean(query), 24)
+    && isFreshStartupArtifact(blocker.createdAt, STARTUP_BLOCKER_MAX_AGE_MS, nowMs);
+  if (remoteContextAvailable) {
+    return {
+      continuityState: "ready",
+      blockerActive: false,
+      source: "remote",
+      supplementalHandoffSummary,
+    };
+  }
+  if (matchingBlocker) {
+    return {
+      continuityState: "blocked",
+      blockerActive: true,
+      source: "startup-blocker",
+      supplementalHandoffSummary,
+    };
+  }
+  const priorReady =
+    normalizeContinuityState(envelope.continuityState || envelope.startup?.continuityState) === "ready"
+    || Boolean(supplementalHandoffSummary);
+  if (priorReady) {
+    return {
+      continuityState: "ready",
+      blockerActive: false,
+      source: "validated-local-continuity",
+      supplementalHandoffSummary,
+    };
+  }
+  return {
+    continuityState: "missing",
+    blockerActive: false,
+    source: "missing",
+    supplementalHandoffSummary,
+  };
 }
 
 function boolEnv(value, fallback = false) {
@@ -296,12 +572,20 @@ export function readThreadHistoryLines(threadId, { limit = 5, historyPath = code
 }
 
 export function buildThreadBootstrapQuery({ threadInfo = null, threadName = "", historyLines = [] } = {}) {
-  const cwdBase = basename(normalizeThreadCwd(threadInfo?.cwd || process.cwd())) || "workspace";
+  const normalizedCwd = normalizeThreadCwd(threadInfo?.cwd || process.cwd());
+  const cwdBase = basename(normalizedCwd) || "workspace";
+  const homeBase = basename(normalizeThreadCwd(homedir()));
+  const includeCwdSeed =
+    normalizedCwd &&
+    cwdBase &&
+    cwdBase.toLowerCase() !== homeBase.toLowerCase() &&
+    !["users", "home", "micah"].includes(cwdBase.toLowerCase());
   const queryParts = dedupeStrings([
     clean(threadName),
     clean(threadInfo?.title),
     clean(threadInfo?.firstUserMessage),
-    cwdBase,
+    clean(threadInfo?.threadId),
+    includeCwdSeed ? cwdBase : "",
     ...historyLines,
   ]);
   return queryParts.join(" ").slice(0, 4096);
@@ -927,6 +1211,47 @@ export function writeBootstrapArtifacts({ threadId, contextPayload, metadata } =
   return paths;
 }
 
+export function writeContinuityEnvelope(threadId, envelope = {}) {
+  const paths = runtimePathsForThread(threadId);
+  ensureRuntimeDir(paths.runtimeDir);
+  writeJson(
+    paths.continuityEnvelopePath,
+    normalizeContinuityEnvelope(envelope, {
+      threadId,
+      cwd: envelope?.cwd,
+      existing: readJson(paths.continuityEnvelopePath, null),
+    })
+  );
+  return paths.continuityEnvelopePath;
+}
+
+export function writeStartupBlocker(threadId, blocker = {}) {
+  const paths = runtimePathsForThread(threadId);
+  ensureRuntimeDir(paths.runtimeDir);
+  writeJson(
+    paths.startupBlockerPath,
+    normalizeStartupBlocker(blocker, {
+      threadId,
+      cwd: blocker?.cwd,
+      existing: readJson(paths.startupBlockerPath, null),
+    })
+  );
+  return paths.startupBlockerPath;
+}
+
+export function writeHandoffArtifact(threadId, handoff = {}) {
+  const paths = runtimePathsForThread(threadId);
+  ensureRuntimeDir(paths.runtimeDir);
+  writeJson(
+    paths.handoffPath,
+    normalizeHandoffArtifact(handoff, {
+      threadId,
+      existing: readJson(paths.handoffPath, null),
+    })
+  );
+  return paths.handoffPath;
+}
+
 function rowMetadata(row) {
   return row && typeof row.metadata === "object" && row.metadata ? row.metadata : {};
 }
@@ -948,14 +1273,40 @@ function rowScopeMatchesThread(row, threadInfo) {
   return Boolean((currentThreadId && rowThreadId === currentThreadId) || (currentCwd && rowCwd === currentCwd));
 }
 
-function rowSourcePenalty(row, threadInfo) {
+function rowSourcePenalty(row, threadInfo, profile = "startup-strict") {
+  const normalizedProfile = normalizeContinuityProfile(profile);
+  const metadata = rowMetadata(row);
   const source = normalizeSource(row?.source || row?.metadata?.source || "");
+  const startupEligible = metadata.startupEligible === true;
+  const personalProfile = clean(metadata.profileClass);
+  if (normalizedProfile === "task-broad") {
+    if (source === "manual") return 0.01;
+    if (source === "codex-handoff") return 0.02;
+    if (source === "codex-continuity-envelope") return 0.03;
+    if (source === "codex") return 0.035;
+    if (source === "repo-markdown") return 0.04;
+    if (source === "codex-resumable-session") return 0.08;
+    return 0.06 + Math.min(0.18, preferredStartupSourcePriority(source, normalizedProfile) / 100);
+  }
+  if (normalizedProfile === "profile-fast-lane") {
+    if (source === "manual") return personalProfile ? 0 : 0.01;
+    if (source === "codex-handoff") return 0.02;
+    if (source === "codex-continuity-envelope") return 0.025;
+    if (source === "codex") return 0.04;
+    if (source === "codex-resumable-session") return startupEligible ? 0.08 : 0.22;
+    if (source === "repo-markdown") return 0.2;
+    return 0.08 + Math.min(0.28, preferredStartupSourcePriority(source, normalizedProfile) / 100);
+  }
+  if (source === "codex-continuity-envelope") return 0.01;
   if (source === "codex-compaction-promoted") return 0;
-  if (source === "codex-resumable-session") return 0.02;
-  if (source === "codex-handoff") return 0.03;
-  if (source === "repo-markdown") return 0.05;
+  if (source === "codex-handoff") return 0.015;
+  if (source === "codex-startup-blocker") return 0.02;
+  if (source === "codex-friction-feedback-loop") return 0.025;
+  if (source === "manual") return startupEligible || personalProfile ? 0.03 : 0.06;
+  if (source === "codex") return startupEligible ? 0.035 : 0.06;
+  if (source === "codex-resumable-session") return startupEligible ? 0.07 : 0.34;
+  if (source === "repo-markdown") return 0.14;
   if (source === "codex-history-export") return rowScopeMatchesThread(row, threadInfo) ? 0.06 : 0.1;
-  if (source === "codex" || source === "manual") return 0.05;
   if (source.startsWith("context-slice:")) return 0.07;
   if (source === "codex-compaction-window") {
     return rowScopeMatchesThread(row, threadInfo) ? 0.1 : 0.2;
@@ -963,19 +1314,38 @@ function rowSourcePenalty(row, threadInfo) {
   if (source === "codex-compaction-raw") {
     return rowScopeMatchesThread(row, threadInfo) ? 0.16 : 0.35;
   }
-  return 0.12 + Math.min(0.25, preferredStartupSourcePriority(source) / 100);
+  return 0.12 + Math.min(0.25, preferredStartupSourcePriority(source, normalizedProfile) / 100);
 }
 
-export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = true } = {}) {
+export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = true, profile = "startup-strict" } = {}) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
+  const normalizedProfile = normalizeContinuityProfile(profile);
   return rows
     .map((row, index) => {
+      const metadata = rowMetadata(row);
       const baseScore = Number(row?.score);
       const normalizedBaseScore = Number.isFinite(baseScore) ? baseScore : 0.45;
-      const penalty = rowSourcePenalty(row, threadInfo);
-      const scopeBoost = rowScopeMatchesThread(row, threadInfo) ? 0.12 : 0;
-      const priorityBoost = Math.max(0, 0.1 - preferredStartupSourcePriority(row?.source) * 0.01);
-      const rankScore = normalizedBaseScore + scopeBoost + priorityBoost - penalty;
+      const penalty = rowSourcePenalty(row, threadInfo, normalizedProfile);
+      const scopeBoost =
+        normalizedProfile === "task-broad"
+          ? rowScopeMatchesThread(row, threadInfo)
+            ? 0.04
+            : 0
+          : rowScopeMatchesThread(row, threadInfo)
+            ? 0.12
+            : 0;
+      const profileBoost =
+        normalizedProfile === "profile-fast-lane" &&
+        clean(metadata.scopeClass).toLowerCase() === "personal"
+          ? 0.12
+          : 0;
+      const startupBoost =
+        normalizedProfile !== "task-broad" && metadata.startupEligible === true ? 0.06 : 0;
+      const priorityBoost =
+        normalizedProfile === "task-broad"
+          ? 0
+          : Math.max(0, 0.1 - preferredStartupSourcePriority(row?.source, normalizedProfile) * 0.01);
+      const rankScore = normalizedBaseScore + scopeBoost + profileBoost + startupBoost + priorityBoost - penalty;
       return {
         row,
         index,
@@ -1005,10 +1375,27 @@ export function filterExpiredRows(rows, nowMs = Date.now()) {
 
 export function loadBootstrapArtifacts(threadId) {
   const paths = runtimePathsForThread(threadId);
+  const continuityEnvelope = normalizeContinuityEnvelope(readJson(paths.continuityEnvelopePath, null), {
+    threadId,
+    existing: null,
+  });
+  const startupBlocker = normalizeStartupBlocker(readJson(paths.startupBlockerPath, null), {
+    threadId,
+    cwd: continuityEnvelope.cwd,
+    existing: null,
+  });
+  const handoff = normalizeHandoffArtifact(readJson(paths.handoffPath, null), {
+    threadId,
+    existing: null,
+  });
   return {
     paths,
+    toolProfile: readJson(paths.toolProfileSnapshotPath, readJson(paths.sharedToolProfileCachePath, null)),
     context: readJson(paths.bootstrapContextJsonPath, null),
     metadata: readJson(paths.bootstrapMetadataPath, null),
+    continuityEnvelope,
+    startupBlocker,
+    handoff,
   };
 }
 
@@ -1054,7 +1441,7 @@ export function compactionSettingsFromEnv(env = process.env) {
   return {
     bootstrapMode: clean(env.STUDIO_BRAIN_BOOTSTRAP_MODE || "hard") || "hard",
     bootstrapTimeoutMs: intEnv(env.STUDIO_BRAIN_BOOTSTRAP_TIMEOUT_MS, 8000, { min: 500, max: 60000 }),
-    bootstrapFailureMode: clean(env.STUDIO_BRAIN_BOOTSTRAP_FAILURE_MODE || "local-fallback") || "local-fallback",
+    bootstrapFailureMode: clean(env.STUDIO_BRAIN_BOOTSTRAP_FAILURE_MODE || "none") || "none",
     compactionBefore: intEnv(env.STUDIO_BRAIN_COMPACTION_WINDOW_BEFORE, DEFAULT_COMPACTION_WINDOW_BEFORE, { min: 1, max: 200 }),
     compactionAfter: intEnv(env.STUDIO_BRAIN_COMPACTION_WINDOW_AFTER, DEFAULT_COMPACTION_WINDOW_AFTER, { min: 1, max: 100 }),
     captureToolOutput: clean(env.STUDIO_BRAIN_COMPACTION_CAPTURE_TOOL_OUTPUT || "all") || "all",
@@ -1098,7 +1485,12 @@ export function describeBootstrapMetadata(metadata) {
   return {
     threadId,
     startupGateSatisfiedBy: satisfiedBy,
+    continuityState: TRUSTED_STARTUP_SATISFIERS.has(satisfiedBy) ? "ready" : satisfiedBy === "blocked" ? "blocked" : "missing",
     query,
     itemCount: Number(metadata?.itemCount ?? 0) || 0,
   };
+}
+
+export function isTrustedStartupSatisfier(value) {
+  return TRUSTED_STARTUP_SATISFIERS.has(clean(value));
 }

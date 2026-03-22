@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/contracts/planning.schema.json",
+  "title": "Planning Council Contracts",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "planningDocket": { "$ref": "#/$defs/PlanningDocket" },
+    "planFingerprint": { "$ref": "#/$defs/PlanFingerprint" },
+    "stakeholderInference": { "$ref": "#/$defs/StakeholderInference" },
+    "roleSource": { "$ref": "#/$defs/RoleSource" },
+    "roleCandidate": { "$ref": "#/$defs/RoleCandidate" },
+    "roleManifest": { "$ref": "#/$defs/RoleManifest" },
+    "councilSeat": { "$ref": "#/$defs/CouncilSeat" },
+    "reviewItem": { "$ref": "#/$defs/ReviewItem" },
+    "objectionLedgerEntry": { "$ref": "#/$defs/ObjectionLedgerEntry" },
+    "synthesizedPlan": { "$ref": "#/$defs/SynthesizedPlan" },
+    "humanArbitrationPacket": { "$ref": "#/$defs/HumanArbitrationPacket" }
+  },
+  "$defs": {
+    "isoDateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 },
+      "maxItems": 128
+    },
+    "evidenceLabel": {
+      "type": "string",
+      "enum": ["verified", "inferred", "speculative", "unknown", "requires_human_confirmation"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "evidenceTaggedAssumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "evidenceLabel"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "evidenceLabel": { "$ref": "#/$defs/evidenceLabel" }
+      }
+    },
+    "roleScores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structuralQualityScore", "governanceQualityScore", "swarmUsabilityScore"],
+      "properties": {
+        "structuralQualityScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "governanceQualityScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "swarmUsabilityScore": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "PlanningDocket": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["docketId", "createdAt", "sourceType", "objective", "requestedBy", "tenantId", "constraints"],
+      "properties": {
+        "docketId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "$ref": "#/$defs/isoDateTime" },
+        "sourceType": { "type": "string", "enum": ["raw-request", "draft-plan", "planning-brief"] },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "whyNow": { "type": "string", "maxLength": 4000 },
+        "successCriteria": { "$ref": "#/$defs/stringList" },
+        "constraints": { "$ref": "#/$defs/stringList" },
+        "knownFacts": { "$ref": "#/$defs/stringList" },
+        "unknowns": { "$ref": "#/$defs/stringList" },
+        "assumptions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceTaggedAssumption" },
+          "maxItems": 128
+        },
+        "budgetTimeSensitivity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "reversibility": { "type": "string", "enum": ["reversible", "partially_reversible", "hard_to_reverse"] },
+        "domain": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "affectedSystems": { "$ref": "#/$defs/stringList" },
+        "humanPriorities": { "$ref": "#/$defs/stringList" },
+        "requestedDeadline": { "$ref": "#/$defs/isoDateTime" },
+        "initialEvidence": { "$ref": "#/$defs/stringList" },
+        "requestedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "tenantId": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "PlanFingerprint": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["fingerprintId", "docketId", "createdAt", "planType", "domain", "stakes", "reversibility", "touchpoints", "failureSurfaces"],
+      "properties": {
+        "fingerprintId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "docketId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "$ref": "#/$defs/isoDateTime" },
+        "planType": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "domain": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "stakes": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "reversibility": { "type": "string", "enum": ["reversible", "partially_reversible", "hard_to_reverse"] },
+        "ambiguityLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "noveltyLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "touchpoints": { "$ref": "#/$defs/stringList" },
+        "affectedSystems": { "$ref": "#/$defs/stringList" },
+        "dependencies": { "$ref": "#/$defs/stringList" },
+        "failureSurfaces": { "$ref": "#/$defs/stringList" },
+        "humanApprovalsLikelyRequired": { "$ref": "#/$defs/stringList" },
+        "evidenceDepthRequired": { "type": "string", "enum": ["light", "moderate", "deep"] }
+      }
+    },
+    "StakeholderInference": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["inferenceId", "docketId", "fingerprintId", "stakeholderClass", "relevanceReason", "triggerBasis", "omissionRisk", "confidenceScore", "mandatoryOrConditional"],
+      "properties": {
+        "inferenceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "docketId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fingerprintId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "stakeholderClass": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "relevanceReason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "triggerBasis": { "$ref": "#/$defs/stringList" },
+        "omissionRisk": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "confidenceScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "mandatoryOrConditional": { "type": "string", "enum": ["mandatory", "conditional"] }
+      }
+    },
+    "RoleSource": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["sourceId", "name", "kind", "status", "provenance"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "status": { "type": "string", "enum": ["allowlisted", "reference", "blocked"] },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repoUrl": { "type": "string", "minLength": 1, "maxLength": 1024 },
+            "ref": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        }
+      }
+    },
+    "RoleCandidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["candidateId", "snapshotId", "sourceId", "roleName", "purpose", "status", "stakeholderLenses", "domainTags", "provenance"],
+      "properties": {
+        "candidateId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "snapshotId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "roleName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "stakeholderLenses": { "$ref": "#/$defs/stringList" },
+        "domainTags": { "$ref": "#/$defs/stringList" },
+        "status": { "type": "string", "enum": ["candidate", "reference", "curated"] },
+        "provenance": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "RoleManifest": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["roleId", "roleName", "purpose", "goal", "instructions", "tools", "memoryAccess", "collaborationBehavior", "stakeholderLenses", "activationTriggers", "abstentionConditions", "objectionClasses", "evidenceStandards", "provenance"],
+      "properties": {
+        "roleId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "roleName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "goal": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "instructions": { "$ref": "#/$defs/stringList" },
+        "tools": { "$ref": "#/$defs/stringList" },
+        "memoryAccess": { "type": "object", "additionalProperties": true },
+        "collaborationBehavior": { "type": "object", "additionalProperties": true },
+        "stakeholderLenses": { "$ref": "#/$defs/stringList" },
+        "activationTriggers": { "$ref": "#/$defs/stringList" },
+        "abstentionConditions": { "$ref": "#/$defs/stringList" },
+        "objectionClasses": { "$ref": "#/$defs/stringList" },
+        "evidenceStandards": { "$ref": "#/$defs/stringList" },
+        "provenance": { "type": "object", "additionalProperties": true },
+        "structuralQualityScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "governanceQualityScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "swarmUsabilityScore": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "CouncilSeat": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["seatId", "councilId", "seatName", "stakeholderRepresented", "selectedRoleId", "selectionRationale", "triggerBasis", "confidenceScore", "mandatoryOrConditional"],
+      "properties": {
+        "seatId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "councilId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "seatName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "stakeholderRepresented": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "selectedRoleId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "selectionRationale": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "triggerBasis": { "$ref": "#/$defs/stringList" },
+        "confidenceScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "mandatoryOrConditional": { "type": "string", "enum": ["mandatory", "conditional"] },
+        "overlapNotes": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "ReviewItem": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["itemId", "councilId", "roundId", "seatId", "seat", "stakeholderRepresented", "type", "severity", "statement", "rationale", "affectedPlanSection", "requiredAction", "confidenceScore"],
+      "properties": {
+        "itemId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "councilId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "roundId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "seatId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "seat": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "stakeholderRepresented": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": {
+          "type": "string",
+          "enum": ["objection", "required_revision", "risk_note", "evidence_gap", "alternative_proposal", "approval_with_conditions"]
+        },
+        "severity": { "$ref": "#/$defs/severity" },
+        "statement": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "sourceBasis": { "$ref": "#/$defs/stringList" },
+        "affectedPlanSection": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "requiredAction": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "confidenceScore": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "ObjectionLedgerEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ledgerId", "itemId", "councilId", "resolutionState", "resolutionRationale"],
+      "properties": {
+        "ledgerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "itemId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "councilId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "resolutionState": { "type": "string", "enum": ["adopted", "rejected", "deferred", "requires_human_decision"] },
+        "resolutionRationale": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
+    "SynthesizedPlan": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["planId", "councilId", "docketId", "version", "recommendedPlan", "validationGates", "failureModes", "rollbackRecovery", "requiredHumanDecisions", "openQuestions", "dissent"],
+      "properties": {
+        "planId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "councilId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "docketId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "integer", "minimum": 1 },
+        "recommendedPlan": { "type": "object", "additionalProperties": true },
+        "validationGates": { "$ref": "#/$defs/stringList" },
+        "failureModes": { "$ref": "#/$defs/stringList" },
+        "rollbackRecovery": { "$ref": "#/$defs/stringList" },
+        "requiredHumanDecisions": { "$ref": "#/$defs/stringList" },
+        "openQuestions": { "$ref": "#/$defs/stringList" },
+        "dissent": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "HumanArbitrationPacket": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["packetId", "createdAt", "status", "docketId", "councilId", "synthesizedPlanId", "objective", "constraints", "stakeholdersSelected", "councilSeatsSelected", "recommendedPlan", "validationGates", "failureModes", "rollbackRecovery", "requiredHumanDecisions", "confidenceAssessment", "dissent"],
+      "properties": {
+        "packetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "$ref": "#/$defs/isoDateTime" },
+        "status": { "type": "string", "enum": ["draft", "under_review", "ready_for_human", "superseded", "archived"] },
+        "docketId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "councilId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "synthesizedPlanId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "whyNow": { "type": "string", "maxLength": 4000 },
+        "successCriteria": { "$ref": "#/$defs/stringList" },
+        "constraints": { "$ref": "#/$defs/stringList" },
+        "knownFacts": { "$ref": "#/$defs/stringList" },
+        "assumptionsAndUnknowns": { "type": "object", "additionalProperties": true },
+        "stakeholdersSelected": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/StakeholderInference" },
+          "maxItems": 128
+        },
+        "councilSeatsSelected": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CouncilSeat" },
+          "maxItems": 64
+        },
+        "optionsConsidered": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "maxItems": 16 },
+        "recommendedPlan": { "type": "object", "additionalProperties": true },
+        "orderedExecutionSequence": { "$ref": "#/$defs/stringList" },
+        "validationGates": { "$ref": "#/$defs/stringList" },
+        "failureModes": { "$ref": "#/$defs/stringList" },
+        "rollbackRecovery": { "$ref": "#/$defs/stringList" },
+        "requiredHumanDecisions": { "$ref": "#/$defs/stringList" },
+        "openQuestions": { "$ref": "#/$defs/stringList" },
+        "confidenceAssessment": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["label", "requiresHumanDecisionCount", "speculativeAssumptions", "rationale"],
+          "properties": {
+            "label": { "type": "string", "enum": ["high", "moderate", "guarded"] },
+            "requiresHumanDecisionCount": { "type": "integer", "minimum": 0 },
+            "speculativeAssumptions": { "type": "integer", "minimum": 0 },
+            "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 }
+          }
+        },
+        "dissent": { "$ref": "#/$defs/stringList" },
+        "rationaleForOmittedStakeholdersOrSeats": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

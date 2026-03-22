@@ -6,6 +6,7 @@ import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { buildFirebaseCliInvocation, prependPathEntries } from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -93,15 +94,16 @@ function main() {
   const { javaHome } = ensureJavaRuntime();
   const rulesTests = resolveRulesTestFiles();
   const testCommand = `node --test ${rulesTests.join(" ")}`;
-  const javaEnv = {
+  const javaEnv = prependPathEntries([resolve(javaHome, "bin")], {
     ...process.env,
     JAVA_HOME: javaHome,
-    PATH: `${resolve(javaHome, "bin")}:${String(process.env.PATH || "")}`,
-  };
+  });
+  const firebaseCli = buildFirebaseCliInvocation(repoRoot, { env: javaEnv });
 
   const result = spawnSync(
-    "firebase",
+    firebaseCli.command,
     [
+      ...firebaseCli.args,
       "emulators:exec",
       "--config",
       options.config,

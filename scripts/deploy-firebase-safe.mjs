@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildFirebaseCliInvocation, resolvePlatformCommand } from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,10 +18,11 @@ const DEFAULT_TARGET = "functions-hosting";
 const DEFAULT_WAVE_SIZE = 3;
 const DEFAULT_COOLDOWN_SECONDS = 75;
 const DEFAULT_QUOTA_RETRIES = 1;
+const CHILD_PROCESS_MAX_BUFFER = 1024 * 1024 * 24;
 
 const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
 const FIREBASE_API_KEY_REGEX = /^AIza[0-9A-Za-z_-]{20,}$/;
-const FIREBASE_COMPILED_KEY_REGEX = /AIza[0-9A-Za-z_-]{20,}/;
+const FIREBASE_EMBEDDED_KEY_REGEX = /VITE_FIREBASE_API_KEY["']?\s*:\s*["']AIza[0-9A-Za-z_-]{20,}["']/;
 const FIREBASE_MISSING_KEY_TOKEN = "MISSING_VITE_FIREBASE_API_KEY";
 
 const QUOTA_SENSITIVE_FUNCTIONS = new Set([
@@ -168,6 +170,110 @@ function parseFunctions(raw) {
   return out;
 }
 
+function parseExportSpecifiers(specifiers) {
+  return specifiers
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.replace(/\s+/g, " "))
+    .map((entry) => {
+      const aliasMatch = entry.match(/^([A-Za-z0-9_$]+)\s+as\s+([A-Za-z0-9_$]+)$/);
+      if (aliasMatch) return aliasMatch[2];
+      const nameMatch = entry.match(/^([A-Za-z0-9_$]+)/);
+      return nameMatch?.[1] ?? null;
+    })
+    .filter((entry) => typeof entry === "string" && entry.length > 0);
+}
+
+function collectLocalFunctionExportNames(indexSource) {
+  const source =
+    typeof indexSource === "string"
+      ? indexSource
+      : readFileSync(resolve(repoRoot, "functions", "src", "index.ts"), "utf8");
+  const exports = new Set();
+
+  for (const match of source.matchAll(/export const\s+([A-Za-z0-9_$]+)\s*=/g)) {
+    exports.add(match[1]);
+  }
+
+  for (const match of source.matchAll(/export\s*\{([\s\S]*?)\}\s*(?:from\s*["'][^"']+["'])?;/g)) {
+    for (const name of parseExportSpecifiers(match[1])) {
+      exports.add(name);
+    }
+  }
+
+  return Array.from(exports).sort((left, right) => left.localeCompare(right));
+}
+
+function parseRemoteFunctionIds(payload) {
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.result)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      payload.result
+        .map((entry) => String(entry?.id || entry?.entryPoint || "").trim())
+        .filter(Boolean)
+    )
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+function fetchRemoteFunctionIds({ project, env = process.env, cwd = repoRoot }) {
+  const firebaseCli = buildFirebaseCliInvocation(repoRoot, { env });
+  const result = runCapture(
+    firebaseCli.command,
+    [...firebaseCli.args, "functions:list", "--project", project, "--json"],
+    { env, cwd }
+  );
+  const stdout = String(result.stdout || "").trim();
+  const stderr = String(result.stderr || "").trim();
+  const payload = parseJsonObjectFromMixedOutput(stdout);
+  const ids = parseRemoteFunctionIds(payload);
+
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      status: result.status ?? 1,
+      stdout,
+      stderr,
+      message: result.error?.message || "firebase functions:list failed",
+      ids: [],
+    };
+  }
+
+  if (ids.length === 0) {
+    return {
+      ok: false,
+      status: 1,
+      stdout,
+      stderr,
+      message: "firebase functions:list returned no function inventory",
+      ids: [],
+    };
+  }
+
+  return {
+    ok: true,
+    status: 0,
+    stdout,
+    stderr,
+    ids,
+  };
+}
+
+function compareFunctionInventory(localIds, remoteIds) {
+  const localSet = new Set(localIds);
+  const remoteSet = new Set(remoteIds);
+  const remoteOnly = remoteIds.filter((id) => !localSet.has(id));
+  const localOnly = localIds.filter((id) => !remoteSet.has(id));
+  return {
+    remoteOnly,
+    localOnly,
+    ok: remoteOnly.length === 0,
+  };
+}
+
 function chunk(items, size) {
   const out = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -241,10 +347,11 @@ function detectFirebaseApiKeyFailureSignature(output) {
 }
 
 function runCapture(command, args, options = {}) {
-  return spawnSync(command, args, {
+  return spawnSync(resolvePlatformCommand(command), args, {
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
     encoding: "utf8",
+    maxBuffer: CHILD_PROCESS_MAX_BUFFER,
     env: options.env || process.env,
     cwd: options.cwd || repoRoot,
   });
@@ -290,11 +397,15 @@ function resolveFirebaseWebApiKey({ project, env = process.env, cwd = repoRoot }
     };
   }
 
-  const sdkConfig = runCapture(
-    "npx",
-    ["firebase-tools", "apps:sdkconfig", "web", FIREBASE_WEB_APP_ID, "--project", project],
-    { env, cwd }
-  );
+  const firebaseCli = buildFirebaseCliInvocation(repoRoot, { env });
+  const sdkConfig = runCapture(firebaseCli.command, [
+    ...firebaseCli.args,
+    "apps:sdkconfig",
+    "web",
+    FIREBASE_WEB_APP_ID,
+    "--project",
+    project,
+  ], { env, cwd });
   const payload = parseJsonObjectFromMixedOutput(sdkConfig.stdout);
   const sdkKey = String(payload?.apiKey || "").trim();
   if (sdkConfig.status === 0 && looksLikeFirebaseApiKey(sdkKey)) {
@@ -362,7 +473,7 @@ function inspectFirebaseBuildArtifacts(jsAssets) {
     if (content.includes(FIREBASE_MISSING_KEY_TOKEN)) {
       placeholderTokenFiles.push(path);
     }
-    if (FIREBASE_COMPILED_KEY_REGEX.test(content)) {
+    if (FIREBASE_EMBEDDED_KEY_REGEX.test(content)) {
       compiledApiKeyFiles.push(path);
     }
   }
@@ -376,8 +487,8 @@ function inspectFirebaseBuildArtifacts(jsAssets) {
           : "firebase_api_key_not_embedded",
       message:
         placeholderTokenFiles.length > 0
-          ? `Build output contains ${FIREBASE_MISSING_KEY_TOKEN} without a compiled Firebase API key value.`
-          : "Build output does not contain a compiled Firebase API key value.",
+          ? `Build output contains ${FIREBASE_MISSING_KEY_TOKEN} without an embedded VITE_FIREBASE_API_KEY value.`
+          : "Build output does not contain a compiled VITE_FIREBASE_API_KEY value.",
       placeholderTokenFiles,
       compiledApiKeyFiles,
     };
@@ -385,9 +496,9 @@ function inspectFirebaseBuildArtifacts(jsAssets) {
 
   if (placeholderTokenFiles.length > 0) {
     return {
-      ok: false,
-      code: "firebase_api_key_placeholder_token_detected",
-      message: `Build output still contains ${FIREBASE_MISSING_KEY_TOKEN}.`,
+      ok: true,
+      code: "firebase_api_key_embedded_with_fallback_token",
+      message: `Build output embeds a Firebase API key; ${FIREBASE_MISSING_KEY_TOKEN} is present as a fallback literal.`,
       placeholderTokenFiles,
       compiledApiKeyFiles,
     };
@@ -460,12 +571,15 @@ function runHostingBuildGuard({ env }) {
 }
 
 function runFirebaseDeploy({ project, only, nonInteractive, env }) {
-  const args = ["firebase-tools", "deploy", "--project", project];
+  const firebaseCli = buildFirebaseCliInvocation(repoRoot, { env });
+  const args = [...firebaseCli.args, "deploy", "--project", project];
   if (only) args.push("--only", only);
   if (nonInteractive) args.push("--non-interactive");
-  return spawnSync("npx", args, {
+  return spawnSync(firebaseCli.command, args, {
     encoding: "utf8",
     stdio: "pipe",
+    shell: false,
+    maxBuffer: CHILD_PROCESS_MAX_BUFFER,
     env: env || process.env,
     cwd: repoRoot,
   });
@@ -551,6 +665,7 @@ async function main() {
 
   const deployHosting = options.target === "hosting" || options.target === "functions-hosting";
   const deployFunctions = options.target === "functions" || options.target === "functions-hosting";
+  const localFunctionExports = deployFunctions ? collectLocalFunctionExportNames() : [];
 
   if (deployFunctions && functions.length === 0 && !options.allowBroadFunctions) {
     const message =
@@ -570,6 +685,28 @@ async function main() {
       );
     }
     emitSummaryAndExit({ summary, asJson: options.asJson, code: 2 });
+  }
+
+  if (deployFunctions && functions.length > 0) {
+    const requestedMissing = functions.filter((name) => !localFunctionExports.includes(name));
+    steps.push({
+      label: "functions requested export validation",
+      ok: requestedMissing.length === 0,
+      requested: functions,
+      missing: requestedMissing,
+    });
+    if (requestedMissing.length > 0) {
+      const summary = {
+        status: "blocked",
+        project: options.project,
+        target: options.target,
+        message: "Blocked functions deploy: one or more requested functions are not exported locally.",
+        runStartedAtIso,
+        runFinishedAtIso: new Date().toISOString(),
+        steps,
+      };
+      emitSummaryAndExit({ summary, asJson: options.asJson, code: 2 });
+    }
   }
 
   let deployEnv = process.env;
@@ -675,6 +812,41 @@ async function main() {
 
   if (deployFunctions) {
     if (functions.length === 0 && options.allowBroadFunctions) {
+      const remoteInventory = fetchRemoteFunctionIds({
+        project: options.project,
+        env: process.env,
+        cwd: repoRoot,
+      });
+      const inventoryComparison = remoteInventory.ok
+        ? compareFunctionInventory(localFunctionExports, remoteInventory.ids)
+        : null;
+      steps.push({
+        label: "functions export inventory guard",
+        ok: remoteInventory.ok && Boolean(inventoryComparison?.ok),
+        localCount: localFunctionExports.length,
+        remoteCount: remoteInventory.ids.length,
+        remoteOnly: inventoryComparison?.remoteOnly ?? [],
+        localOnly: inventoryComparison?.localOnly ?? [],
+        message: remoteInventory.ok ? null : remoteInventory.message,
+      });
+      if (!remoteInventory.ok || !inventoryComparison?.ok) {
+        const message = !remoteInventory.ok
+          ? "Blocked broad functions deploy: unable to load remote function inventory."
+          : "Blocked broad functions deploy: remote inventory contains functions that are not exported locally.";
+        const summary = {
+          status: "blocked",
+          project: options.project,
+          target: options.target,
+          message,
+          runStartedAtIso,
+          runFinishedAtIso: new Date().toISOString(),
+          steps,
+        };
+        emitSummaryAndExit({ summary, asJson: options.asJson, code: 2 });
+      }
+    }
+
+    if (functions.length === 0 && options.allowBroadFunctions) {
       process.stdout.write("[deploy-safe] deploying broad functions set (override enabled)\n");
       const broadStep = await deployWithRetries({
         project: options.project,
@@ -777,6 +949,10 @@ export {
   inspectFirebaseBuildArtifacts,
   isQuotaError,
   looksLikeFirebaseApiKey,
+  collectLocalFunctionExportNames,
+  compareFunctionInventory,
+  fetchRemoteFunctionIds,
+  parseRemoteFunctionIds,
   parseArgs,
   parseFunctions,
   parseJsonObjectFromMixedOutput,

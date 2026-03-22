@@ -7,6 +7,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { compareSemver, resolveCodexCliCandidates } from "./lib/codex-cli-utils.mjs";
+import { loadCodexAutomationEnv } from "./lib/codex-automation-env.mjs";
+import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,9 +52,9 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function readPackageMetadata() {
-  const packageJsonPath = resolve(REPO_ROOT, "package.json");
-  const packageLockPath = resolve(REPO_ROOT, "package-lock.json");
+function readPackageMetadata(repoRoot = REPO_ROOT) {
+  const packageJsonPath = resolve(repoRoot, "package.json");
+  const packageLockPath = resolve(repoRoot, "package-lock.json");
 
   let dependencyRange = null;
   let lockVersion = null;
@@ -128,8 +130,8 @@ function parseJsonOutput(raw) {
   }
 }
 
-function runNodeScript(relativePath, extraArgs = []) {
-  const absolutePath = resolve(REPO_ROOT, relativePath);
+function runNodeScript(relativePath, extraArgs = [], { repoRoot = REPO_ROOT, env = process.env } = {}) {
+  const absolutePath = resolve(repoRoot, relativePath);
   if (!existsSync(absolutePath)) {
     return {
       ok: false,
@@ -142,11 +144,11 @@ function runNodeScript(relativePath, extraArgs = []) {
   }
 
   const result = spawnSync(process.execPath, [absolutePath, ...extraArgs], {
-    cwd: REPO_ROOT,
+    cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 1024 * 1024 * 12,
-    env: process.env,
+    env,
   });
 
   return {
@@ -215,14 +217,30 @@ function printSummary(report) {
   process.stdout.write(`  artifact: ${report.artifactPath}\n`);
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const artifactPath = resolve(REPO_ROOT, args.artifact || DEFAULT_ARTIFACT);
-  const codexConfigPath = resolve(homedir(), ".codex", "config.toml");
+export async function runCodexDoctor({
+  strict = false,
+  artifact = DEFAULT_ARTIFACT,
+  repoRoot = REPO_ROOT,
+  env = process.env,
+  codexCli = resolveCodexCliCandidates(repoRoot, env),
+  packageMeta = readPackageMetadata(repoRoot),
+  codexConfigPath = resolve(homedir(), ".codex", "config.toml"),
+  runNodeScriptImpl = runNodeScript,
+  loadCodexAutomationEnvFn = loadCodexAutomationEnv,
+  hydrateStudioBrainAuthFromPortalFn = hydrateStudioBrainAuthFromPortal,
+} = {}) {
+  const artifactPath = resolve(repoRoot, artifact);
 
   const checkCollector = createCheckCollector();
-  const codexCli = resolveCodexCliCandidates(REPO_ROOT);
-  const packageMeta = readPackageMetadata();
+
+  loadCodexAutomationEnvFn({ repoRoot, env });
+  const authHydration = await hydrateStudioBrainAuthFromPortalFn({ repoRoot, env }).catch(() => ({
+    ok: false,
+    hydrated: false,
+    reason: "auth_hydration_failed",
+    source: "codex-doctor",
+    tokenFreshness: null,
+  }));
 
   if (!codexCli.preferred?.path) {
     checkCollector.push(
@@ -288,7 +306,7 @@ function main() {
     );
   }
 
-  const docsDriftRun = runNodeScript("scripts/codex-docs-drift-check.mjs", ["--json"]);
+  const docsDriftRun = runNodeScriptImpl("scripts/codex-docs-drift-check.mjs", ["--json"], { repoRoot, env });
   const docsDriftPayload = docsDriftRun.json;
   if (!docsDriftPayload) {
     checkCollector.push(
@@ -335,7 +353,7 @@ function main() {
       },
     );
   } else {
-    const mcpAuditRun = runNodeScript("scripts/audit-codex-mcp.mjs", []);
+    const mcpAuditRun = runNodeScriptImpl("scripts/audit-codex-mcp.mjs", [], { repoRoot, env });
     if (mcpAuditRun.ok) {
       checkCollector.push("codex-mcp-audit", "info", true, "Codex MCP audit passed.", {
         command: mcpAuditRun.command,
@@ -353,7 +371,7 @@ function main() {
   }
 
   const openMemoryAuthConfigured = Boolean(
-    String(process.env.STUDIO_BRAIN_AUTH_TOKEN || process.env.STUDIO_BRAIN_ID_TOKEN || "").trim(),
+    String(env.STUDIO_BRAIN_AUTH_TOKEN || env.STUDIO_BRAIN_ID_TOKEN || env.STUDIO_BRAIN_MCP_ID_TOKEN || "").trim(),
   );
   let openMemoryHealthy = false;
   if (!openMemoryAuthConfigured) {
@@ -361,13 +379,14 @@ function main() {
       "codex-open-memory",
       "info",
       true,
-      "Open Memory auth token not configured; skipping live memory stats check.",
+      "Open Memory auth token not configured after auth hydration; skipping live memory stats check.",
       {
+        authHydration,
         expectedEnvVars: ["STUDIO_BRAIN_AUTH_TOKEN", "STUDIO_BRAIN_ID_TOKEN"],
       },
     );
   } else {
-    const openMemoryRun = runNodeScript("scripts/open-memory.mjs", ["stats"]);
+    const openMemoryRun = runNodeScriptImpl("scripts/open-memory.mjs", ["stats"], { repoRoot, env });
     const openMemoryPayload = openMemoryRun.json;
     if (openMemoryRun.ok && openMemoryPayload?.stats) {
       openMemoryHealthy = true;
@@ -383,6 +402,7 @@ function main() {
         false,
         "Open Memory stats check failed; falling back to local memory layout check.",
         {
+          authHydration,
           command: openMemoryRun.command,
           exitCode: openMemoryRun.exitCode,
           stderr: openMemoryRun.stderr,
@@ -392,7 +412,49 @@ function main() {
     }
   }
 
-  const memoryRun = runNodeScript("scripts/codex-memory-pipeline.mjs", ["status", "--json"]);
+  const startupPreflightRun = runNodeScriptImpl(
+    "scripts/codex-startup-preflight.mjs",
+    ["--json", "--run-id", "codex-doctor"],
+    { repoRoot, env }
+  );
+  const startupPreflightPayload = startupPreflightRun.json;
+  if (!startupPreflightPayload) {
+    checkCollector.push(
+      "codex-startup-preflight",
+      "warning",
+      false,
+      "Unable to parse Codex startup preflight output.",
+      {
+        command: startupPreflightRun.command,
+        exitCode: startupPreflightRun.exitCode,
+        stderr: startupPreflightRun.stderr,
+      },
+    );
+  } else {
+    const startupReasonCode = startupPreflightPayload.checks?.startupContext?.reasonCode || "startup_unavailable";
+    const startupLatencyState = startupPreflightPayload.checks?.startupContext?.latency?.state || "unknown";
+    const tokenState = startupPreflightPayload.checks?.tokenFreshness?.state || "missing";
+    const mcpBridgeOk = startupPreflightPayload.checks?.mcpBridge?.ok !== false;
+    const preflightHealthy =
+      startupPreflightPayload.status === "pass" &&
+      !["missing_token", "expired_token", "transport_unreachable", "timeout"].includes(startupReasonCode) &&
+      tokenState !== "expired" &&
+      mcpBridgeOk;
+    checkCollector.push(
+      "codex-startup-preflight",
+      preflightHealthy ? "info" : "warning",
+      preflightHealthy,
+      preflightHealthy
+        ? "Codex startup preflight passed."
+        : `Codex startup preflight requires attention (${startupReasonCode}, token=${tokenState}, latency=${startupLatencyState}).`,
+      {
+        command: startupPreflightRun.command,
+        checks: startupPreflightPayload.checks,
+      },
+    );
+  }
+
+  const memoryRun = runNodeScriptImpl("scripts/codex-memory-pipeline.mjs", ["status", "--json"], { repoRoot, env });
   const memoryPayload = memoryRun.json;
   if (!memoryPayload || !memoryPayload.memory) {
     checkCollector.push(
@@ -427,7 +489,7 @@ function main() {
     });
   }
 
-  const ephemeralGuardRun = runNodeScript("scripts/check-ephemeral-artifact-tracking.mjs", ["--json"]);
+  const ephemeralGuardRun = runNodeScriptImpl("scripts/check-ephemeral-artifact-tracking.mjs", ["--json"], { repoRoot, env });
   const ephemeralPayload = ephemeralGuardRun.json;
   if (!ephemeralPayload) {
     checkCollector.push(
@@ -456,12 +518,44 @@ function main() {
     });
   }
 
+  const wrapperAuditRun = runNodeScriptImpl("scripts/audit-cross-platform-wrappers.mjs", [], { repoRoot, env });
+  const wrapperAuditPayload = wrapperAuditRun.json;
+  if (!wrapperAuditPayload) {
+    checkCollector.push(
+      "codex-cross-platform-wrapper-audit",
+      "warning",
+      false,
+      "Unable to parse cross-platform wrapper audit output.",
+      {
+        command: wrapperAuditRun.command,
+        exitCode: wrapperAuditRun.exitCode,
+        stderr: wrapperAuditRun.stderr,
+      },
+    );
+  } else if (wrapperAuditPayload.status !== "pass") {
+    checkCollector.push(
+      "codex-cross-platform-wrapper-audit",
+      "error",
+      false,
+      "Cross-platform wrapper audit found unsafe spawn/path patterns in hot-path scripts.",
+      {
+        command: wrapperAuditRun.command,
+        findings: wrapperAuditPayload.findings,
+      },
+    );
+  } else {
+    checkCollector.push("codex-cross-platform-wrapper-audit", "info", true, "Cross-platform wrapper audit passed.", {
+      command: wrapperAuditRun.command,
+      targetFiles: wrapperAuditPayload.targetFiles,
+    });
+  }
+
   const summary = checkCollector.summarize();
   const report = {
     schema: "codex-doctor-v1",
     generatedAt: new Date().toISOString(),
-    strict: args.strict,
-    status: summary.errors > 0 || (args.strict && summary.warnings > 0) ? "fail" : "pass",
+    strict,
+    status: summary.errors > 0 || (strict && summary.warnings > 0) ? "fail" : "pass",
     artifactPath,
     codexCli,
     package: packageMeta,
@@ -471,14 +565,24 @@ function main() {
       docsDrift: "npm run codex:docs:drift",
       mcpAudit: "npm run audit:codex-mcp",
       openMemoryStats: "npm run open-memory -- stats",
+      startupPreflight: "node ./scripts/codex-startup-preflight.mjs --json",
       memoryFallbackInit: "npm run codex:memory:init",
+      wrapperAudit: "node ./scripts/audit-cross-platform-wrappers.mjs",
       ephemeralGuard: "npm run guard:ephemeral:artifacts",
     },
   };
 
   mkdirSync(dirname(artifactPath), { recursive: true });
   writeFileSync(artifactPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  return report;
+}
 
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const report = await runCodexDoctor({
+    strict: args.strict,
+    artifact: args.artifact,
+  });
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
@@ -490,4 +594,9 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    process.stderr.write(`codex-doctor failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
+  });
+}

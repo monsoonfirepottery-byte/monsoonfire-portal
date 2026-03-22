@@ -5,6 +5,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAutomationStartupMemoryContext } from "./codex/open-memory-automation.mjs";
+import {
+  buildStartupFailureLine,
+  startupRecoveryStep,
+} from "./lib/codex-startup-reliability.mjs";
+import { resolveCodexCliCandidates } from "./lib/codex-cli-utils.mjs";
+import { prepareCodexWorktree } from "./lib/codex-worktree-utils.mjs";
+import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,6 +83,8 @@ function parseArgs(argv) {
     contextPath: "",
     contextMaxChars: "",
     contextBootstrap: true,
+    currentWorktree: false,
+    worktreePath: "",
     shellArgs: [],
   };
 
@@ -108,6 +117,9 @@ function parseArgs(argv) {
         "  --context-max-chars <n>  Max chars from local context (default follows env)",
         "  --context-max-chars=<n>  Same as --context-max-chars",
         "  --no-context         Skip local context bootstrap injection",
+        "  --current-worktree   Opt out of the clean Codex worktree launcher for this session",
+        "  --worktree-path <p>  Override the clean Codex worktree path",
+        "  --worktree-path=<p>  Same as --worktree-path",
         "  --no-bootstrap       Skip startup memory context injection",
         "  --help, -h           Show this help",
         "",
@@ -122,6 +134,8 @@ function parseArgs(argv) {
         "  CODEX_SHELL_CONTEXT_PATH",
         "  CODEX_SHELL_CONTEXT_MAX_CHARS",
         "  CODEX_SHELL_CONTEXT_BOOTSTRAP",
+        "  CODEX_SHELL_USE_CLEAN_WORKTREE",
+        "  CODEX_CLEAN_WORKTREE_ROOT",
         "  CODEX_ENABLE_CONTEXT7_ON_SHELL",
         "",
         "Examples:",
@@ -199,6 +213,21 @@ function parseArgs(argv) {
     }
     if (arg === "--no-context") {
       options.contextBootstrap = false;
+      index += 1;
+      continue;
+    }
+    if (arg === "--current-worktree") {
+      options.currentWorktree = true;
+      index += 1;
+      continue;
+    }
+    if (arg === "--worktree-path" && argv[index + 1]) {
+      options.worktreePath = String(argv[index + 1]).trim();
+      index += 2;
+      continue;
+    }
+    if (arg.startsWith("--worktree-path=")) {
+      options.worktreePath = arg.slice("--worktree-path=".length).trim();
       index += 1;
       continue;
     }
@@ -341,7 +370,17 @@ function loadLocalContextSummary(contextPath, maxChars, reusableState = null) {
   };
 }
 
-function buildShellPrompt({ runId, query, memoryContext, localContext, localContextSource, error = null, localContextError = "" }) {
+function buildShellPrompt({
+  runId,
+  query,
+  memoryContext,
+  localContext,
+  localContextSource,
+  error = null,
+  reasonCode = "",
+  recoveryStep = "",
+  localContextError = "",
+}) {
   const lines = [
     "You are starting a fresh Codex shell session.",
     "Keep session continuity by treating this as an active working context and persist memory lookups.",
@@ -356,6 +395,10 @@ function buildShellPrompt({ runId, query, memoryContext, localContext, localCont
     lines.push(memoryContext);
   } else if (error) {
     lines.push(`Startup memory unavailable: ${error}`);
+    if (recoveryStep) {
+      lines.push(`Fallback: memory unavailable due to ${reasonCode || "startup_unavailable"}; proceeding repo-first.`);
+      lines.push(`Recovery: ${recoveryStep}`);
+    }
   }
 
   if (localContext) {
@@ -370,6 +413,7 @@ function buildShellPrompt({ runId, query, memoryContext, localContext, localCont
 
 async function main() {
   loadShellEnv();
+  await hydrateStudioBrainAuthFromPortal({ repoRoot: REPO_ROOT, env: process.env }).catch(() => null);
 
   const options = parseArgs(process.argv.slice(2));
   const statePath = resolveShellSessionStatePath();
@@ -394,8 +438,26 @@ async function main() {
   const scopedDefaultQuery = buildScopedDefaultBootstrapQuery(runId, reusableState, process.env);
   const bootstrapQuery = clean(options.query || queryOverride || scopedDefaultQuery);
   const querySource = options.query ? "cli" : queryOverride ? "env" : reusableState?.query ? "previous-state" : "scoped-default";
+  const workspace = prepareCodexWorktree({
+    repoRoot: REPO_ROOT,
+    env: process.env,
+    useCurrentWorktree: options.currentWorktree,
+    requestedPath: options.worktreePath,
+  });
+  process.stderr.write(
+    [
+      `[codex-shell] repo root: ${workspace.repoRoot}`,
+      `[codex-shell] launch cwd: ${workspace.workspacePath}`,
+      `[codex-shell] clean worktree: ${workspace.usingCleanWorktree ? `yes (${workspace.launcherState})` : "no (current worktree)"}`,
+      `[codex-shell] branch: ${workspace.branch || "HEAD"} (prefix valid: ${workspace.branchPrefixValid ? "yes" : "no"})`,
+    ].join("\n") + "\n"
+  );
 
   let bootstrapPrompt = "";
+  let startupReasonCode = "";
+  let startupRecovery = "";
+  let startupFailureLine = "";
+  let startupLatency = null;
   if (options.bootstrap) {
     const query = bootstrapQuery;
     const startupMemoryContext = await loadAutomationStartupMemoryContext({
@@ -409,13 +471,20 @@ async function main() {
       maxHops: options.maxHops || undefined,
     });
     const hasContextSummary = clean(startupMemoryContext?.contextSummary || "").length > 0;
-    const contextError = startupMemoryContext?.ok
-      ? hasContextSummary
+    startupReasonCode = clean(startupMemoryContext?.reasonCode || "");
+    startupRecovery = startupReasonCode ? startupRecoveryStep(startupReasonCode) : "";
+    startupLatency = startupMemoryContext?.startupLatency || null;
+    const contextError =
+      startupMemoryContext?.ok && hasContextSummary
         ? null
-        : "empty-context"
-      : startupMemoryContext?.attempted
-        ? startupMemoryContext.error
-        : "not configured";
+        : buildStartupFailureLine(startupReasonCode || startupMemoryContext?.reason || "startup_unavailable", {
+            error:
+              startupMemoryContext?.error ||
+              (startupMemoryContext?.ok ? "No trusted startup context rows were returned." : "Startup memory was not configured."),
+            latency: startupLatency,
+            tokenFreshness: startupMemoryContext?.tokenFreshness,
+          });
+    startupFailureLine = contextError || "";
 
     bootstrapPrompt = buildShellPrompt({
       runId,
@@ -424,6 +493,8 @@ async function main() {
       localContext: localContextEnvelope.summary,
       localContextSource: localContextEnvelope.source,
       error: contextError,
+      reasonCode: startupReasonCode,
+      recoveryStep: startupRecovery,
       localContextError: localContextEnvelope.error,
     });
   } else {
@@ -437,6 +508,11 @@ async function main() {
   }
   if (shellModel) {
     codexArgs.push("-m", shellModel);
+  }
+
+  const codexCli = resolveCodexCliCandidates(REPO_ROOT, process.env);
+  if (!codexCli.preferred?.path) {
+    throw new Error("Unable to resolve a usable Codex CLI binary for codex-shell.");
   }
 
   if (options.shellArgs.length > 0) {
@@ -460,15 +536,25 @@ async function main() {
     contextBootstrapEnabled: localContextEnabled,
     status: "running",
     bootstrap: options.bootstrap,
+    startupReasonCode: startupReasonCode || null,
+    startupFailureLine: startupFailureLine || null,
+    startupRecovery: startupRecovery || null,
+    startupLatency,
     model: shellModel || null,
+    repoRoot: workspace.repoRoot,
+    launchCwd: workspace.workspacePath,
+    usingCleanWorktree: workspace.usingCleanWorktree,
+    worktreeState: workspace.launcherState,
+    worktreeBranch: workspace.branch || null,
+    worktreeBranchPrefixValid: workspace.branchPrefixValid,
     shellArgs: options.shellArgs,
     shellStatePath: statePath,
   });
 
   let result;
   try {
-    result = spawnSync("codex", codexArgs, {
-      cwd: REPO_ROOT,
+    result = spawnSync(codexCli.preferred.path, codexArgs, {
+      cwd: workspace.workspacePath,
       stdio: "inherit",
       env: process.env,
       shell: false,
@@ -486,7 +572,17 @@ async function main() {
       status: result?.status === undefined ? "launch-failed" : `exit-${result.status}`,
       exitStatus: result?.status ?? null,
       bootstrap: options.bootstrap,
+      startupReasonCode: startupReasonCode || null,
+      startupFailureLine: startupFailureLine || null,
+      startupRecovery: startupRecovery || null,
+      startupLatency,
       model: shellModel || null,
+      repoRoot: workspace.repoRoot,
+      launchCwd: workspace.workspacePath,
+      usingCleanWorktree: workspace.usingCleanWorktree,
+      worktreeState: workspace.launcherState,
+      worktreeBranch: workspace.branch || null,
+      worktreeBranchPrefixValid: workspace.branchPrefixValid,
       shellArgs: options.shellArgs,
       shellStatePath: statePath,
     });

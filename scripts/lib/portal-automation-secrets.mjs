@@ -18,8 +18,45 @@ export const PORTAL_LOCAL_ONLY_ENV_KEYS = [
   "PORTAL_AGENT_STAFF_CREDENTIALS",
 ];
 
+export const PORTAL_SECRET_SYNC_OPTION_ENV_MAP = {
+  asJson: ["PORTAL_SECRET_SYNC_JSON", "npm_config_json"],
+  skipRuntimeMirror: ["PORTAL_SECRET_SYNC_SKIP_RUNTIME_MIRROR", "npm_config_skip_runtime_mirror"],
+};
+
 function clean(value) {
   return String(value ?? "").trim();
+}
+
+export function isTruthyEnvFlag(value, fallback = false) {
+  const normalized = clean(value).toLowerCase();
+  if (!normalized) return fallback;
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+export function resolvePortalSecretSyncOptions(argv = [], env = process.env) {
+  const options = {
+    asJson: false,
+    skipRuntimeMirror: false,
+  };
+
+  for (const [optionKey, envKeys] of Object.entries(PORTAL_SECRET_SYNC_OPTION_ENV_MAP)) {
+    if (envKeys.some((key) => isTruthyEnvFlag(env?.[key], false))) {
+      options[optionKey] = true;
+    }
+  }
+
+  for (const arg of argv) {
+    if (arg === "--json") {
+      options.asJson = true;
+      continue;
+    }
+    if (arg === "--skip-runtime-mirror") {
+      options.skipRuntimeMirror = true;
+      continue;
+    }
+  }
+
+  return options;
 }
 
 export function parseEnvText(raw) {

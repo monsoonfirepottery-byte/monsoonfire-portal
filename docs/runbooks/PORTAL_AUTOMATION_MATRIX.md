@@ -90,6 +90,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 
 12. Community layout canary (`.github/workflows/portal-community-layout-canary.yml`)
 - Authenticated Community-page regression check for right-rail stability.
+- Bootstraps browser auth from refresh-token credentials by default; raw password is fallback-only.
 - Verifies sidebar width does not drift after async report refresh.
 - Fails on detectable chiplet/report/video overflow and uploads screenshot/report artifacts.
 - Used as the required verification gate for Community content rotations.

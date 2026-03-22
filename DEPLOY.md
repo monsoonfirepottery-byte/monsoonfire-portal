@@ -55,6 +55,10 @@ Notes:
   - `~/secrets/portal/portal-agent-staff.json`
   - Refresh that shared copy from 1Password with:
     - `npm run secrets:portal:sync`
+    - Machine-readable output is also supported via npm on Windows:
+      - `npm run secrets:portal:sync --json`
+  - Advanced home-cache-only refresh without worktree mirroring:
+    - `node ./scripts/sync-portal-secrets-from-1password.mjs --skip-runtime-mirror --json`
   - Mirror the shared cache into the current worktree with:
     - `npm run secrets:sync:runtime`
 - Deploy script auto-load order:

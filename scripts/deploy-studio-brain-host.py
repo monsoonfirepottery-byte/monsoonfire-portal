@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -23,22 +22,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_STUDIO_BRAIN = REPO_ROOT / "studio-brain"
 ENV_PATH = REPO_ROOT / "secrets/studio-brain/studio-brain-mcp.env"
 PORTAL_ENV_PATH = REPO_ROOT / "secrets/portal/portal-automation.env"
+INTEGRITY_MANIFEST_PATH = REPO_ROOT / "studio-brain/.env.integrity.json"
 REMOTE_PARENT = "/home/wuff/monsoonfire-portal"
 REMOTE_ROOT = f"{REMOTE_PARENT}/studio-brain"
-SUPPORT_PATHS = (
+STATIC_SUPPORT_PATHS = (
     REPO_ROOT / ".governance" / "planning",
     REPO_ROOT / "contracts" / "planning.schema.json",
     REPO_ROOT / "scripts" / "lib" / "planning-control-plane.mjs",
-    REPO_ROOT / "scripts" / "lib" / "studiobrain-posture-policy.mjs",
-    REPO_ROOT / "scripts" / "studio-brain-url-resolution.mjs",
-    REPO_ROOT / "scripts" / "studio-network-profile.mjs",
-    REPO_ROOT / "scripts" / "integrity-check.mjs",
-    REPO_ROOT / "scripts" / "scan-studiobrain-host-contract.mjs",
-    REPO_ROOT / "scripts" / "studiobrain-network-check.mjs",
-    REPO_ROOT / "scripts" / "studiobrain-status.mjs",
-    REPO_ROOT / "scripts" / "studiobrain-backup-drill.mjs",
-    REPO_ROOT / "scripts" / "studiobrain-incident-bundle.mjs",
-    REPO_ROOT / "scripts" / "test-studio-brain-auth.mjs",
 )
 HOST_DRIFT_ALLOWLIST_PATH = REPO_ROOT / "studio-brain" / "host-drift-allowlist.json"
 LOCAL_EXCLUDES = {
@@ -93,6 +83,26 @@ def load_drift_paths() -> tuple[str, ...]:
     return tuple(paths)
 
 
+def load_integrity_support_paths() -> tuple[Path, ...]:
+    payload = json.loads(INTEGRITY_MANIFEST_PATH.read_text(encoding="utf-8"))
+    files = payload.get("files", [])
+    paths: list[Path] = []
+    for entry in files:
+        raw_path = str(entry.get("path", "")).strip()
+        if not raw_path or raw_path.startswith("studio-brain/"):
+            continue
+        paths.append(REPO_ROOT / raw_path)
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for path in [*STATIC_SUPPORT_PATHS, *paths]:
+        normalized = str(path.resolve())
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(path)
+    return tuple(deduped)
+
+
 def run_local_build() -> None:
     npm_command = "npm.cmd" if os.name == "nt" else "npm"
     result = subprocess.run(
@@ -108,7 +118,7 @@ def create_archive() -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     archive_path = Path(tempfile.gettempdir()) / f"studio-brain-host-deploy-{timestamp}.tar.gz"
     with tarfile.open(archive_path, "w:gz") as tar:
-        archive_roots = [LOCAL_STUDIO_BRAIN, *SUPPORT_PATHS]
+        archive_roots = [LOCAL_STUDIO_BRAIN, *load_integrity_support_paths()]
         for root_path in archive_roots:
             paths = root_path.rglob("*") if root_path.is_dir() else [root_path]
             for path in paths:
@@ -222,15 +232,7 @@ PY
 def run_remote_json(ssh: "paramiko.SSHClient", command: str, timeout: int = 120) -> dict[str, object]:
     out, err, code = ssh_exec(ssh, command, timeout=timeout)
     combined = "\n".join([segment for segment in [out.strip(), err.strip()] if segment]).strip()
-    parsed = None
-    if combined:
-        start = combined.find("{")
-        end = combined.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(combined[start : end + 1])
-            except json.JSONDecodeError:
-                parsed = None
+    parsed = extract_json_payload(combined)
     return {
         "ok": code == 0 and parsed is not None,
         "exitCode": code,
@@ -242,15 +244,7 @@ def run_remote_json(ssh: "paramiko.SSHClient", command: str, timeout: int = 120)
 def run_local_json(command: list[str]) -> dict[str, object]:
     result = subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
     combined = "\n".join([segment for segment in [result.stdout.strip(), result.stderr.strip()] if segment]).strip()
-    parsed = None
-    if combined:
-        start = combined.find("{")
-        end = combined.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(combined[start : end + 1])
-            except json.JSONDecodeError:
-                parsed = None
+    parsed = extract_json_payload(combined)
     return {
         "ok": result.returncode == 0 and parsed is not None,
         "exitCode": result.returncode,
@@ -262,15 +256,7 @@ def run_local_json(command: list[str]) -> dict[str, object]:
 def run_local_json_with_env(command: list[str], env: dict[str, str]) -> dict[str, object]:
     result = subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True, check=False, env=env)
     combined = "\n".join([segment for segment in [result.stdout.strip(), result.stderr.strip()] if segment]).strip()
-    parsed = None
-    if combined:
-        start = combined.find("{")
-        end = combined.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(combined[start : end + 1])
-            except json.JSONDecodeError:
-                parsed = None
+    parsed = extract_json_payload(combined)
     return {
         "ok": result.returncode == 0 and parsed is not None,
         "exitCode": result.returncode,
@@ -293,6 +279,52 @@ def mint_staff_id_token(extra_env: dict[str, str]) -> dict[str, object]:
     ]
     result = run_local_json_with_env(command, {**os.environ, **extra_env})
     return result
+
+
+def extract_json_payload(text: str) -> dict[str, object] | list[object] | None:
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start = text.find(opener)
+        if start < 0:
+            continue
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start, len(text)):
+            char = text[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                    continue
+                if char == "\\":
+                    escaped = True
+                    continue
+                if char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+                continue
+            if char == opener:
+                depth += 1
+                continue
+            if char == closer:
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start : index + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
+                if depth < 0:
+                    break
+    return None
 
 
 def read_remote_secret_value(ssh: "paramiko.SSHClient", key: str, timeout: int = 30) -> str:
@@ -319,6 +351,47 @@ def parse_env_file(path: Path) -> str:
 for name in (".env.local", ".env"):
     found = parse_env_file(root / name)
     if found:
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+"""
+    out, _, code = ssh_exec(ssh, command, timeout=timeout)
+    if code != 0:
+        return ""
+    return out.strip()
+
+
+def read_remote_process_env_value(
+    ssh: "paramiko.SSHClient",
+    key: str,
+    pid: str | None = None,
+    timeout: int = 30,
+) -> str:
+    pid_candidate = str(pid or "").strip()
+    command = f"""
+python3 - <<'PY'
+from pathlib import Path
+import subprocess
+
+needle = {json.dumps(key)}
+pid = {json.dumps(pid_candidate)}
+
+if not pid:
+    proc = subprocess.run("pgrep -f 'node lib/index.js'", shell=True, capture_output=True, text=True)
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    pid = lines[-1] if lines else ""
+
+if not pid:
+    raise SystemExit(1)
+
+data = Path(f"/proc/{{pid}}/environ").read_bytes().decode("utf-8", "ignore").split("\\0")
+for entry in data:
+    if not entry or "=" not in entry:
+        continue
+    current_key, value = entry.split("=", 1)
+    if current_key == needle:
+        print(value.strip())
         raise SystemExit(0)
 
 raise SystemExit(1)
@@ -389,9 +462,15 @@ tar -xzf {remote_archive}
                 id_token_source = f"unavailable:{(minted_payload or {}).get('reason') or minted.get('output') or 'mint-failed'}"
         if not auth_env.get("STUDIO_BRAIN_ADMIN_TOKEN"):
             remote_admin_token = read_remote_secret_value(ssh, "STUDIO_BRAIN_ADMIN_TOKEN")
+            if not remote_admin_token:
+                remote_admin_token = read_remote_process_env_value(
+                    ssh,
+                    "STUDIO_BRAIN_ADMIN_TOKEN",
+                    pid=str(restart.get("pid") or "").strip(),
+                )
             if remote_admin_token:
                 auth_env["STUDIO_BRAIN_ADMIN_TOKEN"] = remote_admin_token
-                admin_token_source = "remote-runtime"
+                admin_token_source = "remote-runtime-env"
             else:
                 admin_token_source = "unavailable:missing-remote-admin-token"
         auth_probe = run_local_json_with_env(

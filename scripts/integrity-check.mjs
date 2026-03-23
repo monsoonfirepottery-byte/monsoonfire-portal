@@ -43,6 +43,18 @@ const DEFAULT_TARGET_FILES = [
 
 const DEFAULT_OVERRIDE_ENV_VAR = "STUDIO_BRAIN_INTEGRITY_OVERRIDE";
 const OVERRIDE_REQUIRED_KEYS = ["owner", "reason", "expiresAt"];
+const TEXT_FILE_EXTENSIONS = new Set([
+  ".json",
+  ".md",
+  ".mjs",
+  ".profile",
+  ".ps1",
+  ".py",
+  ".schema",
+  ".sh",
+  ".yml",
+  ".yaml",
+]);
 
 function parseArgs(rawArgs = []) {
   const parsed = {
@@ -153,9 +165,30 @@ function parseOverride(rawValue) {
 }
 
 function sha256File(filePath) {
-  const data = readFileSync(filePath);
+  const data = readCanonicalFile(filePath);
   const hash = createHash("sha256").update(data).digest("hex");
   return hash;
+}
+
+function canonicalSize(filePath) {
+  return readCanonicalFile(filePath).length;
+}
+
+function readCanonicalFile(filePath) {
+  if (!shouldNormalizeText(filePath)) {
+    return readFileSync(filePath);
+  }
+  const text = readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
+  return Buffer.from(text, "utf8");
+}
+
+function shouldNormalizeText(filePath) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  if (/\/\.env(?:\.|$)/.test(normalized)) {
+    return true;
+  }
+  const ext = normalized.includes(".") ? `.${normalized.split(".").pop()}` : "";
+  return TEXT_FILE_EXTENSIONS.has(ext);
 }
 
 function toRelative(filePath) {
@@ -167,7 +200,7 @@ function hashTarget(pathOrFile) {
   return {
     path: toRelative(absolute),
     sha256: sha256File(absolute),
-    size: readFileSync(absolute).length,
+    size: canonicalSize(absolute),
   };
 }
 
@@ -226,7 +259,7 @@ function buildUpdatePayload(targets, existingManifest = null) {
       return {
         path,
         sha256: sha256File(absolute),
-        size: readFileSync(absolute).length,
+        size: canonicalSize(absolute),
       };
     })
     .filter(Boolean)
@@ -331,7 +364,7 @@ function compareAgainstManifest(manifest, targets, override, options) {
     }
 
     const actualSha = sha256File(absolute);
-    const actualSize = readFileSync(absolute).length;
+    const actualSize = canonicalSize(absolute);
     if (actualSha !== existing.sha256 || actualSize !== existing.size) {
       const issue = {
         file: target,

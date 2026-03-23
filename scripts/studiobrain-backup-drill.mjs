@@ -5,6 +5,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  buildArtifactProvenance,
+  classifyExecutionAuthority,
+  DATA_CLASSIFICATIONS,
+  normalizePostureMode,
+  POSTURE_MODES,
+  REDACTION_STATES,
+} from "./lib/studiobrain-posture-policy.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,6 +41,12 @@ if (parsed.command !== "verify" && parsed.command !== "restore-drill") {
 
 const outputRoot = resolve(REPO_ROOT, parsed.outputDir);
 const latestPath = resolve(outputRoot, "latest.json");
+const mode = normalizePostureMode(parsed.mode, POSTURE_MODES.LOCAL_ADVISORY);
+const authority = classifyExecutionAuthority({
+  mode,
+  envMode: envSource.source,
+  approvedRemoteRunner: parsed.approvedRemoteRunner,
+});
 
 const thresholds = {
   postgres: readThreshold(parsed.maxAgeMinutesPostgres, "STUDIO_BRAIN_BACKUP_MAX_AGE_MINUTES_POSTGRES"),
@@ -70,6 +84,7 @@ async function runVerify() {
     command: "verify",
     generatedAt,
     envSource: envSource.label,
+    envMode: envSource.source,
     outputDir: relativePath(outputRoot),
     freshnessOnly: parsed.freshnessOnly,
     thresholdsMinutes: thresholds,
@@ -77,6 +92,20 @@ async function runVerify() {
     serviceChecks,
     latestManifestPath: latest.path ? relativePath(latest.path) : "",
     status,
+    gateStatus: authority.authoritative ? status : "advisory_evidence_only",
+    provenance: buildArtifactProvenance({
+      mode,
+      envSource: envSource.label,
+      envMode: envSource.source,
+      approvedRemoteRunner: parsed.approvedRemoteRunner,
+      host: env.STUDIO_BRAIN_HOST || env.STUDIO_BRAIN_BASE_URL || "",
+      generator: "scripts/studiobrain-backup-drill.mjs",
+      dataClassification: DATA_CLASSIFICATIONS.OPERATIONAL_METADATA,
+      redactionState: REDACTION_STATES.VERIFIED_REDACTED,
+      sourceSystems: ["postgres", "redis", "minio"],
+      hasFallbackArtifacts: true,
+    }),
+    authority,
   };
 
   if (!parsed.freshnessOnly) {
@@ -98,10 +127,25 @@ async function runRestoreDrill() {
       command: "restore-drill",
       generatedAt,
       envSource: envSource.label,
+      envMode: envSource.source,
       outputDir: relativePath(outputRoot),
       status: "fail",
+      gateStatus: authority.authoritative ? "fail" : "advisory_evidence_only",
       message: "No backup manifest found. Run `npm run backup:verify` first.",
       latestManifestPath: "",
+      provenance: buildArtifactProvenance({
+        mode,
+        envSource: envSource.label,
+        envMode: envSource.source,
+        approvedRemoteRunner: parsed.approvedRemoteRunner,
+        host: env.STUDIO_BRAIN_HOST || env.STUDIO_BRAIN_BASE_URL || "",
+        generator: "scripts/studiobrain-backup-drill.mjs",
+        dataClassification: DATA_CLASSIFICATIONS.OPERATIONAL_METADATA,
+        redactionState: REDACTION_STATES.VERIFIED_REDACTED,
+        sourceSystems: ["postgres", "redis", "minio"],
+        hasFallbackArtifacts: true,
+      }),
+      authority,
     };
   }
 
@@ -135,10 +179,12 @@ async function runRestoreDrill() {
     command: "restore-drill",
     generatedAt,
     envSource: envSource.label,
+    envMode: envSource.source,
     outputDir: relativePath(outputRoot),
     latestManifestPath: relativePath(latest.path),
     latestManifestGeneratedAt: latest.manifest.generatedAt || "",
     status,
+    gateStatus: authority.authoritative ? status : "advisory_evidence_only",
     steps,
     freshness,
     serviceChecks,
@@ -148,6 +194,19 @@ async function runRestoreDrill() {
         : status === "warn"
           ? "Restore drill completed with warnings. Review freshness details."
           : "Restore drill failed. Resolve service readiness before relying on backups.",
+    provenance: buildArtifactProvenance({
+      mode,
+      envSource: envSource.label,
+      envMode: envSource.source,
+      approvedRemoteRunner: parsed.approvedRemoteRunner,
+      host: env.STUDIO_BRAIN_HOST || env.STUDIO_BRAIN_BASE_URL || "",
+      generator: "scripts/studiobrain-backup-drill.mjs",
+      dataClassification: DATA_CLASSIFICATIONS.OPERATIONAL_METADATA,
+      redactionState: REDACTION_STATES.VERIFIED_REDACTED,
+      sourceSystems: ["postgres", "redis", "minio"],
+      hasFallbackArtifacts: true,
+    }),
+    authority,
   };
 
   const artifact = writeRestoreArtifact(payload, generatedAt);
@@ -228,8 +287,15 @@ function runRedisCheck() {
     };
   }
 
+  const redisCliArgs = [];
+  if (env.REDIS_USERNAME) {
+    redisCliArgs.push("--user", env.REDIS_USERNAME);
+  }
+  if (env.REDIS_PASSWORD) {
+    redisCliArgs.push("--no-auth-warning", "-a", env.REDIS_PASSWORD);
+  }
   const ping = runCompose(
-    ["exec", "-T", "redis", "redis-cli", "ping"],
+    ["exec", "-T", "redis", "redis-cli", ...redisCliArgs, "ping"],
     { allowFail: true },
   );
   const status = ping.ok && /PONG/i.test(ping.output) ? "pass" : "fail";
@@ -412,6 +478,8 @@ function writeManifestArtifact(payload, generatedAt) {
         checksumPath: relativePath(checksumPath),
         checksumSha256: checksum,
         status: payload.status,
+        gateStatus: payload.gateStatus,
+        provenance: payload.provenance,
       },
       null,
       2,
@@ -505,20 +573,21 @@ function resolveEnvSource() {
     return {
       path: existsSync(explicitPath) ? explicitPath : null,
       label: existsSync(explicitPath) ? `studio-brain/${explicit}` : `missing:${explicit}`,
+      source: existsSync(explicitPath) ? "explicit" : "missing",
     };
   }
 
   const local = resolve(STUDIO_BRAIN_ROOT, ".env");
   if (existsSync(local)) {
-    return { path: local, label: "studio-brain/.env" };
+    return { path: local, label: "studio-brain/.env", source: "default" };
   }
 
   const fallback = resolve(STUDIO_BRAIN_ROOT, ".env.example");
   if (existsSync(fallback)) {
-    return { path: fallback, label: "studio-brain/.env.example" };
+    return { path: fallback, label: "studio-brain/.env.example", source: "fallback" };
   }
 
-  return { path: null, label: "(process-env-only)" };
+  return { path: null, label: "(process-env-only)", source: "process-env-only" };
 }
 
 function loadResolvedEnv() {
@@ -564,6 +633,8 @@ function parseArgs(rawArgs) {
     strict: false,
     freshnessOnly: false,
     outputDir: DEFAULT_OUTPUT_DIR,
+    mode: POSTURE_MODES.LOCAL_ADVISORY,
+    approvedRemoteRunner: false,
     maxAgeMinutesPostgres: null,
     maxAgeMinutesRedis: null,
     maxAgeMinutesMinio: null,
@@ -592,6 +663,15 @@ function parseArgs(rawArgs) {
     if (arg === "--output-dir" && args[i + 1]) {
       parsedArgs.outputDir = args[i + 1];
       i += 1;
+      continue;
+    }
+    if (arg === "--mode" && args[i + 1]) {
+      parsedArgs.mode = normalizePostureMode(args[i + 1], POSTURE_MODES.LOCAL_ADVISORY);
+      i += 1;
+      continue;
+    }
+    if (arg === "--approved-remote-runner") {
+      parsedArgs.approvedRemoteRunner = true;
       continue;
     }
     if (arg === "--max-age-minutes-postgres" && args[i + 1]) {
@@ -655,6 +735,8 @@ function printHelp() {
   process.stdout.write("  --strict\n");
   process.stdout.write("  --freshness-only (verify only)\n");
   process.stdout.write("  --output-dir <path>\n");
+  process.stdout.write("  --mode <local_advisory|live_host_authoritative|authenticated_privileged_check>\n");
+  process.stdout.write("  --approved-remote-runner\n");
   process.stdout.write("  --max-age-minutes-postgres <minutes>\n");
   process.stdout.write("  --max-age-minutes-redis <minutes>\n");
   process.stdout.write("  --max-age-minutes-minio <minutes>\n");

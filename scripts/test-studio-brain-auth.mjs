@@ -1,10 +1,22 @@
+#!/usr/bin/env node
+
 import { createInterface } from "node:readline";
 import { stdin as input, stdout as output } from "node:process";
 import { setTimeout as setAbortTimeout } from "node:timers";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
+import {
+  buildArtifactProvenance,
+  DATA_CLASSIFICATIONS,
+  normalizePostureMode,
+  POSTURE_MODES,
+  REDACTION_STATES,
+} from "./lib/studiobrain-posture-policy.mjs";
 
 const parseArgs = () => {
-  const parsed = {};
+  const parsed = {
+    json: false,
+    mode: POSTURE_MODES.LOCAL_ADVISORY,
+  };
   const args = process.argv.slice(2);
 
   for (let i = 0; i < args.length; i += 1) {
@@ -29,6 +41,14 @@ const parseArgs = () => {
     parsed[key.replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = value;
   }
 
+  parsed.json = parsed.json === true || parsed.json === "true" || parsed.json === "1";
+  parsed.promptForToken =
+    parsed.promptForToken === true || parsed.promptForToken === "true" || parsed.promptForToken === "1";
+  parsed.approvedRemoteRunner =
+    parsed.approvedRemoteRunner === true ||
+    parsed.approvedRemoteRunner === "true" ||
+    parsed.approvedRemoteRunner === "1";
+  parsed.mode = normalizePostureMode(parsed.mode, POSTURE_MODES.LOCAL_ADVISORY);
   return parsed;
 };
 
@@ -68,6 +88,7 @@ const probe = async (label, url, headers = {}) => {
     const body = await response.text();
     return {
       label,
+      url,
       statusCode: response.status,
       body,
       error: null,
@@ -76,6 +97,7 @@ const probe = async (label, url, headers = {}) => {
     clearTimeout(timer);
     return {
       label,
+      url,
       statusCode: 0,
       body: "",
       error: error?.message || String(error),
@@ -94,8 +116,8 @@ const promptToken = async () => {
   return token;
 };
 
-const findWorkingCapabilitiesPath = async (baseUrl, preferredPath) => {
-  const candidates = [preferredPath, "/api/capabilities", "/capabilities"].filter(
+const findWorkingPath = async (baseUrl, preferredPath, fallbackPaths = []) => {
+  const candidates = [preferredPath, ...fallbackPaths].filter(
     (value, index, array) => array.indexOf(value) === index,
   );
 
@@ -115,6 +137,68 @@ const findWorkingCapabilitiesPath = async (baseUrl, preferredPath) => {
   };
 };
 
+function isAnonymousRejected(result) {
+  const body = String(result.body || "").toLowerCase();
+  return [401, 403].includes(result.statusCode) || body.includes("missing authorization header");
+}
+
+function isBearerAccepted(result) {
+  const body = String(result.body || "").toLowerCase();
+  return result.statusCode === 200 || !body.includes("missing authorization header");
+}
+
+function isBearerDenied(result) {
+  const body = String(result.body || "").toLowerCase();
+  return result.statusCode === 401 || result.statusCode === 403 || body.includes("invalid studio-brain admin token");
+}
+
+function summarizeCase(result, expectation) {
+  if (result.statusCode === -1) {
+    return {
+      ...result,
+      status: "skip",
+      ok: false,
+      expectation,
+    };
+  }
+
+  const ok =
+    expectation === "reject"
+      ? isAnonymousRejected(result)
+      : expectation === "allow"
+        ? isBearerAccepted(result)
+        : expectation === "deny"
+          ? isBearerDenied(result)
+          : false;
+
+  return {
+    ...result,
+    status: ok ? "pass" : "fail",
+    ok,
+    expectation,
+  };
+}
+
+function printHumanSummary(report) {
+  process.stdout.write(`Studio Brain auth probe target: ${report.baseUrl}\n`);
+  process.stdout.write(`Mode: ${report.provenance.mode}\n`);
+  process.stdout.write(`ID token source: ${report.tokens.idToken}\n`);
+  process.stdout.write(`Admin token source: ${report.tokens.adminToken}\n`);
+  process.stdout.write(`\nOverall: ${report.status.toUpperCase()}\n`);
+  for (const surface of report.surfaces) {
+    process.stdout.write(`- ${surface.name} (${surface.path})\n`);
+    for (const item of surface.cases) {
+      process.stdout.write(`  - ${item.label}: status=${item.statusCode} expected=${item.expectation} result=${item.status}\n`);
+      if (item.error) {
+        process.stdout.write(`    error=${preview(item.error, 180)}\n`);
+      }
+      if (item.body) {
+        process.stdout.write(`    body=${preview(item.body, 220)}\n`);
+      }
+    }
+  }
+}
+
 const run = async () => {
   const options = parseArgs();
   const explicitOptionBaseUrl = String(options.baseUrl || options.baseURL || "").trim();
@@ -125,93 +209,150 @@ const run = async () => {
         ...(explicitOptionBaseUrl ? { STUDIO_BRAIN_BASE_URL: explicitOptionBaseUrl } : {}),
       },
     }).replace(/\/$/, "");
-  const capabilitiesPath =
-    options.capabilitiesPath || "/api/capabilities";
+  const capabilitiesPath = options.capabilitiesPath || "/api/capabilities";
+  const connectorPath = options.connectorPath || "/api/connectors/health";
   let idToken = (options.idToken || process.env.STUDIO_BRAIN_ID_TOKEN || "").trim();
   const adminToken = (options.adminToken || process.env.STUDIO_BRAIN_ADMIN_TOKEN || "").trim();
-  const promptForToken = options.promptForToken === "true" || options.promptForToken === "1";
 
-  if (!idToken && promptForToken) {
+  if (!idToken && options.promptForToken) {
     idToken = await promptToken();
   }
 
-  const pathResolution = await findWorkingCapabilitiesPath(baseUrl, capabilitiesPath);
-  const targetPath = pathResolution.path;
-  const targetUrl = `${baseUrl}${targetPath}`;
+  const capabilityResolution = await findWorkingPath(baseUrl, capabilitiesPath, ["/capabilities"]);
+  const connectorResolution = await findWorkingPath(baseUrl, connectorPath, []);
 
-  console.log(`Studio Brain auth probe target: ${targetUrl}`);
-  console.log(`Capabilities path detection status: ${pathResolution.statusCode}`);
-  console.log(`ID token source: ${idToken ? redactToken(idToken) : "missing"}`);
-  console.log(`Admin token source: ${adminToken ? redactToken(adminToken) : "missing"}`);
+  const capabilityUrl = `${baseUrl}${capabilityResolution.path}`;
+  const connectorUrl = `${baseUrl}${connectorResolution.path}`;
+  const adminConfigured = adminToken.length > 0;
 
-  const cases = [];
-  cases.push(await probe("A no headers", targetUrl, {}));
+  const capabilityCases = [
+    summarizeCase(await probe("A anonymous", capabilityUrl, {}), "reject"),
+    summarizeCase(
+      idToken
+        ? await probe("B bearer only", capabilityUrl, { Authorization: `Bearer ${idToken}` })
+        : {
+            label: "B bearer only",
+            url: capabilityUrl,
+            statusCode: -1,
+            body: "",
+            error: "Skipped: no ID token. Set STUDIO_BRAIN_ID_TOKEN or pass --prompt-for-token.",
+          },
+      adminConfigured ? "deny" : "allow",
+    ),
+    summarizeCase(
+      idToken && adminConfigured
+        ? await probe("C bearer + x-studio-brain-admin-token", capabilityUrl, {
+            Authorization: `Bearer ${idToken}`,
+            "x-studio-brain-admin-token": adminToken,
+          })
+        : {
+            label: "C bearer + x-studio-brain-admin-token",
+            url: capabilityUrl,
+            statusCode: -1,
+            body: "",
+            error: adminConfigured
+              ? "Skipped: missing STUDIO_BRAIN_ID_TOKEN."
+              : "Skipped: STUDIO_BRAIN_ADMIN_TOKEN is not configured.",
+          },
+      "allow",
+    ),
+  ];
 
-  if (idToken) {
-    cases.push(await probe("B Authorization only", targetUrl, { Authorization: `Bearer ${idToken}` }));
+  const connectorCases = [
+    summarizeCase(await probe("A anonymous", connectorUrl, {}), "reject"),
+    summarizeCase(
+      idToken
+        ? await probe("B bearer only", connectorUrl, { Authorization: `Bearer ${idToken}` })
+        : {
+            label: "B bearer only",
+            url: connectorUrl,
+            statusCode: -1,
+            body: "",
+            error: "Skipped: no ID token. Set STUDIO_BRAIN_ID_TOKEN or pass --prompt-for-token.",
+          },
+      adminConfigured ? "deny" : "allow",
+    ),
+    summarizeCase(
+      idToken && adminConfigured
+        ? await probe("C bearer + x-studio-brain-admin-token", connectorUrl, {
+            Authorization: `Bearer ${idToken}`,
+            "x-studio-brain-admin-token": adminToken,
+          })
+        : {
+            label: "C bearer + x-studio-brain-admin-token",
+            url: connectorUrl,
+            statusCode: -1,
+            body: "",
+            error: adminConfigured
+              ? "Skipped: missing STUDIO_BRAIN_ID_TOKEN."
+              : "Skipped: STUDIO_BRAIN_ADMIN_TOKEN is not configured.",
+          },
+      "allow",
+    ),
+  ];
+
+  const allCases = [...capabilityCases, ...connectorCases];
+  const hasFailures = allCases.some((entry) => entry.status === "fail");
+  const requiresPrivilegedMatrix =
+    options.mode === POSTURE_MODES.AUTHENTICATED_PRIVILEGED_CHECK ||
+    options.mode === POSTURE_MODES.LIVE_HOST_AUTHORITATIVE;
+  const missingRequiredCredentials = requiresPrivilegedMatrix && (!idToken || (adminConfigured && !adminToken));
+  const skippedRequiredCases =
+    requiresPrivilegedMatrix &&
+    allCases.some((entry) => entry.status === "skip" && entry.expectation !== "deny");
+
+  const status = hasFailures || skippedRequiredCases || missingRequiredCredentials
+    ? "fail"
+    : allCases.some((entry) => entry.status === "skip")
+      ? "warn"
+      : "pass";
+
+  const report = {
+    schemaVersion: "studio-brain-auth-probe.v2",
+    generatedAt: new Date().toISOString(),
+    baseUrl,
+    capabilityPath: capabilityResolution.path,
+    connectorPath: connectorResolution.path,
+    status,
+    adminConfigured,
+    tokens: {
+      idToken: idToken ? redactToken(idToken) : "missing",
+      adminToken: adminToken ? redactToken(adminToken) : "missing",
+    },
+    surfaces: [
+      {
+        name: "capabilities",
+        path: capabilityResolution.path,
+        cases: capabilityCases,
+      },
+      {
+        name: "connectors-health",
+        path: connectorResolution.path,
+        cases: connectorCases,
+      },
+    ],
+    provenance: buildArtifactProvenance({
+      mode: options.mode,
+      envSource: explicitOptionBaseUrl ? "explicit-base-url" : "resolved-from-env",
+      envMode: explicitOptionBaseUrl ? "explicit" : "process-env-only",
+      approvedRemoteRunner: options.approvedRemoteRunner,
+      host: new URL(baseUrl).host,
+      generator: "scripts/test-studio-brain-auth.mjs",
+      dataClassification: DATA_CLASSIFICATIONS.OPERATIONAL_METADATA,
+      redactionState: REDACTION_STATES.VERIFIED_REDACTED,
+      sourceSystems: ["studio-brain-http"],
+    }),
+  };
+
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
-    cases.push({
-      label: "B Authorization only",
-      statusCode: -1,
-      body: "",
-      error: "Skipped: no ID token. Set STUDIO_BRAIN_ID_TOKEN or pass --prompt-for-token.",
-    });
+    printHumanSummary(report);
   }
 
-  if (idToken && adminToken) {
-    cases.push(
-      await probe("C Authorization + x-studio-brain-admin-token", targetUrl, {
-        Authorization: `Bearer ${idToken}`,
-        "x-studio-brain-admin-token": adminToken,
-      }),
-    );
-  } else {
-    cases.push({
-      label: "C Authorization + x-studio-brain-admin-token",
-      statusCode: -1,
-      body: "",
-      error:
-        "Skipped: missing STUDIO_BRAIN_ID_TOKEN or STUDIO_BRAIN_ADMIN_TOKEN.",
-    });
+  if (status !== "pass") {
+    process.exit(1);
   }
-
-  console.log("");
-  console.log("Results:");
-  cases.forEach((item) => {
-    console.log(`- ${item.label}: status=${item.statusCode}`);
-    if (item.error) {
-      console.log(`  error=${preview(item.error, 180)}`);
-    }
-    if (item.body) {
-      console.log(`  body=${preview(item.body, 220)}`);
-    }
-  });
-
-  const caseA = cases[0];
-  const caseB = cases[1];
-  const caseC = cases[2];
-  const caseABody = String(caseA.body || "").toLowerCase();
-  const caseBBody = String(caseB.body || "").toLowerCase();
-  const caseCBody = String(caseC.body || "").toLowerCase();
-
-  const passA = [401, 403].includes(caseA.statusCode) || caseABody.includes("missing authorization header");
-  const passB =
-    caseB.statusCode === -1 ? false : (caseB.statusCode === 200 || !caseBBody.includes("missing authorization header"));
-  const passC =
-    caseC.statusCode === -1 ? true : (caseC.statusCode === 200 || !caseCBody.includes("missing authorization header"));
-
-  console.log("");
-  console.log(`PASS A (no headers rejected): ${passA}`);
-  console.log(`PASS B (authorization accepted/non-missing-auth): ${passB}`);
-  console.log(`PASS C (authorization+admin accepted/non-missing-auth): ${passC}`);
-
-  if (passA && passB && passC) {
-    console.log("Overall: PASS");
-    return;
-  }
-
-  console.log("Overall: FAIL");
-  process.exit(1);
 };
 
 run().catch((error) => {

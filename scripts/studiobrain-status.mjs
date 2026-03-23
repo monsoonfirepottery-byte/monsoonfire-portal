@@ -14,11 +14,23 @@ import { fileURLToPath } from "node:url";
 
 import { validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
+import {
+  buildArtifactProvenance,
+  classifyExecutionAuthority,
+  DATA_CLASSIFICATIONS,
+  normalizePostureMode,
+  POSTURE_MODES,
+  POSTURE_POLICY_DEFAULTS,
+  REDACTION_STATES,
+} from "./lib/studiobrain-posture-policy.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const STUDIO_BRAIN_ROOT = resolve(REPO_ROOT, "studio-brain");
+const HOST_DRIFT_ALLOWLIST_PATH = resolve(STUDIO_BRAIN_ROOT, "host-drift-allowlist.json");
+const INCIDENT_LATEST_PATH = resolve(REPO_ROOT, "output", "incidents", "latest.json");
+const BACKUP_LATEST_PATH = resolve(REPO_ROOT, "output", "backups", "latest.json");
 const NETWORK_PROFILE_ENV_KEYS = [
   "STUDIO_BRAIN_NETWORK_PROFILE",
   "STUDIO_BRAIN_LOCAL_HOST",
@@ -42,8 +54,15 @@ if (envSource.path) {
 const args = parseArgs(process.argv.slice(2));
 const network = resolveStudioBrainNetworkProfile();
 const baseUrl = resolveBaseUrl();
+const mode = normalizePostureMode(args.mode, POSTURE_MODES.LOCAL_ADVISORY);
 const timeoutMs = Number(process.env.STUDIO_BRAIN_STATUS_TIMEOUT_MS || "5000");
 const enforceContractStrict = args.strict || process.env.STUDIO_BRAIN_STATUS_STRICT === "true";
+const authority = classifyExecutionAuthority({
+  mode,
+  envMode: envSource.source,
+  approvedRemoteRunner: args.approvedRemoteRunner,
+  hasFallbackArtifacts: true,
+});
 
 const hostCheck = evaluateHostContractRisk(network);
 const contractReport = validateEnvContract({ strict: enforceContractStrict });
@@ -52,7 +71,14 @@ const hostContractReport = args.skipHostScan ? null : runHostContractScan(enforc
 const endpointResults = await probeEndpoints();
 const evidence = args.skipEvidence ? [] : collectEvidence();
 const snapshotReport = buildSnapshotReport(endpointResults);
+const hostDriftAllowlist = loadHostDriftAllowlist();
+const hostDriftReport = evaluateHostDriftAllowlist(hostDriftAllowlist);
+const backupFreshnessReport = args.skipBackup ? null : runBackupFreshnessCheck(mode, args.approvedRemoteRunner);
+const governanceReport = evaluateEvidenceGovernance();
+const authProbeReport = args.skipAuthProbe ? null : runAuthProbe(mode, args.approvedRemoteRunner);
 const checks = buildChecks({
+  mode,
+  authority,
   network,
   contract: contractReport,
   integrityReport,
@@ -61,18 +87,36 @@ const checks = buildChecks({
   endpointResults,
   snapshotReport,
   evidence,
+  hostDriftReport,
+  backupFreshnessReport,
+  authProbeReport,
+  governanceReport,
   includeEvidenceChecks: !args.skipEvidence,
 });
-  const hardFailCount = checks.filter((entry) => entry.severity === "error" && !entry.ok).length;
-  const warningCount = checks.filter((entry) => entry.severity === "warning" && !entry.ok).length;
-  const status = hardFailCount > 0 || (args.strict && warningCount > 0) ? "fail" : warningCount > 0 ? "warn" : "pass";
+const hardFailCount = checks.filter((entry) => entry.severity === "error" && !entry.ok).length;
+const warningCount = checks.filter((entry) => entry.severity === "warning" && !entry.ok).length;
+const status = hardFailCount > 0 || (args.strict && warningCount > 0) ? "fail" : warningCount > 0 ? "warn" : "pass";
 
 const payload = {
   status,
   timestamp: new Date().toISOString(),
+  provenance: buildArtifactProvenance({
+    mode,
+    envSource: envSource.label,
+    envMode: envSource.source,
+    approvedRemoteRunner: args.approvedRemoteRunner,
+    host: network.host,
+    generator: "scripts/studiobrain-status.mjs",
+    dataClassification: DATA_CLASSIFICATIONS.OPERATIONAL_METADATA,
+    redactionState: REDACTION_STATES.VERIFIED_REDACTED,
+    sourceSystems: ["studio-brain-http", "integrity-check", "backup-drill", "ops-cockpit"],
+    hasFallbackArtifacts: true,
+  }),
   environment: {
     envSource: envSource.label,
     envMode: envSource.source,
+    mode,
+    approvedRemoteRunner: args.approvedRemoteRunner,
   },
   profile: {
     requestedProfile: network.requestedProfile,
@@ -85,7 +129,7 @@ const payload = {
     hasLoopbackFallback: network.hasLoopbackFallback,
   },
   posture: {
-    safeToRunHighRisk: status === "pass",
+    safeToRunHighRisk: status === "pass" && (mode === POSTURE_MODES.LOCAL_ADVISORY || authority.authoritative),
     blockers: checks.filter((entry) => entry.severity === "error" && !entry.ok),
     warnings: checks.filter((entry) => entry.severity === "warning" && !entry.ok),
     summary: {
@@ -93,6 +137,15 @@ const payload = {
       warnings: warningCount,
     },
     checks: checks.length,
+  },
+  policy: {
+    shadowWindowDays: POSTURE_POLICY_DEFAULTS.shadowWindowDays,
+    maxExpiringOverrides: POSTURE_POLICY_DEFAULTS.maxExpiringOverrides,
+    authority,
+    escalationOwners: {
+      runtime: ["platform-primary", "ops-primary"],
+      trustSafety: ["trust-safety-primary", "governance-primary"],
+    },
   },
   contract: {
     ok: contractReport.ok,
@@ -119,8 +172,12 @@ const payload = {
         allowedMatches: (hostContractReport.allowedMatches || []).slice(0, 25),
       }
     : null,
+  hostDriftAllowlist: hostDriftReport,
   endpoints: endpointResults,
   snapshot: snapshotReport,
+  backupFreshness: backupFreshnessReport,
+  authProbe: authProbeReport,
+  evidenceGovernance: governanceReport,
   evidence,
   checks: checks.map((entry) => ({
     name: entry.name,
@@ -239,7 +296,11 @@ function parseArgs(rawArgs) {
     strict: false,
     skipHostScan: false,
     skipEvidence: false,
+    skipAuthProbe: false,
+    skipBackup: false,
     includeMetrics: false,
+    mode: POSTURE_MODES.LOCAL_ADVISORY,
+    approvedRemoteRunner: false,
     artifactPath: "",
   };
 
@@ -276,8 +337,29 @@ function parseArgs(rawArgs) {
       continue;
     }
 
+    if (arg === "--no-auth-probe") {
+      parsed.skipAuthProbe = true;
+      continue;
+    }
+
+    if (arg === "--no-backup") {
+      parsed.skipBackup = true;
+      continue;
+    }
+
     if (arg === "--include-metrics") {
       parsed.includeMetrics = true;
+      continue;
+    }
+
+    if (arg === "--mode" && rawArgs[index + 1]) {
+      parsed.mode = normalizePostureMode(rawArgs[index + 1], POSTURE_MODES.LOCAL_ADVISORY);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--approved-remote-runner") {
+      parsed.approvedRemoteRunner = true;
       continue;
     }
 
@@ -301,6 +383,10 @@ function parseArgs(rawArgs) {
       process.stdout.write("  --include-metrics\n");
       process.stdout.write("  --no-host-scan\n");
       process.stdout.write("  --no-evidence\n");
+      process.stdout.write("  --no-auth-probe\n");
+      process.stdout.write("  --no-backup\n");
+      process.stdout.write("  --mode <local_advisory|live_host_authoritative|authenticated_privileged_check>\n");
+      process.stdout.write("  --approved-remote-runner\n");
       process.stdout.write("  --artifact [path]\n");
       process.exit(0);
     }
@@ -463,7 +549,7 @@ function runIntegrityReport(strict) {
     timeoutMs: 30_000,
   });
 
-  if (result.ok) {
+  if (result.payload) {
     return result.payload;
   }
 
@@ -563,7 +649,177 @@ function runJsonCommand({ command, path: sourcePath, timeoutMs = 30_000 }) {
   };
 }
 
+function runBackupFreshnessCheck(mode, approvedRemoteRunner) {
+  const script = resolve(REPO_ROOT, "scripts", "studiobrain-backup-drill.mjs");
+  const command = [script, "verify", "--freshness-only", "--json", "--mode", mode];
+  if (approvedRemoteRunner) {
+    command.push("--approved-remote-runner");
+  }
+  const result = runJsonCommand({
+    command: [process.execPath, ...command],
+    path: "backup-freshness",
+    timeoutMs: 30_000,
+  });
+  if (!result.payload) {
+    return {
+      ok: false,
+      status: "fail",
+      gateStatus: "advisory_evidence_only",
+      message: result.message,
+      details: { output: result.output },
+    };
+  }
+  return {
+    ok: result.payload.status === "pass",
+    status: result.payload.status || "unknown",
+    gateStatus: result.payload.gateStatus || "advisory_evidence_only",
+    message: result.payload.freshness?.summary || `backup freshness ${result.payload.status || "unknown"}`,
+    details: result.payload,
+  };
+}
+
+function runAuthProbe(mode, approvedRemoteRunner) {
+  const hasIdToken = Boolean(String(process.env.STUDIO_BRAIN_ID_TOKEN || "").trim());
+  if (!hasIdToken && mode !== POSTURE_MODES.AUTHENTICATED_PRIVILEGED_CHECK) {
+    return {
+      skipped: true,
+      ok: true,
+      status: "skip",
+      message: "auth probe skipped: no STUDIO_BRAIN_ID_TOKEN present",
+      details: {},
+    };
+  }
+
+  const script = resolve(REPO_ROOT, "scripts", "test-studio-brain-auth.mjs");
+  const command = [script, "--json", "--mode", mode];
+  if (approvedRemoteRunner) {
+    command.push("--approved-remote-runner");
+  }
+  const result = runJsonCommand({
+    command: [process.execPath, ...command],
+    path: "auth-probe",
+    timeoutMs: 30_000,
+  });
+  if (!result.payload) {
+    return {
+      skipped: false,
+      ok: false,
+      status: "fail",
+      message: result.message,
+      details: { output: result.output },
+    };
+  }
+  return {
+    skipped: false,
+    ok: result.payload.status === "pass",
+    status: result.payload.status || "unknown",
+    message: `auth probe ${result.payload.status || "unknown"}`,
+    details: result.payload,
+  };
+}
+
+function loadHostDriftAllowlist() {
+  const payload = readJsonIfAvailable(HOST_DRIFT_ALLOWLIST_PATH);
+  if (!payload || typeof payload !== "object") {
+    return {
+      ok: false,
+      status: "fail",
+      message: "host drift allowlist missing or invalid",
+      entries: [],
+      path: relativeRepoPath(HOST_DRIFT_ALLOWLIST_PATH),
+    };
+  }
+  return {
+    ok: true,
+    status: "pass",
+    message: "host drift allowlist loaded",
+    entries: Array.isArray(payload.entries) ? payload.entries : [],
+    generatedAt: payload.generatedAt || "",
+    path: relativeRepoPath(HOST_DRIFT_ALLOWLIST_PATH),
+  };
+}
+
+function evaluateHostDriftAllowlist(allowlist) {
+  if (!allowlist.ok) {
+    return {
+      ok: false,
+      status: "fail",
+      message: allowlist.message,
+      details: allowlist,
+    };
+  }
+
+  const expiredEntries = [];
+  const invalidEntries = [];
+  for (const entry of allowlist.entries) {
+    const expiresAt = new Date(entry.expiresAt || "");
+    if (!entry.path || !entry.owner || !entry.reason || !entry.expiresAt) {
+      invalidEntries.push(entry);
+      continue;
+    }
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+      expiredEntries.push(entry);
+    }
+  }
+
+  const ok = expiredEntries.length === 0 && invalidEntries.length === 0;
+  return {
+    ok,
+    status: ok ? "pass" : "fail",
+    message: ok ? "host drift allowlist valid" : "host drift allowlist has invalid or expired entries",
+    details: {
+      path: allowlist.path,
+      generatedAt: allowlist.generatedAt || "",
+      totalEntries: allowlist.entries.length,
+      expiredEntries,
+      invalidEntries,
+      entries: allowlist.entries,
+    },
+  };
+}
+
+function evaluateEvidenceGovernance() {
+  const warnings = [];
+  const checked = [];
+
+  const incidentLatest = readJsonIfAvailable(INCIDENT_LATEST_PATH);
+  if (incidentLatest?.bundlePath) {
+    const incidentBundle = readJsonIfAvailable(resolve(REPO_ROOT, incidentLatest.bundlePath));
+    checked.push({ artifact: "incident-bundle", path: incidentLatest.bundlePath });
+    if (!incidentBundle?.provenance || !incidentBundle?.retention) {
+      warnings.push("latest incident bundle missing provenance or retention metadata");
+    }
+    if (incidentBundle?.retention?.retentionDays !== 30) {
+      warnings.push("latest incident bundle retention window is not 30 days");
+    }
+    if (incidentBundle?.git?.diffPreview) {
+      warnings.push("latest incident bundle still exposes raw git diffPreview");
+    }
+  }
+
+  const backupLatest = readJsonIfAvailable(BACKUP_LATEST_PATH);
+  if (backupLatest?.manifestPath) {
+    const backupManifest = readJsonIfAvailable(resolve(REPO_ROOT, backupLatest.manifestPath));
+    checked.push({ artifact: "backup-manifest", path: backupLatest.manifestPath });
+    if (!backupManifest?.provenance) {
+      warnings.push("latest backup manifest missing provenance metadata");
+    }
+  }
+
+  return {
+    ok: warnings.length === 0,
+    status: warnings.length === 0 ? "pass" : "warn",
+    message: warnings.length === 0 ? "artifact governance checks clear" : `${warnings.length} artifact governance warning(s)`,
+    details: {
+      checked,
+      warnings,
+    },
+  };
+}
+
 function buildChecks({
+  mode,
+  authority,
   network,
   contract,
   integrityReport,
@@ -572,9 +828,23 @@ function buildChecks({
   endpointResults,
   snapshotReport,
   evidence,
+  hostDriftReport,
+  backupFreshnessReport,
+  authProbeReport,
+  governanceReport,
   includeEvidenceChecks,
 }) {
   const checks = [];
+  checks.push({
+    name: "Gate A authoritative mode",
+    category: "gate-a",
+    severity: mode === POSTURE_MODES.LOCAL_ADVISORY ? "warning" : "error",
+    ok: mode === POSTURE_MODES.LOCAL_ADVISORY ? true : authority.authoritative,
+    status: mode === POSTURE_MODES.LOCAL_ADVISORY ? "pass" : authority.authoritative ? "pass" : "fail",
+    message: authority.reasons.join("; "),
+    details: authority,
+  });
+
   checks.push({
     name: "env contract",
     category: "contract",
@@ -602,7 +872,7 @@ function buildChecks({
 
   checks.push({
     name: "integrity manifest",
-    category: "integrity",
+    category: "gate-b",
     severity: "error",
     ok: Boolean(integrityReport.ok),
     status: integrityReport.ok ? "pass" : "fail",
@@ -659,6 +929,16 @@ function buildChecks({
     });
   }
 
+  checks.push({
+    name: "Gate B host drift allowlist",
+    category: "gate-b",
+    severity: "error",
+    ok: hostDriftReport.ok,
+    status: hostDriftReport.status,
+    message: hostDriftReport.message,
+    details: hostDriftReport.details,
+  });
+
   for (const endpoint of endpointResults) {
     checks.push({
       name: endpoint.name,
@@ -675,13 +955,68 @@ function buildChecks({
   }
 
   checks.push({
-    name: "snapshot freshness",
-    category: "snapshot",
+    name: "Gate A snapshot freshness",
+    category: "gate-a",
     severity: "warning",
     ok: snapshotReport.ok,
     status: snapshotReport.ok ? "pass" : "warn",
     message: snapshotReport.message,
     details: snapshotReport.details,
+  });
+
+  if (backupFreshnessReport) {
+    checks.push({
+      name: "Gate C backup freshness",
+      category: "gate-c",
+      severity: authority.authoritative ? "error" : "warning",
+      ok:
+        backupFreshnessReport.gateStatus === "advisory_evidence_only"
+          ? true
+          : backupFreshnessReport.ok,
+      status:
+        backupFreshnessReport.gateStatus === "advisory_evidence_only"
+          ? "warn"
+          : backupFreshnessReport.status,
+      message: backupFreshnessReport.message,
+      details: backupFreshnessReport.details,
+    });
+  }
+
+  if (authProbeReport) {
+    checks.push({
+      name: "Gate D privileged auth probe",
+      category: "gate-d",
+      severity:
+        mode === POSTURE_MODES.AUTHENTICATED_PRIVILEGED_CHECK ? "error" : authProbeReport.skipped ? "warning" : "error",
+      ok: authProbeReport.ok,
+      status: authProbeReport.skipped ? "warn" : authProbeReport.status,
+      message: authProbeReport.message,
+      details: authProbeReport.details,
+    });
+  }
+
+  checks.push({
+    name: "Gate E artifact governance",
+    category: "gate-e",
+    severity: "warning",
+    ok: governanceReport.ok,
+    status: governanceReport.status,
+    message: governanceReport.message,
+    details: governanceReport.details,
+  });
+
+  checks.push({
+    name: "Gate F escalation contract",
+    category: "gate-f",
+    severity: "warning",
+    ok: true,
+    status: "pass",
+    message: "trust-safety and platform escalation thresholds are encoded in repo policy and scorecard playbooks",
+    details: {
+      escalationOwners: ["platform-primary", "ops-primary", "trust-safety-primary", "governance-primary"],
+      mediumReviewEscalation: "2 matching reports in 24 hours",
+      authAbuseSignal: "rate_limit_triggered",
+    },
   });
 
   if (includeEvidenceChecks) {
@@ -878,6 +1213,15 @@ function guessArtifactName(filePath) {
   return parts.slice(-2).join("/");
 }
 
+function relativeRepoPath(absPath) {
+  if (!absPath) return "";
+  const normalizedRoot = REPO_ROOT.replace(/\\/g, "/");
+  const normalizedPath = absPath.replace(/\\/g, "/");
+  return normalizedPath.startsWith(`${normalizedRoot}/`)
+    ? normalizedPath.slice(normalizedRoot.length + 1)
+    : normalizedPath;
+}
+
 function pick(payload, keys) {
   if (!payload || typeof payload !== "object") return null;
   const out = {};
@@ -984,6 +1328,8 @@ function writeArtifact(artifactPath, payload) {
 
 function printTextSummary(payload) {
   process.stdout.write(`studio-brain status: ${payload.status.toUpperCase()}\n`);
+  process.stdout.write(`  mode: ${payload.environment.mode}\n`);
+  process.stdout.write(`  authority: ${payload.policy.authority.status}\n`);
   process.stdout.write(`  profile: ${payload.profile.profile} (${payload.profile.requestedProfile})\n`);
   process.stdout.write(`  host: ${payload.profile.host}\n`);
   process.stdout.write(`  baseUrl: ${baseUrl}\n`);

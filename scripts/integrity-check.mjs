@@ -18,22 +18,43 @@ const DEFAULT_TARGET_FILES = [
   "studio-brain/scripts/env-contract-validator.mjs",
   "studio-brain/scripts/validateCompose.mjs",
   "studio-brain/scripts/validate-env-contract.mjs",
+  "studio-brain/host-drift-allowlist.json",
   "scripts/studio-network-profile.mjs",
+  "scripts/lib/studiobrain-posture-policy.mjs",
   "scripts/start-emulators.mjs",
   "scripts/studiobrain-network-check.mjs",
   "scripts/studiobrain-status.mjs",
+  "scripts/studiobrain-backup-drill.mjs",
+  "scripts/studiobrain-incident-bundle.mjs",
+  "scripts/test-studio-brain-auth.mjs",
+  "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",
+  "scripts/deploy-studio-brain-host.py",
   "scripts/pr-gate.mjs",
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/functions-cors-smoke.mjs",
   "scripts/stability-guardrails.mjs",
+  "docs/policies/STUDIO_OS_V3_RETENTION.md",
+  "docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md",
   "website/scripts/deploy.mjs",
   "website/scripts/serve.mjs",
 ];
 
 const DEFAULT_OVERRIDE_ENV_VAR = "STUDIO_BRAIN_INTEGRITY_OVERRIDE";
 const OVERRIDE_REQUIRED_KEYS = ["owner", "reason", "expiresAt"];
+const TEXT_FILE_EXTENSIONS = new Set([
+  ".json",
+  ".md",
+  ".mjs",
+  ".profile",
+  ".ps1",
+  ".py",
+  ".schema",
+  ".sh",
+  ".yml",
+  ".yaml",
+]);
 
 function parseArgs(rawArgs = []) {
   const parsed = {
@@ -43,6 +64,7 @@ function parseArgs(rawArgs = []) {
     failOnWarnings: false,
     update: false,
     init: false,
+    paths: [],
   };
 
   for (let index = 0; index < rawArgs.length; index += 1) {
@@ -76,9 +98,26 @@ function parseArgs(rawArgs = []) {
       parsed.init = true;
       continue;
     }
+    if (arg === "--path" && rawArgs[index + 1]) {
+      parsed.paths.push(rawArgs[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--path=")) {
+      parsed.paths.push(arg.slice("--path=".length));
+      continue;
+    }
   }
 
   return parsed;
+}
+
+function resolveTargets(rawPaths = []) {
+  const targets = rawPaths
+    .map((path) => String(path || "").trim())
+    .filter(Boolean);
+
+  return targets.length > 0 ? [...new Set(targets)] : [...DEFAULT_TARGET_FILES];
 }
 
 function parseOverride(rawValue) {
@@ -126,9 +165,30 @@ function parseOverride(rawValue) {
 }
 
 function sha256File(filePath) {
-  const data = readFileSync(filePath);
+  const data = readCanonicalFile(filePath);
   const hash = createHash("sha256").update(data).digest("hex");
   return hash;
+}
+
+function canonicalSize(filePath) {
+  return readCanonicalFile(filePath).length;
+}
+
+function readCanonicalFile(filePath) {
+  if (!shouldNormalizeText(filePath)) {
+    return readFileSync(filePath);
+  }
+  const text = readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
+  return Buffer.from(text, "utf8");
+}
+
+function shouldNormalizeText(filePath) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  if (/\/\.env(?:\.|$)/.test(normalized)) {
+    return true;
+  }
+  const ext = normalized.includes(".") ? `.${normalized.split(".").pop()}` : "";
+  return TEXT_FILE_EXTENSIONS.has(ext);
 }
 
 function toRelative(filePath) {
@@ -140,7 +200,7 @@ function hashTarget(pathOrFile) {
   return {
     path: toRelative(absolute),
     sha256: sha256File(absolute),
-    size: readFileSync(absolute).length,
+    size: canonicalSize(absolute),
   };
 }
 
@@ -187,8 +247,9 @@ function writeManifest(payload, manifestPath) {
   writeFileSync(manifestPath, output, "utf8");
 }
 
-function buildUpdatePayload(targets) {
-  const fileRecords = targets
+function buildUpdatePayload(targets, existingManifest = null) {
+  const targetSet = new Set(targets);
+  const updatedRecords = targets
     .map((path) => {
       const absolute = resolve(REPO_ROOT, path);
       if (!existsSync(absolute)) {
@@ -198,10 +259,23 @@ function buildUpdatePayload(targets) {
       return {
         path,
         sha256: sha256File(absolute),
-        size: readFileSync(absolute).length,
+        size: canonicalSize(absolute),
       };
     })
     .filter(Boolean)
+    .sort((left, right) => left.path.localeCompare(right.path));
+
+  const preservedRecords = Array.isArray(existingManifest?.files)
+    ? existingManifest.files
+        .filter((entry) => entry && typeof entry.path === "string" && !targetSet.has(entry.path))
+        .map((entry) => ({
+          path: entry.path,
+          sha256: entry.sha256,
+          size: entry.size,
+        }))
+    : [];
+
+  const fileRecords = [...preservedRecords, ...updatedRecords]
     .sort((left, right) => left.path.localeCompare(right.path));
 
   const missing = targets.filter((path) => !existsSync(resolve(REPO_ROOT, path)));
@@ -213,6 +287,8 @@ function buildUpdatePayload(targets) {
     metadata: {
       totalFiles: fileRecords.length,
       missingOnUpdate: missing,
+      partialUpdate: targets.length !== DEFAULT_TARGET_FILES.length,
+      updatedPaths: [...targets],
     },
     files: fileRecords,
   };
@@ -288,7 +364,7 @@ function compareAgainstManifest(manifest, targets, override, options) {
     }
 
     const actualSha = sha256File(absolute);
-    const actualSize = readFileSync(absolute).length;
+    const actualSize = canonicalSize(absolute);
     if (actualSha !== existing.sha256 || actualSize !== existing.size) {
       const issue = {
         file: target,
@@ -401,10 +477,11 @@ function runIntegrityCheck(options = {}) {
   const strict = Boolean(options.strict);
   const failOnWarnings = Boolean(options.failOnWarnings);
   const update = Boolean(options.update);
+  const selectedTargets = resolveTargets(options.targets);
 
   const manifest = loadManifest(manifestPath);
   if (update) {
-    const payload = buildUpdatePayload(DEFAULT_TARGET_FILES);
+    const payload = buildUpdatePayload(selectedTargets, manifest);
     writeManifest(payload, manifestPath);
     const missing = payload.metadata?.missingOnUpdate ?? [];
     if (missing.length > 0) {
@@ -437,11 +514,12 @@ function runIntegrityCheck(options = {}) {
   }
 
   const resolvedManifest = loadManifest(manifestPath);
-  const report = compareAgainstManifest(resolvedManifest, DEFAULT_TARGET_FILES, override, {
+  const report = compareAgainstManifest(resolvedManifest, selectedTargets, override, {
     strict,
     failOnWarnings,
     manifestPath,
   });
+  report.selectedTargets = selectedTargets;
 
   if (options.verbose !== false) {
     if (!outputJson) {
@@ -465,6 +543,7 @@ function run(argv) {
     strict: args.strict,
     failOnWarnings: args.failOnWarnings,
     update: args.update || args.init,
+    targets: args.paths,
     json: args.json,
     verbose: true,
   });

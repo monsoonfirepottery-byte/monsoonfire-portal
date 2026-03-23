@@ -19,6 +19,7 @@ const OPS_DIR = resolve(REPO_ROOT, "output", "ops-cockpit");
 const STATE_PATH = resolve(OPS_DIR, "state.json");
 const STATUS_PATH = resolve(OPS_DIR, "latest-status.json");
 const HEARTBEAT_SUMMARY_PATH = resolve(REPO_ROOT, "output", "stability", "heartbeat-summary.json");
+const POSTURE_STATUS_PATH = resolve(REPO_ROOT, "output", "studio-posture", "latest.json");
 const AUDIT_LOG_PATH = resolve(REPO_ROOT, "output", "ops-audit", "destructive-actions.log");
 
 mkdirSync(OPS_DIR, { recursive: true });
@@ -46,6 +47,7 @@ function runStart() {
   const state = readState();
   const reliability = runCommand("node", ["./scripts/reliability-hub.mjs", "once", "--json"]);
   const heartbeat = readJsonIfExists(HEARTBEAT_SUMMARY_PATH);
+  const posture = readJsonIfExists(POSTURE_STATUS_PATH);
 
   const nextState = {
     enabled: true,
@@ -54,6 +56,7 @@ function runStart() {
     lastStoppedAt: state.lastStoppedAt || "",
     lastStatus: heartbeat?.status || (reliability.ok ? "pass" : "fail"),
     heartbeatSummaryPath: relativePath(HEARTBEAT_SUMMARY_PATH),
+    postureStatusPath: relativePath(POSTURE_STATUS_PATH),
     lastBundlePath: state.lastBundlePath || "",
   };
   writeJson(STATE_PATH, nextState);
@@ -63,6 +66,7 @@ function runStart() {
     command: "start",
     reliability,
     heartbeatStatus: heartbeat?.status || "unknown",
+    postureStatus: posture?.status || "unknown",
   };
   writeJson(STATUS_PATH, latest);
 
@@ -71,6 +75,7 @@ function runStart() {
     command: "start",
     state: nextState,
     heartbeatStatus: heartbeat?.status || "unknown",
+    postureStatus: posture?.status || "unknown",
     reliabilityOk: reliability.ok,
   });
 }
@@ -78,16 +83,19 @@ function runStart() {
 function runStatus() {
   const state = readState();
   const heartbeat = readJsonIfExists(HEARTBEAT_SUMMARY_PATH);
+  const posture = readJsonIfExists(POSTURE_STATUS_PATH);
   const latest = readJsonIfExists(STATUS_PATH);
 
-  const status = heartbeat?.status || state.lastStatus || "unknown";
+  const status = posture?.status || heartbeat?.status || state.lastStatus || "unknown";
   output({
     status,
     statusColor: status === "pass" ? "green" : status === "warn" ? "yellow" : status === "fail" ? "red" : "gray",
     command: "status",
     state,
     heartbeatSummaryPath: relativePath(HEARTBEAT_SUMMARY_PATH),
+    postureStatusPath: relativePath(POSTURE_STATUS_PATH),
     heartbeat,
+    posture,
     latest,
   });
 }
@@ -198,6 +206,7 @@ function readState() {
     lastStoppedAt: "",
     lastStatus: "unknown",
     heartbeatSummaryPath: relativePath(HEARTBEAT_SUMMARY_PATH),
+    postureStatusPath: relativePath(POSTURE_STATUS_PATH),
     lastBundlePath: "",
   };
 }
@@ -291,6 +300,9 @@ function output(payload) {
   }
   if (payload.heartbeatStatus) {
     process.stdout.write(`  heartbeat: ${payload.heartbeatStatus}\n`);
+  }
+  if (payload.postureStatus) {
+    process.stdout.write(`  posture: ${payload.postureStatus}\n`);
   }
   if (payload.bundle?.bundlePath) {
     process.stdout.write(`  bundle: ${payload.bundle.bundlePath}\n`);

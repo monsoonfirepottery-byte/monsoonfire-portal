@@ -9,8 +9,9 @@ Use this when the live Studio Brain host at `192.168.1.226` has drifted away fro
 - uploads that archive to the remote host
 - moves known host-only drift paths from [`host-drift-allowlist.json`](/D:/monsoonfire-portal/studio-brain/host-drift-allowlist.json) out of the active runtime into a timestamped backup directory
 - extracts the repo-backed runtime over `/home/wuff/monsoonfire-portal/studio-brain`
+- ensures `STUDIO_BRAIN_ADMIN_TOKEN` exists in the host `.env.local` before restart so Gate D dual-control can be exercised on the live runtime
 - restarts the service from `node lib/index.js` using the host’s `.env` and `.env.local`
-- runs the authoritative live-host posture check, backup freshness check, and local privileged auth probe before declaring the deploy healthy
+- refreshes authoritative backup evidence plus ops-cockpit heartbeat artifacts, then runs the live-host posture check and local privileged auth probe before declaring the deploy healthy
 
 ## Command
 
@@ -50,6 +51,10 @@ The deploy is only considered healthy if:
   - `node ./scripts/studiobrain-status.mjs --json --require-safe --mode live_host_authoritative --approved-remote-runner`
 - the remote authoritative backup freshness check passes:
   - `node ./scripts/studiobrain-backup-drill.mjs verify --freshness-only --json --strict --mode live_host_authoritative --approved-remote-runner`
+- the remote full backup verification refresh succeeds before the freshness gate is evaluated:
+  - `node ./scripts/studiobrain-backup-drill.mjs verify --json --strict --mode live_host_authoritative --approved-remote-runner`
+- the remote ops cockpit heartbeat refresh succeeds:
+  - `node ./scripts/ops-cockpit.mjs start --json`
 - the local privileged auth matrix passes against the live host:
   - `node ./scripts/test-studio-brain-auth.mjs --json --mode authenticated_privileged_check --base-url <live-base-url>`
 - the latest log tail does not reintroduce `autonomic_loop_driver_resume_failed`

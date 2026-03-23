@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import subprocess
 import tarfile
 import tempfile
@@ -22,6 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_STUDIO_BRAIN = REPO_ROOT / "studio-brain"
 ENV_PATH = REPO_ROOT / "secrets/studio-brain/studio-brain-mcp.env"
 PORTAL_ENV_PATH = REPO_ROOT / "secrets/portal/portal-automation.env"
+STUDIO_AUTOMATION_ENV_PATH = REPO_ROOT / "secrets" / "studio-brain" / "studio-brain-automation.env"
+HOME_STUDIO_AUTOMATION_ENV_PATH = Path.home() / "secrets" / "studio-brain" / "studio-brain-automation.env"
 INTEGRITY_MANIFEST_PATH = REPO_ROOT / "studio-brain/.env.integrity.json"
 REMOTE_PARENT = "/home/wuff/monsoonfire-portal"
 REMOTE_ROOT = f"{REMOTE_PARENT}/studio-brain"
@@ -67,6 +70,13 @@ def load_optional_env_file(path: Path) -> dict[str, str]:
             continue
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def load_optional_env_files(paths: tuple[Path, ...]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for path in paths:
+        values.update(load_optional_env_file(path))
     return values
 
 
@@ -230,12 +240,50 @@ PY
 
 
 def run_remote_json(ssh: "paramiko.SSHClient", command: str, timeout: int = 120) -> dict[str, object]:
-    out, err, code = ssh_exec(ssh, command, timeout=timeout)
-    combined = "\n".join([segment for segment in [out.strip(), err.strip()] if segment]).strip()
+    wrapped_command = f"""
+python3 - <<'PY'
+import json
+import subprocess
+import sys
+
+command = {json.dumps(command)}
+result = subprocess.run(command, shell=True, text=True, capture_output=True, check=False)
+payload = {{
+    "returncode": result.returncode,
+    "stdout": result.stdout,
+    "stderr": result.stderr,
+}}
+sys.stdout.write(json.dumps(payload))
+PY
+"""
+    out, err, code = ssh_exec(ssh, wrapped_command, timeout=timeout)
+    wrapper_payload = None
+    try:
+        wrapper_payload = json.loads(out.strip())
+    except json.JSONDecodeError:
+        wrapper_payload = None
+    if code != 0 or wrapper_payload is None:
+        combined = "\n".join([segment for segment in [out.strip(), err.strip()] if segment]).strip()
+        return {
+            "ok": False,
+            "exitCode": code,
+            "parsed": extract_json_payload(combined),
+            "output": combined[-4000:],
+        }
+    combined = "\n".join(
+        [
+            segment
+            for segment in [
+                str(wrapper_payload.get("stdout", "")).strip(),
+                str(wrapper_payload.get("stderr", "")).strip(),
+            ]
+            if segment
+        ]
+    ).strip()
     parsed = extract_json_payload(combined)
     return {
-        "ok": code == 0 and parsed is not None,
-        "exitCode": code,
+        "ok": int(wrapper_payload.get("returncode", 1)) == 0 and parsed is not None,
+        "exitCode": int(wrapper_payload.get("returncode", 1)),
         "parsed": parsed,
         "output": combined[-4000:],
     }
@@ -289,10 +337,12 @@ def extract_json_payload(text: str) -> dict[str, object] | list[object] | None:
     except json.JSONDecodeError:
         pass
 
-    for opener, closer in (("{", "}"), ("[", "]")):
-        start = text.find(opener)
-        if start < 0:
+    best_payload = None
+    best_size = -1
+    for start, opener in enumerate(text):
+        if opener not in "{[":
             continue
+        closer = "}" if opener == "{" else "]"
         depth = 0
         in_string = False
         escaped = False
@@ -319,12 +369,16 @@ def extract_json_payload(text: str) -> dict[str, object] | list[object] | None:
                 if depth == 0:
                     candidate = text[start : index + 1]
                     try:
-                        return json.loads(candidate)
+                        parsed = json.loads(candidate)
                     except json.JSONDecodeError:
                         break
+                    if len(candidate) > best_size:
+                        best_payload = parsed
+                        best_size = len(candidate)
+                    break
                 if depth < 0:
                     break
-    return None
+    return best_payload
 
 
 def read_remote_secret_value(ssh: "paramiko.SSHClient", key: str, timeout: int = 30) -> str:
@@ -377,22 +431,32 @@ import subprocess
 needle = {json.dumps(key)}
 pid = {json.dumps(pid_candidate)}
 
-if not pid:
-    proc = subprocess.run("pgrep -f 'node lib/index.js'", shell=True, capture_output=True, text=True)
-    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    pid = lines[-1] if lines else ""
+candidate_pids = []
+if pid:
+    candidate_pids.append(pid)
 
-if not pid:
-    raise SystemExit(1)
-
-data = Path(f"/proc/{{pid}}/environ").read_bytes().decode("utf-8", "ignore").split("\\0")
-for entry in data:
-    if not entry or "=" not in entry:
+for proc in Path("/proc").iterdir():
+    if not proc.name.isdigit() or proc.name in candidate_pids:
         continue
-    current_key, value = entry.split("=", 1)
-    if current_key == needle:
-        print(value.strip())
-        raise SystemExit(0)
+    try:
+        cmdline = (proc / "cmdline").read_text("utf-8", "ignore").replace("\\0", " ").strip()
+    except Exception:
+        continue
+    if cmdline == "node lib/index.js":
+        candidate_pids.append(proc.name)
+
+for candidate_pid in candidate_pids:
+    try:
+        data = Path(f"/proc/{{candidate_pid}}/environ").read_bytes().decode("utf-8", "ignore").split("\\0")
+    except Exception:
+        continue
+    for entry in data:
+        if not entry or "=" not in entry:
+            continue
+        current_key, value = entry.split("=", 1)
+        if current_key == needle:
+            print(value.strip())
+            raise SystemExit(0)
 
 raise SystemExit(1)
 PY
@@ -403,9 +467,61 @@ PY
     return out.strip()
 
 
+def ensure_remote_admin_token(ssh: "paramiko.SSHClient", timeout: int = 30) -> tuple[str, str]:
+    existing = read_remote_secret_value(ssh, "STUDIO_BRAIN_ADMIN_TOKEN", timeout=timeout)
+    if existing:
+        return existing, "remote-env-file"
+
+    provisioned = secrets.token_urlsafe(32)
+    command = f"""
+python3 - <<'PY'
+from pathlib import Path
+
+root = Path({json.dumps(REMOTE_ROOT)})
+path = root / ".env.local"
+needle = "STUDIO_BRAIN_ADMIN_TOKEN"
+token = {json.dumps(provisioned)}
+
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+for index, raw_line in enumerate(lines):
+    stripped = raw_line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in raw_line:
+        continue
+    key, _ = raw_line.split("=", 1)
+    if key.strip() == needle:
+        lines[index] = f"{{needle}}={{token}}"
+        break
+else:
+    if lines and lines[-1].strip():
+        lines.append("")
+    lines.append("# provisioned by scripts/deploy-studio-brain-host.py for Gate D dual-control")
+    lines.append(f"{{needle}}={{token}}")
+
+path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+try:
+    path.chmod(0o600)
+except OSError:
+    pass
+print("provisioned")
+PY
+"""
+    out, err, code = ssh_exec(ssh, command, timeout=timeout)
+    if code != 0:
+        raise RuntimeError(err or out or "failed to provision remote admin token")
+    return provisioned, "provisioned-remote-env-local"
+
+
 def deploy() -> dict[str, object]:
     env = load_env()
     portal_env = load_optional_env_file(PORTAL_ENV_PATH)
+    studio_env = load_optional_env_files(
+        (
+            STUDIO_AUTOMATION_ENV_PATH,
+            HOME_STUDIO_AUTOMATION_ENV_PATH,
+            LOCAL_STUDIO_BRAIN / ".env.local",
+            LOCAL_STUDIO_BRAIN / ".env",
+        )
+    )
     drift_paths = load_drift_paths()
     run_local_build()
     archive = create_archive()
@@ -438,10 +554,11 @@ tar -xzf {remote_archive}
         out, err, code = ssh_exec(ssh, command, timeout=180)
         if code != 0:
             raise RuntimeError(err or out or "remote sync failed")
+        remote_admin_token, admin_token_source = ensure_remote_admin_token(ssh)
         restart = restart_remote(ssh, env["STUDIO_BRAIN_MCP_BASE_URL"])
-        posture = run_remote_json(
+        backup_refresh = run_remote_json(
             ssh,
-            f"cd {REMOTE_PARENT} && node ./scripts/studiobrain-status.mjs --json --require-safe --mode live_host_authoritative --approved-remote-runner --artifact output/studio-posture/latest.json",
+            f"cd {REMOTE_PARENT} && node ./scripts/studiobrain-backup-drill.mjs verify --json --strict --mode live_host_authoritative --approved-remote-runner",
             timeout=180,
         )
         backup_freshness = run_remote_json(
@@ -449,9 +566,27 @@ tar -xzf {remote_archive}
             f"cd {REMOTE_PARENT} && node ./scripts/studiobrain-backup-drill.mjs verify --freshness-only --json --strict --mode live_host_authoritative --approved-remote-runner",
             timeout=180,
         )
-        auth_env = {**os.environ, **portal_env}
+        ops_cockpit = run_remote_json(
+            ssh,
+            f"cd {REMOTE_PARENT} && node ./scripts/ops-cockpit.mjs start --json",
+            timeout=180,
+        )
+        posture = run_remote_json(
+            ssh,
+            (
+                f"cd {REMOTE_PARENT} && "
+                "node ./scripts/studiobrain-status.mjs --json --require-safe "
+                "--no-auth-probe --no-backup --no-evidence "
+                "--mode live_host_authoritative --approved-remote-runner "
+                "--artifact output/studio-posture/latest.json"
+            ),
+            timeout=180,
+        )
+        auth_env = {**os.environ, **portal_env, **studio_env}
         id_token_source = "environment" if auth_env.get("STUDIO_BRAIN_ID_TOKEN") else "minted"
-        admin_token_source = "environment" if auth_env.get("STUDIO_BRAIN_ADMIN_TOKEN") else "remote-runtime"
+        resolved_admin_token_source = admin_token_source
+        if remote_admin_token:
+            auth_env["STUDIO_BRAIN_ADMIN_TOKEN"] = remote_admin_token
         if not auth_env.get("STUDIO_BRAIN_ID_TOKEN"):
             minted = mint_staff_id_token(auth_env)
             minted_payload = minted.get("parsed") or {}
@@ -461,18 +596,16 @@ tar -xzf {remote_archive}
             else:
                 id_token_source = f"unavailable:{(minted_payload or {}).get('reason') or minted.get('output') or 'mint-failed'}"
         if not auth_env.get("STUDIO_BRAIN_ADMIN_TOKEN"):
-            remote_admin_token = read_remote_secret_value(ssh, "STUDIO_BRAIN_ADMIN_TOKEN")
-            if not remote_admin_token:
-                remote_admin_token = read_remote_process_env_value(
-                    ssh,
-                    "STUDIO_BRAIN_ADMIN_TOKEN",
-                    pid=str(restart.get("pid") or "").strip(),
-                )
-            if remote_admin_token:
-                auth_env["STUDIO_BRAIN_ADMIN_TOKEN"] = remote_admin_token
-                admin_token_source = "remote-runtime-env"
+            runtime_admin_token = read_remote_process_env_value(
+                ssh,
+                "STUDIO_BRAIN_ADMIN_TOKEN",
+                pid=str(restart.get("pid") or "").strip(),
+            )
+            if runtime_admin_token:
+                auth_env["STUDIO_BRAIN_ADMIN_TOKEN"] = runtime_admin_token
+                resolved_admin_token_source = "remote-runtime-env"
             else:
-                admin_token_source = "unavailable:missing-remote-admin-token"
+                resolved_admin_token_source = "unavailable:missing-remote-admin-token"
         auth_probe = run_local_json_with_env(
             [
                 "node",
@@ -499,12 +632,14 @@ tar -xzf {remote_archive}
             "remoteArchive": remote_archive,
             "backupDir": backup_dir,
             "restart": restart,
+            "backupRefresh": backup_refresh,
+            "opsCockpit": ops_cockpit,
             "posture": posture,
             "backupFreshness": backup_freshness,
             "authProbe": auth_probe,
             "authBootstrap": {
                 "idTokenSource": id_token_source,
-                "adminTokenSource": admin_token_source,
+                "adminTokenSource": resolved_admin_token_source,
             },
             "blockers": blockers,
         }

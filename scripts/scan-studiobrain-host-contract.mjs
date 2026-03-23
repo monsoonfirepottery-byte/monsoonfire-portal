@@ -7,13 +7,9 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
+const INTEGRITY_MANIFEST_PATH = resolve(repoRoot, "studio-brain", ".env.integrity.json");
 
-const SCAN_ROOTS = [
-  resolve(repoRoot, "scripts"),
-  resolve(repoRoot, "web"),
-  resolve(repoRoot, "functions"),
-  resolve(repoRoot, "studio-brain"),
-];
+const SCAN_ROOTS = loadScanRoots();
 
 const FILE_EXTENSIONS = new Set([
   ".js",
@@ -123,6 +119,13 @@ const EXCEPTIONS = [
     reason: "Portal local env files intentionally keep localhost/studio-brain local defaults.",
     tokenPattern: /(?:127\.0\.0\.1|localhost):8787/,
   },
+  {
+    path: /[\\/]studio-brain[\\/]\.env(?:\.local|\.bak-[^\\/]+)?$/,
+    ruleIds: ["studio-brain-loopback-runtime", "studio-brain-base-url-fallback"],
+    owner: "platform@studio",
+    reason: "Host runtime env files intentionally keep loopback bindings for colocated services and local recovery flows.",
+    tokenPattern: /(?:127\.0\.0\.1|localhost):8787/,
+  },
 ];
 
 const options = parseArgs(process.argv.slice(2));
@@ -217,6 +220,37 @@ function walk(targetPath) {
   }
 }
 
+function loadScanRoots() {
+  const defaults = [resolve(repoRoot, "studio-brain")];
+  let manifestPaths = [];
+  try {
+    const payload = JSON.parse(readFileSync(INTEGRITY_MANIFEST_PATH, "utf8"));
+    manifestPaths = Array.isArray(payload?.files)
+      ? payload.files
+          .map((entry) => String(entry?.path || "").trim())
+          .filter(Boolean)
+          .map((entry) => resolve(repoRoot, entry))
+      : [];
+  } catch {
+    manifestPaths = [];
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const path of [...defaults, ...manifestPaths]) {
+    const normalized = path.replace(/\\/g, "/");
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    if (!exists(path)) {
+      continue;
+    }
+    deduped.push(path);
+  }
+  return deduped;
+}
+
 function checkFile(filePath) {
   if (!isScannableFile(filePath)) {
     report.skippedFiles += 1;
@@ -290,6 +324,15 @@ function isScannableFile(filePath) {
   const baseName = relative(repoRoot, filePath);
   const skippedPrefix = baseName.split("/")[0];
   return !SKIP_DIRS.has(skippedPrefix);
+}
+
+function exists(targetPath) {
+  try {
+    statSync(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getException(relativePath, ruleId, token) {

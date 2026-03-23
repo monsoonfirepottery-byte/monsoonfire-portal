@@ -18,16 +18,25 @@ const DEFAULT_TARGET_FILES = [
   "studio-brain/scripts/env-contract-validator.mjs",
   "studio-brain/scripts/validateCompose.mjs",
   "studio-brain/scripts/validate-env-contract.mjs",
+  "studio-brain/host-drift-allowlist.json",
   "scripts/studio-network-profile.mjs",
+  "scripts/lib/studiobrain-posture-policy.mjs",
   "scripts/start-emulators.mjs",
   "scripts/studiobrain-network-check.mjs",
   "scripts/studiobrain-status.mjs",
+  "scripts/studiobrain-backup-drill.mjs",
+  "scripts/studiobrain-incident-bundle.mjs",
+  "scripts/test-studio-brain-auth.mjs",
+  "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",
+  "scripts/deploy-studio-brain-host.py",
   "scripts/pr-gate.mjs",
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/functions-cors-smoke.mjs",
   "scripts/stability-guardrails.mjs",
+  "docs/policies/STUDIO_OS_V3_RETENTION.md",
+  "docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md",
   "website/scripts/deploy.mjs",
   "website/scripts/serve.mjs",
 ];
@@ -43,6 +52,7 @@ function parseArgs(rawArgs = []) {
     failOnWarnings: false,
     update: false,
     init: false,
+    paths: [],
   };
 
   for (let index = 0; index < rawArgs.length; index += 1) {
@@ -76,9 +86,26 @@ function parseArgs(rawArgs = []) {
       parsed.init = true;
       continue;
     }
+    if (arg === "--path" && rawArgs[index + 1]) {
+      parsed.paths.push(rawArgs[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--path=")) {
+      parsed.paths.push(arg.slice("--path=".length));
+      continue;
+    }
   }
 
   return parsed;
+}
+
+function resolveTargets(rawPaths = []) {
+  const targets = rawPaths
+    .map((path) => String(path || "").trim())
+    .filter(Boolean);
+
+  return targets.length > 0 ? [...new Set(targets)] : [...DEFAULT_TARGET_FILES];
 }
 
 function parseOverride(rawValue) {
@@ -187,8 +214,9 @@ function writeManifest(payload, manifestPath) {
   writeFileSync(manifestPath, output, "utf8");
 }
 
-function buildUpdatePayload(targets) {
-  const fileRecords = targets
+function buildUpdatePayload(targets, existingManifest = null) {
+  const targetSet = new Set(targets);
+  const updatedRecords = targets
     .map((path) => {
       const absolute = resolve(REPO_ROOT, path);
       if (!existsSync(absolute)) {
@@ -204,6 +232,19 @@ function buildUpdatePayload(targets) {
     .filter(Boolean)
     .sort((left, right) => left.path.localeCompare(right.path));
 
+  const preservedRecords = Array.isArray(existingManifest?.files)
+    ? existingManifest.files
+        .filter((entry) => entry && typeof entry.path === "string" && !targetSet.has(entry.path))
+        .map((entry) => ({
+          path: entry.path,
+          sha256: entry.sha256,
+          size: entry.size,
+        }))
+    : [];
+
+  const fileRecords = [...preservedRecords, ...updatedRecords]
+    .sort((left, right) => left.path.localeCompare(right.path));
+
   const missing = targets.filter((path) => !existsSync(resolve(REPO_ROOT, path)));
   return {
     schema: "studiobrain-infra-integrity-v1",
@@ -213,6 +254,8 @@ function buildUpdatePayload(targets) {
     metadata: {
       totalFiles: fileRecords.length,
       missingOnUpdate: missing,
+      partialUpdate: targets.length !== DEFAULT_TARGET_FILES.length,
+      updatedPaths: [...targets],
     },
     files: fileRecords,
   };
@@ -401,10 +444,11 @@ function runIntegrityCheck(options = {}) {
   const strict = Boolean(options.strict);
   const failOnWarnings = Boolean(options.failOnWarnings);
   const update = Boolean(options.update);
+  const selectedTargets = resolveTargets(options.targets);
 
   const manifest = loadManifest(manifestPath);
   if (update) {
-    const payload = buildUpdatePayload(DEFAULT_TARGET_FILES);
+    const payload = buildUpdatePayload(selectedTargets, manifest);
     writeManifest(payload, manifestPath);
     const missing = payload.metadata?.missingOnUpdate ?? [];
     if (missing.length > 0) {
@@ -437,11 +481,12 @@ function runIntegrityCheck(options = {}) {
   }
 
   const resolvedManifest = loadManifest(manifestPath);
-  const report = compareAgainstManifest(resolvedManifest, DEFAULT_TARGET_FILES, override, {
+  const report = compareAgainstManifest(resolvedManifest, selectedTargets, override, {
     strict,
     failOnWarnings,
     manifestPath,
   });
+  report.selectedTargets = selectedTargets;
 
   if (options.verbose !== false) {
     if (!outputJson) {
@@ -465,6 +510,7 @@ function run(argv) {
     strict: args.strict,
     failOnWarnings: args.failOnWarnings,
     update: args.update || args.init,
+    targets: args.paths,
     json: args.json,
     verbose: true,
   });

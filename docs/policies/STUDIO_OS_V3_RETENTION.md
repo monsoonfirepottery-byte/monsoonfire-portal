@@ -7,6 +7,8 @@
 | Studio diffs | Local Postgres (`studio_state_diffs`) | 180 days | retention prune job |
 | Audit events | Local Postgres (`audit_events`) | 180 days | retention prune job |
 | Capability proposals | Local Postgres (`capability_proposals`) | 180 days | retention prune job |
+| Operational posture metadata (`heartbeat`, `status`, `backup freshness`, `restore drill`) | Repo `output/` artifacts | 180 days | artifact contract + cleanup policy |
+| Sensitive operational evidence (`incident bundles`, `auth probe output`, `audit export files`) | Repo `output/` artifacts | 30 days | artifact contract + cleanup policy unless active incident/legal hold |
 
 Cloud-authoritative business records (Firestore/Stripe) are not deleted by this retention flow.
 
@@ -28,3 +30,6 @@ Optional signature key:
 - Export and purge operations are staff-restricted and audited.
 - Export payload excludes runtime secrets and auth tokens.
 - Retention exceptions should be logged with a reason code in event metadata.
+- Shared posture artifacts must carry provenance metadata: `mode`, `envSource`, `generatedAt`, `host`, `generator`, `dataClassification`, and `redactionState`.
+- Shared incident artifacts must not include raw bearer tokens, admin tokens, unredacted env dumps, raw request bodies, or raw `git diffPreview`.
+- Actor/report/intake identifiers should be hashed in shared artifacts; full identifiers stay in restricted audit storage only.

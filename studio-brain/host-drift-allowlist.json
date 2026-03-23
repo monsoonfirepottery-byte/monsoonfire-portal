@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "studio-brain-host-drift-allowlist.v1",
+  "generatedAt": "2026-03-23T00:00:00.000Z",
+  "entries": [
+    {
+      "path": "src/autonomic",
+      "owner": "platform-primary",
+      "reason": "Legacy host-only autonomic runtime pending repo reconciliation.",
+      "expiresAt": "2026-06-30T00:00:00.000Z"
+    },
+    {
+      "path": "lib/autonomic",
+      "owner": "platform-primary",
+      "reason": "Built autonomic host runtime kept only as temporary drift carry-forward.",
+      "expiresAt": "2026-06-30T00:00:00.000Z"
+    },
+    {
+      "path": "lib/loopDriver.js",
+      "owner": "platform-primary",
+      "reason": "Legacy loop driver path remains allowlisted until host drift is fully removed.",
+      "expiresAt": "2026-06-30T00:00:00.000Z"
+    }
+  ]
+}

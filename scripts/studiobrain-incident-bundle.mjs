@@ -2,9 +2,17 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  buildArtifactProvenance,
+  DATA_CLASSIFICATIONS,
+  hashIdentifier,
+  POSTURE_MODES,
+  redactSharedIdentifier,
+  REDACTION_STATES,
+} from "./lib/studiobrain-posture-policy.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,6 +54,11 @@ const diagnostics = {
     ["./scripts/integrity-check.mjs", "--strict", "--json"],
     20_000,
   ),
+  authProbe: runJsonCommand(
+    "node",
+    ["./scripts/test-studio-brain-auth.mjs", "--json", "--mode", POSTURE_MODES.AUTHENTICATED_PRIVILEGED_CHECK],
+    20_000,
+  ),
 };
 
 const git = collectGitState(args.maxGitDiffChars);
@@ -55,6 +68,23 @@ const rawBundle = {
   schemaVersion: "1",
   generatedAt: bundleTimestamp,
   bundleId,
+  provenance: buildArtifactProvenance({
+    mode: POSTURE_MODES.AUTHENTICATED_PRIVILEGED_CHECK,
+    envSource: "bundle-runtime",
+    envMode: "process-env-only",
+    host: process.platform,
+    generator: "scripts/studiobrain-incident-bundle.mjs",
+    dataClassification: DATA_CLASSIFICATIONS.SENSITIVE_OPERATIONAL_EVIDENCE,
+    redactionState: REDACTION_STATES.REQUIRES_REVIEW,
+    legalHold: args.legalHold,
+    sourceSystems: ["studio-brain-http", "integrity-check", "reliability-hub"],
+  }),
+  retention: {
+    class: DATA_CLASSIFICATIONS.SENSITIVE_OPERATIONAL_EVIDENCE,
+    retentionDays: 30,
+    legalHold: args.legalHold,
+    accessScope: ["platform-primary", "ops-primary", "trust-safety-primary"],
+  },
   host: {
     platform: process.platform,
     node: process.version,
@@ -66,7 +96,18 @@ const rawBundle = {
     eventsPath: relativePath(heartbeatEventsPath),
     recentEvents: heartbeatEvents,
   },
-  diagnostics,
+  diagnostics: Object.fromEntries(
+    Object.entries(diagnostics).map(([key, value]) => [
+      key,
+      {
+        ok: value.ok,
+        exitCode: value.exitCode,
+        command: value.command,
+        parsed: value.parsed,
+        error: value.error,
+      },
+    ]),
+  ),
   git,
   artifacts,
 };
@@ -94,6 +135,8 @@ writeFileSync(
       status: heartbeatSummary?.status || "unknown",
       archiveStatus: archive.ok ? "created" : "failed",
       archiveError: archive.ok ? "" : archive.error,
+      provenance: rawBundle.provenance,
+      retention: rawBundle.retention,
     },
     null,
     2,
@@ -114,7 +157,10 @@ const output = {
     networkCheck: diagnostics.networkCheck.ok,
     statusCard: diagnostics.statusCard.ok,
     integrity: diagnostics.integrity.ok,
+    authProbe: diagnostics.authProbe.ok,
   },
+  retention: rawBundle.retention,
+  provenance: rawBundle.provenance,
 };
 
 if (args.json) {
@@ -139,6 +185,7 @@ function parseArgs(argv) {
     eventsPath: "output/stability/heartbeat-events.log",
     maxEvents: 200,
     maxGitDiffChars: 4000,
+    legalHold: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -178,6 +225,10 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === "--legal-hold") {
+      parsed.legalHold = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       process.stdout.write("Usage: node ./scripts/studiobrain-incident-bundle.mjs [flags]\n");
       process.stdout.write("  --json\n");
@@ -186,6 +237,7 @@ function parseArgs(argv) {
       process.stdout.write("  --events <path>\n");
       process.stdout.write("  --max-events <n>\n");
       process.stdout.write("  --max-git-diff-chars <n>\n");
+      process.stdout.write("  --legal-hold\n");
       process.exit(0);
     }
   }
@@ -293,13 +345,15 @@ function extractJsonObject(text) {
 }
 
 function collectGitState(maxDiffChars) {
+  const diff = runGit(["diff"]).slice(0, maxDiffChars);
   return {
     branch: runGit(["branch", "--show-current"]),
     commit: runGit(["rev-parse", "HEAD"]),
     shortCommit: runGit(["rev-parse", "--short", "HEAD"]),
     statusShort: runGit(["status", "--short"]),
     diffStat: runGit(["diff", "--stat"]),
-    diffPreview: runGit(["diff"]).slice(0, maxDiffChars),
+    diffPreviewCaptured: diff.length > 0,
+    diffPreviewHash: diff.length > 0 ? hashIdentifier(diff) : "",
   };
 }
 
@@ -317,8 +371,9 @@ function runGit(args) {
 }
 
 function createArchive({ bundleDir, archivePath, files }) {
-  const result = spawnSync("tar", ["-czf", archivePath, "-C", bundleDir, ...files], {
-    cwd: REPO_ROOT,
+  const archiveName = basename(archivePath);
+  const result = spawnSync("tar", ["-czf", archiveName, ...files], {
+    cwd: bundleDir,
     encoding: "utf8",
     stdio: "pipe",
   });
@@ -356,7 +411,7 @@ function redactSensitive(input, keyName = "") {
   }
   if (!input || typeof input !== "object") {
     if (typeof input === "string") {
-      return redactString(input);
+      return redactString(redactSharedIdentifier(keyName, input));
     }
     return input;
   }
@@ -364,8 +419,13 @@ function redactSensitive(input, keyName = "") {
   const out = {};
   for (const [key, value] of Object.entries(input)) {
     const sensitiveKey = /(token|secret|password|authorization|cookie|api[-_]?key)/i.test(key);
+    const bodyKey = /(requestBody|body|payload|diffPreview)/i.test(key);
     if (sensitiveKey) {
       out[key] = "[REDACTED]";
+      continue;
+    }
+    if (bodyKey) {
+      out[key] = "[REDACTED_BODY]";
       continue;
     }
     out[key] = redactSensitive(value, key);
@@ -379,5 +439,6 @@ function redactString(value) {
   next = next.replace(/(sk_(?:live|test)_[A-Za-z0-9]+)/g, "[REDACTED_STRIPE_KEY]");
   next = next.replace(/(pk_(?:live|test)_[A-Za-z0-9]+)/g, "[REDACTED_STRIPE_PUBLISHABLE_KEY]");
   next = next.replace(/(whsec_[A-Za-z0-9]+)/g, "[REDACTED_STRIPE_WEBHOOK_SECRET]");
+  next = next.replace(/"authorization"\s*:\s*"[^"]+"/gi, "\"authorization\":\"[REDACTED]\"");
   return next;
 }

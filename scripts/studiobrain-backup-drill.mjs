@@ -287,8 +287,15 @@ function runRedisCheck() {
     };
   }
 
+  const redisCliArgs = [];
+  if (env.REDIS_USERNAME) {
+    redisCliArgs.push("--user", env.REDIS_USERNAME);
+  }
+  if (env.REDIS_PASSWORD) {
+    redisCliArgs.push("--no-auth-warning", "-a", env.REDIS_PASSWORD);
+  }
   const ping = runCompose(
-    ["exec", "-T", "redis", "redis-cli", "ping"],
+    ["exec", "-T", "redis", "redis-cli", ...redisCliArgs, "ping"],
     { allowFail: true },
   );
   const status = ping.ok && /PONG/i.test(ping.output) ? "pass" : "fail";

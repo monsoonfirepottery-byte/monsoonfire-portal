@@ -28,7 +28,7 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
-import { auth, db } from "./firebase";
+import { auth, db, ensureAuthPersistence } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
 import { toVoidHandler } from "./utils/toVoidHandler";
 import { identify, shortId, track } from "./lib/analytics";
@@ -1814,6 +1814,10 @@ export default function App() {
       method: providerId,
     });
     try {
+      const persistenceMode = await ensureAuthPersistence();
+      if (persistenceMode === "none") {
+        setAuthStatus("This browser is limiting sign-in storage. We will try to keep this tab signed in.");
+      }
       let provider;
       switch (providerId) {
         case "google":
@@ -1876,6 +1880,10 @@ export default function App() {
       mode,
     });
     try {
+      const persistenceMode = await ensureAuthPersistence();
+      if (persistenceMode === "none") {
+        setAuthStatus("This browser is limiting sign-in storage. We will try to keep this tab signed in.");
+      }
       if (mode === "create") {
         const result = await createUserWithEmailAndPassword(authClient, trimmedEmail, password);
         if (result?.user) {
@@ -1915,6 +1923,7 @@ export default function App() {
     setAuthStatus("");
     setAuthBusy(true);
     try {
+      await ensureAuthPersistence();
       const actionCodeSettings = {
         url: window.location.origin,
         handleCodeInApp: true,
@@ -1941,6 +1950,10 @@ export default function App() {
       method: "email_link",
     });
     try {
+      const persistenceMode = await ensureAuthPersistence();
+      if (persistenceMode === "none") {
+        setAuthStatus("This browser is limiting sign-in storage. We will try to keep this tab signed in.");
+      }
       const result = await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
       clearLocalItem(EMAIL_LINK_KEY);
       setEmailLinkPending(false);

@@ -1,5 +1,12 @@
 import { initializeApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  connectAuthEmulator,
+  getAuth,
+  GoogleAuthProvider,
+  setPersistence,
+} from "firebase/auth";
 import { connectFirestoreEmulator, initializeFirestore } from "firebase/firestore";
 
 type ImportMetaEnvShape = {
@@ -45,6 +52,29 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+let authPersistenceReady: Promise<"local" | "session" | "none"> | null = null;
+
+export function ensureAuthPersistence(): Promise<"local" | "session" | "none"> {
+  if (typeof window === "undefined") return Promise.resolve("none");
+  if (authPersistenceReady) return authPersistenceReady;
+
+  authPersistenceReady = (async () => {
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      return "local";
+    } catch {
+      try {
+        await setPersistence(auth, browserSessionPersistence);
+        return "session";
+      } catch {
+        return "none";
+      }
+    }
+  })();
+
+  return authPersistenceReady;
+}
 
 // Force long polling to avoid watch stream teardown races seen during rapid nav in dev.
 // This is emulator-safe and still works against prod.

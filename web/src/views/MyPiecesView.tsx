@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import {
@@ -8,33 +7,37 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
-import { createPortalApi, PortalApiError } from "../api/portalApi";
-import type { PortalApiMeta } from "../api/portalContracts";
-import { getResultBatchId } from "../api/portalContracts";
-import { normalizeReservationRecord, type ReservationRecord } from "../lib/normalizers/reservations";
 import { formatMaybeTimestamp } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
-import { trackedAddDoc, trackedGetDocs, trackedUpdateDoc } from "../lib/firestoreTelemetry";
-import { safeStorageSetItem } from "../lib/safeStorage";
-import { requestErrorMessage } from "../utils/userFacingErrors";
+import {
+  trackedAddDoc,
+  trackedGetDocs,
+  trackedUpdateDoc,
+} from "../lib/firestoreTelemetry";
 import "./MyPiecesView.css";
 
-const PIECES_PAGE_SIZE = 25;
-const BATCHES_PAGE_SIZE = 5;
+const HISTORY_PIECES_PAGE_SIZE = 6;
+const HISTORY_BATCHES_PAGE_SIZE = 5;
+const RATING_PIECES_VISIBLE_COUNT = 6;
 const BATCH_PIECES_QUERY_LIMIT = 50;
 const NOTE_LOAD_LIMIT = 40;
 const MEDIA_LOAD_LIMIT = 30;
 const AUDIT_LOAD_LIMIT = 60;
-const CHECKIN_PREFILL_KEY = "mf_checkin_prefill";
 
-const STAGES = ["GREENWARE", "BISQUE", "GLAZED", "FINISHED", "HOLD", "UNKNOWN"] as const;
+const STAGES = [
+  "GREENWARE",
+  "BISQUE",
+  "GLAZED",
+  "FINISHED",
+  "HOLD",
+  "UNKNOWN",
+] as const;
 const WARE_CATEGORIES = [
   "STONEWARE",
   "EARTHENWARE",
@@ -56,6 +59,15 @@ const WARE_CATEGORY_LABELS: Record<WareCategory, string> = {
   UNKNOWN: "Unknown",
 };
 
+const STAGE_LABELS: Record<Stage, string> = {
+  GREENWARE: "Greenware",
+  BISQUE: "Bisque",
+  GLAZED: "Glazed",
+  FINISHED: "Finished",
+  HOLD: "On hold",
+  UNKNOWN: "In review",
+};
+
 type Props = {
   user: User;
   adminToken?: string;
@@ -65,7 +77,6 @@ type Props = {
     pieceId?: string;
   } | null;
   onFocusTargetConsumed?: () => void;
-  onOpenCheckin?: () => void;
 };
 
 type PieceDoc = {
@@ -127,30 +138,6 @@ type PieceMedia = {
   searchTokens?: string[];
 };
 
-type ReservationSummary = {
-  id: string;
-  ownerUid: string | null;
-  status: string;
-  loadStatus: string | null;
-  firingType: string;
-  wareType: string | null;
-  intakeMode: string | null;
-  estimatedHalfShelves: number | null;
-  linkedBatchId: string | null;
-  createdAt?: unknown;
-  updatedAt?: unknown;
-};
-
-type LocalMeta = {
-  ok: boolean;
-  status: number | string | null;
-  fn: string;
-  url: string;
-  payload: unknown;
-  response: unknown;
-  curlExample?: string;
-};
-
 function normalizeStage(value: unknown): Stage {
   if (typeof value !== "string") return "UNKNOWN";
   const match = STAGES.find((stage) => stage === value);
@@ -189,13 +176,6 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function isMissingIndexError(error: unknown): boolean {
-  const errObj = error as { code?: unknown; message?: unknown } | null | undefined;
-  const code = typeof errObj?.code === "string" ? errObj.code.toLowerCase() : "";
-  const message = typeof errObj?.message === "string" ? errObj.message.toLowerCase() : "";
-  return code.includes("failed-precondition") || message.includes("index");
-}
-
 function isPermissionDeniedError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   const code =
@@ -211,7 +191,10 @@ function isPermissionDeniedError(error: unknown): boolean {
   );
 }
 
-function normalizeAuditDoc(id: string, raw: Partial<PieceAuditEvent>): PieceAuditEvent {
+function normalizeAuditDoc(
+  id: string,
+  raw: Partial<PieceAuditEvent>,
+): PieceAuditEvent {
   return {
     id,
     type: typeof raw.type === "string" ? raw.type : "UNKNOWN",
@@ -238,20 +221,14 @@ function normalizeMediaDoc(id: string, raw: Partial<PieceMedia>): PieceMedia {
 }
 
 function toMillis(value: unknown): number {
-  if (value && typeof value === "object" && typeof (value as { toMillis?: () => number }).toMillis === "function") {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toMillis?: () => number }).toMillis === "function"
+  ) {
     return (value as { toMillis: () => number }).toMillis();
   }
   return new Date((value as string | number | Date | null) ?? 0).getTime();
-}
-
-function reservationStatusLabel(reservation: ReservationSummary): string {
-  const status = reservation.status.toUpperCase();
-  if (status === "CONFIRMED") return "Confirmed";
-  if (status === "WAITLISTED") return "Waitlisted";
-  if (status === "CANCELLED") return "Cancelled";
-  if (reservation.loadStatus === "loaded") return "Loaded";
-  if (reservation.loadStatus === "loading") return "Loading";
-  return "Queued";
 }
 
 type StarRatingProps = {
@@ -263,7 +240,10 @@ type StarRatingProps = {
 
 function StarRating({ value, onSelect, disabled, pulse }: StarRatingProps) {
   return (
-    <div className={`rating-stars ${pulse ? "rating-pulse" : ""}`} aria-label="Piece rating">
+    <div
+      className={`rating-stars ${pulse ? "rating-pulse" : ""}`}
+      aria-label="Piece rating"
+    >
       {[1, 2, 3, 4, 5].map((star) => (
         <button
           key={star}
@@ -282,19 +262,16 @@ function StarRating({ value, onSelect, disabled, pulse }: StarRatingProps) {
 
 export default function MyPiecesView({
   user,
-  adminToken,
+  adminToken: _adminToken,
   isStaff,
   focusTarget,
   onFocusTargetConsumed,
-  onOpenCheckin,
 }: Props) {
   const { themeName, portalMotion } = useUiSettings();
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const { active, history, error } = useBatches(user);
   const [status, setStatus] = useState("");
-  const [meta, setMeta] = useState<PortalApiMeta | LocalMeta | null>(null);
   const [inFlight, setInFlight] = useState<Record<string, boolean>>({});
-  const portalApi = useMemo(() => createPortalApi(), []);
 
   const isBusy = useCallback((key: string) => !!inFlight[key], [inFlight]);
   const setBusy = useCallback((key: string, value: boolean) => {
@@ -305,13 +282,10 @@ export default function MyPiecesView({
   const [piecesLoading, setPiecesLoading] = useState(false);
   const [piecesError, setPiecesError] = useState("");
   const [piecesWarning, setPiecesWarning] = useState("");
-  const [recentCheckins, setRecentCheckins] = useState<ReservationSummary[]>([]);
-  const [checkinsLoading, setCheckinsLoading] = useState(false);
-  const [checkinsError, setCheckinsError] = useState("");
   const [selectedPieceKey, setSelectedPieceKey] = useState<string | null>(null);
-  const [selectedPieceTab, setSelectedPieceTab] = useState<"client" | "studio" | "photos" | "audit">(
-    "client"
-  );
+  const [selectedPieceTab, setSelectedPieceTab] = useState<
+    "client" | "studio" | "photos" | "audit"
+  >("client");
   const [clientNotes, setClientNotes] = useState<PieceNote[]>([]);
   const [studioNotes, setStudioNotes] = useState<PieceNote[]>([]);
   const [auditEvents, setAuditEvents] = useState<PieceAuditEvent[]>([]);
@@ -323,149 +297,32 @@ export default function MyPiecesView({
   const [clientNoteDraft, setClientNoteDraft] = useState("");
   const [studioNoteDraft, setStudioNoteDraft] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingNoteStream, setEditingNoteStream] = useState<PieceNoteStream | null>(null);
+  const [editingNoteStream, setEditingNoteStream] =
+    useState<PieceNoteStream | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
 
-  const [piecesFilter, setPiecesFilter] = useState<"all" | "active" | "history">("all");
-  const [batchWindow, setBatchWindow] = useState(BATCHES_PAGE_SIZE);
-  const [pieceListLimit, setPieceListLimit] = useState(PIECES_PAGE_SIZE);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"recent" | "oldest" | "stage" | "rating">("recent");
-  const [browserControlsOpen, setBrowserControlsOpen] = useState(false);
-  const [checkinsPanelOpen, setCheckinsPanelOpen] = useState(false);
-  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
+  const [historyBatchWindow, setHistoryBatchWindow] = useState(
+    HISTORY_BATCHES_PAGE_SIZE,
+  );
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(
+    HISTORY_PIECES_PAGE_SIZE,
+  );
+  const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   const [ratingStatus, setRatingStatus] = useState<Record<string, string>>({});
   const [ratingPulseKey, setRatingPulseKey] = useState<string | null>(null);
 
-  const canContinue = active.length === 0;
-  const historyBatchIds = useMemo(() => new Set(history.map((batch) => batch.id)), [history]);
-  const totalPieceCount = pieces.length;
+  const historyBatchIds = useMemo(
+    () => new Set(history.map((batch) => batch.id)),
+    [history],
+  );
   const activePieceCount = useMemo(
     () => pieces.filter((piece) => !piece.batchIsHistory).length,
-    [pieces]
+    [pieces],
   );
   const historyPieceCount = useMemo(
     () => pieces.filter((piece) => piece.batchIsHistory).length,
-    [pieces]
+    [pieces],
   );
-  const pendingRatingCount = useMemo(
-    () => pieces.filter((piece) => !piece.batchIsHistory && !piece.clientRating).length,
-    [pieces]
-  );
-
-  useEffect(() => {
-    if (piecesFilter === "active") {
-      track("portal_view_active", {
-        uid: shortId(user.uid),
-        activeCount: activePieceCount,
-        historyCount: historyPieceCount,
-      });
-      return;
-    }
-    if (piecesFilter === "history") {
-      track("portal_view_history", {
-        uid: shortId(user.uid),
-        activeCount: activePieceCount,
-        historyCount: historyPieceCount,
-      });
-    }
-  }, [activePieceCount, historyPieceCount, piecesFilter, user.uid]);
-
-  useEffect(() => {
-    setBatchWindow(BATCHES_PAGE_SIZE);
-    setPieceListLimit(PIECES_PAGE_SIZE);
-  }, [piecesFilter]);
-
-  useEffect(() => {
-    setPieceListLimit(PIECES_PAGE_SIZE);
-  }, [searchQuery, sortBy]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!user) {
-      setRecentCheckins([]);
-      setCheckinsError("");
-      setCheckinsLoading(false);
-      return;
-    }
-
-    const loadRecentCheckins = async () => {
-      setCheckinsLoading(true);
-      setCheckinsError("");
-      try {
-        const loadByField = async (field: "ownerUid" | "createdByUid", value: string) => {
-          try {
-            const byCreatedAt = query(
-              collection(db, "reservations"),
-              where(field, "==", value),
-              orderBy("createdAt", "desc"),
-              limit(24)
-            );
-            return await trackedGetDocs("reservations:list", byCreatedAt);
-          } catch (error: unknown) {
-            if (!isMissingIndexError(error)) throw error;
-            const fallback = query(collection(db, "reservations"), where(field, "==", value), limit(300));
-            return await trackedGetDocs("reservations:list", fallback);
-          }
-        };
-
-        const snapshots = [await loadByField("ownerUid", user.uid)];
-        if (isStaff) {
-          snapshots.push(await loadByField("createdByUid", user.uid));
-        }
-
-        if (cancelled) return;
-        const rows = snapshots
-          .flatMap((snap) =>
-            snap.docs.map((docSnap) =>
-              normalizeReservationRecord(docSnap.id, docSnap.data() as Partial<ReservationRecord>)
-            )
-          )
-          .reduce((accumulator, reservation) => {
-            accumulator.set(reservation.id, reservation);
-            return accumulator;
-          }, new Map<string, ReservationRecord>());
-        const normalizedRows = Array.from(rows.values())
-          .sort((left, right) => {
-            const leftMs = toMillis(left.createdAt ?? left.updatedAt);
-            const rightMs = toMillis(right.createdAt ?? right.updatedAt);
-            if (leftMs !== rightMs) return rightMs - leftMs;
-            return right.id.localeCompare(left.id);
-          })
-          .filter((reservation) => String(reservation.status || "").toUpperCase() !== "CANCELLED")
-          .slice(0, 8)
-          .map(
-            (reservation): ReservationSummary => ({
-              id: reservation.id,
-              ownerUid: typeof reservation.ownerUid === "string" ? reservation.ownerUid : null,
-              status: String(reservation.status || "REQUESTED"),
-              loadStatus: typeof reservation.loadStatus === "string" ? reservation.loadStatus : null,
-              firingType: String(reservation.firingType || "other"),
-              wareType: typeof reservation.wareType === "string" ? reservation.wareType : null,
-              intakeMode: typeof reservation.intakeMode === "string" ? reservation.intakeMode : null,
-              estimatedHalfShelves:
-                typeof reservation.estimatedHalfShelves === "number" ? reservation.estimatedHalfShelves : null,
-              linkedBatchId: typeof reservation.linkedBatchId === "string" ? reservation.linkedBatchId : null,
-              createdAt: reservation.createdAt ?? null,
-              updatedAt: reservation.updatedAt ?? null,
-            })
-          );
-        setRecentCheckins(normalizedRows);
-      } catch (error: unknown) {
-        if (cancelled) return;
-        setRecentCheckins([]);
-        setCheckinsError(`Recent check-ins failed: ${getErrorMessage(error)}`);
-      } finally {
-        if (!cancelled) setCheckinsLoading(false);
-      }
-    };
-
-    void loadRecentCheckins();
-    return () => {
-      cancelled = true;
-    };
-  }, [isStaff, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -484,68 +341,82 @@ export default function MyPiecesView({
       setPiecesWarning("");
 
       try {
-        const batches =
-          piecesFilter === "active"
-            ? active
-            : piecesFilter === "history"
-              ? history
-              : [...active, ...history];
+        const isReadableBatch = (batch: BatchRow) => {
+          if (isStaff) return true;
+          const ownerUid =
+            typeof batch.ownerUid === "string" ? batch.ownerUid : "";
+          const editors = Array.isArray(batch.editors)
+            ? batch.editors.filter(
+                (entry): entry is string => typeof entry === "string",
+              )
+            : [];
+          return ownerUid === user.uid || editors.includes(user.uid);
+        };
+
+        const readableActive = active.filter((batch) =>
+          isReadableBatch(batch as BatchRow),
+        );
+        const readableHistory = history.filter((batch) =>
+          isReadableBatch(batch as BatchRow),
+        );
+        const visibleBatches = [
+          ...readableActive,
+          ...readableHistory.slice(0, historyBatchWindow),
+        ];
         if (cancelled) return;
-        if (batches.length === 0) {
+        if (visibleBatches.length === 0) {
           setPieces([]);
           setPiecesWarning("");
           return;
         }
-        const readableBatches = batches.filter((batch) => {
-          if (isStaff) return true;
-          const row = batch as BatchRow;
-          const ownerUid = typeof row.ownerUid === "string" ? row.ownerUid : "";
-          const editors = Array.isArray(row.editors)
-            ? row.editors.filter((entry): entry is string => typeof entry === "string")
-            : [];
-          return ownerUid === user.uid || editors.includes(user.uid);
-        });
 
-        if (readableBatches.length === 0) {
+        if (readableActive.length + readableHistory.length === 0) {
           setPieces([]);
           setPiecesWarning("");
           setPiecesError("No readable check-ins were found for this account.");
           return;
         }
 
-        const visibleBatches = readableBatches.slice(0, batchWindow);
         const fetchRows = async () =>
           await Promise.allSettled(
             visibleBatches.map(async (batch) => {
+              const batchTitle =
+                typeof batch.title === "string" && batch.title.trim()
+                  ? batch.title
+                  : "Check-in";
+              const toPiece = (
+                docId: string,
+                data: Partial<PieceDoc>,
+              ): PieceDoc => ({
+                id: docId,
+                key: `${batch.id}:${docId}`,
+                batchId: batch.id,
+                batchTitle,
+                batchIsHistory: historyBatchIds.has(batch.id),
+                pieceCode: data.pieceCode ?? "",
+                shortDesc: data.shortDesc ?? "",
+                ownerName: data.ownerName ?? "",
+                stage: normalizeStage(data.stage),
+                wareCategory: normalizeWareCategory(data.wareCategory),
+                isArchived: data.isArchived === true,
+                createdAt: data.createdAt,
+                updatedAt: data.updatedAt,
+                clientRating:
+                  typeof data.clientRating === "number"
+                    ? data.clientRating
+                    : null,
+                clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
+              });
               const byUpdatedDesc = query(
                 collection(db, "batches", batch.id, "pieces"),
                 orderBy("updatedAt", "desc"),
-                limit(BATCH_PIECES_QUERY_LIMIT)
+                limit(BATCH_PIECES_QUERY_LIMIT),
               );
               try {
                 const snap = await trackedGetDocs("pieces:list", byUpdatedDesc);
-                return snap.docs.map((docSnap) => {
-                  const data = docSnap.data() as Partial<PieceDoc>;
-                  const batchTitle =
-                    typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
-                  return {
-                    id: docSnap.id,
-                    key: `${batch.id}:${docSnap.id}`,
-                    batchId: batch.id,
-                    batchTitle,
-                    batchIsHistory: historyBatchIds.has(batch.id),
-                    pieceCode: data.pieceCode ?? "",
-                    shortDesc: data.shortDesc ?? "",
-                    ownerName: data.ownerName ?? "",
-                    stage: normalizeStage(data.stage),
-                    wareCategory: normalizeWareCategory(data.wareCategory),
-                    isArchived: data.isArchived === true,
-                    createdAt: data.createdAt,
-                    updatedAt: data.updatedAt,
-                    clientRating: typeof data.clientRating === "number" ? data.clientRating : null,
-                    clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
-                  } as PieceDoc;
-                });
+                return snap.docs.map((docSnap) =>
+                  toPiece(docSnap.id, docSnap.data() as Partial<PieceDoc>),
+                );
               } catch (error: unknown) {
                 if (!isPermissionDeniedError(error)) {
                   throw error;
@@ -554,54 +425,48 @@ export default function MyPiecesView({
                 // Fallback without orderBy for edge cases where older docs break ordered reads.
                 const fallbackQuery = query(
                   collection(db, "batches", batch.id, "pieces"),
-                  limit(BATCH_PIECES_QUERY_LIMIT)
+                  limit(BATCH_PIECES_QUERY_LIMIT),
                 );
                 const snap = await trackedGetDocs("pieces:list", fallbackQuery);
-                return snap.docs.map((docSnap) => {
-                  const data = docSnap.data() as Partial<PieceDoc>;
-                  const batchTitle =
-                    typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
-                  return {
-                    id: docSnap.id,
-                    key: `${batch.id}:${docSnap.id}`,
-                    batchId: batch.id,
-                    batchTitle,
-                    batchIsHistory: historyBatchIds.has(batch.id),
-                    pieceCode: data.pieceCode ?? "",
-                    shortDesc: data.shortDesc ?? "",
-                    ownerName: data.ownerName ?? "",
-                    stage: normalizeStage(data.stage),
-                    wareCategory: normalizeWareCategory(data.wareCategory),
-                    isArchived: data.isArchived === true,
-                    createdAt: data.createdAt,
-                    updatedAt: data.updatedAt,
-                    clientRating: typeof data.clientRating === "number" ? data.clientRating : null,
-                    clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
-                  } as PieceDoc;
-                });
+                return snap.docs.map((docSnap) =>
+                  toPiece(docSnap.id, docSnap.data() as Partial<PieceDoc>),
+                );
               }
-            })
+            }),
           );
 
         let rows = await fetchRows();
         let successfulRows = rows
-          .filter((result): result is PromiseFulfilledResult<PieceDoc[]> => result.status === "fulfilled")
+          .filter(
+            (result): result is PromiseFulfilledResult<PieceDoc[]> =>
+              result.status === "fulfilled",
+          )
           .flatMap((result) => result.value);
         let failedRows = rows
-          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+          .filter(
+            (result): result is PromiseRejectedResult =>
+              result.status === "rejected",
+          )
           .map((result): unknown => result.reason);
 
         const deniedOnlyInitial =
-          failedRows.length > 0 && failedRows.every((reason) => isPermissionDeniedError(reason));
+          failedRows.length > 0 &&
+          failedRows.every((reason) => isPermissionDeniedError(reason));
         if (successfulRows.length === 0 && deniedOnlyInitial) {
           try {
             await user.getIdToken(true);
             rows = await fetchRows();
             successfulRows = rows
-              .filter((result): result is PromiseFulfilledResult<PieceDoc[]> => result.status === "fulfilled")
+              .filter(
+                (result): result is PromiseFulfilledResult<PieceDoc[]> =>
+                  result.status === "fulfilled",
+              )
               .flatMap((result) => result.value);
             failedRows = rows
-              .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+              .filter(
+                (result): result is PromiseRejectedResult =>
+                  result.status === "rejected",
+              )
               .map((result): unknown => result.reason);
           } catch {
             // If refresh fails we surface the original permission state below.
@@ -612,12 +477,14 @@ export default function MyPiecesView({
         setPieces(successfulRows);
 
         if (failedRows.length > 0) {
-          const deniedOnly = failedRows.every((reason) => isPermissionDeniedError(reason));
+          const deniedOnly = failedRows.every((reason) =>
+            isPermissionDeniedError(reason),
+          );
           if (successfulRows.length > 0) {
             setPiecesWarning(
               deniedOnly
                 ? `Some check-ins could not be loaded due to permissions (${failedRows.length}/${visibleBatches.length}).`
-                : `Some check-ins could not be loaded (${failedRows.length}/${visibleBatches.length}).`
+                : `Some check-ins could not be loaded (${failedRows.length}/${visibleBatches.length}).`,
             );
             setPiecesError("");
           } else {
@@ -642,11 +509,11 @@ export default function MyPiecesView({
     return () => {
       cancelled = true;
     };
-  }, [user, isStaff, active, history, historyBatchIds, piecesFilter, batchWindow]);
+  }, [user, isStaff, active, history, historyBatchIds, historyBatchWindow]);
 
   const selectedPiece = useMemo(
     () => pieces.find((piece) => piece.key === selectedPieceKey) ?? null,
-    [pieces, selectedPieceKey]
+    [pieces, selectedPieceKey],
   );
 
   useEffect(() => {
@@ -656,29 +523,30 @@ export default function MyPiecesView({
   }, [pieces, selectedPieceKey]);
 
   useEffect(() => {
-    if (selectedPiece) {
-      setDetailPanelOpen(true);
-      return;
-    }
-    setDetailPanelOpen(false);
-  }, [selectedPiece]);
-
-  useEffect(() => {
     if (!focusTarget || piecesLoading) return;
 
-    const targetBatchId = typeof focusTarget.batchId === "string" ? focusTarget.batchId.trim() : "";
-    const targetPieceId = typeof focusTarget.pieceId === "string" ? focusTarget.pieceId.trim() : "";
+    const targetBatchId =
+      typeof focusTarget.batchId === "string" ? focusTarget.batchId.trim() : "";
+    const targetPieceId =
+      typeof focusTarget.pieceId === "string" ? focusTarget.pieceId.trim() : "";
 
     const exactMatch =
       targetBatchId && targetPieceId
-        ? pieces.find((piece) => piece.batchId === targetBatchId && piece.id === targetPieceId) ?? null
+        ? (pieces.find(
+            (piece) =>
+              piece.batchId === targetBatchId && piece.id === targetPieceId,
+          ) ?? null)
         : null;
 
     let nextSelected = exactMatch;
     if (!nextSelected && targetBatchId) {
-      const batchMatches = pieces.filter((piece) => piece.batchId === targetBatchId);
+      const batchMatches = pieces.filter(
+        (piece) => piece.batchId === targetBatchId,
+      );
       if (batchMatches.length > 0) {
-        nextSelected = [...batchMatches].sort((left, right) => toMillis(right.updatedAt) - toMillis(left.updatedAt))[0];
+        nextSelected = [...batchMatches].sort(
+          (left, right) => toMillis(right.updatedAt) - toMillis(left.updatedAt),
+        )[0];
       }
     }
     if (!nextSelected && targetPieceId) {
@@ -688,7 +556,6 @@ export default function MyPiecesView({
     if (nextSelected) {
       setSelectedPieceKey(nextSelected.key);
       setSelectedPieceTab("client");
-      setDetailPanelOpen(true);
     }
     onFocusTargetConsumed?.();
   }, [focusTarget, onFocusTargetConsumed, pieces, piecesLoading]);
@@ -712,69 +579,122 @@ export default function MyPiecesView({
 
       try {
         const clientQuery = query(
-          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "clientNotes"),
+          collection(
+            db,
+            "batches",
+            selectedPiece.batchId,
+            "pieces",
+            selectedPiece.id,
+            "clientNotes",
+          ),
           orderBy("at", "desc"),
-          limit(NOTE_LOAD_LIMIT)
+          limit(NOTE_LOAD_LIMIT),
         );
         const studioQuery = query(
-          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "studioNotes"),
+          collection(
+            db,
+            "batches",
+            selectedPiece.batchId,
+            "pieces",
+            selectedPiece.id,
+            "studioNotes",
+          ),
           orderBy("at", "desc"),
-          limit(NOTE_LOAD_LIMIT)
+          limit(NOTE_LOAD_LIMIT),
         );
         const auditQuery = query(
-          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
+          collection(
+            db,
+            "batches",
+            selectedPiece.batchId,
+            "pieces",
+            selectedPiece.id,
+            "audit",
+          ),
           orderBy("at", "desc"),
-          limit(AUDIT_LOAD_LIMIT)
+          limit(AUDIT_LOAD_LIMIT),
         );
         const mediaQuery = query(
-          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "media"),
+          collection(
+            db,
+            "batches",
+            selectedPiece.batchId,
+            "pieces",
+            selectedPiece.id,
+            "media",
+          ),
           orderBy("at", "desc"),
-          limit(MEDIA_LOAD_LIMIT)
+          limit(MEDIA_LOAD_LIMIT),
         );
 
-        const [clientResult, studioResult, auditResult, mediaResult] = await Promise.allSettled([
-          trackedGetDocs("pieces:detail", clientQuery),
-          trackedGetDocs("pieces:detail", studioQuery),
-          trackedGetDocs("pieces:detail", auditQuery),
-          trackedGetDocs("pieces:detail", mediaQuery),
-        ]);
+        const [clientResult, studioResult, auditResult, mediaResult] =
+          await Promise.allSettled([
+            trackedGetDocs("pieces:detail", clientQuery),
+            trackedGetDocs("pieces:detail", studioQuery),
+            trackedGetDocs("pieces:detail", auditQuery),
+            trackedGetDocs("pieces:detail", mediaQuery),
+          ]);
 
         if (cancelled) return;
-        const clientSnap = clientResult.status === "fulfilled" ? clientResult.value : null;
-        const studioSnap = studioResult.status === "fulfilled" ? studioResult.value : null;
-        const auditSnap = auditResult.status === "fulfilled" ? auditResult.value : null;
-        const mediaSnap = mediaResult.status === "fulfilled" ? mediaResult.value : null;
+        const clientSnap =
+          clientResult.status === "fulfilled" ? clientResult.value : null;
+        const studioSnap =
+          studioResult.status === "fulfilled" ? studioResult.value : null;
+        const auditSnap =
+          auditResult.status === "fulfilled" ? auditResult.value : null;
+        const mediaSnap =
+          mediaResult.status === "fulfilled" ? mediaResult.value : null;
 
         setClientNotes(
           (clientSnap?.docs ?? []).map((docSnap) =>
-            buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as Partial<PieceNote>) })
-          )
+            buildNoteDoc({
+              id: docSnap.id,
+              ...(docSnap.data() as Partial<PieceNote>),
+            }),
+          ),
         );
         setStudioNotes(
           (studioSnap?.docs ?? []).map((docSnap) =>
-            buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as Partial<PieceNote>) })
-          )
+            buildNoteDoc({
+              id: docSnap.id,
+              ...(docSnap.data() as Partial<PieceNote>),
+            }),
+          ),
         );
         setAuditEvents(
           (auditSnap?.docs ?? []).map((docSnap) =>
-            normalizeAuditDoc(docSnap.id, docSnap.data() as Partial<PieceAuditEvent>)
-          )
+            normalizeAuditDoc(
+              docSnap.id,
+              docSnap.data() as Partial<PieceAuditEvent>,
+            ),
+          ),
         );
         setMediaItems(
           (mediaSnap?.docs ?? []).map((docSnap) =>
-            normalizeMediaDoc(docSnap.id, docSnap.data() as Partial<PieceMedia>)
-          )
+            normalizeMediaDoc(
+              docSnap.id,
+              docSnap.data() as Partial<PieceMedia>,
+            ),
+          ),
         );
 
-        const detailFailures = [clientResult, studioResult, auditResult, mediaResult].filter(
-          (result): result is PromiseRejectedResult => result.status === "rejected"
+        const detailFailures = [
+          clientResult,
+          studioResult,
+          auditResult,
+          mediaResult,
+        ].filter(
+          (result): result is PromiseRejectedResult =>
+            result.status === "rejected",
         );
         if (detailFailures.length > 0) {
-          const deniedOnly = detailFailures.every((result) => isPermissionDeniedError(result.reason));
+          const deniedOnly = detailFailures.every((result) =>
+            isPermissionDeniedError(result.reason),
+          );
           setPieceDetailError(
             deniedOnly
               ? "Some piece detail sections are unavailable due to permissions."
-              : "Some piece detail sections could not be loaded."
+              : "Some piece detail sections could not be loaded.",
           );
         }
 
@@ -804,67 +724,123 @@ export default function MyPiecesView({
     };
   }, [detailRefreshKey, selectedPiece, user.uid]);
 
-  const filteredPieces = useMemo(() => {
-    let list = pieces;
-    if (piecesFilter === "active") {
-      list = list.filter((piece) => !piece.batchIsHistory);
-    } else if (piecesFilter === "history") {
-      list = list.filter((piece) => piece.batchIsHistory);
-    }
+  const activePieces = useMemo(
+    () =>
+      [...pieces]
+        .filter((piece) => !piece.batchIsHistory)
+        .sort(
+          (left, right) => toMillis(right.updatedAt) - toMillis(left.updatedAt),
+        ),
+    [pieces],
+  );
+  const piecesNeedingRating = useMemo(
+    () =>
+      [...pieces]
+        .filter((piece) => piece.batchIsHistory && piece.clientRating == null)
+        .sort(
+          (left, right) => toMillis(right.updatedAt) - toMillis(left.updatedAt),
+        ),
+    [pieces],
+  );
+  const visiblePiecesNeedingRating = piecesNeedingRating.slice(
+    0,
+    RATING_PIECES_VISIBLE_COUNT,
+  );
+  const historyPieces = useMemo(
+    () =>
+      [...pieces]
+        .filter((piece) => piece.batchIsHistory)
+        .sort(
+          (left, right) => toMillis(right.updatedAt) - toMillis(left.updatedAt),
+        ),
+    [pieces],
+  );
+  const visibleHistoryPieces = historyPieces.slice(0, historyVisibleCount);
+  const hasMoreHistoryPieces =
+    historyPieces.length > historyVisibleCount ||
+    history.length > historyBatchWindow;
 
-    if (searchQuery.trim()) {
-      const queryLower = searchQuery.toLowerCase();
-      list = list.filter((piece) => {
-        const fields = [piece.pieceCode, piece.shortDesc, piece.ownerName, piece.batchTitle];
-        return fields.some((field) => field?.toLowerCase().includes(queryLower));
+  const openPieceDetail = useCallback(
+    (
+      piece: PieceDoc,
+      tab: "client" | "studio" | "photos" | "audit" = "client",
+    ) => {
+      setSelectedPieceKey(piece.key);
+      setSelectedPieceTab(tab);
+      track("piece_detail_open", {
+        uid: shortId(user.uid),
+        batchId: shortId(piece.batchId),
       });
+    },
+    [user.uid],
+  );
+
+  const closePieceDetail = useCallback(() => {
+    setSelectedPieceKey(null);
+    setSelectedPieceTab("client");
+  }, []);
+
+  const handleShowMoreHistory = useCallback(() => {
+    setHistoryVisibleCount((current) => current + HISTORY_PIECES_PAGE_SIZE);
+    if (history.length > historyBatchWindow) {
+      setHistoryBatchWindow((current) => current + HISTORY_BATCHES_PAGE_SIZE);
     }
+  }, [history.length, historyBatchWindow]);
 
-    const sorted = [...list];
-    sorted.sort((a, b) => {
-      const timeA = toMillis(a.updatedAt);
-      const timeB = toMillis(b.updatedAt);
-      switch (sortBy) {
-        case "oldest":
-          return timeA - timeB;
-        case "stage":
-          return a.stage.localeCompare(b.stage);
-        case "rating":
-          return (b.clientRating ?? 0) - (a.clientRating ?? 0);
-        case "recent":
-        default:
-          return timeB - timeA;
+  const advanceCarousel = useCallback(
+    (direction: number) => {
+      if (activePieces.length <= 1) return;
+      setActiveCarouselIndex(
+        (current) =>
+          (current + direction + activePieces.length) % activePieces.length,
+      );
+    },
+    [activePieces.length],
+  );
+
+  useEffect(() => {
+    if (activePieces.length === 0) {
+      setActiveCarouselIndex(0);
+      return;
+    }
+    if (activeCarouselIndex >= activePieces.length) {
+      setActiveCarouselIndex(0);
+    }
+  }, [activeCarouselIndex, activePieces.length]);
+
+  useEffect(() => {
+    if (!selectedPiece) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closePieceDetail();
       }
-    });
-    return sorted;
-  }, [pieces, piecesFilter, searchQuery, sortBy]);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closePieceDetail, selectedPiece]);
 
-  const visiblePieces = filteredPieces.slice(0, pieceListLimit);
-  const hasMoreVisiblePieces = filteredPieces.length > pieceListLimit;
-  const sourceBatchCount =
-    piecesFilter === "active"
-      ? active.length
-      : piecesFilter === "history"
-        ? history.length
-        : active.length + history.length;
-  const hasMoreBatches = sourceBatchCount > batchWindow;
-
-  const selectedPieceCanContinue =
-    selectedPiece?.stage === "BISQUE" || selectedPiece?.stage === "GREENWARE";
-
-  const handleUpdatePiece = async (piece: PieceDoc, payload: Record<string, unknown>) => {
+  const handleUpdatePiece = async (
+    piece: PieceDoc,
+    payload: Record<string, unknown>,
+  ) => {
     const busyKey = `update:${piece.key}`;
     if (isBusy(busyKey)) return;
     setBusy(busyKey, true);
     setStatus("");
 
     try {
-      await trackedUpdateDoc("pieces:update", doc(db, "batches", piece.batchId, "pieces", piece.id), {
-        ...payload,
-        updatedAt: serverTimestamp(),
-      });
+      await trackedUpdateDoc(
+        "pieces:update",
+        doc(db, "batches", piece.batchId, "pieces", piece.id),
+        {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        },
+      );
       setPieces((prev) =>
-        prev.map((row) => (row.key === piece.key ? { ...row, ...payload } : row))
+        prev.map((row) =>
+          row.key === piece.key ? { ...row, ...payload } : row,
+        ),
       );
       return true;
     } catch (error: unknown) {
@@ -896,20 +872,32 @@ export default function MyPiecesView({
     setRatingStatus((prev) => ({ ...prev, [piece.key]: "" }));
 
     try {
-      await trackedUpdateDoc("pieces:rating", doc(db, "batches", piece.batchId, "pieces", piece.id), {
-        clientRating: rating,
-        clientRatingUpdatedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await trackedUpdateDoc(
+        "pieces:rating",
+        doc(db, "batches", piece.batchId, "pieces", piece.id),
+        {
+          clientRating: rating,
+          clientRatingUpdatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+      );
       setPieces((prev) =>
         prev.map((row) =>
-          row.key === piece.key ? { ...row, clientRating: rating, clientRatingUpdatedAt: new Date() } : row
-        )
+          row.key === piece.key
+            ? {
+                ...row,
+                clientRating: rating,
+                clientRatingUpdatedAt: new Date(),
+              }
+            : row,
+        ),
       );
       setRatingStatus((prev) => ({ ...prev, [piece.key]: "Thanks — saved." }));
       setRatingPulseKey(piece.key);
       setTimeout(() => {
-        setRatingPulseKey((current) => (current === piece.key ? null : current));
+        setRatingPulseKey((current) =>
+          current === piece.key ? null : current,
+        );
       }, 900);
       setTimeout(() => {
         setRatingStatus((prev) => ({ ...prev, [piece.key]: "" }));
@@ -925,7 +913,8 @@ export default function MyPiecesView({
 
   const handleAddNote = async (stream: PieceNoteStream) => {
     if (!selectedPiece) return;
-    const text = stream === "client" ? clientNoteDraft.trim() : studioNoteDraft.trim();
+    const text =
+      stream === "client" ? clientNoteDraft.trim() : studioNoteDraft.trim();
     if (!text) return;
     const busyKey = `addNote:${selectedPiece.key}:${stream}`;
     if (isBusy(busyKey)) return;
@@ -936,7 +925,8 @@ export default function MyPiecesView({
         text,
         at: serverTimestamp(),
         authorUid: user.uid,
-        authorName: user.displayName || (stream === "client" ? "Member" : "Staff"),
+        authorName:
+          user.displayName || (stream === "client" ? "Member" : "Staff"),
         searchTokens: toTokens(text),
       };
       await trackedAddDoc(
@@ -947,13 +937,20 @@ export default function MyPiecesView({
           selectedPiece.batchId,
           "pieces",
           selectedPiece.id,
-          stream === "client" ? "clientNotes" : "studioNotes"
+          stream === "client" ? "clientNotes" : "studioNotes",
         ),
-        payload
+        payload,
       );
       await trackedAddDoc(
         "pieces:notes",
-        collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
+        collection(
+          db,
+          "batches",
+          selectedPiece.batchId,
+          "pieces",
+          selectedPiece.id,
+          "audit",
+        ),
         {
           type: "NOTE_ADDED",
           at: serverTimestamp(),
@@ -961,7 +958,7 @@ export default function MyPiecesView({
           actorName: user.displayName || "Member",
           noteStream: stream,
           notes: text,
-        }
+        },
       );
       if (stream === "client") setClientNoteDraft("");
       else setStudioNoteDraft("");
@@ -1001,17 +998,24 @@ export default function MyPiecesView({
           "pieces",
           selectedPiece.id,
           editingNoteStream === "client" ? "clientNotes" : "studioNotes",
-          editingNoteId
+          editingNoteId,
         ),
         {
           text: editingNoteText.trim(),
           updatedAt: serverTimestamp(),
           searchTokens: toTokens(editingNoteText),
-        }
+        },
       );
       await trackedAddDoc(
         "pieces:notes",
-        collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
+        collection(
+          db,
+          "batches",
+          selectedPiece.batchId,
+          "pieces",
+          selectedPiece.id,
+          "audit",
+        ),
         {
           type: "NOTE_EDITED",
           at: serverTimestamp(),
@@ -1020,7 +1024,7 @@ export default function MyPiecesView({
           noteStream: editingNoteStream,
           noteId: editingNoteId,
           notes: editingNoteText.trim(),
-        }
+        },
       );
       cancelEditingNote();
       refreshDetails();
@@ -1036,360 +1040,356 @@ export default function MyPiecesView({
     return note.authorUid === user.uid || isStaff;
   };
 
-  async function continueJourneyAndGetBatchId(batchId: string) {
-    if (!batchId) return null;
-    const busyKey = `continue:${batchId}`;
-    if (isBusy(busyKey)) return null;
-
-    track("continue_journey_clicked", {
-      uid: shortId(user.uid),
-      batchId: shortId(batchId),
-    });
-    setBusy(busyKey, true);
-    setStatus("Continuing journey...");
-    setMeta(null);
-
-    try {
-      const idToken = await user.getIdToken();
-      const trimmedAdminToken = adminToken ? adminToken.trim() : "";
-      const response = await portalApi.continueJourney({
-        idToken,
-        adminToken: trimmedAdminToken ? trimmedAdminToken : undefined,
-        payload: { uid: user.uid, fromBatchId: batchId },
-      });
-      setMeta(response.meta);
-      const newId = getResultBatchId(response.data);
-      setStatus(newId ? `Journey continued. New batch id: ${newId}` : "Journey continued.");
-      track("continue_journey_success", {
-        uid: shortId(user.uid),
-        batchId: shortId(newId ?? batchId),
-      });
-      return newId ?? batchId;
-    } catch (error: unknown) {
-      const message = requestErrorMessage(error);
-      if (error instanceof PortalApiError) {
-        setMeta(error.meta);
-        if (error.appError?.kind === "auth") {
-          setStatus(`Continue journey failed: Session expired. Please sign in again, then retry. ${message}`);
-        } else {
-          setStatus(`Continue journey failed: ${message}`);
-        }
-        track("continue_journey_error", {
-          uid: shortId(user.uid),
-          batchId: shortId(batchId),
-          message: message.slice(0, 160),
-        });
-      } else {
-        if (error instanceof Error && error.message.toLowerCase().includes("auth")) {
-          setStatus(`Continue journey failed: Session expired. Please sign in again, then retry. ${message}`);
-        } else {
-          setStatus(`Continue journey failed: ${message}`);
-        }
-        track("continue_journey_error", {
-          uid: shortId(user.uid),
-          batchId: shortId(batchId),
-          message: message.slice(0, 160),
-        });
-      }
-      return null;
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  async function handleSendToNextFiring(piece: PieceDoc) {
-    if (!onOpenCheckin) return;
-    const nextFiringType = piece.stage === "BISQUE" ? "glaze" : piece.stage === "GREENWARE" ? "bisque" : null;
-    if (!nextFiringType) {
-      setStatus("This ware is already past firing.");
-      return;
-    }
-    const nextBatchId = await continueJourneyAndGetBatchId(piece.batchId);
-    if (!nextBatchId) return;
-
-    try {
-      safeStorageSetItem(
-        "sessionStorage",
-        CHECKIN_PREFILL_KEY,
-        JSON.stringify({
-          linkedBatchId: nextBatchId,
-          firingType: nextFiringType,
-          pieceCode: piece.pieceCode || piece.id,
-        })
-      );
-    } catch {
-      // Ignore storage issues.
-    }
-
-    onOpenCheckin();
-  }
-
-  const renderPiecesEmptyState = () => {
-    if (piecesFilter === "history" && historyPieceCount === 0) {
-      return (
-        <div className="empty-state">
-          <div>Your first firing journey starts when staff creates your first batch.</div>
-          {onOpenCheckin ? (
-            <button className="btn btn-primary" type="button" onClick={() => onOpenCheckin()}>
-              Open Ware Check-in
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-
-    if (piecesFilter === "active" && activePieceCount === 0) {
-      return (
-        <div className="empty-state">
-          <div>Nothing currently in flight.</div>
-          <div className="piece-meta">Start with Ware Check-in and we&apos;ll guide the next steps from drop-off.</div>
-          {onOpenCheckin ? (
-            <button className="btn btn-primary" type="button" onClick={() => onOpenCheckin()}>
-              Start check-in
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-
-    if (searchQuery.trim()) {
-      return <div className="empty-state">No pieces match this search. Try a broader term.</div>;
-    }
-
-    return (
-      <div className="empty-state">
-        <div>No pieces yet.</div>
-        {onOpenCheckin ? (
-          <button className="btn btn-primary" type="button" onClick={() => onOpenCheckin()}>
-            Open Ware Check-in
-          </button>
-        ) : null}
-      </div>
-    );
-  };
-
   return (
     <div className="page my-pieces-page">
-      <div className="page-header">
-        <h1>My Pieces</h1>
+      <div className="page-header my-pieces-header">
+        <div>
+          <h1>My Pieces</h1>
+          <p className="my-pieces-intro">
+            Follow what&apos;s moving through the studio, leave quick feedback
+            where it&apos;s needed, and open any piece when you want the full
+            story.
+          </p>
+        </div>
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}
       {error ? <div className="card card-3d alert">{error}</div> : null}
-
-      {!canContinue && history.length > 0 ? (
-        <div className="card card-3d alert">
-          Continue journey is available once all active pieces are closed.
-        </div>
+      {piecesError ? (
+        <div className="card card-3d alert">{piecesError}</div>
+      ) : null}
+      {piecesWarning ? (
+        <div className="card card-3d alert">{piecesWarning}</div>
       ) : null}
 
-      <section className="my-pieces-summary">
-        <article className="my-pieces-summary-card">
-          <div className="my-pieces-summary-label">In progress</div>
-          <div className="my-pieces-summary-value">{activePieceCount}</div>
-          <p className="my-pieces-summary-copy">Pieces currently moving through the studio workflow.</p>
-        </article>
-        <article className="my-pieces-summary-card">
-          <div className="my-pieces-summary-label">Needs rating</div>
-          <div className="my-pieces-summary-value">{pendingRatingCount}</div>
-          <p className="my-pieces-summary-copy">Leave quick feedback so staff can tune future loads.</p>
-        </article>
-        <article className="my-pieces-summary-card">
-          <div className="my-pieces-summary-label">History</div>
-          <div className="my-pieces-summary-value">{historyPieceCount}</div>
-          <p className="my-pieces-summary-copy">Completed pieces from earlier check-ins.</p>
-        </article>
-        {onOpenCheckin ? (
-          <button className="btn btn-primary my-pieces-summary-cta" type="button" onClick={() => onOpenCheckin()}>
-            Open Ware Check-in
-          </button>
-        ) : null}
-      </section>
-
-      <section className="card card-3d my-pieces-browser-shell">
-        <div className="my-pieces-browser-header">
+      <RevealCard
+        className="card card-3d my-pieces-carousel-shell"
+        index={0}
+        enabled={motionEnabled}
+      >
+        <div className="my-pieces-section-head">
           <div>
-            <div className="card-title">Piece browser</div>
-            <p className="piece-meta my-pieces-browser-copy">
-              Browse first, then open filters only when you need to narrow things down.
+            <div className="card-title">Pieces in progress</div>
+            <p className="piece-meta my-pieces-section-copy">
+              A still-first pass through what&apos;s currently moving through
+              the studio.
             </p>
           </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-small"
-            aria-expanded={browserControlsOpen}
-            aria-controls="my-pieces-browser-controls"
-            onClick={() => setBrowserControlsOpen((previous) => !previous)}
-          >
-            {browserControlsOpen ? "Hide filters" : "Open filters"}
-          </button>
-        </div>
-        <div className="filter-chips my-pieces-filter-chips">
-          <button
-            className={`chip ${piecesFilter === "all" ? "active" : ""}`}
-            onClick={() => setPiecesFilter("all")}
-          >
-            All ({totalPieceCount})
-          </button>
-          <button
-            className={`chip ${piecesFilter === "active" ? "active" : ""}`}
-            onClick={() => setPiecesFilter("active")}
-          >
-            In progress ({activePieceCount})
-          </button>
-          <button
-            className={`chip ${piecesFilter === "history" ? "active" : ""}`}
-            onClick={() => setPiecesFilter("history")}
-          >
-            History ({historyPieceCount})
-          </button>
-        </div>
-        {browserControlsOpen ? (
-          <div id="my-pieces-browser-controls" className="toolbar-fields my-pieces-toolbar-fields">
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search pieces"
-            />
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
-              <option value="recent">Newest updates</option>
-              <option value="oldest">Oldest updates</option>
-              <option value="stage">Stage</option>
-              <option value="rating">Rating</option>
-            </select>
-            {hasMoreBatches ? (
+          {activePieces.length > 1 ? (
+            <div className="my-pieces-carousel-controls">
               <button
                 type="button"
-                className="btn btn-ghost"
-                onClick={() => setBatchWindow((prev) => prev + BATCHES_PAGE_SIZE)}
-                disabled={piecesLoading}
+                className="btn btn-ghost btn-small"
+                onClick={() => advanceCarousel(-1)}
+                aria-label="Previous piece"
               >
-                {piecesLoading ? "Loading..." : "Load more check-ins"}
+                Back
               </button>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="piece-meta my-pieces-browser-meta">
-          Showing up to {batchWindow} recent check-ins and up to {BATCH_PIECES_QUERY_LIMIT} pieces per check-in.
-        </div>
-      </section>
-
-      <div className="wares-layout my-pieces-layout">
-        <div className="pieces-grid collections-pane">
-          <RevealCard className="card card-3d" index={0} enabled={motionEnabled}>
-            <div className="card-title">
-              {piecesFilter === "history" ? "History" : piecesFilter === "active" ? "In progress" : "Your pieces"}
+              <div className="my-pieces-carousel-counter">
+                {activeCarouselIndex + 1} / {activePieces.length}
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => advanceCarousel(1)}
+                aria-label="Next piece"
+              >
+                Next
+              </button>
             </div>
-            {piecesLoading ? (
-              <div className="empty-state">Loading pieces...</div>
-            ) : piecesError ? (
-              <div className="alert inline-alert">{piecesError}</div>
-            ) : visiblePieces.length === 0 ? (
-              renderPiecesEmptyState()
-            ) : (
-              <div className="pieces-list">
-                {piecesWarning ? <div className="alert inline-alert">{piecesWarning}</div> : null}
-                <div className="piece-meta">
-                  Showing {visiblePieces.length} of {filteredPieces.length} pieces.
-                </div>
-                {visiblePieces.map((piece) => (
-                  <div className="piece-row" key={piece.key}>
-                    <div>
-                      <div className="piece-title-row">
-                        <div className="piece-title">{piece.pieceCode || piece.id}</div>
-                        <div className="pill piece-status">{piece.stage}</div>
-                        {piece.isArchived ? <div className="pill piece-status">Archived</div> : null}
-                      </div>
-                      <div className="piece-meta">{piece.shortDesc || "No description yet."}</div>
-                      <div className="piece-meta">Check-in: {piece.batchTitle}</div>
-                      <div className="piece-meta">
-                        Updated: {formatMaybeTimestamp(piece.updatedAt)}
-                      </div>
+          ) : null}
+        </div>
+
+        {piecesLoading ? (
+          <div className="empty-state">Loading pieces...</div>
+        ) : activePieceCount === 0 ? (
+          <div className="empty-state">
+            <div>Nothing is currently in progress.</div>
+            <div className="piece-meta">
+              New work will appear here as soon as it enters the studio flow.
+            </div>
+          </div>
+        ) : (
+          <div className="my-pieces-carousel-window">
+            <div
+              className="my-pieces-carousel-track"
+              style={{
+                transform: `translateX(-${activeCarouselIndex * 100}%)`,
+              }}
+            >
+              {activePieces.map((piece) => (
+                <button
+                  key={piece.key}
+                  type="button"
+                  className="my-pieces-carousel-slide"
+                  onClick={() => openPieceDetail(piece)}
+                  aria-label={`Open in-progress piece ${piece.pieceCode || piece.id}`}
+                >
+                  <div className="my-piece-still" data-stage={piece.stage}>
+                    <div className="my-piece-still-badge">
+                      {STAGE_LABELS[piece.stage]}
                     </div>
-                    <div className="piece-right">
-                      <div className="piece-meta">
-                        {piece.clientRating ? `Rating: ${piece.clientRating}★` : "No rating yet"}
+                    <div className="my-piece-still-caption">Still preview</div>
+                  </div>
+                  <div className="my-piece-still-meta">
+                    <div className="piece-title-row">
+                      <div className="piece-title">
+                        {piece.pieceCode || piece.id}
                       </div>
-                      <div className="piece-actions">
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => {
-                            setSelectedPieceKey(piece.key);
-                            setDetailPanelOpen(true);
-                          }}
-                        >
-                          Open detail
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={toVoidHandler(() => handleArchivePiece(piece, !piece.isArchived))}
-                          disabled={isBusy(`update:${piece.key}`)}
-                        >
-                          {isBusy(`update:${piece.key}`)
-                            ? "Saving..."
-                            : piece.isArchived
-                              ? "Restore"
-                              : "Archive"}
-                        </button>
-                      </div>
+                      {piece.isArchived ? (
+                        <div className="pill piece-status">Archived</div>
+                      ) : null}
+                    </div>
+                    <div className="piece-meta">
+                      {piece.shortDesc || "No description yet."}
+                    </div>
+                    <div className="piece-meta">
+                      Check-in: {piece.batchTitle}
+                    </div>
+                    <div className="piece-meta">
+                      Updated {formatMaybeTimestamp(piece.updatedAt)}
+                    </div>
+                    <div className="my-piece-still-footer">
+                      Tap to expose the full piece detail.
                     </div>
                   </div>
-                ))}
-                {hasMoreVisiblePieces ? (
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </RevealCard>
+
+      <RevealCard
+        className="card card-3d my-pieces-rating-shell"
+        index={1}
+        enabled={motionEnabled}
+      >
+        <div className="my-pieces-section-head">
+          <div>
+            <div className="card-title">Needs rating</div>
+            <p className="piece-meta my-pieces-section-copy">
+              Recent finished pieces that still need your feedback.
+            </p>
+          </div>
+          <div className="my-pieces-section-count">
+            {piecesNeedingRating.length}
+          </div>
+        </div>
+
+        {piecesLoading ? (
+          <div className="empty-state">Loading ratings queue...</div>
+        ) : piecesNeedingRating.length === 0 ? (
+          <div className="empty-state">
+            Everything currently loaded already has feedback.
+          </div>
+        ) : (
+          <div className="my-pieces-list">
+            {visiblePiecesNeedingRating.map((piece) => (
+              <article className="my-pieces-list-row" key={piece.key}>
+                <div className="my-pieces-list-summary">
+                  <div className="piece-title-row">
+                    <div className="piece-title">
+                      {piece.pieceCode || piece.id}
+                    </div>
+                    <div className="pill piece-status">
+                      {STAGE_LABELS[piece.stage]}
+                    </div>
+                  </div>
+                  <div className="piece-meta">
+                    {piece.shortDesc || "No description yet."}
+                  </div>
+                  <div className="piece-meta">Check-in: {piece.batchTitle}</div>
+                  <div className="piece-meta">
+                    Updated {formatMaybeTimestamp(piece.updatedAt)}
+                  </div>
+                </div>
+                <div className="my-pieces-list-actions">
+                  <div className="my-pieces-list-inline-rating">
+                    <StarRating
+                      value={piece.clientRating}
+                      onSelect={toVoidHandler((value: number) =>
+                        handleRating(piece, value),
+                      )}
+                      disabled={isBusy(`rating:${piece.key}`)}
+                      pulse={ratingPulseKey === piece.key}
+                    />
+                    <div className="feedback-meta">
+                      {ratingStatus[piece.key] ||
+                        "Rate this load whenever you’re ready."}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => setPieceListLimit((prev) => prev + PIECES_PAGE_SIZE)}
+                    onClick={() => openPieceDetail(piece)}
+                    aria-label={`Open piece needing rating ${piece.pieceCode || piece.id}`}
                   >
-                    Load more pieces ({PIECES_PAGE_SIZE} at a time)
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </RevealCard>
-        </div>
-
-        <RevealCard className="card card-3d collection-detail-pane my-piece-detail-shell" index={1} enabled={motionEnabled}>
-          <div className="my-piece-detail-toolbar">
-            <div className="card-title">Piece detail</div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              disabled={!selectedPiece}
-              aria-expanded={detailPanelOpen}
-              onClick={() => {
-                if (!selectedPiece) return;
-                setDetailPanelOpen((previous) => !previous);
-              }}
-            >
-              {detailPanelOpen ? "Hide detail panel" : "Open detail panel"}
-            </button>
-          </div>
-          {!selectedPiece ? (
-            <div className="empty-state">Select a piece to view details.</div>
-          ) : !detailPanelOpen ? (
-            <div className="empty-state">
-              Detail is hidden so browsing stays fast. Open detail panel to edit this piece.
-            </div>
-          ) : (
-            <div className="detail-grid">
-              <div className="detail-block">
-                <div className="detail-header">
-                  <div>
-                    <div className="detail-title">{selectedPiece.pieceCode || selectedPiece.id}</div>
-                    <div className="piece-meta">{selectedPiece.shortDesc}</div>
-                    <div className="piece-meta">Owner: {selectedPiece.ownerName}</div>
-                    <div className="piece-meta">Check-in: {selectedPiece.batchTitle}</div>
-                    <div className="piece-meta">
-                      Updated: {formatMaybeTimestamp(selectedPiece.updatedAt)}
-                    </div>
-                  </div>
-                  <button className="btn btn-ghost" onClick={() => setSelectedPieceKey(null)}>
-                    Close
+                    Explore piece
                   </button>
                 </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </RevealCard>
 
-                <div className="section-title">Piece details</div>
+      <RevealCard
+        className="card card-3d my-pieces-history-shell"
+        index={2}
+        enabled={motionEnabled}
+      >
+        <div className="my-pieces-section-head">
+          <div>
+            <div className="card-title">History</div>
+            <p className="piece-meta my-pieces-section-copy">
+              Completed pieces from earlier firings, with a simple way to open
+              more.
+            </p>
+          </div>
+          <div className="my-pieces-section-count">{historyPieceCount}</div>
+        </div>
+
+        {piecesLoading ? (
+          <div className="empty-state">Loading history...</div>
+        ) : historyPieceCount === 0 ? (
+          <div className="empty-state">
+            <div>Your first completed pieces will land here.</div>
+            <div className="piece-meta">
+              Older work appears automatically as batches close out.
+            </div>
+          </div>
+        ) : (
+          <div className="my-pieces-list">
+            {visibleHistoryPieces.map((piece) => (
+              <article className="my-pieces-list-row" key={piece.key}>
+                <div className="my-pieces-list-summary">
+                  <div className="piece-title-row">
+                    <div className="piece-title">
+                      {piece.pieceCode || piece.id}
+                    </div>
+                    <div className="pill piece-status">
+                      {STAGE_LABELS[piece.stage]}
+                    </div>
+                    {piece.isArchived ? (
+                      <div className="pill piece-status">Archived</div>
+                    ) : null}
+                  </div>
+                  <div className="piece-meta">
+                    {piece.shortDesc || "No description yet."}
+                  </div>
+                  <div className="piece-meta">Check-in: {piece.batchTitle}</div>
+                  <div className="piece-meta">
+                    Updated {formatMaybeTimestamp(piece.updatedAt)}
+                  </div>
+                </div>
+                <div className="my-pieces-list-actions">
+                  <div className="piece-meta">
+                    {piece.clientRating
+                      ? `Rated ${piece.clientRating}★`
+                      : "No rating yet"}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => openPieceDetail(piece)}
+                    aria-label={`Open history piece ${piece.pieceCode || piece.id}`}
+                  >
+                    Explore piece
+                  </button>
+                </div>
+              </article>
+            ))}
+            {hasMoreHistoryPieces ? (
+              <button
+                type="button"
+                className="btn btn-ghost my-pieces-show-more"
+                onClick={handleShowMoreHistory}
+              >
+                Show more pieces
+              </button>
+            ) : null}
+          </div>
+        )}
+      </RevealCard>
+
+      {selectedPiece ? (
+        <div
+          className="my-piece-exploded-shell"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="piece-detail-title"
+        >
+          <button
+            type="button"
+            className="my-piece-exploded-backdrop"
+            aria-label="Close piece detail"
+            onClick={closePieceDetail}
+          />
+          <RevealCard
+            className="card card-3d my-piece-exploded-panel"
+            index={3}
+            enabled={motionEnabled}
+          >
+            <div className="my-piece-exploded-header">
+              <div className="my-piece-exploded-hero">
+                <div
+                  className="my-piece-still my-piece-exploded-visual"
+                  data-stage={selectedPiece.stage}
+                >
+                  <div className="my-piece-still-badge">
+                    {STAGE_LABELS[selectedPiece.stage]}
+                  </div>
+                  <div className="my-piece-still-caption">Still preview</div>
+                </div>
+                <div className="my-piece-exploded-meta">
+                  <div id="piece-detail-title" className="detail-title">
+                    {selectedPiece.pieceCode || selectedPiece.id}
+                  </div>
+                  <div className="piece-meta">
+                    {selectedPiece.shortDesc || "No description yet."}
+                  </div>
+                  <div className="piece-meta">
+                    Check-in: {selectedPiece.batchTitle}
+                  </div>
+                  <div className="piece-meta">
+                    Updated: {formatMaybeTimestamp(selectedPiece.updatedAt)}
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-ghost" onClick={closePieceDetail}>
+                Close
+              </button>
+            </div>
+
+            <div className="my-piece-overview-grid">
+              <div className="my-piece-overview-item">
+                <span className="my-piece-overview-label">Stage</span>
+                <strong>{STAGE_LABELS[selectedPiece.stage]}</strong>
+              </div>
+              <div className="my-piece-overview-item">
+                <span className="my-piece-overview-label">Category</span>
+                <strong>
+                  {WARE_CATEGORY_LABELS[selectedPiece.wareCategory]}
+                </strong>
+              </div>
+              <div className="my-piece-overview-item">
+                <span className="my-piece-overview-label">Owner</span>
+                <strong>{selectedPiece.ownerName || "Member"}</strong>
+              </div>
+              <div className="my-piece-overview-item">
+                <span className="my-piece-overview-label">Feedback</span>
+                <strong>
+                  {selectedPiece.clientRating
+                    ? `${selectedPiece.clientRating}★`
+                    : "Not rated yet"}
+                </strong>
+              </div>
+            </div>
+
+            {isStaff ? (
+              <div className="my-piece-studio-controls">
+                <div className="section-title">Studio controls</div>
                 <div className="form-grid collection-form-grid">
                   <div>
                     <label className="field-label" htmlFor="piece-desc">
@@ -1399,10 +1399,9 @@ export default function MyPiecesView({
                       id="piece-desc"
                       value={selectedPiece.shortDesc}
                       onChange={(event) =>
-                        toVoidHandler(handleUpdatePiece)(
-                          selectedPiece,
-                          { shortDesc: event.target.value }
-                        )
+                        toVoidHandler(handleUpdatePiece)(selectedPiece, {
+                          shortDesc: event.target.value,
+                        })
                       }
                       placeholder="Short description"
                     />
@@ -1416,7 +1415,9 @@ export default function MyPiecesView({
                       value={selectedPiece.wareCategory}
                       onChange={(event) =>
                         toVoidHandler(handleUpdatePiece)(selectedPiece, {
-                          wareCategory: normalizeWareCategory(event.target.value),
+                          wareCategory: normalizeWareCategory(
+                            event.target.value,
+                          ),
                         })
                       }
                     >
@@ -1442,7 +1443,7 @@ export default function MyPiecesView({
                     >
                       {STAGES.map((stage) => (
                         <option value={stage} key={stage}>
-                          {stage}
+                          {STAGE_LABELS[stage]}
                         </option>
                       ))}
                     </select>
@@ -1451,363 +1452,307 @@ export default function MyPiecesView({
                     <button
                       className="btn btn-ghost"
                       onClick={toVoidHandler(() =>
-                        handleArchivePiece(selectedPiece, !selectedPiece.isArchived)
+                        handleArchivePiece(
+                          selectedPiece,
+                          !selectedPiece.isArchived,
+                        ),
                       )}
+                      disabled={isBusy(`update:${selectedPiece.key}`)}
                     >
-                      {selectedPiece.isArchived ? "Restore piece" : "Archive piece"}
+                      {isBusy(`update:${selectedPiece.key}`)
+                        ? "Saving..."
+                        : selectedPiece.isArchived
+                          ? "Restore piece"
+                          : "Archive piece"}
                     </button>
-                    {selectedPieceCanContinue ? (
-                      <button
-                        className="btn btn-ghost"
-                        onClick={toVoidHandler(() => handleSendToNextFiring(selectedPiece))}
-                        disabled={isBusy(`continue:${selectedPiece.batchId}`)}
-                      >
-                        {isBusy(`continue:${selectedPiece.batchId}`)
-                          ? "Preparing next firing..."
-                          : "Send to next firing"}
-                      </button>
-                    ) : null}
                   </div>
                 </div>
+              </div>
+            ) : null}
 
-                <div className="section-title">Feedback for the studio</div>
-                <div className="feedback-card">
-                  <div className="feedback-copy">
-                    Tap to rate how the loading went. This helps the loaders and makers dial it in.
-                  </div>
-                  <StarRating
-                    value={selectedPiece.clientRating}
-                    onSelect={toVoidHandler((value: number) => handleRating(selectedPiece, value))}
-                    disabled={isBusy(`rating:${selectedPiece.key}`)}
-                    pulse={ratingPulseKey === selectedPiece.key}
+            <div className="section-title">Feedback for the studio</div>
+            <div className="feedback-card">
+              <div className="feedback-copy">
+                Tap to rate how the loading went. This helps the loaders and
+                makers dial it in.
+              </div>
+              <StarRating
+                value={selectedPiece.clientRating}
+                onSelect={toVoidHandler((value: number) =>
+                  handleRating(selectedPiece, value),
+                )}
+                disabled={isBusy(`rating:${selectedPiece.key}`)}
+                pulse={ratingPulseKey === selectedPiece.key}
+              />
+              <div className="feedback-meta">
+                {ratingStatus[selectedPiece.key] ||
+                  "You can update this anytime."}
+              </div>
+            </div>
+
+            <div className="tab-row">
+              <button
+                className={`chip ${selectedPieceTab === "client" ? "active" : ""}`}
+                onClick={() => setSelectedPieceTab("client")}
+              >
+                {isStaff ? "Client notes" : "Your notes"}
+              </button>
+              {isStaff ? (
+                <button
+                  className={`chip ${selectedPieceTab === "studio" ? "active" : ""}`}
+                  onClick={() => setSelectedPieceTab("studio")}
+                >
+                  Studio notes
+                </button>
+              ) : null}
+              <button
+                className={`chip ${selectedPieceTab === "photos" ? "active" : ""}`}
+                onClick={() => setSelectedPieceTab("photos")}
+              >
+                Photos
+              </button>
+              <button
+                className={`chip ${selectedPieceTab === "audit" ? "active" : ""}`}
+                onClick={() => {
+                  setSelectedPieceTab("audit");
+                  track("timeline_open", {
+                    uid: shortId(user.uid),
+                    batchId: shortId(selectedPiece.batchId),
+                  });
+                }}
+              >
+                Timeline
+              </button>
+            </div>
+
+            {pieceDetailLoading ? (
+              <div className="empty-state">Loading detail...</div>
+            ) : null}
+            {pieceDetailError ? (
+              <div className="alert inline-alert">{pieceDetailError}</div>
+            ) : null}
+
+            {selectedPieceTab === "client" ? (
+              <div>
+                <div className="form-grid note-form-grid">
+                  <textarea
+                    value={clientNoteDraft}
+                    onChange={(event) => setClientNoteDraft(event.target.value)}
+                    placeholder={
+                      isStaff
+                        ? "Add a client note"
+                        : "Add a note about this piece"
+                    }
                   />
-                  <div className="feedback-meta">
-                    {ratingStatus[selectedPiece.key] || "You can update this anytime."}
-                  </div>
-                </div>
-
-                <div className="tab-row">
                   <button
-                    className={`chip ${selectedPieceTab === "client" ? "active" : ""}`}
-                    onClick={() => setSelectedPieceTab("client")}
+                    className="btn btn-primary"
+                    onClick={toVoidHandler(() => handleAddNote("client"))}
+                    disabled={isBusy(`addNote:${selectedPiece.key}:client`)}
                   >
-                    Client notes
-                  </button>
-                  <button
-                    className={`chip ${selectedPieceTab === "studio" ? "active" : ""}`}
-                    onClick={() => setSelectedPieceTab("studio")}
-                  >
-                    Studio notes
-                  </button>
-                  <button
-                    className={`chip ${selectedPieceTab === "photos" ? "active" : ""}`}
-                    onClick={() => setSelectedPieceTab("photos")}
-                  >
-                    Photos
-                  </button>
-                  <button
-                    className={`chip ${selectedPieceTab === "audit" ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedPieceTab("audit");
-                      track("timeline_open", {
-                        uid: shortId(user.uid),
-                        batchId: shortId(selectedPiece.batchId),
-                      });
-                    }}
-                  >
-                    Audit
+                    {isBusy(`addNote:${selectedPiece.key}:client`)
+                      ? "Adding..."
+                      : "Add note"}
                   </button>
                 </div>
 
-                {pieceDetailLoading ? <div className="empty-state">Loading detail...</div> : null}
-                {pieceDetailError ? <div className="alert inline-alert">{pieceDetailError}</div> : null}
-
-                {selectedPieceTab === "client" ? (
-                  <div>
-                    <div className="form-grid note-form-grid">
-                      <textarea
-                        value={clientNoteDraft}
-                        onChange={(event) => setClientNoteDraft(event.target.value)}
-                        placeholder="Add a client note"
-                      />
-                      <button
-                        className="btn btn-primary"
-                        onClick={toVoidHandler(() => handleAddNote("client"))}
-                        disabled={isBusy(`addNote:${selectedPiece.key}:client`)}
-                      >
-                        {isBusy(`addNote:${selectedPiece.key}:client`) ? "Adding..." : "Add note"}
-                      </button>
-                    </div>
-
-                    {clientNotes.length === 0 ? (
-                      <div className="empty-state">No client notes yet.</div>
-                    ) : (
-                      <div className="note-list">
-                        {clientNotes.map((note) => (
-                          <div className="note-card" key={note.id}>
-                            <div className="piece-meta">
-                              {note.authorName || "Member"} · {formatMaybeTimestamp(note.at)}
-                              {note.updatedAt ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}` : ""}
+                {clientNotes.length === 0 ? (
+                  <div className="empty-state">No notes yet.</div>
+                ) : (
+                  <div className="note-list">
+                    {clientNotes.map((note) => (
+                      <div className="note-card" key={note.id}>
+                        <div className="piece-meta">
+                          {note.authorName || "Member"} ·{" "}
+                          {formatMaybeTimestamp(note.at)}
+                          {note.updatedAt
+                            ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}`
+                            : ""}
+                        </div>
+                        {editingNoteId === note.id &&
+                        editingNoteStream === "client" ? (
+                          <div className="form-grid note-edit-grid">
+                            <textarea
+                              value={editingNoteText}
+                              onChange={(event) =>
+                                setEditingNoteText(event.target.value)
+                              }
+                            />
+                            <div className="form-actions">
+                              <button
+                                className="btn btn-primary"
+                                onClick={toVoidHandler(handleSaveNoteEdit)}
+                                disabled={isBusy(`editNote:${note.id}`)}
+                              >
+                                {isBusy(`editNote:${note.id}`)
+                                  ? "Saving..."
+                                  : "Save"}
+                              </button>
+                              <button
+                                className="btn btn-ghost"
+                                onClick={cancelEditingNote}
+                              >
+                                Cancel
+                              </button>
                             </div>
-                            {editingNoteId === note.id && editingNoteStream === "client" ? (
-                              <div className="form-grid note-edit-grid">
-                                <textarea
-                                  value={editingNoteText}
-                                  onChange={(event) => setEditingNoteText(event.target.value)}
-                                />
-                                <div className="form-actions">
-                                  <button
-                                    className="btn btn-primary"
-                                    onClick={toVoidHandler(handleSaveNoteEdit)}
-                                    disabled={isBusy(`editNote:${note.id}`)}
-                                  >
-                                    {isBusy(`editNote:${note.id}`) ? "Saving..." : "Save"}
-                                  </button>
-                                  <button className="btn btn-ghost" onClick={cancelEditingNote}>
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div>
-                                <div>{note.text}</div>
-                                {canEditNote(note, "client") ? (
-                                  <button className="btn btn-ghost" onClick={() => startEditingNote(note, "client")}>
-                                    Edit
-                                  </button>
-                                ) : null}
-                              </div>
-                            )}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-                {selectedPieceTab === "studio" ? (
-                  <div>
-                    {!isStaff ? (
-                      <div className="alert inline-alert">Studio notes are staff-only.</div>
-                    ) : (
-                      <div className="form-grid note-form-grid">
-                        <textarea
-                          value={studioNoteDraft}
-                          onChange={(event) => setStudioNoteDraft(event.target.value)}
-                          placeholder="Add a studio note"
-                        />
-                        <button
-                          className="btn btn-primary"
-                          onClick={toVoidHandler(() => handleAddNote("studio"))}
-                          disabled={isBusy(`addNote:${selectedPiece.key}:studio`)}
-                        >
-                          {isBusy(`addNote:${selectedPiece.key}:studio`) ? "Adding..." : "Add note"}
-                        </button>
-                      </div>
-                    )}
-
-                    {studioNotes.length === 0 ? (
-                      <div className="empty-state">No studio notes yet.</div>
-                    ) : (
-                      <div className="note-list">
-                        {studioNotes.map((note) => (
-                          <div className="note-card" key={note.id}>
-                            <div className="piece-meta">
-                              {note.authorName || "Staff"} · {formatMaybeTimestamp(note.at)}
-                              {note.updatedAt ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}` : ""}
-                            </div>
-                            {editingNoteId === note.id && editingNoteStream === "studio" ? (
-                              <div className="form-grid note-edit-grid">
-                                <textarea
-                                  value={editingNoteText}
-                                  onChange={(event) => setEditingNoteText(event.target.value)}
-                                />
-                                <div className="form-actions">
-                                  <button
-                                    className="btn btn-primary"
-                                    onClick={toVoidHandler(handleSaveNoteEdit)}
-                                    disabled={isBusy(`editNote:${note.id}`)}
-                                  >
-                                    {isBusy(`editNote:${note.id}`) ? "Saving..." : "Save"}
-                                  </button>
-                                  <button className="btn btn-ghost" onClick={cancelEditingNote}>
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div>
-                                <div>{note.text}</div>
-                                {canEditNote(note, "studio") ? (
-                                  <button className="btn btn-ghost" onClick={() => startEditingNote(note, "studio")}>
-                                    Edit
-                                  </button>
-                                ) : null}
-                              </div>
-                            )}
+                        ) : (
+                          <div>
+                            <div>{note.text}</div>
+                            {canEditNote(note, "client") ? (
+                              <button
+                                className="btn btn-ghost"
+                                onClick={() => startEditingNote(note, "client")}
+                              >
+                                Edit
+                              </button>
+                            ) : null}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ) : null}
-
-                {selectedPieceTab === "photos" ? (
-                  <div>
-                    {mediaItems.length === 0 ? (
-                      <div className="empty-state">No photos yet.</div>
-                    ) : (
-                      <div className="note-list">
-                        {mediaItems.map((item) => (
-                          <div className="note-card" key={item.id}>
-                            <div className="piece-title-row">
-                              <div className="piece-title">{item.storagePath}</div>
-                              <div className="pill piece-status">{item.stage}</div>
-                            </div>
-                            <div className="piece-meta">
-                              {item.uploadedByName ? `by ${item.uploadedByName}` : ""}
-                              {item.at ? ` · ${formatMaybeTimestamp(item.at)}` : ""}
-                            </div>
-                            {item.caption ? <div>{item.caption}</div> : null}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {selectedPieceTab === "audit" ? (
-                  <div>
-                    {auditEvents.length === 0 ? (
-                      <div className="empty-state">No audit events yet.</div>
-                    ) : (
-                      <div className="note-list">
-                        {auditEvents.map((event) => (
-                          <div className="note-card" key={event.id}>
-                            <div className="piece-title-row">
-                              <div className="piece-title">{event.type}</div>
-                              {event.noteStream ? (
-                                <div className="pill piece-status">{event.noteStream}</div>
-                              ) : null}
-                            </div>
-                            <div className="piece-meta">
-                              {event.actorName ? `by ${event.actorName}` : ""}
-                              {event.at ? ` · ${formatMaybeTimestamp(event.at)}` : ""}
-                            </div>
-                            {event.notes ? <div>{event.notes}</div> : null}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
+                )}
               </div>
-            </div>
-          )}
-        </RevealCard>
-      </div>
+            ) : null}
 
-      <RevealCard className="card card-3d my-pieces-secondary-shell" index={2} enabled={motionEnabled}>
-        <div className="my-pieces-secondary-header">
-          <div>
-            <div className="card-title">Check-in activity</div>
-            <p className="piece-meta my-pieces-browser-copy">
-              Keep this collapsed while browsing. Open it when you need reservation-level history.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-small"
-            aria-expanded={checkinsPanelOpen}
-            aria-controls="my-pieces-checkins-panel"
-            onClick={() => setCheckinsPanelOpen((previous) => !previous)}
-          >
-            {checkinsPanelOpen ? "Hide check-in activity" : "Open check-in activity"}
-          </button>
+            {selectedPieceTab === "studio" && isStaff ? (
+              <div>
+                <div className="form-grid note-form-grid">
+                  <textarea
+                    value={studioNoteDraft}
+                    onChange={(event) => setStudioNoteDraft(event.target.value)}
+                    placeholder="Add a studio note"
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={toVoidHandler(() => handleAddNote("studio"))}
+                    disabled={isBusy(`addNote:${selectedPiece.key}:studio`)}
+                  >
+                    {isBusy(`addNote:${selectedPiece.key}:studio`)
+                      ? "Adding..."
+                      : "Add note"}
+                  </button>
+                </div>
+
+                {studioNotes.length === 0 ? (
+                  <div className="empty-state">No studio notes yet.</div>
+                ) : (
+                  <div className="note-list">
+                    {studioNotes.map((note) => (
+                      <div className="note-card" key={note.id}>
+                        <div className="piece-meta">
+                          {note.authorName || "Staff"} ·{" "}
+                          {formatMaybeTimestamp(note.at)}
+                          {note.updatedAt
+                            ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}`
+                            : ""}
+                        </div>
+                        {editingNoteId === note.id &&
+                        editingNoteStream === "studio" ? (
+                          <div className="form-grid note-edit-grid">
+                            <textarea
+                              value={editingNoteText}
+                              onChange={(event) =>
+                                setEditingNoteText(event.target.value)
+                              }
+                            />
+                            <div className="form-actions">
+                              <button
+                                className="btn btn-primary"
+                                onClick={toVoidHandler(handleSaveNoteEdit)}
+                                disabled={isBusy(`editNote:${note.id}`)}
+                              >
+                                {isBusy(`editNote:${note.id}`)
+                                  ? "Saving..."
+                                  : "Save"}
+                              </button>
+                              <button
+                                className="btn btn-ghost"
+                                onClick={cancelEditingNote}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div>{note.text}</div>
+                            {canEditNote(note, "studio") ? (
+                              <button
+                                className="btn btn-ghost"
+                                onClick={() => startEditingNote(note, "studio")}
+                              >
+                                Edit
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {selectedPieceTab === "photos" ? (
+              <div>
+                {mediaItems.length === 0 ? (
+                  <div className="empty-state">No photos yet.</div>
+                ) : (
+                  <div className="note-list">
+                    {mediaItems.map((item) => (
+                      <div className="note-card" key={item.id}>
+                        <div className="piece-title-row">
+                          <div className="piece-title">{item.storagePath}</div>
+                          <div className="pill piece-status">
+                            {STAGE_LABELS[item.stage]}
+                          </div>
+                        </div>
+                        <div className="piece-meta">
+                          {item.uploadedByName
+                            ? `by ${item.uploadedByName}`
+                            : ""}
+                          {item.at ? ` · ${formatMaybeTimestamp(item.at)}` : ""}
+                        </div>
+                        {item.caption ? <div>{item.caption}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {selectedPieceTab === "audit" ? (
+              <div>
+                {auditEvents.length === 0 ? (
+                  <div className="empty-state">No timeline events yet.</div>
+                ) : (
+                  <div className="note-list">
+                    {auditEvents.map((event) => (
+                      <div className="note-card" key={event.id}>
+                        <div className="piece-title-row">
+                          <div className="piece-title">{event.type}</div>
+                          {event.noteStream ? (
+                            <div className="pill piece-status">
+                              {event.noteStream}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="piece-meta">
+                          {event.actorName ? `by ${event.actorName}` : ""}
+                          {event.at
+                            ? ` · ${formatMaybeTimestamp(event.at)}`
+                            : ""}
+                        </div>
+                        {event.notes ? <div>{event.notes}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </RevealCard>
         </div>
-        {!checkinsPanelOpen && recentCheckins.length > 0 ? (
-          <div className="inline-alert notice">
-            {recentCheckins.length} recent check-in item{recentCheckins.length === 1 ? "" : "s"} available.
-          </div>
-        ) : null}
-        {checkinsPanelOpen ? (
-          <div id="my-pieces-checkins-panel">
-            {checkinsLoading ? (
-              <div className="empty-state">Loading recent check-ins...</div>
-            ) : checkinsError ? (
-              <div className="alert inline-alert">{checkinsError}</div>
-            ) : recentCheckins.length === 0 ? (
-              <div className="empty-state">No recent check-ins yet.</div>
-            ) : (
-              <div className="pieces-list">
-                {recentCheckins.map((reservation) => (
-                  <div className="piece-row" key={`reservation:${reservation.id}`}>
-                    <div>
-                      <div className="piece-title-row">
-                        <div className="piece-title">{`Check-in ${shortId(reservation.id)}`}</div>
-                        <div className="pill piece-status">{reservationStatusLabel(reservation)}</div>
-                      </div>
-                      <div className="piece-meta">
-                        {reservation.firingType.toUpperCase()} {reservation.wareType ? `· ${reservation.wareType}` : ""}
-                        {reservation.estimatedHalfShelves ? ` · ${reservation.estimatedHalfShelves} half-shelves` : ""}
-                      </div>
-                      <div className="piece-meta">
-                        Updated: {formatMaybeTimestamp(reservation.updatedAt ?? reservation.createdAt)}
-                      </div>
-                      {isStaff && reservation.ownerUid && reservation.ownerUid !== user.uid ? (
-                        <div className="piece-meta">For member: {shortId(reservation.ownerUid)}</div>
-                      ) : null}
-                    </div>
-                    <div className="piece-right">
-                      <div className="piece-actions">
-                        {onOpenCheckin ? (
-                          <button className="btn btn-ghost" type="button" onClick={() => onOpenCheckin()}>
-                            Open Ware Check-in
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-      </RevealCard>
-
-      {meta ? (
-        <details className="card card-3d troubleshooting">
-          <summary>Request details</summary>
-          <div className="troubleshooting-grid">
-            <div className="troubleshooting-block">
-              <div className="troubleshooting-label">Status</div>
-              <div className="troubleshooting-value">
-                {meta.ok ? "OK" : "Error"} · {meta.status ?? "No status"}
-              </div>
-            </div>
-            <div className="troubleshooting-block">
-              <div className="troubleshooting-label">Endpoint</div>
-              <div className="troubleshooting-value">
-                {meta.fn} · {meta.url}
-              </div>
-            </div>
-          </div>
-          <div className="troubleshooting-block">
-            <div className="troubleshooting-label">Curl (copy/paste)</div>
-            <pre className="mono">{meta.curlExample || "Unavailable"}</pre>
-          </div>
-          <div className="troubleshooting-block">
-            <div className="troubleshooting-label">Request payload</div>
-            <pre className="mono">{JSON.stringify(meta.payload ?? {}, null, 2)}</pre>
-          </div>
-          <div className="troubleshooting-block">
-            <div className="troubleshooting-label">Response body</div>
-            <pre className="mono">{JSON.stringify(meta.response ?? {}, null, 2)}</pre>
-          </div>
-          <div className="troubleshooting-block">
-            <div className="troubleshooting-label">Raw meta</div>
-            <pre className="mono">{JSON.stringify(meta, null, 2)}</pre>
-          </div>
-        </details>
       ) : null}
     </div>
   );

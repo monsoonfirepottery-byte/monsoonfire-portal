@@ -1125,10 +1125,20 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
     const countVisible = (selector) =>
       Array.from(document.querySelectorAll(selector)).filter((node) => isVisible(node)).length;
 
-    const viewDetailsCount = Array.from(document.querySelectorAll("button")).filter((node) => {
-      if (!isVisible(node)) return false;
-      return /^(View details|Open detail)$/i.test(textOf(node));
-    }).length;
+    const countVisibleButtons = (patternsToMatch) =>
+      Array.from(document.querySelectorAll("button")).filter((node) => {
+        if (!isVisible(node)) return false;
+        const buttonText = textOf(node);
+        const ariaLabel = normalize(node.getAttribute("aria-label") || "");
+        return patternsToMatch.some((pattern) => pattern.test(buttonText) || pattern.test(ariaLabel));
+      }).length;
+
+    const viewDetailsCount = countVisibleButtons([
+      /^(View details|Open detail|Explore piece)$/i,
+      /^Open in-progress piece\b/i,
+      /^Open piece needing rating\b/i,
+      /^Open history piece\b/i,
+    ]);
 
     const customPatterns = Array.isArray(patterns)
       ? patterns
@@ -1138,7 +1148,9 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
       : [];
 
     const hasRecognizedEmptyGuidance = nonLoadingEmptyStates.some((text) =>
-      /(No pieces yet|Nothing currently in flight|first firing journey starts|No pieces in this view|No pieces found|No results)/i.test(text)
+      /(No pieces yet|Nothing currently in flight|Nothing is currently in progress|Everything currently loaded already has feedback|Your first completed pieces will land here|first firing journey starts|No pieces in this view|No pieces found|No results)/i.test(
+        text
+      )
     );
     const hasCustomEmptyStateGuidance = nonLoadingEmptyStates.some((text) => {
       const lower = text.toLowerCase();
@@ -1147,9 +1159,10 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
 
     return {
       myPiecesHeadingVisible: headings.some((text) => /^My Pieces$/i.test(text)),
-      rowCount: countVisible(".piece-row"),
-      pieceThumbCount: countVisible(".piece-thumb"),
-      detailTitleCount: countVisible(".detail-title"),
+      sectionHeadingCount: headings.filter((text) => /^(Pieces in progress|Needs rating|History)$/i.test(text)).length,
+      rowCount: countVisible(".piece-row, .my-pieces-list-row, .my-pieces-carousel-slide"),
+      pieceThumbCount: countVisible(".piece-thumb, .my-piece-still"),
+      detailTitleCount: countVisible(".detail-title, #piece-detail-title"),
       viewDetailsCount,
       loadingVisible: emptyStates.some((text) => /^Loading pieces\.\.\.$/i.test(text)),
       nonLoadingEmptyStateCount: nonLoadingEmptyStates.length,
@@ -1172,6 +1185,7 @@ async function waitForMyPiecesReadyState(page, timeoutMs = DEFAULT_MY_PIECES_REA
       state.detailTitleCount > 0 ||
       state.rowCount > 0 ||
       state.viewDetailsCount > 0 ||
+      (state.sectionHeadingCount >= 3 && !state.loadingVisible) ||
       state.nonLoadingEmptyStateCount > 0
     ) {
       return state;
@@ -1188,6 +1202,7 @@ function formatMyPiecesStateForError(state) {
   const previews = (state.nonLoadingEmptyStates || []).join(" | ");
   return (
     `headingVisible=${String(state.myPiecesHeadingVisible)}; ` +
+    `sectionHeadings=${state.sectionHeadingCount || 0}; ` +
     `rows=${state.rowCount}; ` +
     `pieceThumbs=${state.pieceThumbCount}; ` +
     `viewDetailsButtons=${state.viewDetailsCount}; ` +
@@ -1581,14 +1596,10 @@ async function assertNoPermissionOrIndexError(page, labelPrefixes) {
   }
 }
 
-async function runContinueJourneyRuntimeCheck(page, summary, options, feedbackProfile) {
+async function runMyPiecesFlowCheck(page, summary, options, feedbackProfile) {
   const journey = summary.journeyCheck;
   journey.enabled = true;
   journey.piecePrefix = options.journeyPiecePrefix;
-
-  if (!options.firebaseApiKey) {
-    throw new Error("Journey check requires PORTAL_FIREBASE_API_KEY (or --api-key).");
-  }
 
   await clickNavSubItem(page, "Studio & Resources", "My Pieces", true);
   await page.getByRole("heading", { name: /^My Pieces$/i }).first().waitFor({ timeout: 30000 });
@@ -1605,140 +1616,6 @@ async function runContinueJourneyRuntimeCheck(page, summary, options, feedbackPr
     throw new Error("My Pieces still shows permission denied text.");
   }
 
-  const rowMatcher = new RegExp(regexSafe(options.journeyPiecePrefix), "i");
-  const fixtureRow = await findVisibleLocator(page.locator(".piece-row", { hasText: rowMatcher }));
-  if (!fixtureRow) {
-    throw new Error(
-      `Could not find a visible My Pieces row for prefix "${options.journeyPiecePrefix}". ${formatMyPiecesStateForError(state)}`
-    );
-  }
-
-  const detailButton = fixtureRow.getByRole("button", { name: /^(View details|Open detail)$/i }).first();
-  if ((await detailButton.count()) === 0) {
-    throw new Error(`Fixture row for prefix "${options.journeyPiecePrefix}" does not expose a detail button.`);
-  }
-
-  await detailButton.click({ timeout: 10000 });
-  const detailTitle = page.locator(".detail-title").first();
-  await detailTitle.waitFor({ state: "visible", timeout: 12000 });
-
-  const continueButton = page.getByRole("button", { name: /^Send to next firing$/i }).first();
-  await continueButton.waitFor({ state: "visible", timeout: 12000 });
-  if (await continueButton.isDisabled()) {
-    throw new Error("Send to next firing is disabled for the selected fixture row.");
-  }
-
-  const continueResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      /\/continueJourney(?:$|[/?#])/i.test(response.url()),
-    { timeout: 30000 }
-  );
-
-  await continueButton.click({ timeout: 10000 });
-  const continueResponse = await continueResponsePromise;
-  const continueResponseUrl = String(continueResponse.url() || "").trim();
-  const responseStatus = continueResponse.status();
-  const responseJson = safeJsonParse(await continueResponse.text(), {});
-  const requestBody = safeJsonParse(continueResponse.request().postData() || "", {});
-
-  const fromBatchId = String(requestBody?.fromBatchId || "").trim();
-  const requestUid = String(requestBody?.uid || "").trim();
-  const newBatchId = String(responseJson?.batchId || responseJson?.newBatchId || "").trim();
-  const rootId = String(responseJson?.rootId || "").trim();
-
-  journey.request = {
-    uid: requestUid,
-    fromBatchId,
-  };
-  journey.response = {
-    url: continueResponseUrl,
-    status: responseStatus,
-    ok: responseJson?.ok === true,
-    batchId: newBatchId,
-    rootId,
-  };
-  journey.sourceBatchId = fromBatchId;
-  journey.createdBatchId = newBatchId;
-  journey.rootId = rootId;
-
-  if (responseStatus < 200 || responseStatus >= 300) {
-    throw new Error(`continueJourney returned HTTP ${responseStatus}.`);
-  }
-  if (!fromBatchId || !requestUid) {
-    throw new Error("continueJourney request payload was missing uid/fromBatchId.");
-  }
-  if (!newBatchId) {
-    throw new Error("continueJourney response did not include a batch id.");
-  }
-
-  await page.waitForTimeout(900);
-  await takeScreenshot(
-    page,
-    options.outputDir,
-    "canary-03b-continue-journey-created.png",
-    summary,
-    "continue journey runtime check"
-  );
-
-  const mintedStaffToken = options.staffIdToken
-    ? { token: options.staffIdToken, refreshToken: options.staffRefreshToken }
-    : await mintPortalStaffIdToken(options, {
-        staffEmail: options.staffEmail,
-        staffPassword: options.staffPassword,
-        staffUid: options.staffUid,
-        staffRefreshToken: options.staffRefreshToken,
-      });
-  const idToken = mintedStaffToken.token;
-  options.staffIdToken = idToken;
-  options.staffRefreshToken = mintedStaffToken.refreshToken || options.staffRefreshToken;
-
-  const sourceDocResponse = await firestoreGetDocument({
-    projectId: options.projectId,
-    path: `batches/${fromBatchId}`,
-    idToken,
-  });
-  const newDocResponse = await firestoreGetDocument({
-    projectId: options.projectId,
-    path: `batches/${newBatchId}`,
-    idToken,
-  });
-  const timelineResponse = await firestoreListDocuments({
-    projectId: options.projectId,
-    path: `batches/${newBatchId}/timeline`,
-    idToken,
-    pageSize: 100,
-  });
-
-  if (!sourceDocResponse.ok) {
-    throw new Error(`Could not read source batch ${fromBatchId} (status ${sourceDocResponse.status}).`);
-  }
-  if (!newDocResponse.ok) {
-    throw new Error(`Could not read new continuation batch ${newBatchId} (status ${newDocResponse.status}).`);
-  }
-  if (!timelineResponse.ok) {
-    throw new Error(`Could not read continuation timeline for ${newBatchId} (status ${timelineResponse.status}).`);
-  }
-
-  const sourceBatch = firestoreDocToObject(sourceDocResponse.json);
-  const newBatch = firestoreDocToObject(newDocResponse.json);
-  const timelineDocs = Array.isArray(timelineResponse.json?.documents)
-    ? timelineResponse.json.documents
-    : [];
-  const timelineRows = timelineDocs.map((doc) => ({
-    id: firestoreDocIdFromName(doc?.name),
-    row: firestoreDocToObject(doc),
-  }));
-  const continueEvent = timelineRows.find(
-    (entry) => String(entry.row?.type || "").trim().toUpperCase() === "CONTINUE_JOURNEY"
-  );
-  const timelineFromBatchId = String(
-    continueEvent?.row?.fromBatchId ||
-      continueEvent?.row?.extra?.fromBatchId ||
-      ""
-  ).trim();
-  const expectedRootId = String(sourceBatch.journeyRootBatchId || fromBatchId || "").trim();
-
   const assertionRows = [];
   const assertionFailures = [];
   const recordAssertion = (label, condition, details) => {
@@ -1753,131 +1630,122 @@ async function runContinueJourneyRuntimeCheck(page, summary, options, feedbackPr
     }
   };
 
-  recordAssertion(
-    "new batch state is DRAFT",
-    String(newBatch.state || "") === "DRAFT",
-    `observed="${String(newBatch.state || "")}"`
+  const requiredSections = ["Pieces in progress", "Needs rating", "History"];
+  for (const label of requiredSections) {
+    const heading = page.getByText(new RegExp(`^${regexSafe(label)}$`, "i")).first();
+    const visible = await heading.isVisible().catch(() => false);
+    recordAssertion("section heading visible", visible, label);
+  }
+
+  const legacyContinueButton = await findVisibleLocator(
+    page.getByRole("button", { name: /^Send to next firing$/i })
   );
   recordAssertion(
-    "new batch is open",
-    newBatch.isClosed === false,
-    `observed="${String(newBatch.isClosed)}"`
+    "legacy continue action removed",
+    !legacyContinueButton,
+    legacyContinueButton ? "Send to next firing is still visible." : "not visible"
+  );
+
+  const legacyCheckinButton = await findVisibleLocator(
+    page.getByRole("button", { name: /^Open Ware Check-in$/i })
   );
   recordAssertion(
-    "new batch links journeyParentBatchId",
-    String(newBatch.journeyParentBatchId || "") === fromBatchId,
-    `observed="${String(newBatch.journeyParentBatchId || "")}" expected="${fromBatchId}"`
+    "ware check-in action removed from my pieces",
+    !legacyCheckinButton,
+    legacyCheckinButton ? "Open Ware Check-in is still visible." : "not visible"
   );
+
+  const continueJourneyCopyVisible = await page
+    .getByText(/Continue journey/i)
+    .first()
+    .isVisible()
+    .catch(() => false);
   recordAssertion(
-    "new batch links journeyRootBatchId",
-    String(newBatch.journeyRootBatchId || "") === expectedRootId,
-    `observed="${String(newBatch.journeyRootBatchId || "")}" expected="${expectedRootId}"`
+    "legacy continue journey copy removed",
+    !continueJourneyCopyVisible,
+    continueJourneyCopyVisible ? "Continue journey copy is still visible." : "not visible"
   );
+
+  const showMoreButton = await findVisibleLocator(
+    page.getByRole("button", { name: /^Show more pieces$/i })
+  );
+  if (showMoreButton) {
+    await showMoreButton.click({ timeout: 10000 });
+    await page.waitForTimeout(450);
+  }
+
+  const detailButtonMatchers = [
+    page.locator('button[aria-label^="Open in-progress piece"]'),
+    page.locator('button[aria-label^="Open piece needing rating"]'),
+    page.locator('button[aria-label^="Open history piece"]'),
+    page.getByRole("button", { name: /^Explore piece$/i }),
+    page.getByRole("button", { name: /^(View details|Open detail)$/i }),
+  ];
+
+  let detailButton = null;
+  for (const matcher of detailButtonMatchers) {
+    detailButton = await findVisibleLocator(matcher);
+    if (detailButton) break;
+  }
+
+  const readyStateAllowsNoDetail =
+    state.nonLoadingEmptyStateCount > 0 && state.hasRecognizedEmptyGuidance && state.viewDetailsCount === 0;
   recordAssertion(
-    "new batch ownerUid matches authenticated uid",
-    String(newBatch.ownerUid || "") === requestUid,
-    `observed="${String(newBatch.ownerUid || "")}" expected="${requestUid}"`
+    "piece detail entrypoint available or empty state explained",
+    Boolean(detailButton) || readyStateAllowsNoDetail,
+    Boolean(detailButton)
+      ? "interactive detail button found"
+      : formatMyPiecesStateForError(state)
   );
-  recordAssertion(
-    "timeline contains CONTINUE_JOURNEY event",
-    Boolean(continueEvent),
-    `timelineCount=${timelineRows.length}`
-  );
-  recordAssertion(
-    "timeline continue event references source batch",
-    Boolean(continueEvent) && timelineFromBatchId === fromBatchId,
-    `observed="${timelineFromBatchId}" expected="${fromBatchId}"`
-  );
+
+  if (detailButton) {
+    await detailButton.click({ timeout: 10000 });
+    const detailDialog = page.locator('[role="dialog"][aria-labelledby="piece-detail-title"]').first();
+    await detailDialog.waitFor({ state: "visible", timeout: 12000 });
+    const detailTitle = page.locator(".detail-title").first();
+    await detailTitle.waitFor({ state: "visible", timeout: 12000 });
+
+    journey.response = {
+      openedDetailTitle: String((await detailTitle.textContent()) || "").trim(),
+      detailDialogVisible: true,
+    };
+
+    await takeScreenshot(
+      page,
+      options.outputDir,
+      "canary-03b-my-pieces-detail.png",
+      summary,
+      "my pieces detail exposure"
+    );
+
+    const closeButton = await findVisibleLocator(page.getByRole("button", { name: /^Close$/i }));
+    if (closeButton) {
+      await closeButton.click({ timeout: 10000 });
+      await detailDialog.waitFor({ state: "hidden", timeout: 12000 });
+    }
+
+    recordAssertion(
+      "piece detail overlay opens",
+      true,
+      journey.response.openedDetailTitle || "detail opened"
+    );
+  } else {
+    journey.response = {
+      openedDetailTitle: "",
+      detailDialogVisible: false,
+      emptyStates: state.nonLoadingEmptyStates,
+    };
+  }
 
   journey.assertions = assertionRows;
-
-  const cleanup = {
+  journey.cleanup = {
     mode: options.journeyCleanupMode,
     attempted: false,
-    status: "not_run",
+    status: "clean",
     deletedPaths: [],
     lifecycleTransitions: [],
     debt: [],
   };
-
-  if (options.journeyCleanupMode === "skip") {
-    cleanup.status = "skipped";
-  } else {
-    cleanup.attempted = true;
-    let settledByLifecycle = false;
-    const pickedUpAndCloseUrl = deriveSiblingFunctionUrl(
-      continueResponseUrl,
-      "pickedUpAndClose",
-      options.baseUrl
-    );
-
-    if (pickedUpAndCloseUrl) {
-      const lifecycleResponse = await callFunctionEndpoint({
-        url: pickedUpAndCloseUrl,
-        idToken,
-        adminToken: options.adminToken,
-        payload: {
-          batchId: newBatchId,
-          notes: "Canary journey cleanup: close generated continuation batch.",
-        },
-      });
-      cleanup.lifecycleTransitions.push({
-        action: "pickedUpAndClose",
-        url: pickedUpAndCloseUrl,
-        status: lifecycleResponse.status,
-        ok: lifecycleResponse.ok && lifecycleResponse.json?.ok !== false,
-      });
-      settledByLifecycle = lifecycleResponse.ok && lifecycleResponse.json?.ok !== false;
-      if (settledByLifecycle) {
-        cleanup.deletedPaths.push(`batches/${newBatchId} (closed via pickedUpAndClose)`);
-      } else {
-        addWarning(
-          summary,
-          `Journey cleanup could not close ${newBatchId} via pickedUpAndClose (status ${lifecycleResponse.status}); falling back to direct delete attempts.`
-        );
-      }
-    }
-
-    if (!settledByLifecycle) {
-      const deletePaths = [
-        ...timelineRows
-          .map((entry) => (entry.id ? `batches/${newBatchId}/timeline/${entry.id}` : ""))
-          .filter(Boolean),
-        `batches/${newBatchId}`,
-      ];
-      for (const path of deletePaths) {
-        const response = await firestoreDeleteDocument({
-          projectId: options.projectId,
-          path,
-          idToken,
-        });
-        if (response.ok || response.status === 404) {
-          cleanup.deletedPaths.push(path);
-        } else {
-          cleanup.debt.push({
-            path,
-            status: response.status,
-            message: String(
-              response.json?.error?.message ||
-                response.json?.error?.status ||
-                response.text ||
-                "delete failed"
-            ),
-          });
-        }
-      }
-    }
-
-    cleanup.status = cleanup.debt.length > 0 ? "partial" : "clean";
-    if (cleanup.debt.length > 0) {
-      addWarning(
-        summary,
-        `Journey cleanup left ${cleanup.debt.length} residual document(s); tracked in report debt entries.`
-      );
-    }
-  }
-
-  journey.cleanup = cleanup;
 
   if (assertionFailures.length > 0) {
     throw new Error(assertionFailures.join(" | "));
@@ -2438,8 +2306,8 @@ async function run() {
       });
 
       if (options.runJourneyCheck) {
-        await check(summary, "continue journey runtime linkage (ui + firestore)", async () => {
-          await runContinueJourneyRuntimeCheck(page, summary, options, feedbackProfile);
+        await check(summary, "my pieces redesigned flow", async () => {
+          await runMyPiecesFlowCheck(page, summary, options, feedbackProfile);
         });
       }
 

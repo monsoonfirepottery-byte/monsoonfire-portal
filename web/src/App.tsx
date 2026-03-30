@@ -2327,7 +2327,6 @@ export default function App() {
             isStaff={staffUi}
             focusTarget={piecesFocusTarget}
             onFocusTargetConsumed={handlePiecesFocusConsumed}
-            onOpenCheckin={() => setNav("wareCheckIn")}
           />
         );
       case "profile":

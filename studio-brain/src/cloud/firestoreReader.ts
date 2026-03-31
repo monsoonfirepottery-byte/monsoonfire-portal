@@ -29,12 +29,12 @@ export type FirestoreReadModel = {
 
 function ensureFirebaseAdmin(projectId?: string): void {
   if (getApps().length > 0) return;
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    initializeApp();
-    return;
-  }
   if (projectId) {
     initializeApp({ projectId });
+    return;
+  }
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    initializeApp();
     return;
   }
   initializeApp();

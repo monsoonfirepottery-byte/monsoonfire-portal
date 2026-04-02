@@ -426,7 +426,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
     "@firebase/rules-unit-testing": "^5.0.0",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.59.1",
     "firebase-tools": "15.12.0",
     "playwright": "^1.58.2"
   },

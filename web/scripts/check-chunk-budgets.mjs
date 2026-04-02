@@ -35,10 +35,10 @@ const requiredRouteChunks = [
   "StaffView-",
 ];
 // Total budgets re-baselined for the staff task-home rollout, kiln queue timeline route,
-// portal handoff attribution path, and current mainline vendor split while keeping
-// future regressions visible.
+// client-facing My Pieces redesign, portal handoff attribution path, and current
+// mainline vendor split while keeping future regressions visible.
 const MAX_TOTAL_JS_BYTES = 1_760_000;
-const MAX_TOTAL_CSS_BYTES = 275_000;
+const MAX_TOTAL_CSS_BYTES = 280_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

@@ -1,6 +1,13 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { User } from "firebase/auth";
 
@@ -13,7 +20,10 @@ type MockConstraint =
 type MockCollectionRef = { path: string };
 type MockQuery = { path: string; constraints: MockConstraint[] };
 type MockDoc = { id: string; data: Record<string, unknown> };
-type Snapshot = { size: number; docs: { id: string; data: () => Record<string, unknown> }[] };
+type Snapshot = {
+  size: number;
+  docs: { id: string; data: () => Record<string, unknown> }[];
+};
 type TestUser = User & { getIdToken: ReturnType<typeof vi.fn> };
 
 type UseBatchesState = {
@@ -22,7 +32,10 @@ type UseBatchesState = {
   error: string;
 };
 
-type TrackedGetDocsMock = (view: string, queryRef: MockQuery) => Promise<Snapshot>;
+type TrackedGetDocsMock = (
+  view: string,
+  queryRef: MockQuery,
+) => Promise<Snapshot>;
 
 let useBatchesState: UseBatchesState = { active: [], history: [], error: "" };
 let trackedGetDocsMock: TrackedGetDocsMock;
@@ -38,7 +51,9 @@ function createSnapshot(rows: MockDoc[]): Snapshot {
   };
 }
 
-function permissionDeniedError(message = "Missing or insufficient permissions") {
+function permissionDeniedError(
+  message = "Missing or insufficient permissions",
+) {
   const error = new Error(message);
   (error as Error & { code: string }).code = "permission-denied";
   return error;
@@ -46,7 +61,8 @@ function permissionDeniedError(message = "Missing or insufficient permissions") 
 
 function hasUpdatedAtOrder(queryRef: MockQuery): boolean {
   return queryRef.constraints.some(
-    (constraint) => constraint.type === "orderBy" && constraint.field === "updatedAt"
+    (constraint) =>
+      constraint.type === "orderBy" && constraint.field === "updatedAt",
   );
 }
 
@@ -68,17 +84,27 @@ vi.mock("firebase/firestore", () => {
   const collection = vi.fn((_: unknown, ...segments: string[]) => ({
     path: segments.join("/"),
   }));
-  const query = vi.fn((source: MockCollectionRef | MockQuery, ...constraints: MockConstraint[]) => ({
-    path: source.path,
-    constraints: [...("constraints" in source ? source.constraints : []), ...constraints],
-  }));
+  const query = vi.fn(
+    (
+      source: MockCollectionRef | MockQuery,
+      ...constraints: MockConstraint[]
+    ) => ({
+      path: source.path,
+      constraints: [
+        ...("constraints" in source ? source.constraints : []),
+        ...constraints,
+      ],
+    }),
+  );
   const orderBy = vi.fn((field: string, direction: "asc" | "desc" = "asc") => ({
     type: "orderBy" as const,
     field,
     direction,
   }));
   const limit = vi.fn((value: number) => ({ type: "limit" as const, value }));
-  const doc = vi.fn((_: unknown, ...segments: string[]) => ({ path: segments.join("/") }));
+  const doc = vi.fn((_: unknown, ...segments: string[]) => ({
+    path: segments.join("/"),
+  }));
   const serverTimestamp = vi.fn(() => "serverTimestamp");
 
   return {
@@ -97,7 +123,10 @@ vi.mock("../hooks/useBatches", () => ({
 
 vi.mock("../api/portalApi", () => ({
   createPortalApi: () => ({
-    continueJourney: vi.fn(async () => ({ data: { ok: true, newBatchId: "next-batch" }, meta: null })),
+    continueJourney: vi.fn(async () => ({
+      data: { ok: true, newBatchId: "next-batch" },
+      meta: null,
+    })),
   }),
   PortalApiError: class PortalApiError extends Error {
     meta: unknown;
@@ -110,12 +139,14 @@ vi.mock("../api/portalApi", () => ({
 }));
 
 vi.mock("../lib/analytics", () => ({
-  shortId: (value: unknown) => (typeof value === "string" && value.trim() ? value : "unknown"),
+  shortId: (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : "unknown",
   track: vi.fn(),
 }));
 
 vi.mock("../lib/firestoreTelemetry", () => ({
-  trackedGetDocs: (view: string, queryRef: MockQuery) => trackedGetDocsMock(view, queryRef),
+  trackedGetDocs: (view: string, queryRef: MockQuery) =>
+    trackedGetDocsMock(view, queryRef),
   trackedAddDoc: vi.fn(async () => ({ id: "new-doc" })),
   trackedUpdateDoc: vi.fn(async () => undefined),
 }));
@@ -126,7 +157,7 @@ function renderMyPieces(
   options?: {
     focusTarget?: { batchId: string; pieceId?: string } | null;
     onFocusTargetConsumed?: () => void;
-  }
+  },
 ) {
   return render(
     <MyPiecesView
@@ -134,7 +165,7 @@ function renderMyPieces(
       isStaff={isStaff}
       focusTarget={options?.focusTarget}
       onFocusTargetConsumed={options?.onFocusTargetConsumed}
-    />
+    />,
   );
 }
 
@@ -156,7 +187,14 @@ describe("MyPiecesView permission resiliency", () => {
   it("refreshes auth token and retries piece loading when all list reads are denied", async () => {
     const user = createUser("user-retry");
     useBatchesState = {
-      active: [{ id: "batch-retry", title: "Retry batch", ownerUid: user.uid, isClosed: false }],
+      active: [
+        {
+          id: "batch-retry",
+          title: "Retry batch",
+          ownerUid: user.uid,
+          isClosed: false,
+        },
+      ],
       history: [],
       error: "",
     };
@@ -195,7 +233,7 @@ describe("MyPiecesView permission resiliency", () => {
 
     renderMyPieces(user);
 
-    await screen.findByText("QA-RETRY");
+    await screen.findAllByText("QA-RETRY");
     await waitFor(() => {
       expect(user.getIdToken).toHaveBeenCalledWith(true);
     });
@@ -206,8 +244,18 @@ describe("MyPiecesView permission resiliency", () => {
     const user = createUser("user-partial");
     useBatchesState = {
       active: [
-        { id: "batch-ok", title: "Batch OK", ownerUid: user.uid, isClosed: false },
-        { id: "batch-denied", title: "Batch denied", ownerUid: user.uid, isClosed: false },
+        {
+          id: "batch-ok",
+          title: "Batch OK",
+          ownerUid: user.uid,
+          isClosed: false,
+        },
+        {
+          id: "batch-denied",
+          title: "Batch denied",
+          ownerUid: user.uid,
+          isClosed: false,
+        },
       ],
       history: [],
       error: "",
@@ -239,8 +287,10 @@ describe("MyPiecesView permission resiliency", () => {
 
     renderMyPieces(user);
 
-    await screen.findByText("QA-OK");
-    await screen.findByText("Some check-ins could not be loaded due to permissions (1/2).");
+    await screen.findAllByText("QA-OK");
+    await screen.findByText(
+      "Some check-ins could not be loaded due to permissions (1/2).",
+    );
     expect(user.getIdToken).not.toHaveBeenCalled();
     expect(screen.queryByText(/Pieces failed:/i)).toBeNull();
   });
@@ -248,7 +298,14 @@ describe("MyPiecesView permission resiliency", () => {
   it("falls back to unordered piece reads when ordered query is denied", async () => {
     const user = createUser("user-fallback");
     useBatchesState = {
-      active: [{ id: "batch-fallback", title: "Batch fallback", ownerUid: user.uid, isClosed: false }],
+      active: [
+        {
+          id: "batch-fallback",
+          title: "Batch fallback",
+          ownerUid: user.uid,
+          isClosed: false,
+        },
+      ],
       history: [],
       error: "",
     };
@@ -279,9 +336,11 @@ describe("MyPiecesView permission resiliency", () => {
 
     renderMyPieces(user);
 
-    await screen.findByText("QA-FALLBACK");
+    await screen.findAllByText("QA-FALLBACK");
     expect(screen.queryByText(/Pieces failed:/i)).toBeNull();
-    const pieceCalls = trackedGetDocsCalls.filter((entry) => entry.path === "batches/batch-fallback/pieces");
+    const pieceCalls = trackedGetDocsCalls.filter(
+      (entry) => entry.path === "batches/batch-fallback/pieces",
+    );
     expect(pieceCalls).toHaveLength(2);
     expect(pieceCalls.some((entry) => hasUpdatedAtOrder(entry))).toBe(true);
     expect(pieceCalls.some((entry) => !hasUpdatedAtOrder(entry))).toBe(true);
@@ -290,8 +349,15 @@ describe("MyPiecesView permission resiliency", () => {
   it("shows detail-level permission warning while keeping readable detail sections", async () => {
     const user = createUser("user-detail");
     useBatchesState = {
-      active: [{ id: "batch-detail", title: "Batch detail", ownerUid: user.uid, isClosed: false }],
-      history: [],
+      active: [],
+      history: [
+        {
+          id: "batch-detail",
+          title: "Batch detail",
+          ownerUid: user.uid,
+          isClosed: true,
+        },
+      ],
       error: "",
     };
 
@@ -305,7 +371,7 @@ describe("MyPiecesView permission resiliency", () => {
               pieceCode: "QA-DETAIL",
               shortDesc: "Detail loading",
               ownerName: "Maker",
-              stage: "GREENWARE",
+              stage: "FINISHED",
               wareCategory: "STONEWARE",
               isArchived: false,
               updatedAt: "2026-02-26T00:00:00.000Z",
@@ -328,18 +394,27 @@ describe("MyPiecesView permission resiliency", () => {
       if (queryRef.path.endsWith("/studioNotes")) {
         throw permissionDeniedError();
       }
-      if (queryRef.path.endsWith("/audit") || queryRef.path.endsWith("/media")) {
+      if (
+        queryRef.path.endsWith("/audit") ||
+        queryRef.path.endsWith("/media")
+      ) {
         return createSnapshot([]);
       }
       return createSnapshot([]);
     };
 
     renderMyPieces(user);
-    await screen.findByText("QA-DETAIL");
+    await screen.findAllByText("QA-DETAIL");
 
-    fireEvent.click(screen.getByRole("button", { name: /^(View details|Open detail)$/i }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /open piece needing rating qa-detail/i,
+      }),
+    );
 
-    await screen.findByText("Some piece detail sections are unavailable due to permissions.");
+    await screen.findByText(
+      "Some piece detail sections are unavailable due to permissions.",
+    );
     expect(screen.getByText("Looks good")).toBeDefined();
   });
 
@@ -347,7 +422,14 @@ describe("MyPiecesView permission resiliency", () => {
     const user = createUser("user-focus");
     const onFocusTargetConsumed = vi.fn();
     useBatchesState = {
-      active: [{ id: "batch-focus", title: "Batch focus", ownerUid: user.uid, isClosed: false }],
+      active: [
+        {
+          id: "batch-focus",
+          title: "Batch focus",
+          ownerUid: user.uid,
+          isClosed: false,
+        },
+      ],
       history: [],
       error: "",
     };
@@ -370,10 +452,16 @@ describe("MyPiecesView permission resiliency", () => {
           },
         ]);
       }
-      if (queryRef.path.endsWith("/clientNotes") || queryRef.path.endsWith("/studioNotes")) {
+      if (
+        queryRef.path.endsWith("/clientNotes") ||
+        queryRef.path.endsWith("/studioNotes")
+      ) {
         return createSnapshot([]);
       }
-      if (queryRef.path.endsWith("/audit") || queryRef.path.endsWith("/media")) {
+      if (
+        queryRef.path.endsWith("/audit") ||
+        queryRef.path.endsWith("/media")
+      ) {
         return createSnapshot([]);
       }
       return createSnapshot([]);
@@ -392,5 +480,101 @@ describe("MyPiecesView permission resiliency", () => {
     }
     expect(within(detailPane).getByText("QA-FOCUS-1")).toBeDefined();
     expect(onFocusTargetConsumed).toHaveBeenCalled();
+  });
+
+  it("renders the new client-facing sections and grows history with show more", async () => {
+    const user = createUser("user-history");
+    useBatchesState = {
+      active: [
+        {
+          id: "batch-active",
+          title: "Batch active",
+          ownerUid: user.uid,
+          isClosed: false,
+        },
+      ],
+      history: [
+        {
+          id: "batch-history",
+          title: "Batch history",
+          ownerUid: user.uid,
+          isClosed: true,
+        },
+      ],
+      error: "",
+    };
+
+    trackedGetDocsMock = async (_view, queryRef) => {
+      trackedGetDocsCalls.push(queryRef);
+      if (queryRef.path === "batches/batch-active/pieces") {
+        return createSnapshot([
+          {
+            id: "piece-active-1",
+            data: {
+              pieceCode: "ACTIVE-1",
+              shortDesc: "Carousel piece",
+              ownerName: "Maker",
+              stage: "GREENWARE",
+              wareCategory: "STONEWARE",
+              isArchived: false,
+              updatedAt: "2026-03-01T00:00:00.000Z",
+            },
+          },
+        ]);
+      }
+      if (queryRef.path === "batches/batch-history/pieces") {
+        return createSnapshot(
+          Array.from({ length: 7 }, (_, index) => ({
+            id: `piece-history-${index + 1}`,
+            data: {
+              pieceCode: `HIST-${index + 1}`,
+              shortDesc: `History piece ${index + 1}`,
+              ownerName: "Maker",
+              stage: "FINISHED",
+              wareCategory: "STONEWARE",
+              isArchived: false,
+              updatedAt: `2026-02-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+            },
+          })),
+        );
+      }
+      if (
+        queryRef.path.endsWith("/clientNotes") ||
+        queryRef.path.endsWith("/studioNotes") ||
+        queryRef.path.endsWith("/audit") ||
+        queryRef.path.endsWith("/media")
+      ) {
+        return createSnapshot([]);
+      }
+      return createSnapshot([]);
+    };
+
+    renderMyPieces(user);
+
+    await screen.findByText("Pieces in progress");
+    expect(screen.getByText("Needs rating")).toBeDefined();
+    expect(screen.getByText("History")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /open ware check-in/i }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /open in-progress piece active-1/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /open piece needing rating active-1/i }),
+    ).toBeNull();
+    const historyCard = screen.getByText("History").closest(".card");
+    expect(historyCard).toBeTruthy();
+    if (!historyCard) {
+      throw new Error("History card not found");
+    }
+    expect(within(historyCard).getAllByText("HIST-7").length).toBeGreaterThan(
+      0,
+    );
+    expect(within(historyCard).queryAllByText("HIST-1")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /show more pieces/i }));
+
+    await within(historyCard).findAllByText("HIST-1");
   });
 });

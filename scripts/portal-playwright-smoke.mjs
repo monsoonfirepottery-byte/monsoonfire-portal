@@ -1840,6 +1840,24 @@ const takeScreenshot = async (page, outputDir, fileName, summary, label) => {
   summary.screenshots.push({ label, path });
 };
 
+const continueThroughBetaGateIfPresent = async (page, summary, surfaceLabel) => {
+  const betaButton = page.getByRole("button", { name: /continue to beta/i }).first();
+  if ((await betaButton.count()) === 0) {
+    return false;
+  }
+
+  await betaButton.click({ timeout: 10000 });
+  await page.waitForFunction(() => {
+    const gateStillVisible = Array.from(document.querySelectorAll("button, h1, h2, p")).some((node) =>
+      /development portal|continue to beta|requested beta path/i.test(String(node.textContent || ""))
+    );
+    return !!document.querySelector(".runtime-hardening-shell") && !gateStillVisible;
+  }, null, { timeout: 12000 });
+  await page.waitForTimeout(800);
+  summary.notes.push(`Bypassed beta access gate for ${surfaceLabel}.`);
+  return true;
+};
+
 const runOfflineRecoverySmoke = async (page, context, outputDir, summary) => {
   const hasOfflineBanner = () => {
     const nodes = document.querySelectorAll(".error-banner, .site-runtime-banner");
@@ -1953,6 +1971,7 @@ const run = async () => {
     await check(summary, "base URL reachable", async () => {
       await desktopPage.goto(options.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await desktopPage.waitForTimeout(800);
+      await continueThroughBetaGateIfPresent(desktopPage, summary, "desktop");
       await takeScreenshot(desktopPage, options.outputDir, "portal-01-home-desktop.png", summary, "desktop home");
     });
 
@@ -2163,6 +2182,7 @@ const run = async () => {
       await check(summary, "mobile home", async () => {
         await mobilePage.goto(options.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
         await mobilePage.waitForTimeout(900);
+        await continueThroughBetaGateIfPresent(mobilePage, summary, "mobile");
         await takeScreenshot(mobilePage, options.outputDir, "portal-10-home-mobile.png", summary, "mobile home");
       });
 

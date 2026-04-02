@@ -19,7 +19,7 @@ export type CanonicalPolicyRecord = {
 };
 
 export const WEBSITE_POLICY_SOURCE_SLUG = "community-conduct";
-export const WEBSITE_POLICY_SOURCE_VERSION = "2026-02-17";
+export const WEBSITE_POLICY_SOURCE_VERSION = "2026-04-02";
 export const WEBSITE_POLICY_SOURCE_URL = "/policies/community-conduct/";
 export const WEBSITE_POLICY_CANONICAL_VERSION = `website-${WEBSITE_POLICY_SOURCE_SLUG}-${WEBSITE_POLICY_SOURCE_VERSION}`;
 
@@ -48,6 +48,12 @@ const WEBSITE_COMMUNITY_CONDUCT_RULES: CanonicalPolicyRule[] = [
     description: "Noise and tool usage should support cooperative studio flow and avoid disruptive interference.",
     severityHint: "medium",
   },
+  {
+    id: "community.interim_safety_steps",
+    title: "Interim safety steps",
+    description: "The studio may use interim separation or safety instructions while a conduct report is under human review.",
+    severityHint: "medium",
+  },
 ];
 
 export function websiteCommunityConductFallbackPolicy(): CanonicalPolicyRecord {
@@ -55,7 +61,8 @@ export function websiteCommunityConductFallbackPolicy(): CanonicalPolicyRecord {
     id: WEBSITE_POLICY_CANONICAL_VERSION,
     version: WEBSITE_POLICY_CANONICAL_VERSION,
     title: "Community conduct",
-    summary: "Respect, safety, and shared-space etiquette are required across studio and support channels.",
+    summary:
+      "Respect, safety, and shared-space etiquette are required across studio and support channels, and interim safety steps may be used while conduct review is underway.",
     status: "published",
     sourceOfTruth: "website_policies",
     sourceSlug: WEBSITE_POLICY_SOURCE_SLUG,

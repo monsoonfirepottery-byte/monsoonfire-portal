@@ -2,12 +2,12 @@
 slug: "accessibility"
 title: "Accessibility statement"
 status: "active"
-version: "2026-02-17"
-effectiveDate: "2026-02-17"
-reviewDate: "2026-08-01"
+version: "2026-04-02"
+effectiveDate: "2026-04-02"
+reviewDate: "2026-10-02"
 owner: "Operations"
 sourceUrl: "/policies/accessibility/"
-summary: "We support accessible access and invite requests for reasonable accommodations."
+summary: "We support accessible access, invite requests for reasonable accommodations, and provide interim alternatives when immediate change is unavailable."
 tags:
   - "accessibility"
   - "policy"
@@ -15,11 +15,19 @@ tags:
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "Accessibility accommodation intake and communication routing."
+  decisionDomain: "Accessibility accommodation intake, interim alternatives, and communication routing."
   defaultActions:
     - "capture accommodation type and timeframe"
-    - "confirm alternate communication methods"
+    - "confirm alternate communication methods or interim alternatives"
     - "coordinate follow-up for implementation timeline"
+  allowedLowRiskActions:
+    - "collect accommodation requests and preferred formats"
+    - "confirm communication preferences and timing needs"
+    - "share current accessible support options"
+  blockedActions:
+    - "deny accommodation requests without human review"
+    - "promise structural changes without operations confirmation"
+    - "close requests when no workaround exists"
   requiredSignals:
     - "requester and preferred format"
     - "location or digital channel involved"
@@ -47,6 +55,7 @@ Physical studio access, website interactions, and portal communication.
   labels, alternative channels).
 - Accessibility requests for media, forms, or appointments are handled with reasonable
   accommodation efforts.
+- If an immediate change is not available, staff should communicate an interim alternative and the next review step instead of closing the request.
 
 ## Implementation in portal
 

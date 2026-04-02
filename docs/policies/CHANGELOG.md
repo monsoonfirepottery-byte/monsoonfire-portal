@@ -1,5 +1,40 @@
 # Policy Documentation Changelog
 
+## 2026-04-02
+
+- Refined `payments-refunds` so the canonical policy now states:
+  - full refunds for paid requests when work has not started
+  - no-penalty cancellations when payment has not been captured
+  - prorated review once work has started
+- Refined `firing-scheduling` so the canonical policy now states:
+  - estimate bands rather than guaranteed firing or pickup dates
+  - deadline requests require staff confirmation
+  - no-penalty changes before loading starts
+  - best-effort changes only after staging or loading
+  - pickup-ready notices start the pickup/storage timeline
+- Refined `storage-abandoned-work` so the canonical policy now states:
+  - prepaid storage must be added before billed storage begins
+  - missed pickup windows do not reset the original pickup-ready timeline
+  - support replies should disclose billing-start, billing-end, and reclamation dates
+- Refined `studio-access` so the canonical policy now states:
+  - the studio is appointment-only
+  - access details are shared only after verified booking context
+  - walk-in requests without a confirmed reservation require review
+- Refined `damage-responsibility` so the canonical policy now states:
+  - customer-facing damage reports receive acknowledgment and a documented review path
+  - compensation, remake, and replacement outcomes remain human-reviewed only
+- Refined `clay-materials`, `safety-kiln-rules`, `community-conduct`, `accessibility`, and `media-accessibility` to make first-use review, labeling requirements, interim safety steps, interim accessibility alternatives, and release-blocking accessibility gaps explicit in the canonical source.
+- Added customer-service governance generation under `.governance/customer-service-policies/`:
+  - `policy-program.json`
+  - `policy-inventory.json`
+  - `policy-resolution-contract.json`
+- Added cross-surface policy linkage fields for FAQ and support workflows:
+  - `policySlug`
+  - `policyVersion`
+  - `sourceType`
+  - `policyResolution.*`
+- Cleared the final customer-service discrepancy register item by reconciling `damage-responsibility` with Kiln Fire firing-issue acknowledgment practice.
+
 ## 2026-02-17
 
 - Added canonical policy documentation files for all website policy routes:

@@ -914,6 +914,15 @@ const supportRequestCreateSchema = z.object({
   schedule: z.string().min(1).max(80).trim().optional().nullable(),
   buddyMode: z.string().min(1).max(80).trim().optional().nullable(),
   techniqueIds: z.array(z.string().min(1).max(80).trim()).max(20).optional(),
+  policyResolution: z
+    .object({
+      resolvedPolicySlug: z.string().min(1).max(120).trim().optional().nullable(),
+      resolvedPolicyVersion: z.string().min(1).max(80).trim().optional().nullable(),
+      discrepancyFlag: z.boolean().optional().nullable(),
+      escalationReason: z.string().min(1).max(300).trim().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
 });
 
 const libraryReviewCreateSchema = z
@@ -10092,6 +10101,20 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const decoded = ctx.decoded as Record<string, unknown>;
       const displayName = trimOrNull(safeString(decoded.name, null));
       const email = trimOrNull(safeString(decoded.email, null));
+      const policyResolutionPatch = {
+        resolvedPolicySlug: trimOrNull(parsed.data.policyResolution?.resolvedPolicySlug),
+        resolvedPolicyVersion: trimOrNull(parsed.data.policyResolution?.resolvedPolicyVersion),
+        discrepancyFlag:
+          typeof parsed.data.policyResolution?.discrepancyFlag === "boolean"
+            ? parsed.data.policyResolution.discrepancyFlag
+            : null,
+        escalationReason: trimOrNull(parsed.data.policyResolution?.escalationReason),
+      };
+      const hasPolicyResolution =
+        Boolean(policyResolutionPatch.resolvedPolicySlug) ||
+        Boolean(policyResolutionPatch.resolvedPolicyVersion) ||
+        policyResolutionPatch.discrepancyFlag !== null ||
+        Boolean(policyResolutionPatch.escalationReason);
       const supportRequest = {
         uid: ctx.uid,
         subject: parsed.data.subject.trim(),
@@ -10115,6 +10138,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         ...(Array.isArray(parsed.data.techniqueIds) && parsed.data.techniqueIds.length > 0
           ? { techniqueIds: parsed.data.techniqueIds.map((entry) => entry.trim()) }
           : {}),
+        ...(hasPolicyResolution ? { policyResolution: policyResolutionPatch } : {}),
       };
       const supportRef = await db.collection("supportRequests").add(supportRequest);
       jsonOk(res, requestId, { supportRequestId: supportRef.id });

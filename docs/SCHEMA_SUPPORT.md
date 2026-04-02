@@ -13,6 +13,9 @@ Fields
 - tags: string[] (optional, lower-case keywords)
 - rank: number (required, used for ordering)
 - isActive: boolean (optional, defaults to true when omitted)
+- policySlug: string (optional, canonical policy slug for linked answers)
+- policyVersion: string (optional, canonical policy version used for the answer)
+- sourceType: "canonical_summary" | "announcement_summary" | "operational_faq" (optional)
 - createdAt: timestamp (optional)
 - updatedAt: timestamp (optional)
 
@@ -28,10 +31,13 @@ Create documents with the following IDs and fields:
   {
     "id": "faq-ready-pickup",
     "question": "When will my pieces be ready for pickup?",
-    "answer": "We post updates as each firing completes. Check My Pieces for the latest status and timeline. If you have a deadline, include the date in a support request so we can advise on timing.",
+    "answer": "We post updates as each firing completes. Check My Pieces for the latest status and timeline. Pickup-ready notices start the pickup timeline, and if you have a deadline, include the date in a support request so staff can review it.",
     "category": "Pieces",
     "tags": ["pickup", "ready", "turnaround", "timeline", "firing"],
     "rank": 1,
+    "policySlug": "firing-scheduling",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "isActive": true
   },
   {
@@ -46,8 +52,11 @@ Create documents with the following IDs and fields:
   {
     "id": "faq-kiln-schedule",
     "question": "How do kiln firings get scheduled?",
-    "answer": "Firings are batched by clay body and kiln availability. The Kiln Schedule view shows planned loads, but timing can shift. If you need a specific window, send a request so we can flag it.",
+    "answer": "Firings are batched by clay body and kiln availability. The Kiln Schedule view shows estimate bands rather than guarantees, and timing can shift. If you need a deadline reviewed, send the date and request details so staff can advise.",
     "category": "Kiln",
+    "policySlug": "firing-scheduling",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": ["kiln", "schedule", "firing", "batch"],
     "rank": 3,
     "isActive": true
@@ -66,6 +75,9 @@ Create documents with the following IDs and fields:
     "question": "I need billing help or a receipt. What should I do?",
     "answer": "Submit a support request with the date, amount, and what you need (receipt, refund question, or charge review). We will follow up with the details.",
     "category": "Billing",
+    "policySlug": "payments-refunds",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": ["billing", "receipt", "invoice", "payment"],
     "rank": 5,
     "isActive": true
@@ -75,6 +87,9 @@ Create documents with the following IDs and fields:
     "question": "How do I change, pause, or cancel my membership?",
     "answer": "Membership changes are being streamlined. For now, send a request with your current plan and the change you want, and we will handle it for you.",
     "category": "Membership",
+    "policySlug": "payments-refunds",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": ["membership", "plan", "pause", "cancel"],
     "rank": 6,
     "isActive": true
@@ -82,8 +97,11 @@ Create documents with the following IDs and fields:
   {
     "id": "faq-kiln-reservations",
     "question": "Can I reserve kiln time from the portal?",
-    "answer": "Kiln reservations are in progress. Use this form to request a booking or change, and include your clay body, size, and preferred window.",
+    "answer": "Kiln reservations are in progress. Use this form to request a booking or change, and include your clay body, size, preferred window, and any deadline you need reviewed.",
     "category": "Kiln",
+    "policySlug": "firing-scheduling",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": ["kiln", "reservation", "schedule"],
     "rank": 7,
     "isActive": true
@@ -118,8 +136,11 @@ Create documents with the following IDs and fields:
   {
     "id": "faq-storage",
     "question": "What is the shelf-space and storage policy?",
-    "answer": "Finished work is held for pickup based on available shelf space. If you need an extended hold, let us know so we can coordinate storage.",
+    "answer": "Finished work enters the pickup-ready storage timeline as soon as it is marked ready. If you need an extended hold, ask about prepaid storage before billed storage begins.",
     "category": "Studio",
+    "policySlug": "storage-abandoned-work",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": ["storage", "shelf", "pickup", "policy"],
     "rank": 11,
     "isActive": true
@@ -127,7 +148,7 @@ Create documents with the following IDs and fields:
   {
     "id": "faq-urgent",
     "question": "What counts as urgent support?",
-    "answer": "Anything time-sensitive, same-day pickup changes, or safety issues should go directly to the studio. Use the email below for urgent matters.",
+    "answer": "Anything time-sensitive, same-day pickup change requests, or safety issues should go directly to the studio. Same-day pickup is not guaranteed, but urgent timing requests should still be reviewed quickly.",
     "category": "Studio",
     "tags": ["urgent", "safety", "contact"],
     "rank": 12,
@@ -155,6 +176,10 @@ Fields
 - createdAt: timestamp (required)
 - displayName: string | null (optional)
 - email: string | null (optional)
+- policyResolution.resolvedPolicySlug: string | null (optional)
+- policyResolution.resolvedPolicyVersion: string | null (optional)
+- policyResolution.discrepancyFlag: boolean | null (optional)
+- policyResolution.escalationReason: string | null (optional)
 
 Notes
 - Do not write undefined; omit fields or use null when unknown.

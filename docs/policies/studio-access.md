@@ -2,12 +2,12 @@
 slug: "studio-access"
 title: "Studio access & supervision"
 status: "active"
-version: "2026-02-17"
-effectiveDate: "2026-02-17"
-reviewDate: "2026-08-01"
+version: "2026-04-02"
+effectiveDate: "2026-04-02"
+reviewDate: "2026-10-02"
 owner: "Studio Operations"
 sourceUrl: "/policies/studio-access/"
-summary: "Reservations are required for all visits. Access details and any supervised equipment requirements are listed in the portal."
+summary: "Studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context."
 tags:
   - "studio"
   - "access"
@@ -15,20 +15,30 @@ tags:
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "Reservations, check-in, and supervised equipment requests."
+  decisionDomain: "Appointment-only access, reservation verification, guest approval, and supervised equipment requests."
   defaultActions:
     - "check reservation status and share upcoming access steps"
+    - "verify whether the booking context is sufficient to release access details"
     - "verify whether a request requires supervision flagging"
     - "collect and confirm guest list and approval requirement"
+  allowedLowRiskActions:
+    - "answer appointment-only and reservation requirement questions"
+    - "collect preferred visit windows and tool needs"
+    - "confirm whether supervision review is required"
+  blockedActions:
+    - "override appointment-only access without human approval"
+    - "share address, gate code, or access instructions before account verification"
+    - "approve guests or supervision exceptions on behalf of staff"
   requiredSignals:
     - "user category and account"
-    - "reservation id or preferred window"
+    - "reservation id, day-pass booking, or preferred window"
     - "requested tools or stations"
   escalateWhen:
     - "safety or occupancy risk"
+    - "walk-in request without a confirmed reservation"
     - "repeated no-shows or access policy breaches"
     - "guest approval rejected by facility lead"
-  replyTemplate: "Share reservation requirements, required arrival steps, and whether supervision is needed."
+  replyTemplate: "State that the studio is appointment-only, confirm the booking status, explain when access details can be shared, and note whether supervision is needed."
 ---
 
 ## Purpose
@@ -43,9 +53,11 @@ reservation windows, and equipment access under the support channel.
 
 ## Policy
 
+- The studio is appointment-only. Walk-ins and drop-ins are not guaranteed and require prior approval.
 - All visits are reservation-based to keep occupancy and supervision manageable.
 - Visit information, check-in instructions, and any day-visit constraints are shared in
-  the portal before arrival.
+  the portal only after the account and booking context are verified.
+- The studio address, gate code, and access instructions are not released before booking context is confirmed.
 - Members must check in on arrival and follow posted access windows.
 - Repeated no-shows and late arrivals are logged to reservation queue fairness records and may reduce queue priority until resolved.
 - New users and special equipment use may require staff supervision.
@@ -70,8 +82,10 @@ reservation privileges, or temporary access hold until issues are resolved.
 
 Support responses should cite:
 
+- the appointment-only requirement and whether a reservation is already confirmed
 - required reservation steps
-- current access instructions
+- whether access details can be shared yet
+- current access instructions once booking context is confirmed
 - whether staff supervision applies to requested tools
 - how to request guest exceptions
 - if applicable, the current fairness status (`no-show` / `late-arrival` counters and active overrides)

@@ -411,6 +411,11 @@ function parseTraceId(traceparent) {
 function ensureFirebaseAdminForAuth() {
     if ((0, app_1.getApps)().length > 0)
         return;
+    const projectId = String(process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || "").trim();
+    if (projectId) {
+        (0, app_1.initializeApp)({ projectId });
+        return;
+    }
     (0, app_1.initializeApp)();
 }
 async function verifyFirebaseAuthHeader(authorizationHeader) {

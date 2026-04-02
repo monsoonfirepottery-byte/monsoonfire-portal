@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { mintStaffIdTokenFromPortalEnv } from "./firebase-auth-token.mjs";
@@ -32,7 +32,29 @@ function hasPortalAuthInputs(env) {
   );
 }
 
+function hydrateEnvFromFile(envFilePath, env) {
+  if (!envFilePath || !existsSync(envFilePath)) return;
+  const text = readFileSync(envFilePath, "utf8");
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const separator = line.indexOf("=");
+    if (separator < 0) continue;
+    const key = line.slice(0, separator).trim();
+    if (!key || clean(env[key])) continue;
+    let value = line.slice(separator + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+}
+
 export async function hydrateStudioBrainAuthFromPortal({ repoRoot, env = process.env } = {}) {
+  hydrateEnvFromFile(resolvePortalEnvPath(repoRoot, env), env);
   const tokenFreshness = inspectTokenFreshness(
     env.STUDIO_BRAIN_AUTH_TOKEN || env.STUDIO_BRAIN_ID_TOKEN || env.STUDIO_BRAIN_MCP_ID_TOKEN || ""
   );

@@ -7,12 +7,12 @@ const env_1 = require("../config/env");
 function ensureFirebaseAdmin(projectId) {
     if ((0, app_1.getApps)().length > 0)
         return;
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        (0, app_1.initializeApp)();
-        return;
-    }
     if (projectId) {
         (0, app_1.initializeApp)({ projectId });
+        return;
+    }
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        (0, app_1.initializeApp)();
         return;
     }
     (0, app_1.initializeApp)();

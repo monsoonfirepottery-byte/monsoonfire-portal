@@ -68,9 +68,16 @@ async function runVerify() {
   const now = new Date();
   const generatedAt = now.toISOString();
   const latest = readLatestManifest();
-  const freshness = evaluateFreshness(latest.manifest, now);
   const serviceChecks = parsed.freshnessOnly ? [] : await runServiceChecks();
   const serviceFailures = serviceChecks.filter((entry) => entry.status === "fail");
+  const freshnessSource =
+    !parsed.freshnessOnly && serviceFailures.length === 0
+      ? {
+          generatedAt,
+          serviceChecks,
+        }
+      : latest.manifest;
+  const freshness = evaluateFreshness(freshnessSource, now);
 
   let status = "pass";
   if (serviceFailures.length > 0) {
@@ -111,6 +118,7 @@ async function runVerify() {
   if (!parsed.freshnessOnly) {
     const artifact = writeManifestArtifact(payload, generatedAt);
     payload.artifact = artifact;
+    payload.latestManifestPath = artifact.manifestPath;
   }
 
   return payload;

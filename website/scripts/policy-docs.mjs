@@ -124,6 +124,8 @@ export const REQUIRED_AGENT_FIELDS = [
   "canActForOthers",
   "decisionDomain",
   "defaultActions",
+  "allowedLowRiskActions",
+  "blockedActions",
   "requiredSignals",
   "escalateWhen",
   "replyTemplate",
@@ -176,6 +178,12 @@ export const validatePolicyFrontmatter = (policy) => {
   }
   if (!isStringArray(policy.agent.defaultActions)) {
     errors.push("agent.defaultActions must be an array of non-empty strings");
+  }
+  if (!isStringArray(policy.agent.allowedLowRiskActions)) {
+    errors.push("agent.allowedLowRiskActions must be an array of non-empty strings");
+  }
+  if (!isStringArray(policy.agent.blockedActions)) {
+    errors.push("agent.blockedActions must be an array of non-empty strings");
   }
   if (!isStringArray(policy.agent.requiredSignals)) {
     errors.push("agent.requiredSignals must be an array of non-empty strings");

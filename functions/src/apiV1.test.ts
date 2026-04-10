@@ -7700,3 +7700,72 @@ test("reservations.rotateArrivalToken returns forbidden for authenticated non-st
   assert.equal(event?.result, "deny");
   assert.equal(event?.requestId, body.requestId);
 });
+
+test("support.requests.create stores policy resolution metadata when provided", async () => {
+  const state: MockDbState = {
+    supportRequests: {},
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/support.requests.create",
+      body: {
+        subject: "Refund request",
+        body: "I was charged twice for my membership.",
+        category: "Billing",
+        policyResolution: {
+          resolvedPolicySlug: "payments-refunds",
+          resolvedPolicyVersion: "2026-04-02",
+          discrepancyFlag: true,
+          escalationReason: "refunds",
+        },
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+      authClaims: {
+        uid: "owner-1",
+        email: "owner-1@example.com",
+        name: "Owner One",
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const rows = Object.values(state.supportRequests ?? {});
+  assert.equal(rows.length, 1);
+  const stored = rows[0] as Record<string, unknown>;
+  assert.deepEqual(stored.policyResolution, {
+    resolvedPolicySlug: "payments-refunds",
+    resolvedPolicyVersion: "2026-04-02",
+    discrepancyFlag: true,
+    escalationReason: "refunds",
+  });
+});
+
+test("support.requests.create omits empty policy resolution metadata", async () => {
+  const state: MockDbState = {
+    supportRequests: {},
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/support.requests.create",
+      body: {
+        subject: "Studio question",
+        body: "Can I stop by this week?",
+        category: "Studio",
+        policyResolution: {},
+      },
+      ctx: firebaseContext({ uid: "owner-2" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const rows = Object.values(state.supportRequests ?? {});
+  assert.equal(rows.length, 1);
+  const stored = rows[0] as Record<string, unknown>;
+  assert.equal(Object.prototype.hasOwnProperty.call(stored, "policyResolution"), false);
+});

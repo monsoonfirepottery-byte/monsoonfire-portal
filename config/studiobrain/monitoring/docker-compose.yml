@@ -1,0 +1,90 @@
+services:
+  netdata:
+    image: netdata/netdata:stable
+    container_name: netdata
+    restart: unless-stopped
+    cpus: 0.75
+    mem_limit: 512m
+    mem_reservation: 256m
+    ports:
+      - "127.0.0.1:19999:19999"
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      - DO_NOT_TRACK=1
+      - TZ=UTC
+    volumes:
+      - ./netdata-config:/etc/netdata
+      - ./netdata-overrides/netdata.conf:/etc/netdata/netdata.conf:ro
+      - ./netdata-overrides/docker.conf:/etc/netdata/go.d/docker.conf:ro
+      - ./netdata-overrides/systemdunits.conf:/etc/netdata/go.d/systemdunits.conf:ro
+      - ./netdata-lib:/var/lib/netdata
+      - ./netdata-cache:/var/cache/netdata
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/dbus:/run/dbus:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "16m"
+        max-file: "3"
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    cpus: 0.50
+    mem_limit: 256m
+    mem_reservation: 128m
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ./uptime-kuma:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - studio-brain
+      - searxng
+    logging:
+      driver: json-file
+      options:
+        max-size: "8m"
+        max-file: "2"
+
+  monitoring-proxy:
+    image: caddy:2-alpine
+    container_name: monitoring-proxy
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 128m
+    mem_reservation: 64m
+    depends_on:
+      - netdata
+      - uptime-kuma
+    ports:
+      - "${MONITORING_BIND_HOST:-127.0.0.1}:18080:18080"
+      - "${MONITORING_BIND_HOST:-127.0.0.1}:18081:18081"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "8m"
+        max-file: "2"
+
+networks:
+  studio-brain:
+    external: true
+    name: studio-brain_default
+  searxng:
+    external: true
+    name: searxng_default

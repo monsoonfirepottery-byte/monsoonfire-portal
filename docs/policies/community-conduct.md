@@ -2,12 +2,12 @@
 slug: "community-conduct"
 title: "Community conduct"
 status: "active"
-version: "2026-02-17"
-effectiveDate: "2026-02-17"
-reviewDate: "2026-08-01"
+version: "2026-04-02"
+effectiveDate: "2026-04-02"
+reviewDate: "2026-10-02"
 owner: "Studio Operations"
 sourceUrl: "/policies/community-conduct/"
-summary: "Respect, safety, and shared-space etiquette are required across studio and support channels."
+summary: "Respect, safety, and shared-space etiquette are required across studio and support channels, and interim safety steps may be used while conduct review is underway."
 tags:
   - "community"
   - "conduct"
@@ -16,11 +16,19 @@ tags:
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "Conduct reports, de-escalation, and access restriction workflow."
+  decisionDomain: "Conduct reports, interim safety steps, and human-reviewed access restriction workflow."
   defaultActions:
     - "collect incident details and participant names"
     - "apply immediate safe-work instructions"
-    - "log coaching/warning action for policy tracking"
+    - "log the report and any interim safety steps for policy tracking"
+  allowedLowRiskActions:
+    - "collect incident intake details"
+    - "share interim safe-work expectations"
+    - "route reports to conduct review"
+  blockedActions:
+    - "suspend access or impose penalties without human review"
+    - "share private conduct details outside the review path"
+    - "promise disciplinary outcomes before investigation"
   requiredSignals:
     - "participants and location"
     - "incident timestamp"
@@ -45,7 +53,8 @@ All community interactions in-person, workshop sessions, and written support cha
 - Maintain shared-space etiquette: tidy, respectful, and focused use.
 - Harassment, discrimination, or unsafe interruption of others is not permitted.
 - Keep noise and tool usage compatible with studio workflow.
-- Any escalations are documented and may result in access restrictions.
+- Interim separation or safety steps may be used while a report is under review when needed to protect people or equipment.
+- Any escalations are documented, and disciplinary outcomes or access restrictions require human review.
 
 ## Implementation in portal
 
@@ -54,7 +63,7 @@ All community interactions in-person, workshop sessions, and written support cha
 
 ## Enforcement
 
-Repeated or severe conduct issues can trigger written warning, temporary pause, or access lock.
+Repeated or severe conduct issues can trigger written warning, temporary pause, or access lock after human review.
 
 ## Support language
 
@@ -62,5 +71,6 @@ Support should include:
 
 - what behavior is being referenced
 - immediate steps for de-escalation
+- whether interim safety steps apply while review is underway
 - whether mediation or formal review is needed
 

@@ -9,7 +9,7 @@ references.
 - The canonical slug should match the website route under `/policies/`.
 - If a policy behavior changes, edit these files first and then run:
   - `node website/scripts/sync-policies.mjs`
-  - this generates `docs/policies/policies-index.json` and `/website/data/policies.json`
+  - this generates `docs/policies/policies-index.json`, `/website/data/policies.json`, and the customer-service governance bundle under `.governance/customer-service-policies/`
 
 ## Policy files
 
@@ -40,7 +40,7 @@ frontmatter:
 - `owner`
 - `sourceUrl`
 - `agent` object with canActForSelf/canActForOthers defaults, required signals,
-  escalation rules, and response templates.
+  escalation rules, low-risk actions, blocked actions, and response templates.
 
 Before publishing policy edits:
 
@@ -78,6 +78,12 @@ agent:
   defaultActions:
     - "check reservation status and share upcoming access steps"
     - "verify whether a request requires supervision flagging"
+  allowedLowRiskActions:
+    - "answer appointment-only questions"
+    - "collect preferred visit windows"
+  blockedActions:
+    - "override appointment-only access without human approval"
+    - "share address or gate code before account verification"
   requiredSignals:
     - "user category and account"
     - "reservation id or preferred window"

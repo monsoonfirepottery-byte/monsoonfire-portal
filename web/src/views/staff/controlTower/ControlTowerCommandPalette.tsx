@@ -82,14 +82,6 @@ export default function ControlTowerCommandPalette({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [busy, filteredItems, onClose, open, view]);
 
-  useEffect(() => {
-    if (!open) {
-      setDraft(EMPTY_DRAFT);
-      setView("jump");
-      setQuery("");
-    }
-  }, [open]);
-
   if (!open) return null;
 
   return (
@@ -241,7 +233,9 @@ export default function ControlTowerCommandPalette({
                 type="button"
                 className="btn btn-primary btn-small"
                 disabled={!canSpawn || busy}
-                onClick={() => onSpawnRoom(draft)}
+                onClick={() => {
+                  void onSpawnRoom(draft);
+                }}
               >
                 Create room
               </button>

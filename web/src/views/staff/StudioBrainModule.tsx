@@ -201,8 +201,8 @@ function when(iso: string | undefined): string {
 }
 
 export default function StudioBrainModule({ user, active, disabled, adminToken }: Props) {
-  const [resolutionVersion, setResolutionVersion] = useState(0);
-  const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), [resolutionVersion]);
+  const [, setResolutionVersion] = useState(0);
+  const studioBrainResolution = resolveStudioBrainBaseUrlResolution();
   const studioBrainBaseUrl = studioBrainResolution.baseUrl;
   const [baseUrlDraft, setBaseUrlDraft] = useState(() => getStoredStudioBrainBaseUrlOverride());
   const [baseUrlStatus, setBaseUrlStatus] = useState("");

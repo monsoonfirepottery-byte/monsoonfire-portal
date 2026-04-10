@@ -46,10 +46,6 @@ export default function ControlTowerRoomDrawer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, open]);
 
-  useEffect(() => {
-    setInstruction("");
-  }, [room?.id]);
-
   if (!open || !room) return null;
 
   return (
@@ -109,7 +105,9 @@ export default function ControlTowerRoomDrawer({
             <button
               type="button"
               className="btn btn-secondary btn-small"
-              onClick={() => onTogglePinned(!room.isEscalated)}
+              onClick={() => {
+                void onTogglePinned(!room.isEscalated);
+              }}
               disabled={busy}
             >
               {room.isEscalated ? "Clear escalation" : "Escalate room"}
@@ -118,7 +116,9 @@ export default function ControlTowerRoomDrawer({
               <button
                 type="button"
                 className="btn btn-ghost btn-small"
-                onClick={() => onCopyAttach(room.attach!.sshCommand)}
+                onClick={() => {
+                  void onCopyAttach(room.attach!.sshCommand);
+                }}
               >
                 Copy attach command
               </button>
@@ -150,7 +150,9 @@ export default function ControlTowerRoomDrawer({
                 type="button"
                 className="btn btn-primary btn-small"
                 disabled={!instruction.trim() || busy}
-                onClick={() => onSendInstruction(instruction)}
+                onClick={() => {
+                  void onSendInstruction(instruction);
+                }}
               >
                 Send to room
               </button>

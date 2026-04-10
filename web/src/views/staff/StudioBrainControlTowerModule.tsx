@@ -204,8 +204,8 @@ export default function StudioBrainControlTowerModule({
   adminToken,
   onNavigateTarget,
 }: Props) {
-  const [resolutionVersion, setResolutionVersion] = useState(0);
-  const resolution = useMemo(() => getStudioBrainControlTowerResolution(), [resolutionVersion]);
+  const [, setResolutionVersion] = useState(0);
+  const resolution = getStudioBrainControlTowerResolution();
   const isDisabled = disabled;
   const [baseUrlDraft, setBaseUrlDraft] = useState(() => getStoredStudioBrainBaseUrlOverride());
   const [baseUrlStatus, setBaseUrlStatus] = useState("");
@@ -1243,28 +1243,33 @@ export default function StudioBrainControlTowerModule({
         </section>
       </section>
 
-      <ControlTowerCommandPalette
-        open={paletteOpen}
-        busy={Boolean(busyKey)}
-        items={paletteItems}
-        onClose={() => setPaletteOpen(false)}
-        onSpawnRoom={(draft) => handleSpawnRoom(draft)}
-      />
+      {paletteOpen ? (
+        <ControlTowerCommandPalette
+          open
+          busy={Boolean(busyKey)}
+          items={paletteItems}
+          onClose={() => setPaletteOpen(false)}
+          onSpawnRoom={(draft) => handleSpawnRoom(draft)}
+        />
+      ) : null}
 
-      <ControlTowerRoomDrawer
-        open={Boolean(selectedRoomId && roomDetail)}
-        room={roomDetail}
-        busy={Boolean(busyKey)}
-        statusMessage={statusMessage}
-        errorMessage={errorMessage}
-        onClose={closeRoom}
-        onRefresh={() => {
-          if (selectedRoomId) void openRoom(selectedRoomId);
-        }}
-        onSendInstruction={handleSendInstruction}
-        onTogglePinned={handleTogglePinned}
-        onCopyAttach={handleCopyAttach}
-      />
+      {selectedRoomId && roomDetail ? (
+        <ControlTowerRoomDrawer
+          key={roomDetail.id}
+          open
+          room={roomDetail}
+          busy={Boolean(busyKey)}
+          statusMessage={statusMessage}
+          errorMessage={errorMessage}
+          onClose={closeRoom}
+          onRefresh={() => {
+            void openRoom(selectedRoomId);
+          }}
+          onSendInstruction={handleSendInstruction}
+          onTogglePinned={handleTogglePinned}
+          onCopyAttach={handleCopyAttach}
+        />
+      ) : null}
     </>
   );
 }

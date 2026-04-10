@@ -74,6 +74,47 @@ def resolve_control_tower_url(env: dict[str, str]) -> str:
     return str(env.get("STUDIO_BRAIN_CONTROL_TOWER_URL", "")).strip() or "https://portal.monsoonfire.com/staff/cockpit/control-tower"
 
 
+def parse_json_text(text: str) -> dict[str, object] | list[object] | None:
+    stripped = str(text or "").strip()
+    if not stripped:
+        return None
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+
+
+def run_local_json_command(command: list[str], *, timeout: int) -> dict[str, object]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "error": f"local command timed out after {timeout}s",
+            "command": command,
+            "stdout": str(exc.stdout or "").strip(),
+            "stderr": str(exc.stderr or "").strip(),
+        }
+    payload: dict[str, object] = {
+        "ok": result.returncode == 0,
+        "command": command,
+        "exitCode": result.returncode,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+    }
+    parsed = parse_json_text(result.stdout)
+    if parsed is not None:
+        payload["parsed"] = parsed
+    return payload
+
+
 def build_remote_env_prefix(env: dict[str, str]) -> str:
     values = {
         "STUDIO_BRAIN_REMOTE_PARENT": REMOTE_PARENT,
@@ -280,6 +321,44 @@ def command_install_stack(args: argparse.Namespace) -> dict[str, object]:
             ssh.close()
 
 
+def command_deploy_runtime(args: argparse.Namespace) -> dict[str, object]:
+    command = [sys.executable, str(REPO_ROOT / "scripts" / "deploy-studio-brain-host.py"), "--json"]
+    result = run_local_json_command(command, timeout=max(args.timeout, 1800))
+    payload: dict[str, object] = {
+        "ok": bool(result.get("ok")),
+        "command": "deploy-runtime",
+        "runner": command,
+        "exitCode": int(result.get("exitCode", 1)),
+        "stdout": str(result.get("stdout", "")),
+        "stderr": str(result.get("stderr", "")),
+    }
+    parsed = result.get("parsed")
+    if isinstance(parsed, (dict, list)):
+        payload["deploy"] = parsed
+    if "error" in result:
+        payload["error"] = result["error"]
+    return payload
+
+
+def command_reconcile(args: argparse.Namespace) -> dict[str, object]:
+    deploy_result = command_deploy_runtime(args)
+    if not deploy_result.get("ok"):
+        return {
+            "ok": False,
+            "command": "reconcile",
+            "deployRuntime": deploy_result,
+            "blockedAt": "deploy-runtime",
+        }
+    install_result = command_install_stack(args)
+    return {
+        "ok": bool(install_result.get("ok")),
+        "command": "reconcile",
+        "deployRuntime": deploy_result,
+        "installStack": install_result,
+        "status": install_result.get("status"),
+    }
+
+
 def command_status(args: argparse.Namespace) -> dict[str, object]:
     env = load_env()
     ssh = None
@@ -307,6 +386,9 @@ def run(args, shell=False):
 payload = {{
     "tools": {{}},
     "services": {{}},
+    "workspace": {{
+        "repoRoot": repo_root,
+    }},
     "identity": {{
         "user": os.environ.get("USER", ""),
         "cwd": os.getcwd(),
@@ -338,6 +420,22 @@ for name, version_command in tool_commands.items():
 for unit in ("studio-brain-discord-relay", "studio-brain-control-tower-proxy", "studio-brain-namecheap-tunnel"):
     status = run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState", "-p", "UnitFileState"])
     payload["services"][unit] = status
+
+git_path = shutil.which("git")
+if git_path:
+    branch = run(["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"])
+    head = run(["git", "-C", repo_root, "rev-parse", "HEAD"])
+    tracked_status = run(["git", "-C", repo_root, "status", "--short", "--untracked-files=no"])
+    status_lines = [line for line in tracked_status["stdout"].splitlines() if line.strip()]
+    payload["workspace"].update({{
+        "gitInstalled": True,
+        "branch": branch["stdout"].strip(),
+        "head": head["stdout"].strip(),
+        "dirtyTrackedCount": len(status_lines),
+        "dirtyTrackedPreview": status_lines[:20],
+    }})
+else:
+    payload["workspace"]["gitInstalled"] = False
 
 payload["ufw"] = run(["ufw", "status", "numbered"])
 payload["tmux"] = run(["runuser", "-u", host_user, "--", "bash", f"{{repo_root}}/scripts/studiobrain-tmux-session.sh", "status"])
@@ -702,8 +800,17 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser = subparsers.add_parser("sync-support", help="Sync Studio Brain ops support files to the host checkout.")
     sync_parser.set_defaults(handler=command_sync_support)
 
-    install_parser = subparsers.add_parser("install-stack", help="Install the Studio Brain remote ops stack.")
+    deploy_parser = subparsers.add_parser("deploy-runtime", help="Deploy the full Studio Brain runtime to the host and restart the service.")
+    deploy_parser.set_defaults(handler=command_deploy_runtime)
+
+    install_parser = subparsers.add_parser("install-stack", help="Install the Studio Brain remote ops sidecars and host stack resources.")
     install_parser.set_defaults(handler=command_install_stack)
+
+    reconcile_parser = subparsers.add_parser(
+        "reconcile",
+        help="Run the full Studio Brain host reconcile cycle: runtime deploy, sidecar install, then status.",
+    )
+    reconcile_parser.set_defaults(handler=command_reconcile)
 
     status_parser = subparsers.add_parser("status", help="Inspect the Studio Brain remote ops stack.")
     status_parser.set_defaults(handler=command_status)

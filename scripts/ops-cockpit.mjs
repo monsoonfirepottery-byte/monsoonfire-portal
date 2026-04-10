@@ -19,6 +19,7 @@ const OPS_DIR = resolve(REPO_ROOT, "output", "ops-cockpit");
 const STATE_PATH = resolve(OPS_DIR, "state.json");
 const STATUS_PATH = resolve(OPS_DIR, "latest-status.json");
 const HEARTBEAT_SUMMARY_PATH = resolve(REPO_ROOT, "output", "stability", "heartbeat-summary.json");
+const HEARTBEAT_EVENT_LOG_PATH = resolve(REPO_ROOT, "output", "stability", "heartbeat-events.log");
 const POSTURE_STATUS_PATH = resolve(REPO_ROOT, "output", "studio-posture", "latest.json");
 const AUDIT_LOG_PATH = resolve(REPO_ROOT, "output", "ops-audit", "destructive-actions.log");
 
@@ -175,22 +176,26 @@ function runReset() {
     process.exit(1);
   }
 
-  if (existsSync(STATE_PATH)) rmSync(STATE_PATH, { force: true });
-  if (existsSync(STATUS_PATH)) rmSync(STATUS_PATH, { force: true });
+  const removed = [];
+  for (const path of [STATE_PATH, STATUS_PATH, HEARTBEAT_SUMMARY_PATH, HEARTBEAT_EVENT_LOG_PATH]) {
+    if (!existsSync(path)) continue;
+    rmSync(path, { force: true });
+    removed.push(relativePath(path));
+  }
   recordDestructiveAudit({
     action: "ops-cockpit-reset",
     classification: "data-destructive",
     status: "pass",
     reason: destructiveReason || "operator-request",
     details: {
-      removed: [relativePath(STATE_PATH), relativePath(STATUS_PATH)],
+      removed,
     },
   });
   output({
     status: "pass",
     command: "reset",
     message: "ops-cockpit state reset",
-    rollbackHint: "Run `npm run ops:cockpit:start` to rebuild cockpit artifacts.",
+    rollbackHint: "Run `npm run ops:cockpit:start` to rebuild cockpit and heartbeat artifacts.",
   });
 }
 

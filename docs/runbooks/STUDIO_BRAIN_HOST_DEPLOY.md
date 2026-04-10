@@ -28,7 +28,12 @@ Primary host-access runbook:
 
 ```powershell
 python .\scripts\deploy-studio-brain-host.py --json
+npm run studio:ops:deploy
+npm run studio:ops:reconcile
 ```
+
+- `studio:ops:deploy` is the wrapper alias for the full runtime deploy.
+- `studio:ops:reconcile` runs the full runtime deploy, then the tracked host-stack install, then captures a fresh status snapshot.
 
 ## Secrets
 

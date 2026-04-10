@@ -417,8 +417,12 @@ for name, version_command in tool_commands.items():
         "version": first_line[0] if first_line else "",
     }}
 
-discord_relay_unit = "-".join(("studio", "brain", "discord", "relay"))
-for unit in (discord_relay_unit, "studio-brain-control-tower-proxy", "studio-brain-namecheap-tunnel"):
+service_units = (
+    "-".join(("studio", "brain", "discord", "relay")),
+    "-".join(("studio", "brain", "control", "tower", "proxy")),
+    "-".join(("studio", "brain", "namecheap", "tunnel")),
+)
+for unit in service_units:
     status = run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState", "-p", "UnitFileState"])
     payload["services"][unit] = status
 

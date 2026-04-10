@@ -23,15 +23,13 @@ test("maps Home Assistant vacuum states to normalized Roborock device payload", 
   );
 
   assert.equal(rows.length, 1);
-  assert.deepEqual(rows[0], {
-    id: "vacuum.studio_s7",
-    name: "Studio S7",
-    online: true,
-    battery: 87,
-    lastSeenAt: "2026-04-10T01:02:03.000Z",
-    state: "docked",
-    entityId: "vacuum.studio_s7",
-  });
+  assert.equal(rows[0].id, "vacuum.studio_s7");
+  assert.equal(rows[0].name, "Studio S7");
+  assert.equal(rows[0].online, true);
+  assert.equal(rows[0].battery, 87);
+  assert.equal(rows[0].lastSeenAt, "2026-04-10T01:02:03.000Z");
+  assert.equal(rows[0].state, "docked");
+  assert.equal(rows[0].entityId, "vacuum.studio_s7");
 });
 
 test("treats unknown/unavailable devices as offline and applies allowlist", () => {

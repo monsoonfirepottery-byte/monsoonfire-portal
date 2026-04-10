@@ -56,6 +56,31 @@ async function fetchJson(url: string, token: string, timeoutMs: number): Promise
   }
 }
 
+async function postJson(url: string, token: string, body: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+  const abortController = new AbortController();
+  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      const responseBody = await response.text();
+      throw new Error(`Home Assistant request failed (${response.status}): ${responseBody.slice(0, 240)}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function mapHomeAssistantStatesToRoborockDevices(states: unknown, allowlist: string[]): Array<Record<string, unknown>> {
   if (!Array.isArray(states)) return [];
 
@@ -72,10 +97,18 @@ function mapHomeAssistantStatesToRoborockDevices(states: unknown, allowlist: str
     .map((row, index) => {
       const entityId = String(row.entity_id ?? `vacuum.unknown_${index + 1}`);
       const attrs = row.attributes && typeof row.attributes === "object" ? row.attributes : {};
-      const rawBattery = attrs.battery_level;
-      const battery = typeof rawBattery === "number" ? rawBattery : Number(rawBattery);
       const state = String(row.state ?? "unknown").toLowerCase();
       const online = !(state === "unavailable" || state === "unknown");
+
+      const numericOrNull = (value: unknown): number | null => {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value === "string") {
+          const parsed = Number(value);
+          if (Number.isFinite(parsed)) return parsed;
+        }
+        return null;
+      };
+
       const friendlyName = typeof attrs.friendly_name === "string" && attrs.friendly_name.trim()
         ? attrs.friendly_name.trim()
         : entityId;
@@ -84,10 +117,18 @@ function mapHomeAssistantStatesToRoborockDevices(states: unknown, allowlist: str
         id: entityId,
         name: friendlyName,
         online,
-        battery: Number.isFinite(battery) ? Math.max(0, Math.min(100, Math.round(battery))) : null,
+        battery: numericOrNull(attrs.battery_level),
         lastSeenAt: typeof row.last_changed === "string" ? row.last_changed : null,
         state,
         entityId,
+        filterLifePct: numericOrNull(attrs.filter_life_remaining ?? attrs.filter_left),
+        mainBrushLifePct: numericOrNull(attrs.main_brush_life_remaining ?? attrs.main_brush_left),
+        sideBrushLifePct: numericOrNull(attrs.side_brush_life_remaining ?? attrs.side_brush_left),
+        sensorDirtyLifePct: numericOrNull(attrs.sensor_dirty_life_remaining ?? attrs.sensor_dirty_left),
+        cleanDurationSec: numericOrNull(attrs.clean_duration ?? attrs.last_clean_duration),
+        cleanAreaSqM: numericOrNull(attrs.clean_area ?? attrs.last_clean_area),
+        error: typeof attrs.error === "string" ? attrs.error : null,
+        statusText: typeof attrs.status === "string" ? attrs.status : null,
       };
     });
 }
@@ -111,6 +152,13 @@ export function createRoborockTransportFromEnv(logger: Logger): Transport {
   const entityAllowlist = parseCsv(process.env.STUDIO_BRAIN_ROBOROCK_ENTITY_IDS);
   const defaultTimeoutMs = numberFromEnv(process.env.STUDIO_BRAIN_ROBOROCK_TIMEOUT_MS, 10_000);
 
+  const defaultEntityId = String(process.env.STUDIO_BRAIN_ROBOROCK_HA_ENTITY_ID ?? entityAllowlist[0] ?? "").trim();
+  const fullCleanDomain = String(process.env.STUDIO_BRAIN_ROBOROCK_HA_SERVICE_DOMAIN_FULL ?? "vacuum").trim() || "vacuum";
+  const fullCleanService = String(process.env.STUDIO_BRAIN_ROBOROCK_HA_SERVICE_START_FULL ?? "start").trim() || "start";
+  const roomCleanDomain = String(process.env.STUDIO_BRAIN_ROBOROCK_HA_SERVICE_DOMAIN_ROOM ?? "roborock").trim() || "roborock";
+  const roomCleanService = String(process.env.STUDIO_BRAIN_ROBOROCK_HA_SERVICE_START_ROOM ?? "vacuum_clean_segment").trim() || "vacuum_clean_segment";
+  const roomParamName = String(process.env.STUDIO_BRAIN_ROBOROCK_HA_ROOM_IDS_PARAM ?? "segments").trim() || "segments";
+
   if (!baseUrl || !accessToken) {
     logger.warn("roborock_transport_missing_config", {
       provider,
@@ -130,7 +178,7 @@ export function createRoborockTransportFromEnv(logger: Logger): Transport {
     });
   }
 
-  return async (path, _input, timeoutMs) => {
+  return async (path, input, timeoutMs) => {
     const effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : defaultTimeoutMs;
     if (path === "/health") {
       const payload = await fetchJson(`${baseUrl}/api/`, accessToken, effectiveTimeoutMs);
@@ -142,6 +190,37 @@ export function createRoborockTransportFromEnv(logger: Logger): Transport {
       return {
         devices: mapHomeAssistantStatesToRoborockDevices(states, entityAllowlist),
       };
+    }
+
+    if (path === "/commands/start_full") {
+      if (!defaultEntityId) {
+        throw new Error("Missing STUDIO_BRAIN_ROBOROCK_HA_ENTITY_ID for clean.start_full command.");
+      }
+      return postJson(
+        `${baseUrl}/api/services/${encodeURIComponent(fullCleanDomain)}/${encodeURIComponent(fullCleanService)}`,
+        accessToken,
+        { entity_id: defaultEntityId },
+        effectiveTimeoutMs
+      );
+    }
+
+    if (path === "/commands/start_rooms") {
+      if (!defaultEntityId) {
+        throw new Error("Missing STUDIO_BRAIN_ROBOROCK_HA_ENTITY_ID for clean.start_rooms command.");
+      }
+      const roomIds = Array.isArray(input.roomIds) ? input.roomIds : [];
+      if (roomIds.length === 0) {
+        throw new Error("roomIds[] is required for /commands/start_rooms.");
+      }
+      return postJson(
+        `${baseUrl}/api/services/${encodeURIComponent(roomCleanDomain)}/${encodeURIComponent(roomCleanService)}`,
+        accessToken,
+        {
+          entity_id: defaultEntityId,
+          [roomParamName]: roomIds,
+        },
+        effectiveTimeoutMs
+      );
     }
 
     throw new Error(`Unsupported roborock transport path: ${path}`);

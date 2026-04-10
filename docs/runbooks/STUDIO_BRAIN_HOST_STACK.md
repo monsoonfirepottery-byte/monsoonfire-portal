@@ -16,8 +16,6 @@ Use this runbook for the broader Studio Brain host-control stack that sits behin
 - `tmux` with a tracked Studio Brain session layout
 - `mosh` plus the default UDP firewall range
 - `ansible` on the Ubuntu host so the host can provision itself predictably
-- `tailscale` and `tailscaled`
-- `teleport` binaries, plus optional service configuration when cluster inputs are provided
 - the repo-backed monitoring sidecars under `config/studiobrain/monitoring`:
   - `netdata`
   - `uptime-kuma`
@@ -71,26 +69,6 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
   Default: `https://portal.monsoonfire.com/staff/cockpit/control-tower`
 - `STUDIO_BRAIN_MOSH_UDP_RANGE`
   Default: `60000:61000`
-- `STUDIO_BRAIN_TAILSCALE_UDP_PORT`
-  Default: `41641`
-- `STUDIO_BRAIN_TAILSCALE_AUTH_KEY`
-  Optional unattended auth key. When present, the installer runs `tailscale up` with SSH enabled.
-- `STUDIO_BRAIN_TAILSCALE_HOSTNAME`
-  Default: `studiobrain`
-- `STUDIO_BRAIN_TAILSCALE_EXTRA_ARGS`
-  Default: `--ssh --accept-dns=false --accept-routes=false`
-- `STUDIO_BRAIN_TELEPORT_VERSION`
-  Default: `18.7.3`
-- `STUDIO_BRAIN_TELEPORT_CLUSTER_NAME`
-  Required to configure the Teleport service
-- `STUDIO_BRAIN_TELEPORT_PUBLIC_ADDR`
-  Required to configure the Teleport service
-- `STUDIO_BRAIN_TELEPORT_ACME_EMAIL`
-  Use for a public ACME-backed Teleport proxy
-- `STUDIO_BRAIN_TELEPORT_CERT_FILE`
-  Use instead of ACME for private-network certificate material
-- `STUDIO_BRAIN_TELEPORT_KEY_FILE`
-  Use instead of ACME for private-network certificate material
 
 ## Notes
 
@@ -102,12 +80,11 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
   - `.env` controls only `MONITORING_BIND_HOST`
   - Uptime Kuma sqlite data and generated admin credentials stay host-local and are not committed
 - Legacy host-only `studiobrain-maintenance` and `studiobrain-fan-guardian` services are intentionally retired. If they show up again, treat that as drift rather than supported infrastructure.
-- Tailscale can be fully enabled only when the host has an auth path to a tailnet. Without `STUDIO_BRAIN_TAILSCALE_AUTH_KEY`, the installer still lays down the package and service.
-- Teleport installation is safe without extra inputs, but enabling the service requires a cluster name plus either ACME or certificate material.
+- Direct access is intentionally narrowed to SSH, fail2ban, tmux recovery, and the tracked browser bridge. Tailscale and Teleport are retired and the installer now removes them if they drift back onto the host.
 - The tmux helper now creates a recovery-first layout:
   - `control`: browser-first recovery guide
   - `brain`: working shell in `studio-brain/`
   - `scripts`: working shell in `scripts/`
   - `logs`: repo/log investigation shell
 - Safe bounded actions still flow through `scripts/studiobrain-cockpit.mjs`, exposed remotely through `scripts/studiobrain-ops.py`, but the browser Control Tower is now the primary operator surface and should be the first command operators reach for.
-- `Tailscale auth/login` and `Teleport cluster/cert configuration` still surface as pinned blockers in Control Tower state until resolved.
+- If `tailscaled` or `teleport` reappear in audits, treat that as host drift instead of supported infrastructure.

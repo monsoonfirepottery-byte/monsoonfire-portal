@@ -56,20 +56,10 @@ SUPPORT_PATHS = (
 )
 REMOTE_ENV_KEYS = (
     "STUDIO_BRAIN_DEPLOY_USER",
-    "STUDIO_BRAIN_TAILSCALE_AUTH_KEY",
-    "STUDIO_BRAIN_TAILSCALE_HOSTNAME",
-    "STUDIO_BRAIN_TAILSCALE_EXTRA_ARGS",
-    "STUDIO_BRAIN_TAILSCALE_UDP_PORT",
     "STUDIO_BRAIN_MOSH_UDP_RANGE",
     "STUDIO_BRAIN_TMUX_SESSION_NAME",
     "STUDIO_BRAIN_COCKPIT_THEME",
     "STUDIO_BRAIN_CONTROL_TOWER_URL",
-    "STUDIO_BRAIN_TELEPORT_VERSION",
-    "STUDIO_BRAIN_TELEPORT_CLUSTER_NAME",
-    "STUDIO_BRAIN_TELEPORT_PUBLIC_ADDR",
-    "STUDIO_BRAIN_TELEPORT_ACME_EMAIL",
-    "STUDIO_BRAIN_TELEPORT_CERT_FILE",
-    "STUDIO_BRAIN_TELEPORT_KEY_FILE",
 )
 
 
@@ -329,9 +319,7 @@ tool_commands = {{
     "mosh-server": ["mosh-server", "new", "-h"],
     "ansible": ["ansible", "--version"],
     "ansible-playbook": ["ansible-playbook", "--version"],
-    "tailscale": ["tailscale", "version"],
-    "teleport": ["teleport", "version"],
-    "tsh": ["tsh", "version"],
+    "node": ["node", "--version"],
 }}
 
 for name, version_command in tool_commands.items():
@@ -347,18 +335,12 @@ for name, version_command in tool_commands.items():
         "version": first_line[0] if first_line else "",
     }}
 
-for unit in ("tailscaled", "teleport"):
+for unit in ("studio-brain-discord-relay", "studio-brain-control-tower-proxy", "studio-brain-namecheap-tunnel"):
     status = run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState", "-p", "UnitFileState"])
     payload["services"][unit] = status
 
 payload["ufw"] = run(["ufw", "status", "numbered"])
 payload["tmux"] = run(["runuser", "-u", host_user, "--", "bash", f"{{repo_root}}/scripts/studiobrain-tmux-session.sh", "status"])
-
-if payload["tools"].get("tailscale", {{}}).get("installed"):
-    payload["tailscaleStatus"] = run(["tailscale", "status", "--json"])
-
-pending_note = "/etc/teleport/studiobrain.pending.txt"
-payload["teleportPendingNote"] = run(["bash", "-lc", f"[[ -f {{pending_note}} ]] && cat {{pending_note}} || true"])
 
 print(json.dumps(payload))
 PY

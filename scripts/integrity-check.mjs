@@ -22,9 +22,6 @@ const DEFAULT_TARGET_FILES = [
   "studio-brain/host-drift-allowlist.json",
   "scripts/studio-network-profile.mjs",
   "scripts/studio-brain-url-resolution.mjs",
-  "scripts/studio-brain-discord-relay.mjs",
-  "scripts/studio-brain-discord-action-runner.mjs",
-  "scripts/install-studiobrain-discord-relay.sh",
   "scripts/install-studiobrain-healthcheck.sh",
   "scripts/install-studiobrain-monitoring.sh",
   "scripts/lib/codex-automation-env.mjs",
@@ -51,9 +48,8 @@ const DEFAULT_TARGET_FILES = [
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/functions-cors-smoke.mjs",
+  "scripts/generate-runtime-docs.mjs",
   "scripts/stability-guardrails.mjs",
-  "config/studiobrain/discord/agentcontrol-runtime-catalog.json",
-  "config/studiobrain/discord/agentcontrol-memes.json",
   "config/studiobrain/monitoring/Caddyfile",
   "config/studiobrain/monitoring/docker-compose.yml",
   "config/studiobrain/monitoring/netdata-overrides/docker.conf",
@@ -69,8 +65,8 @@ const DEFAULT_TARGET_FILES = [
   "config/studiobrain/systemd/studio-brain-discord-relay.service",
   "config/studiobrain/systemd/studio-brain-discord-relay.timer",
   "config/studiobrain/systemd/studio-brain-discord-relay.sh",
+  "docs/generated/studiobrain-runtime-contract.generated.md",
   "docs/policies/STUDIO_OS_V3_RETENTION.md",
-  "docs/STUDIO_BRAIN_DISCORD_CHANNEL.md",
   "docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md",
   "website/scripts/deploy.mjs",
   "website/scripts/serve.mjs",
@@ -79,6 +75,8 @@ const DEFAULT_TARGET_FILES = [
 const DEFAULT_OVERRIDE_ENV_VAR = "STUDIO_BRAIN_INTEGRITY_OVERRIDE";
 const OVERRIDE_REQUIRED_KEYS = ["owner", "reason", "expiresAt"];
 const TEXT_FILE_EXTENSIONS = new Set([
+  ".conf",
+  ".js",
   ".json",
   ".md",
   ".mjs",
@@ -87,6 +85,8 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".py",
   ".schema",
   ".sh",
+  ".service",
+  ".timer",
   ".yml",
   ".yaml",
 ]);
@@ -220,6 +220,9 @@ function readCanonicalFile(filePath) {
 function shouldNormalizeText(filePath) {
   const normalized = String(filePath || "").replace(/\\/g, "/");
   if (/\/\.env(?:\.|$)/.test(normalized)) {
+    return true;
+  }
+  if (/(^|\/)Caddyfile$/.test(normalized)) {
     return true;
   }
   const ext = normalized.includes(".") ? `.${normalized.split(".").pop()}` : "";

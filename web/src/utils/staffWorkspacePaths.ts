@@ -34,6 +34,7 @@ const STAFF_HOST_URL_RE =
 const STAFF_HOST_STAFF_PATH_RE = /(?:^|\/)staff(?:$|(\/|\?|#))/i;
 
 const STAFF_COCKPIT_MODULE_SEGMENTS = new Set([
+  "control-tower",
   "reports",
   "studio-reservations",
   "operations",
@@ -60,6 +61,8 @@ const STAFF_COCKPIT_TAB_ONLY_SEGMENTS = new Set([
 ]);
 
 const STAFF_COCKPIT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
+  controltower: "control-tower",
+  control_tower: "control-tower",
   billing: "finance",
   payments: "finance",
   ops: "operations",
@@ -104,6 +107,8 @@ const STAFF_COCKPIT_OPERATIONS_ROOT_ALIASES: Readonly<Record<string, StaffCockpi
 };
 
 const STAFF_COCKPIT_ROOT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
+  controltower: "control-tower",
+  control_tower: "control-tower",
   workshop: "operations",
   workshops: "operations",
   checkins: "checkins",

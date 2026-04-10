@@ -107,6 +107,7 @@ import LendingIntakeModule, { type LendingScanSubmitResult } from "./staff/Lendi
 import LendingModule from "./staff/LendingModule";
 import OperationsCockpitModule from "./staff/OperationsCockpitModule";
 import StudioReservationsModule from "./staff/StudioReservationsModule";
+import StudioBrainControlTowerModule from "./staff/StudioBrainControlTowerModule";
 import TaskHomeModule, {
   type StaffTaskHomeAttentionItem,
   type StaffTaskHomeCard,
@@ -163,6 +164,7 @@ type StaffAnnouncementDraft = {
 };
 
 const MODULE_REGISTRY = {
+  controlTower: { label: "Control Tower", owner: "Studio Brain", testId: "staff-module-control-tower", nav: true },
   cockpit: { label: "Cockpit", owner: "Operations", testId: "staff-module-cockpit", nav: true },
   studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: true },
   checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
@@ -264,11 +266,13 @@ const COCKPIT_PATH_TAB_BY_SEGMENT: Readonly<Record<string, CockpitTabKey>> = {
 };
 
 const COCKPIT_MODULE_PATH_SEGMENT: Partial<Record<ModuleKey, string>> = {
+  controlTower: "control-tower",
   communityBlogs: "community-blogs",
   studioReservations: "studio-reservations",
 };
 
 const COCKPIT_MODULE_KEY_BY_PATH_SEGMENT: Readonly<Record<string, ModuleKey>> = {
+  "control-tower": "controlTower",
   "community-blogs": "communityBlogs",
   reports: "reports",
   "studio-reservations": "studioReservations",
@@ -342,7 +346,11 @@ function isCockpitContentOnlyModule(moduleKey: unknown): moduleKey is ModuleKey 
 function resolveCockpitNavigationTarget(target: string): CockpitNavigationTarget {
   const normalizedTarget = target.trim().toLowerCase();
   if (!normalizedTarget) {
-    return { moduleKey: "cockpit" };
+    return { moduleKey: "controlTower" };
+  }
+  const moduleAlias = COCKPIT_MODULE_KEY_BY_PATH_SEGMENT[normalizedTarget];
+  if (moduleAlias) {
+    return { moduleKey: moduleAlias };
   }
   const mappedTab = COCKPIT_ACTION_TARGET_TAB_BY_KEY[normalizedTarget];
   if (mappedTab) {
@@ -369,7 +377,7 @@ function resolveCockpitNavigationTarget(target: string): CockpitNavigationTarget
     }
     return { moduleKey: normalizedTarget as ModuleKey };
   }
-  return { moduleKey: "cockpit" };
+  return { moduleKey: "controlTower" };
 }
 
 function resolveCockpitNavigationTargetPath(target: CockpitNavigationTarget): string {
@@ -2271,7 +2279,7 @@ export default function StaffView({
   onStartFiring,
   onOpenStaffWorkspace,
   initialTaskAction = null,
-  initialModule = "cockpit",
+  initialModule = "controlTower",
   forceCockpitWorkspace = false,
   messageThreads = [],
   messageThreadsLoading = false,
@@ -7967,9 +7975,9 @@ export default function StaffView({
 
   const openCockpitWorkspace = useCallback(() => {
     setIsTaskHomeRoute(false);
-    setModuleKey("cockpit");
+    setModuleKey("controlTower");
     setCockpitWorkspaceMode(true);
-    openStaffWorkspace(STAFF_COCKPIT_PATH);
+    openStaffWorkspace(`${STAFF_COCKPIT_PATH}/control-tower`);
   }, [openStaffWorkspace]);
 
   const openTaskHome = useCallback(() => {
@@ -8323,8 +8331,12 @@ export default function StaffView({
       setIsTaskHomeRoute(false);
       return;
     }
-    openCockpitWorkspace();
-  }, [forceCockpitWorkspace, openCockpitWorkspace]);
+    setIsTaskHomeRoute(false);
+    setModuleKey("cockpit");
+    setCockpitTab("triage");
+    setCockpitWorkspaceMode(true);
+    openStaffWorkspace(STAFF_COCKPIT_PATH);
+  }, [forceCockpitWorkspace, openStaffWorkspace]);
 
   useEffect(() => {
     if (initialTaskAction !== "announcementComposer") return;
@@ -8639,9 +8651,15 @@ export default function StaffView({
   const taskHomeMoreActions = useMemo<StaffTaskHomeMoreAction[]>(
     () => [
       {
+        id: "control-tower",
+        label: "Control Tower",
+        description: "Open the browser-first Studio Brain operator bridge for rooms, services, and incidents.",
+        target: "controlTower",
+      },
+      {
         id: "cockpit",
-        label: "Cockpit",
-        description: "Open the full operations cockpit and automation panels.",
+        label: "Operations cockpit",
+        description: "Open the legacy operations cockpit and automation panels.",
         target: "cockpit",
       },
       {
@@ -9368,6 +9386,16 @@ export default function StaffView({
     />
   );
 
+  const controlTowerContent = (
+    <StudioBrainControlTowerModule
+      user={user}
+      active={moduleKey === "controlTower"}
+      disabled={!hasStaffAuthority}
+      adminToken={devAdminToken}
+      onNavigateTarget={openModuleFromCockpit}
+    />
+  );
+
   const cockpitContent = (
     <CockpitModule
       busy={busy}
@@ -9443,6 +9471,8 @@ export default function StaffView({
   const moduleContent =
     isTaskHomeRoute && !forceCockpitWorkspace
       ? taskHomeContent
+      : moduleKey === "controlTower"
+        ? controlTowerContent
       : moduleKey === "studioReservations"
       ? studioReservationsContent
       : moduleKey === "communityBlogs"

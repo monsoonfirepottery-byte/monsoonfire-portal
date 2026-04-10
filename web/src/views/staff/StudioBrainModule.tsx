@@ -8,7 +8,12 @@ import {
   canExecuteProposalAction,
   canRollbackProposalAction,
 } from "./studioBrainGuards";
-import { resolveStudioBrainBaseUrlResolution } from "../../utils/studioBrain";
+import {
+  clearStoredStudioBrainBaseUrlOverride,
+  getStoredStudioBrainBaseUrlOverride,
+  resolveStudioBrainBaseUrlResolution,
+  setStoredStudioBrainBaseUrlOverride,
+} from "../../utils/studioBrain";
 
 type Props = {
   user: User;
@@ -196,8 +201,11 @@ function when(iso: string | undefined): string {
 }
 
 export default function StudioBrainModule({ user, active, disabled, adminToken }: Props) {
-  const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), []);
+  const [resolutionVersion, setResolutionVersion] = useState(0);
+  const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), [resolutionVersion]);
   const studioBrainBaseUrl = studioBrainResolution.baseUrl;
+  const [baseUrlDraft, setBaseUrlDraft] = useState(() => getStoredStudioBrainBaseUrlOverride());
+  const [baseUrlStatus, setBaseUrlStatus] = useState("");
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -248,6 +256,25 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
 
   const hasAdminToken = adminToken.trim().length > 0;
   const disabledByToken = disabled || !hasAdminToken;
+
+  const saveBaseUrlOverride = () => {
+    setStoredStudioBrainBaseUrlOverride(baseUrlDraft);
+    const nextResolution = resolveStudioBrainBaseUrlResolution();
+    setResolutionVersion((prev) => prev + 1);
+    setBaseUrlStatus(
+      nextResolution.baseUrl
+        ? `Studio Brain URL set to ${nextResolution.baseUrl}.`
+        : nextResolution.reason || "Studio Brain URL is still unavailable.",
+    );
+  };
+
+  const clearBaseUrlOverride = () => {
+    clearStoredStudioBrainBaseUrlOverride();
+    setBaseUrlDraft("");
+    const nextResolution = resolveStudioBrainBaseUrlResolution();
+    setResolutionVersion((prev) => prev + 1);
+    setBaseUrlStatus(nextResolution.reason || "Studio Brain URL override cleared.");
+  };
 
   const run = async (key: string, fn: () => Promise<void>) => {
     if (busy || disabledByToken) return;
@@ -391,7 +418,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
   return (
     <section className="card staff-console-card">
       <div className="card-title-row">
-        <div className="card-title">Studio Brain</div>
+        <div className="card-title">Studio Brain Admin</div>
         <button className="btn btn-secondary" disabled={Boolean(busy) || disabledByToken} onClick={() => void run("refreshStudioBrain", loadAll)}>
           Refresh
         </button>
@@ -399,14 +426,39 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       <div className="staff-note">
         {studioBrainBaseUrl ? (
           <>
+            Advanced administration surface. Use Control Tower for daily room, service, and incident operations.
+            <br />
             Direct browser access to <code>{studioBrainBaseUrl}</code> requires both
             <code>Authorization: Bearer &lt;Firebase ID token&gt;</code> and
             <code>x-studio-brain-admin-token</code> when configured.
           </>
         ) : (
-          <span>Studio Brain is disabled for this host. Configure VITE_STUDIO_BRAIN_BASE_URL.</span>
+          <span>Studio Brain is disabled for this host. Configure a reachable browser URL or set a runtime override below.</span>
         )}
       </div>
+      {!studioBrainBaseUrl ? (
+        <div className="staff-note">
+          <label style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <span>Studio Brain base URL override</span>
+            <input
+              type="url"
+              placeholder="https://studio-brain.example.com"
+              value={baseUrlDraft}
+              onChange={(event) => setBaseUrlDraft(event.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <div className="staff-actions-row" style={{ marginTop: "10px" }}>
+            <button type="button" className="btn btn-primary" onClick={saveBaseUrlOverride}>
+              Save URL
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={clearBaseUrlOverride}>
+              Clear
+            </button>
+          </div>
+          {baseUrlStatus ? <div style={{ marginTop: "8px" }}>{baseUrlStatus}</div> : null}
+        </div>
+      ) : null}
       {!hasAdminToken ? (
         <div className="staff-note staff-note-error">Set a Dev admin token in System module to access Studio Brain endpoints.</div>
       ) : null}

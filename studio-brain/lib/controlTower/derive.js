@@ -643,6 +643,7 @@ function deriveControlTowerState(raw, audits = [], options = {}) {
         channels,
         approvals: options.approvals ?? [],
         memoryBrief,
+        startupScorecard: null,
         events,
         recentChanges: events.slice(0, 6),
         actions,

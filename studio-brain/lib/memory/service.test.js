@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = __importDefault(require("node:test"));
 const strict_1 = __importDefault(require("node:assert/strict"));
+const node_fs_1 = require("node:fs");
+const node_path_1 = require("node:path");
 const service_1 = require("./service");
 const inMemoryAdapter_1 = require("./inMemoryAdapter");
 (0, node_test_1.default)("memory service capture/search pipeline works with in-memory adapter", async () => {
@@ -31,6 +33,939 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
     const stats = await service.stats({});
     strict_1.default.equal(stats.total, 1);
     strict_1.default.equal(stats.bySource[0]?.source, "manual");
+});
+(0, node_test_1.default)("memory service derives episodic accepted decisions and working-memory TTLs", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-layer-routing",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-layer-routing",
+    });
+    const decision = await service.capture({
+        content: "Decision: keep the operator board browser-first until the new dashboard stabilizes.",
+        source: "manual",
+        tags: ["decision"],
+    });
+    const scratch = await service.capture({
+        content: "Channel scratch note for the active Discord thread.",
+        source: "thread-scratch",
+        metadata: {
+            channelId: "discord-channel-1",
+        },
+    });
+    strict_1.default.equal(decision.memoryLayer, "episodic");
+    strict_1.default.equal(decision.status, "accepted");
+    strict_1.default.equal(scratch.memoryLayer, "working");
+    strict_1.default.equal(typeof scratch.metadata.expiresAt, "string");
+});
+(0, node_test_1.default)("memory service defaults Codex trace hints into accepted episodic memory", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-codex-traces",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-codex-traces",
+    });
+    const trace = await service.capture({
+        content: "Thought: capture the action trail so dream cleanup can sort it later.",
+        source: "codex",
+        tags: ["codex-trace", "codex-trace:thought"],
+        metadata: {
+            memoryKind: "thought",
+            rememberKind: "thought",
+            codexTraceKind: "thought",
+        },
+    });
+    strict_1.default.equal(trace.memoryLayer, "episodic");
+    strict_1.default.equal(trace.status, "accepted");
+    strict_1.default.equal(trace.metadata.memoryLayer, "episodic");
+});
+(0, node_test_1.default)("memory service search and stats honor layer filters", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-layer-filters",
+        defaultAgentId: "agent:codex",
+    });
+    await service.capture({
+        content: "Working scratch for the current operator lane.",
+        source: "thread-scratch",
+        metadata: { channelId: "ops-room" },
+    });
+    await service.capture({
+        content: "Canonical note backed by repo markdown lineage.",
+        source: "repo-markdown",
+        metadata: {
+            corpusRecordId: "repo-record-1",
+            sourceArtifactPath: "docs/operator.md",
+        },
+    });
+    const workingOnly = await service.search({
+        query: "operator lane canonical note",
+        layerAllowlist: ["working"],
+    });
+    const stats = await service.stats({
+        layerDenylist: ["working"],
+    });
+    strict_1.default.equal(workingOnly.length, 1);
+    strict_1.default.equal(workingOnly[0]?.memoryLayer, "working");
+    strict_1.default.equal(stats.byLayer.some((entry) => entry.layer === "canonical"), true);
+    strict_1.default.equal(stats.byLayer.some((entry) => entry.layer === "working"), false);
+});
+(0, node_test_1.default)("memory consolidation writes explainable artifacts and relationship repairs", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-consolidation",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-consolidation",
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        const episodic = await service.capture({
+            content: "Decision: keep the kiln dashboard browser-first until the live control tower stabilizes.",
+            source: "manual",
+            metadata: {
+                subject: "Kiln dashboard continuity",
+            },
+            tags: ["decision"],
+        });
+        const canonical = await service.capture({
+            content: "Decision: keep the kiln dashboard browser-first until the live control tower stabilizes.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Kiln dashboard continuity",
+                corpusRecordId: "repo-record-1",
+                sourceArtifactPath: "docs/kiln-dashboard.md",
+            },
+            tags: ["decision"],
+        });
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-consolidation-run",
+            maxCandidates: 20,
+            maxWrites: 10,
+            timeBudgetMs: 30_000,
+            focusAreas: ["kiln-dashboard"],
+        });
+        strict_1.default.equal(result.promotionCount, 1);
+        strict_1.default.equal(result.archiveCount, 1);
+        strict_1.default.equal(result.softClusterCount, 1);
+        strict_1.default.equal(result.connectionNoteCount, 1);
+        strict_1.default.equal(Array.isArray(result.repairDetails), true);
+        strict_1.default.equal(Array.isArray(result.promotionDetails), true);
+        strict_1.default.equal(Array.isArray(result.connectionNoteDetails), true);
+        strict_1.default.equal(Array.isArray(result.writeAudit), true);
+        strict_1.default.equal(Array.isArray(result.phaseAudit), true);
+        strict_1.default.equal(Array.isArray(result.decisionAudit), true);
+        strict_1.default.equal((result.writeAudit ?? []).some((entry) => entry.action === "promotion" && entry.writeKind === "memory-record"), true);
+        strict_1.default.equal((result.writeAudit ?? []).some((entry) => entry.action === "archive" && entry.phase === "promotionEvaluation"), true);
+        strict_1.default.equal((result.decisionAudit ?? []).some((entry) => entry.decision === "promotion" && (entry.status === "promoted" || entry.status === "skipped")), true);
+        strict_1.default.equal((result.phaseAudit ?? []).some((entry) => entry.phase === "candidateSelection" && entry.event === "complete"), true);
+        strict_1.default.equal(result.repairDetails?.[0]?.clusterKey != null, true);
+        strict_1.default.equal(result.promotionDetails?.[0]?.status, "promoted");
+        strict_1.default.equal(result.connectionNoteDetails?.[0]?.topic != null, true);
+        strict_1.default.equal(result.actionabilityStatus, "passed");
+        strict_1.default.equal(Number(result.actionableInsightCount ?? 0) >= 1, true);
+        strict_1.default.equal(Number(result.topActions?.length ?? 0) >= 2, true);
+        const rows = await service.getByIds({
+            ids: [episodic.id, canonical.id],
+            includeArchived: true,
+        });
+        strict_1.default.equal(rows.find((row) => row.id === episodic.id)?.status, "archived");
+        strict_1.default.equal(rows.find((row) => row.id === canonical.id)?.status, "accepted");
+        const promotedRows = await service.search({
+            query: "kiln dashboard browser-first control tower stabilizes",
+            layerAllowlist: ["canonical"],
+        });
+        strict_1.default.equal(promotedRows.some((row) => row.source === "memory-consolidation-promoted"), true);
+        const connectionRows = await service.search({
+            query: "Dream connection note kiln dashboard browser-first live control tower stabilizes",
+            layerAllowlist: ["episodic"],
+        });
+        strict_1.default.equal(connectionRows.some((row) => row.source === "memory-consolidation-connection"), true);
+        const signalPresence = await adapter.hasSignalIndex?.({
+            tenantId: "tenant-consolidation",
+            memoryId: canonical.id,
+            edgeKeys: [{ targetId: episodic.id, relationType: "duplicate-of" }],
+        });
+        strict_1.default.equal(typeof signalPresence === "object" || signalPresence == null, true);
+        strict_1.default.equal((0, node_fs_1.existsSync)(artifactPath), true);
+        const artifact = JSON.parse((0, node_fs_1.readFileSync)(artifactPath, "utf8"));
+        strict_1.default.match(String(artifact.summary || ""), /promoted 1, archived 1/i);
+        strict_1.default.match(String(artifact.summary || ""), /wrote 1 connection notes?/i);
+        strict_1.default.equal(artifact.softClusterCount, 1);
+        strict_1.default.equal(artifact.connectionNoteCount, 1);
+        strict_1.default.equal(Array.isArray(artifact.repairDetails), true);
+        strict_1.default.equal(Array.isArray(artifact.connectionNoteDetails), true);
+        strict_1.default.equal(Array.isArray(artifact.writeAudit), true);
+        strict_1.default.equal(Array.isArray(artifact.phaseAudit), true);
+        strict_1.default.equal(Array.isArray(artifact.decisionAudit), true);
+        strict_1.default.equal(Number((artifact.writeAudit ?? []).length) >= 1, true);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation widens beyond the freshest rows to recover older related memories", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-wide-dream",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-wide-dream",
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Decision: keep the kiln dashboard browser-first continuity contract alive for staff operations.",
+            source: "manual",
+            metadata: {
+                subject: "Kiln dashboard continuity contract",
+            },
+            tags: ["decision"],
+        });
+        await service.capture({
+            content: "Decision: keep the kiln dashboard browser-first continuity contract alive for staff operations.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Kiln dashboard continuity contract",
+                corpusRecordId: "repo-wide-1",
+                sourceArtifactPath: "docs/kiln-dashboard.md",
+            },
+            tags: ["decision"],
+        });
+        for (let index = 0; index < 5; index += 1) {
+            await service.capture({
+                content: `Discord scratch ${index}: unrelated staffing chatter for another lane.`,
+                source: "thread-scratch",
+                metadata: { channelId: `ops-${index}` },
+            });
+        }
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-wide-dream-run",
+            maxCandidates: 2,
+            maxWrites: 12,
+            timeBudgetMs: 30_000,
+            focusAreas: ["kiln dashboard continuity contract"],
+        });
+        strict_1.default.equal(result.promotionCount, 1);
+        strict_1.default.equal(result.archiveCount, 1);
+        strict_1.default.equal(result.connectionNoteCount, 1);
+        strict_1.default.equal(Number(result.candidateSelectionDetails?.recentCreatedCount ?? 0), 2);
+        strict_1.default.equal(Number(result.candidateSelectionDetails?.queryExpansionCount ?? 0) >= 2, true);
+        strict_1.default.equal(Number(result.candidateSelectionDetails?.uniqueCandidateCount ?? 0) > 2, true);
+        strict_1.default.equal(Array.isArray(result.candidateSelectionDetails?.byFamily), true);
+        const artifact = JSON.parse((0, node_fs_1.readFileSync)(artifactPath, "utf8"));
+        strict_1.default.equal(Number(artifact.connectionNoteCount ?? 0), 1);
+        strict_1.default.equal(Array.isArray(artifact.candidateSelectionDetails?.querySeeds), true);
+        strict_1.default.equal(Number(artifact.candidateSelectionDetails?.queryExpansionCount ?? 0) >= 2, true);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation uses association intents for themed bundles", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-association-intents",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-association-intents",
+        associationScout: {
+            async scout(bundle) {
+                if (bundle.bundleType !== "theme-cluster")
+                    return null;
+                return {
+                    theme: "approval summary before action",
+                    summary: "These memories describe the same operating habit: summarize approvals before proposing action.",
+                    confidence: 0.81,
+                    contradictions: [],
+                    followUpQueries: ["approval summary concierge runbook"],
+                    intents: [
+                        {
+                            type: "connection_note",
+                            confidence: 0.84,
+                            title: "approval summary before action",
+                            explanation: "Write a synthesized note linking the operator habit and the runbook fragment.",
+                            memoryIds: bundle.rows.map((row) => row.id).slice(0, 2),
+                            targetIds: [],
+                            recommendation: "Keep this as an accepted episodic bridge until stronger canonical support lands.",
+                        },
+                        {
+                            type: "repair_edges",
+                            confidence: 0.76,
+                            title: "approval summary relation",
+                            explanation: "Link the runbook fragment back to the operator habit as the same operating thread.",
+                            memoryIds: bundle.rows.slice(0, 1).map((row) => row.id),
+                            targetIds: bundle.rows.slice(1, 2).map((row) => row.id),
+                            relationType: "operates-with",
+                        },
+                    ],
+                    provider: "test.stub",
+                    model: "mini-association",
+                };
+            },
+        },
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Operator note: summarize pending approvals before suggesting any next action in Discord.",
+            source: "manual",
+            metadata: {
+                subject: "Discord concierge approval summary",
+                channelId: "ops-approvals",
+                threadEvidence: "explicit",
+                threadKey: "discord-approval-summary",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:discord-approval-summary"],
+            },
+            tags: ["decision"],
+            memoryType: "episodic",
+            memoryLayer: "episodic",
+            status: "accepted",
+        });
+        await service.capture({
+            content: "Runbook fragment: when approvals pile up, post a compact approval summary before any write suggestion.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Discord concierge approval summary",
+                corpusRecordId: "repo-association-1",
+                sourceArtifactPath: "docs/discord-concierge.md",
+                threadEvidence: "explicit",
+                threadKey: "discord-approval-summary",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:discord-approval-summary"],
+            },
+            tags: ["runbook"],
+        });
+        await service.capture({
+            content: "Scratch: unrelated kiln scheduling chatter for another lane.",
+            source: "thread-scratch",
+            metadata: { channelId: "kiln-lane" },
+        });
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-association-intent-run",
+            maxCandidates: 3,
+            maxWrites: 10,
+            timeBudgetMs: 30_000,
+            focusAreas: ["discord concierge approval summary"],
+        });
+        strict_1.default.equal(result.archiveCount, 0);
+        strict_1.default.equal(result.connectionNoteCount, 1);
+        strict_1.default.equal(Number(result.associationBundleCount ?? 0) >= 1, true);
+        strict_1.default.equal(Number(result.associationIntentCount ?? 0) >= 2, true);
+        const connectionRows = await service.search({
+            query: "approval summary before action synthesized note operator habit runbook fragment",
+            layerAllowlist: ["episodic"],
+        });
+        const intentRow = connectionRows.find((row) => row.source === "memory-consolidation-connection");
+        strict_1.default.equal(Boolean(intentRow), true);
+        strict_1.default.equal(intentRow?.metadata?.associationScout?.provider, "test.stub");
+        const artifact = JSON.parse((0, node_fs_1.readFileSync)(artifactPath, "utf8"));
+        strict_1.default.equal(Number(artifact.associationBundleCount ?? 0) >= 1, true);
+        strict_1.default.equal(Number(artifact.associationIntentCount ?? 0) >= 2, true);
+        strict_1.default.equal(Array.isArray(artifact.associationDetails), true);
+        strict_1.default.equal(Number(artifact.themeClusterCount ?? 0) >= 1, true);
+        strict_1.default.equal(Array.isArray(artifact.writeAudit), true);
+        strict_1.default.equal(Array.isArray(artifact.decisionAudit), true);
+        strict_1.default.equal((artifact.writeAudit ?? []).some((entry) => entry.action === "connection-note" && entry.phase === "associationScout"), true);
+        strict_1.default.equal((artifact.decisionAudit ?? []).some((entry) => entry.decision === "bundle-evaluated" && entry.phase === "associationScout"), true);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation source balancing caps raw compaction share when other families are available", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-source-balance",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-source-balance",
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        for (let index = 0; index < 10; index += 1) {
+            await service.capture({
+                content: `Canonical continuity memory ${index} for operator recall balance.`,
+                source: "repo-markdown",
+                metadata: {
+                    corpusRecordId: `repo-balance-${index}`,
+                    sourceArtifactPath: `docs/balance-${index}.md`,
+                    subject: `balance-${index}`,
+                },
+                status: "accepted",
+                memoryLayer: "canonical",
+            });
+            await service.capture({
+                content: `Episodic accepted memory ${index} for operator recall balance.`,
+                source: "manual",
+                metadata: {
+                    subject: `balance-${index}`,
+                    threadKey: `balance-thread-${index}`,
+                },
+                status: "accepted",
+                memoryLayer: "episodic",
+                memoryType: "episodic",
+            });
+            await service.capture({
+                content: `Channel evidence ${index} from Discord/manual operations for recall balance.`,
+                source: `discord:ops:${index}`,
+                metadata: {
+                    subject: `balance-${index}`,
+                    channelId: `ops-${index}`,
+                },
+                status: "accepted",
+                memoryLayer: "episodic",
+                memoryType: "episodic",
+            });
+            await service.capture({
+                content: `Compaction promoted memory ${index} should not dominate dream intake.`,
+                source: "codex-compaction-promoted",
+                metadata: {
+                    subject: `balance-${index}`,
+                },
+                status: "accepted",
+                memoryLayer: "episodic",
+                memoryType: "episodic",
+            });
+            await service.capture({
+                content: `Working scratch ${index} for the active operator thread.`,
+                source: "thread-scratch",
+                metadata: {
+                    channelId: `scratch-${index}`,
+                    subject: `balance-${index}`,
+                },
+            });
+        }
+        for (let index = 0; index < 30; index += 1) {
+            await service.capture({
+                content: `Raw compaction row ${index} with stale operational overlap.`,
+                source: "codex-compaction-raw",
+                metadata: {
+                    subject: `raw-balance-${index % 4}`,
+                },
+                status: "proposed",
+                memoryLayer: "episodic",
+                memoryType: "episodic",
+            });
+        }
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-source-balance-run",
+            maxCandidates: 12,
+            maxWrites: 2,
+            timeBudgetMs: 30_000,
+            focusAreas: ["operator recall balance"],
+        });
+        const selection = result.candidateSelectionDetails;
+        const actual = selection.familyQuotaActual || [];
+        const rawEntry = actual.find((entry) => entry.family === "compaction-raw");
+        const rawSelected = Number(rawEntry?.selectedCount ?? 0);
+        const totalSelected = Number(selection.postBalanceCandidateCount ?? 0);
+        strict_1.default.equal(totalSelected > 0, true);
+        strict_1.default.equal(rawSelected / totalSelected <= 0.2, true);
+        strict_1.default.equal((selection.dominanceWarnings ?? []).some((entry) => /compaction-raw/i.test(entry)), false);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation confirms associative promotion candidates on the second pass", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-promotion-candidate",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-promotion-candidate",
+        associationScout: {
+            async scout(bundle) {
+                if (bundle.bundleType === "theme-cluster") {
+                    return {
+                        theme: "approval summary concierge pattern",
+                        summary: "These memories describe the same durable operating pattern around approval summaries before action.",
+                        confidence: 0.83,
+                        contradictions: [],
+                        followUpQueries: ["approval summary followup"],
+                        intents: [
+                            {
+                                type: "promotion_candidate",
+                                confidence: 0.82,
+                                title: "approval summary concierge pattern",
+                                explanation: "This bundle looks durable enough to become a canonical candidate after replay.",
+                                memoryIds: bundle.rows.map((row) => row.id).slice(0, 3),
+                                targetIds: [],
+                            },
+                        ],
+                        provider: "test.stub",
+                        model: "mini-association",
+                    };
+                }
+                if (bundle.bundleType === "synthesis-bundle") {
+                    return {
+                        theme: "approval summary concierge pattern",
+                        summary: "Replay confirmed the same durable operating pattern with broader support.",
+                        confidence: 0.88,
+                        contradictions: [],
+                        followUpQueries: [],
+                        intents: [
+                            {
+                                type: "promotion_candidate",
+                                confidence: 0.86,
+                                title: "approval summary concierge pattern",
+                                explanation: "The replay bundle confirms the earlier thesis strongly enough for canonical promotion.",
+                                memoryIds: bundle.rows.map((row) => row.id).slice(0, 4),
+                                targetIds: [],
+                            },
+                        ],
+                        provider: "test.stub",
+                        model: "mini-association",
+                    };
+                }
+                return null;
+            },
+        },
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Operator note: summarize pending approvals before suggesting the next Discord action.",
+            source: "manual",
+            metadata: {
+                subject: "Approval summary concierge pattern",
+                threadKey: "approval-summary-pattern",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:approval-summary-pattern"],
+            },
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+            tags: ["decision"],
+        });
+        await service.capture({
+            content: "Runbook fragment: post a compact approval summary before any write suggestion when approvals pile up.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Approval summary concierge pattern",
+                threadKey: "approval-summary-pattern",
+                corpusRecordId: "repo-promotion-candidate-1",
+                sourceArtifactPath: "docs/discord-concierge.md",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:approval-summary-pattern"],
+            },
+            status: "accepted",
+            memoryLayer: "canonical",
+            tags: ["runbook"],
+        });
+        await service.capture({
+            content: "Discord ops memory: approvals should be summarized before action during concierge escalations.",
+            source: "discord:ops:approval-summary",
+            metadata: {
+                subject: "Approval summary concierge pattern",
+                threadKey: "approval-summary-pattern",
+                channelId: "ops-approval-summary",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:approval-summary-pattern"],
+            },
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+        });
+        await service.capture({
+            content: "Followup evidence: approval summary followup confirms the concierge pattern is durable.",
+            source: "manual",
+            metadata: {
+                subject: "Approval summary concierge pattern",
+                threadKey: "approval-summary-pattern-followup",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:approval-summary-pattern"],
+            },
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+        });
+        const result = await service.consolidate({
+            mode: "overnight",
+            runId: "test-promotion-candidate-run",
+            maxCandidates: 6,
+            maxWrites: 10,
+            timeBudgetMs: 60_000,
+            focusAreas: ["approval summary concierge"],
+        });
+        const canonicalResults = await service.search({
+            query: "approval summary concierge pattern durable operating pattern canonical",
+            layerAllowlist: ["canonical"],
+        });
+        strict_1.default.equal(canonicalResults.some((row) => row.source === "memory-consolidation-promoted"), true);
+        strict_1.default.equal(Number(result.synthesisBundleCount ?? 0) >= 1, true);
+        strict_1.default.equal(Number(result.secondPassQueriesUsed ?? 0) >= 1, true);
+        strict_1.default.equal(Number(result.promotionCandidateConfirmedCount ?? 0) >= 1, true);
+        const artifact = JSON.parse((0, node_fs_1.readFileSync)(artifactPath, "utf8"));
+        strict_1.default.equal(Number(artifact.synthesisBundleCount ?? 0) >= 1, true);
+        strict_1.default.equal(Array.isArray(artifact.queryReplayDetails), true);
+        strict_1.default.equal(Number(artifact.promotionCandidateConfirmedCount ?? 0) >= 1, true);
+        strict_1.default.equal((artifact.promotionCandidateDetails ?? []).some((entry) => entry.status === "confirmed"), true);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory search and context exclude dream promotion candidates by default", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-promotion-filter",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-promotion-filter",
+    });
+    await service.capture({
+        id: "dream-promotion-candidate:test",
+        content: "Dream promotion candidate: approval summary concierge pattern.",
+        source: "memory-consolidation-promotion-candidate",
+        status: "proposed",
+        memoryLayer: "episodic",
+        memoryType: "episodic",
+        metadata: {
+            thesisFingerprint: "fp-1",
+            candidateForLayer: "canonical",
+        },
+    });
+    const defaultSearch = await service.search({
+        query: "approval summary concierge pattern",
+    });
+    const explicitSearch = await service.search({
+        query: "approval summary concierge pattern",
+        sourceAllowlist: ["memory-consolidation-promotion-candidate"],
+    });
+    const defaultContext = await service.context({
+        query: "approval summary concierge pattern",
+        maxItems: 8,
+        scanLimit: 24,
+    });
+    strict_1.default.equal(defaultSearch.some((row) => row.source === "memory-consolidation-promotion-candidate"), false);
+    strict_1.default.equal(explicitSearch.some((row) => row.source === "memory-consolidation-promotion-candidate"), true);
+    strict_1.default.equal((defaultContext.items ?? []).some((row) => row.source === "memory-consolidation-promotion-candidate"), false);
+});
+(0, node_test_1.default)("memory service does not default pseudo decision traces into accepted episodic memory", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-pseudo-decision",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-pseudo-decision",
+    });
+    const trace = await service.capture({
+        content: "Context loaded via fallback retrieval for startup query replay.",
+        source: "codex",
+        tags: ["decision"],
+    });
+    strict_1.default.equal(trace.status, "proposed");
+});
+(0, node_test_1.default)("memory consolidation suppresses pseudo decision traces from candidate selection and query seeds", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-pseudo-filter",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-pseudo-filter",
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Context loaded via fallback retrieval for startup query replay.",
+            source: "codex",
+            tags: ["decision"],
+        });
+        await service.capture({
+            content: "Decision: summarize approvals before action so the operator sees the full lane state.",
+            source: "manual",
+            tags: ["decision"],
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+        });
+        await service.capture({
+            content: "Decision: summarize approvals before action so the operator sees the full lane state.",
+            source: "repo-markdown",
+            metadata: {
+                sourceArtifactPath: "docs/approval-summary.md",
+                corpusRecordId: "repo-approval-summary",
+            },
+            status: "accepted",
+            memoryLayer: "canonical",
+            memoryType: "semantic",
+        });
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-pseudo-filter-run",
+            maxCandidates: 6,
+            maxWrites: 8,
+            timeBudgetMs: 30_000,
+            focusAreas: ["approval summary before action"],
+        });
+        strict_1.default.equal(Number(result.candidateSelectionDetails?.suppressedPseudoDecisionCount ?? 0) >= 1, true);
+        strict_1.default.equal((result.candidateSelectionDetails?.querySeeds ?? []).some((entry) => String(entry).toLowerCase().includes("startup query")), false);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation quarantines contradictory mail-thread merges and suppresses misleading connection notes", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-mail-quarantine",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-mail-quarantine",
+        associationScout: {
+            async scout(bundle) {
+                if (bundle.bundleType !== "theme-cluster")
+                    return null;
+                return {
+                    theme: "unknown mail-thread merge",
+                    summary: "These memories were grouped together, but the thread appears over-merged across unrelated mail topics.",
+                    confidence: 0.88,
+                    contradictions: ["Subjects drift across years.", "Participants do not overlap enough to trust a single thread."],
+                    followUpQueries: ["unknown mail thread merge"],
+                    intents: [
+                        {
+                            type: "connection_note",
+                            confidence: 0.86,
+                            title: "unknown mail-thread merge",
+                            explanation: "Draft a readable bridge note for the suspected merged mail thread.",
+                            memoryIds: bundle.rows.map((row) => row.id).slice(0, 2),
+                            targetIds: [],
+                            recommendation: "Keep this association as a readable intent thread until stronger corroboration lands.",
+                        },
+                        {
+                            type: "quarantine_candidate",
+                            confidence: 0.93,
+                            title: "unknown mail-thread merge quarantine",
+                            explanation: "The merged mail thread should be quarantined before any durable promotion.",
+                            memoryIds: bundle.rows.map((row) => row.id).slice(0, 3),
+                            targetIds: [],
+                        },
+                    ],
+                    provider: "test.stub",
+                    model: "mini-association",
+                };
+            },
+        },
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Operator note: thread A covered approval follow-ups for the unknown mail thread.",
+            source: "manual",
+            metadata: {
+                subject: "Unknown mail thread",
+                subjectKey: "unknown-mail-thread",
+                patternHints: ["thread:unknown-mail-thread"],
+            },
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+        });
+        await service.capture({
+            content: "Runbook fragment: unknown mail thread was later reused for archival cleanup.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Unknown mail thread",
+                subjectKey: "unknown-mail-thread",
+                sourceArtifactPath: "docs/unknown-mail-thread.md",
+                corpusRecordId: "repo-mail-quarantine",
+                patternHints: ["thread:unknown-mail-thread"],
+            },
+            status: "accepted",
+            memoryLayer: "canonical",
+            memoryType: "semantic",
+        });
+        await service.capture({
+            content: "Mail import note: unknown mail thread also points at unrelated historical outreach.",
+            source: "mail:ops",
+            metadata: {
+                subject: "Unknown mail thread",
+                subjectKey: "unknown-mail-thread",
+                patternHints: ["thread:unknown-mail-thread"],
+            },
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+        });
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-mail-quarantine-run",
+            maxCandidates: 8,
+            maxWrites: 10,
+            timeBudgetMs: 30_000,
+            focusAreas: ["unknown mail thread merge"],
+        });
+        strict_1.default.equal(result.quarantineCount, 1);
+        strict_1.default.equal(result.connectionNoteCount, 0);
+        strict_1.default.equal(Number(result.suppressedConnectionNoteCount ?? 0) >= 1, true);
+        strict_1.default.equal(result.actionabilityStatus, "passed");
+        strict_1.default.equal(Number(result.topActions?.length ?? 0) >= 2, true);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation suppresses unchanged connection notes on rerun", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-unchanged-connection-note",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-unchanged-connection-note",
+        associationScout: {
+            async scout(bundle) {
+                if (bundle.bundleType !== "theme-cluster")
+                    return null;
+                return {
+                    theme: "approval summary before action",
+                    summary: "These memories describe the same operator habit of summarizing approvals before action.",
+                    confidence: 0.82,
+                    contradictions: [],
+                    followUpQueries: [],
+                    intents: [
+                        {
+                            type: "connection_note",
+                            confidence: 0.9,
+                            title: "approval summary before action",
+                            explanation: "Write one readable bridge note for the approval summary habit.",
+                            memoryIds: bundle.rows.map((row) => row.id).slice(0, 2),
+                            targetIds: [],
+                            recommendation: "Review the approval summary thread before the next operator handoff.",
+                        },
+                    ],
+                    provider: "test.stub",
+                    model: "mini-association",
+                };
+            },
+        },
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Operator note: summarize approvals before suggesting any next step.",
+            source: "manual",
+            metadata: {
+                subject: "Approval summary thread",
+                subjectKey: "approval-summary-thread",
+                patternHints: ["thread:approval-summary-thread"],
+            },
+            status: "accepted",
+            memoryLayer: "episodic",
+            memoryType: "episodic",
+        });
+        await service.capture({
+            content: "Runbook fragment: summarize approvals before suggesting any next step.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Approval summary thread",
+                subjectKey: "approval-summary-thread",
+                sourceArtifactPath: "docs/approval-summary-thread.md",
+                corpusRecordId: "repo-approval-thread",
+                patternHints: ["thread:approval-summary-thread"],
+            },
+            status: "accepted",
+            memoryLayer: "canonical",
+            memoryType: "semantic",
+        });
+        const first = await service.consolidate({
+            mode: "idle",
+            runId: "test-unchanged-connection-first",
+            maxCandidates: 6,
+            maxWrites: 8,
+            timeBudgetMs: 30_000,
+            focusAreas: ["approval summary before action"],
+        });
+        const second = await service.consolidate({
+            mode: "idle",
+            runId: "test-unchanged-connection-second",
+            maxCandidates: 6,
+            maxWrites: 8,
+            timeBudgetMs: 30_000,
+            focusAreas: ["approval summary before action"],
+        });
+        strict_1.default.equal(first.connectionNoteCount, 1);
+        strict_1.default.equal(second.connectionNoteCount, 0);
+        strict_1.default.equal(Number(second.suppressedConnectionNoteCount ?? 0) >= 1, true);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
+});
+(0, node_test_1.default)("memory consolidation surfaces unavailable association scout status in the artifact", { concurrency: false }, async () => {
+    const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store: adapter,
+        defaultTenantId: "tenant-association-unavailable",
+        defaultAgentId: "agent:codex",
+        defaultRunId: "run-association-unavailable",
+        associationScout: null,
+    });
+    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    try {
+        await service.capture({
+            content: "Operator note: summarize pending approvals before suggesting any next action in Discord.",
+            source: "manual",
+            metadata: {
+                subject: "Discord concierge approval summary",
+                threadEvidence: "explicit",
+                threadKey: "discord-approval-summary",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:discord-approval-summary"],
+            },
+            tags: ["decision"],
+            memoryType: "episodic",
+            memoryLayer: "episodic",
+            status: "accepted",
+        });
+        await service.capture({
+            content: "Runbook fragment: when approvals pile up, post a compact approval summary before any write suggestion.",
+            source: "repo-markdown",
+            metadata: {
+                subject: "Discord concierge approval summary",
+                corpusRecordId: "repo-association-unavailable-1",
+                sourceArtifactPath: "docs/discord-concierge.md",
+                threadEvidence: "explicit",
+                threadKey: "discord-approval-summary",
+                entityHints: ["concept:approval-summary", "role:discord-concierge"],
+                patternHints: ["workflow:approval-summary", "thread:discord-approval-summary"],
+            },
+            tags: ["runbook"],
+        });
+        const result = await service.consolidate({
+            mode: "idle",
+            runId: "test-association-unavailable-run",
+            maxCandidates: 3,
+            maxWrites: 6,
+            timeBudgetMs: 30_000,
+            focusAreas: ["discord concierge approval summary"],
+        });
+        strict_1.default.equal(Number(result.themeClusterCount ?? 0) >= 1, true);
+        strict_1.default.equal(Number(result.associationBundleCount ?? 0), 0);
+        const artifact = JSON.parse((0, node_fs_1.readFileSync)(artifactPath, "utf8"));
+        strict_1.default.equal(Number(artifact.themeClusterCount ?? 0) >= 1, true);
+        strict_1.default.equal(artifact.associationScoutStatus?.available, false);
+        strict_1.default.equal(artifact.associationScoutStatus?.reason, "disabled");
+        strict_1.default.match(String(artifact.summary || ""), /association scout unavailable/i);
+        strict_1.default.equal(Array.isArray(artifact.associationErrors), true);
+        strict_1.default.match(String(artifact.associationErrors?.[0]?.error || ""), /association scout unavailable/i);
+    }
+    finally {
+        (0, node_fs_1.rmSync)(artifactPath, { force: true });
+    }
 });
 (0, node_test_1.default)("memory service importBatch reports failures when continueOnError=false", async () => {
     const service = (0, service_1.createMemoryService)({
@@ -183,6 +1118,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
         clientRequestId: "legacy-thread-noise-1",
         status: "accepted",
         memoryType: "semantic",
+        memoryLayer: "canonical",
         sourceConfidence: 0.75,
         importance: 0.6,
         contextualizedContent: "Imported repo notes that should not behave like an email thread.",

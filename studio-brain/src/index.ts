@@ -17,6 +17,7 @@ import { InMemoryQuotaStore } from "./capabilities/policy";
 import { PostgresPolicyStore, PostgresProposalStore, PostgresQuotaStore } from "./capabilities/postgresStores";
 import { HubitatConnector } from "./connectors/hubitatConnector";
 import { RoborockConnector } from "./connectors/roborockConnector";
+import { createRoborockTransportFromEnv } from "./connectors/roborockTransport";
 import { ConnectorRegistry } from "./connectors/registry";
 import { createPilotWriteExecutor } from "./capabilities/pilotWriteExecutor";
 import { SwarmOrchestrator, deriveSwarmRunId } from "./swarm/orchestrator";
@@ -221,10 +222,7 @@ async function main(): Promise<void> {
         if (path === "/health") return { ok: true };
         return { devices: [] };
       }),
-      new RoborockConnector(async (path) => {
-        if (path === "/health") return { ok: true };
-        return { devices: [] };
-      }),
+      new RoborockConnector(createRoborockTransportFromEnv(logger)),
     ],
     logger
   );

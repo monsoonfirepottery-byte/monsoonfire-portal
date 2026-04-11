@@ -1,0 +1,14 @@
+[Unit]
+Description=Studio Brain Discord relay sync and discussion replies
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wuff
+Group=wuff
+WorkingDirectory=/home/wuff/monsoonfire-portal
+Environment=STUDIO_BRAIN_REPO_ROOT=/home/wuff/monsoonfire-portal
+ExecStart=/bin/bash /usr/local/bin/studio-brain-discord-relay.sh listen
+Restart=always
+RestartSec=5

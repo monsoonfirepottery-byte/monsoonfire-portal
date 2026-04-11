@@ -22,7 +22,13 @@ const AUTH_REFRESH_MIN_INTERVAL_MS = 10_000;
 const DEFAULT_REPO_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
 const DEFAULT_HOME_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
 
-let authorizationHeader = normalizeBearer(process.env.STUDIO_BRAIN_MCP_ID_TOKEN || process.env.STUDIO_BRAIN_ID_TOKEN || "");
+let authorizationHeader = normalizeBearer(
+  process.env.STUDIO_BRAIN_MCP_AUTH_HEADER ||
+    process.env.STUDIO_BRAIN_MCP_ID_TOKEN ||
+    process.env.STUDIO_BRAIN_ID_TOKEN ||
+    process.env.STUDIO_BRAIN_AUTH_TOKEN ||
+    ""
+);
 let lastAuthRefreshAtMs = 0;
 
 function parsePositiveInt(value, fallback) {

@@ -32,13 +32,38 @@ export function findPlanningRepoRoot(startDir = process.cwd()): string {
   throw new Error("Unable to locate planning control-plane root from current working directory.");
 }
 
-let cachedModulePromise: Promise<PlanningControlPlaneModule> | null = null;
+function isPlanningRepoRoot(candidateRoot: string): boolean {
+  return (
+    fs.existsSync(path.join(candidateRoot, ".governance", "planning"))
+    && fs.existsSync(path.join(candidateRoot, "contracts"))
+    && fs.existsSync(path.join(candidateRoot, "scripts", "lib", "planning-control-plane.mjs"))
+  );
+}
+
+export function resolvePlanningRepoRoot(repoRoot?: string, startDir = process.cwd()): string {
+  const trimmedRepoRoot = typeof repoRoot === "string" ? repoRoot.trim() : "";
+  if (trimmedRepoRoot) {
+    const candidates = [trimmedRepoRoot, path.resolve(startDir, trimmedRepoRoot)];
+    for (const candidate of candidates) {
+      if (candidate && isPlanningRepoRoot(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return findPlanningRepoRoot(startDir);
+}
+
+const cachedModulePromises = new Map<string, Promise<PlanningControlPlaneModule>>();
 const dynamicImport = new Function("modulePath", "return import(modulePath);") as (modulePath: string) => Promise<PlanningControlPlaneModule>;
 
 export async function loadPlanningControlPlaneModule(repoRoot = findPlanningRepoRoot()): Promise<PlanningControlPlaneModule> {
-  if (!cachedModulePromise) {
-    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts", "lib", "planning-control-plane.mjs")).href;
-    cachedModulePromise = dynamicImport(moduleUrl);
+  const effectiveRepoRoot = resolvePlanningRepoRoot(repoRoot);
+  const cachedModulePromise = cachedModulePromises.get(effectiveRepoRoot);
+  if (cachedModulePromise) {
+    return cachedModulePromise;
   }
-  return cachedModulePromise;
+  const moduleUrl = pathToFileURL(path.join(effectiveRepoRoot, "scripts", "lib", "planning-control-plane.mjs")).href;
+  const modulePromise = dynamicImport(moduleUrl);
+  cachedModulePromises.set(effectiveRepoRoot, modulePromise);
+  return modulePromise;
 }

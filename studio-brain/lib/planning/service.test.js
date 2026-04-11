@@ -8,14 +8,16 @@ const strict_1 = __importDefault(require("node:assert/strict"));
 const inMemoryAdapter_1 = require("../memory/inMemoryAdapter");
 const service_1 = require("../memory/service");
 const memoryStores_1 = require("../stores/memoryStores");
+const governance_1 = require("./governance");
 const service_2 = require("./service");
 const store_1 = require("./store");
+const repoRoot = (0, governance_1.findPlanningRepoRoot)(process.cwd());
 (0, node_test_1.default)("planning service submits a packet bundle and seeds the curated role library", async () => {
     const eventStore = new memoryStores_1.MemoryEventStore();
     const service = new service_2.PlanningService({
         store: new store_1.MemoryPlanningStore(),
         eventStore,
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T14:00:00.000Z",
     });
     const bundle = await service.submit({
@@ -46,7 +48,7 @@ const store_1 = require("./store");
     const service = new service_2.PlanningService({
         store: new store_1.MemoryPlanningStore(),
         eventStore,
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T14:15:00.000Z",
     });
     const preparation = await service.prepare({
@@ -260,7 +262,7 @@ const store_1 = require("./store");
     const service = new service_2.PlanningService({
         store: new store_1.MemoryPlanningStore(),
         eventStore: new memoryStores_1.MemoryEventStore(),
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T15:00:00.000Z",
     });
     const preparation = await service.prepare({
@@ -337,7 +339,7 @@ const store_1 = require("./store");
     const service = new service_2.PlanningService({
         store: new store_1.MemoryPlanningStore(),
         eventStore: new memoryStores_1.MemoryEventStore(),
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T14:30:00.000Z",
     });
     const security = await service.submit({
@@ -360,7 +362,7 @@ const store_1 = require("./store");
     const service = new service_2.PlanningService({
         store: new store_1.MemoryPlanningStore(),
         eventStore: new memoryStores_1.MemoryEventStore(),
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
     });
     await strict_1.default.rejects(() => service.getPacket("missing-packet"), service_2.PlanningNotFoundError);
 });
@@ -368,7 +370,7 @@ const store_1 = require("./store");
     const service = new service_2.PlanningService({
         store: new store_1.MemoryPlanningStore(),
         eventStore: new memoryStores_1.MemoryEventStore(),
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T17:00:00.000Z",
     });
     const bundle = await service.submit({
@@ -412,7 +414,7 @@ const store_1 = require("./store");
         store: new store_1.MemoryPlanningStore(),
         eventStore: new memoryStores_1.MemoryEventStore(),
         memoryService,
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T18:30:00.000Z",
     });
     const bundle = await service.submit({
@@ -444,7 +446,7 @@ const store_1 = require("./store");
         store: new store_1.MemoryPlanningStore(),
         eventStore: new memoryStores_1.MemoryEventStore(),
         memoryService,
-        repoRoot: "D:/monsoonfire-portal",
+        repoRoot,
         now: () => "2026-03-21T19:00:00.000Z",
     });
     const bundle = await service.submit({

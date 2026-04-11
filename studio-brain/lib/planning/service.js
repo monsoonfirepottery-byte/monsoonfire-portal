@@ -333,7 +333,7 @@ class PlanningService {
         this.store = options.store ?? new store_1.PostgresPlanningStore();
         this.eventStore = options.eventStore ?? null;
         this.memoryService = options.memoryService ?? null;
-        this.repoRoot = options.repoRoot ?? (0, governance_1.findPlanningRepoRoot)();
+        this.repoRoot = (0, governance_1.resolvePlanningRepoRoot)(options.repoRoot);
         this.now = options.now ?? (() => new Date().toISOString());
     }
     async getGovernanceBundle() {

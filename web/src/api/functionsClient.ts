@@ -138,7 +138,11 @@ export function buildCurlReal(
 }
 
 export type FunctionsClient = {
-  postJson<TResp>(fn: string, payload: unknown): Promise<TResp>;
+  postJson<TResp>(
+    fn: string,
+    payload: unknown,
+    options?: { headers?: Record<string, string> }
+  ): Promise<TResp>;
   getLastRequest(): LastRequest | null;
 
   /** Returns a curl string; redacted by default. */
@@ -162,12 +166,19 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     config.onLastRequest?.(req);
   }
 
-  async function postJson<TResp>(fn: string, payload: unknown): Promise<TResp> {
+  async function postJson<TResp>(
+    fn: string,
+    payload: unknown,
+    options?: { headers?: Record<string, string> }
+  ): Promise<TResp> {
     const base = config.baseUrl.replace(/\/+$/, "");
     const path = fn.replace(/^\/+/, "");
     const url = `${base}/${path}`;
     const normalizedPayload = payload ?? {};
-    const actionKey = makeInFlightActionKey(path, normalizedPayload);
+    const actionKey = makeInFlightActionKey(path, {
+      payload: normalizedPayload,
+      headers: options?.headers ?? {},
+    });
     const existingInFlight = inFlightByAction.get(actionKey) as Promise<TResp> | undefined;
     if (existingInFlight) {
       return existingInFlight;
@@ -246,6 +257,14 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         Authorization: `Bearer ${idToken}`,
       };
       if (adminToken && adminToken.trim()) headers["x-admin-token"] = adminToken.trim();
+      if (options?.headers) {
+        for (const [key, value] of Object.entries(options.headers)) {
+          const normalizedKey = String(key || "").trim();
+          const normalizedValue = String(value || "").trim();
+          if (!normalizedKey || !normalizedValue) continue;
+          headers[normalizedKey] = normalizedValue;
+        }
+      }
 
       let resp: Response;
       let didTimeout = false;

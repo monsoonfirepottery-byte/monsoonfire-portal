@@ -66,5 +66,50 @@
     "contextContains": "compatibility shell",
     "owner": "ops",
     "reason": "Release verification notes preserve compatibility usage example."
+  },
+  {
+    "file": "docs/runbooks/STUDIO_BRAIN_HOST_ACCESS.md",
+    "owner": "platform",
+    "reason": "Host-access runbook intentionally documents Windows-native SSH and PowerShell steps for local operator recovery."
+  },
+  {
+    "file": "docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md",
+    "owner": "platform",
+    "reason": "Host deploy runbook includes reviewed Windows shell examples for the laptop-led deployment path."
+  },
+  {
+    "file": "docs/runbooks/STUDIO_BRAIN_HOST_STACK.md",
+    "owner": "platform",
+    "reason": "Host stack runbook intentionally preserves Windows-specific operational commands for the supported admin machine."
+  },
+  {
+    "file": "scripts/codex/open-memory-automation.mjs",
+    "owner": "platform",
+    "reason": "Compaction cleanup intentionally recognizes PowerShell-flavored execution traces so they can be filtered out of memory artifacts."
+  },
+  {
+    "file": "scripts/codex/open-memory-automation.test.mjs",
+    "owner": "platform",
+    "reason": "Tests preserve representative PowerShell command traces to verify compaction sanitization."
+  },
+  {
+    "file": "scripts/codex-machine-tool-profile.test.mjs",
+    "owner": "platform",
+    "reason": "Machine-profile tests intentionally model Windows PowerShell discovery and shell selection behavior."
+  },
+  {
+    "file": "scripts/ensure-java-runtime.mjs",
+    "owner": "platform",
+    "reason": "Java bootstrap keeps a reviewed Windows archive-extraction path for zip-based JDK installs."
+  },
+  {
+    "file": "scripts/open-memory-hybrid-wait-state.mjs",
+    "owner": "platform",
+    "reason": "Wait-state monitor intentionally uses Windows process enumeration on the supported laptop workflow."
+  },
+  {
+    "file": "studio-brain/src/controlTower/collect.ts",
+    "owner": "platform",
+    "reason": "Control Tower shell detection intentionally recognizes PowerShell and pwsh panes alongside POSIX shells."
   }
 ]

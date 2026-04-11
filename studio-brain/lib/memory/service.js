@@ -6832,9 +6832,12 @@ function createMemoryService(options) {
                 return false;
             return true;
         };
-        const coreRows = synthesizeCoreRowsFromBrief(briefArtifact, tenantResolution.tenantId, new Date().toISOString()).filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist));
         const knownRows = new Map();
         const threadBuckets = new Map();
+        const allowCoreRows = (agentId === null && runId === null) || tenantFallbackUsedForEmptyScope;
+        const coreRows = allowCoreRows
+            ? synthesizeCoreRowsFromBrief(briefArtifact, tenantResolution.tenantId, new Date().toISOString()).filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist))
+            : [];
         for (const row of [...coreRows, ...effectiveRows]) {
             knownRows.set(row.id, row);
             const threadKey = threadKeyFromMetadata(normalizeMetadata(row.metadata));

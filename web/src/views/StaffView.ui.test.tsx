@@ -190,7 +190,7 @@ describe("StaffView cockpit routing", () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe("/staff/cockpit/checkins");
     });
-    expect(screen.getByTestId("operations-focus-checkins")).toBeTruthy();
+    expect(await screen.findByTestId("operations-focus-checkins")).toBeTruthy();
   });
 
   it("routes messages directly from the task home using the app callback", async () => {
@@ -231,7 +231,7 @@ describe("StaffView cockpit routing", () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe("/staff/cockpit");
     });
-    expect(screen.getByTestId("cockpit-announcement-composer-open")).toBeTruthy();
+    expect(await screen.findByTestId("cockpit-announcement-composer-open")).toBeTruthy();
   });
 
   it("opens lending from operations overview without falling back to the generic cockpit overview", async () => {
@@ -253,8 +253,8 @@ describe("StaffView cockpit routing", () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe("/staff/cockpit/lending");
     });
-    expect(screen.getByTestId("operations-focus-lending")).toBeTruthy();
-    expect(screen.getByTestId("lending-sentinel")).toBeTruthy();
+    expect(await screen.findByTestId("operations-focus-lending")).toBeTruthy();
+    expect(await screen.findByTestId("lending-sentinel")).toBeTruthy();
     expect(screen.queryByTestId("operations-overview")).toBeNull();
   });
 

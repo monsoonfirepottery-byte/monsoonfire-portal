@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   addDoc,
@@ -94,26 +94,13 @@ import {
   resolveStaffCockpitOperationsModule,
 } from "../utils/staffWorkspacePaths";
 import { parseStaffRole } from "../auth/staffRole";
-import PolicyModule from "./staff/PolicyModule";
-import StripeSettingsModule from "./staff/StripeSettingsModule";
-import ReportsModule from "./staff/ReportsModule";
-import AgentOpsModule from "./staff/AgentOpsModule";
-import CockpitModule from "./staff/CockpitModule";
-import CockpitOpsPanel from "./staff/CockpitOpsPanel";
-import CommerceModule from "./staff/CommerceModule";
-import CommunityBlogsModule from "./staff/CommunityBlogsModule";
-import EventsModule from "./staff/EventsModule";
-import LendingIntakeModule, { type LendingScanSubmitResult } from "./staff/LendingIntakeModule";
-import LendingModule from "./staff/LendingModule";
-import OperationsCockpitModule from "./staff/OperationsCockpitModule";
-import StudioReservationsModule from "./staff/StudioReservationsModule";
-import StudioBrainControlTowerModule from "./staff/StudioBrainControlTowerModule";
-import TaskHomeModule, {
-  type StaffTaskHomeAttentionItem,
-  type StaffTaskHomeCard,
-  type StaffTaskHomeLane,
-  type StaffTaskHomeMoreAction,
-  type StaffTaskHomeTone,
+import type { LendingScanSubmitResult } from "./staff/LendingIntakeModule";
+import type {
+  StaffTaskHomeAttentionItem,
+  StaffTaskHomeCard,
+  StaffTaskHomeLane,
+  StaffTaskHomeMoreAction,
+  StaffTaskHomeTone,
 } from "./staff/TaskHomeModule";
 import { resolveOperationsOverview } from "./staff/operationsOverview";
 import { resolveShiftStatusSummary } from "./staff/shiftStatus";
@@ -123,6 +110,22 @@ import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import WareCheckInView from "./WareCheckInView";
 import { formatDateTime } from "../utils/format";
+
+const PolicyModule = lazy(() => import("./staff/PolicyModule"));
+const StripeSettingsModule = lazy(() => import("./staff/StripeSettingsModule"));
+const ReportsModule = lazy(() => import("./staff/ReportsModule"));
+const AgentOpsModule = lazy(() => import("./staff/AgentOpsModule"));
+const CockpitModule = lazy(() => import("./staff/CockpitModule"));
+const CockpitOpsPanel = lazy(() => import("./staff/CockpitOpsPanel"));
+const CommerceModule = lazy(() => import("./staff/CommerceModule"));
+const CommunityBlogsModule = lazy(() => import("./staff/CommunityBlogsModule"));
+const EventsModule = lazy(() => import("./staff/EventsModule"));
+const LendingIntakeModule = lazy(() => import("./staff/LendingIntakeModule"));
+const LendingModule = lazy(() => import("./staff/LendingModule"));
+const OperationsCockpitModule = lazy(() => import("./staff/OperationsCockpitModule"));
+const StudioReservationsModule = lazy(() => import("./staff/StudioReservationsModule"));
+const StudioBrainControlTowerModule = lazy(() => import("./staff/StudioBrainControlTowerModule"));
+const TaskHomeModule = lazy(() => import("./staff/TaskHomeModule"));
 
 type Props = {
   user: User;
@@ -750,6 +753,7 @@ type CommerceOrderRecord = {
   updatedAt: string;
   createdAt: string;
   checkoutUrl: string | null;
+  receiptUrl: string | null;
   pickupNotes: string | null;
   itemCount: number;
 };
@@ -774,6 +778,7 @@ type ReceiptRecord = {
   currency: string;
   createdAt: string | null;
   paidAt: string | null;
+  receiptUrl: string | null;
 };
 
 type SystemCheckRecord = {
@@ -3293,7 +3298,10 @@ export default function StaffView({
       .sort((a, b) => Date.parse(b.updatedAt || "1970-01-01") - Date.parse(a.updatedAt || "1970-01-01"));
   }, [commerceSearch, commerceStatusFilter, orders]);
   const commerceKpis = useMemo(() => {
-    const pendingOrders = orders.filter((order) => order.status !== "paid");
+    const pendingOrders = orders.filter((order) => {
+      const status = order.status.toLowerCase();
+      return status !== "paid" && status !== "picked_up";
+    });
     const paidOrders = orders.filter((order) => order.status === "paid");
     const pendingAmount = pendingOrders.reduce((sum, order) => sum + Math.max(order.totalCents, 0), 0);
     return {
@@ -3319,7 +3327,10 @@ export default function StaffView({
     const staleOpenBatches = batches.filter(
       (batch) => !batch.isClosed && batch.updatedAtMs > 0 && Date.now() - batch.updatedAtMs > 7 * 24 * 60 * 60 * 1000
     ).length;
-    const pendingOrders = orders.filter((order) => order.status !== "paid").length;
+    const pendingOrders = orders.filter((order) => {
+      const status = order.status.toLowerCase();
+      return status !== "paid" && status !== "picked_up";
+    }).length;
     const unresolvedReports = reportOps.open;
     const reportSlaBreaches = reportOps.slaBreaches;
     const highSeverityReports = reportOps.highOpen;
@@ -4337,6 +4348,10 @@ export default function StaffView({
             const raw = str(o.checkoutUrl, "");
             return raw || null;
           })(),
+          receiptUrl: (() => {
+            const raw = str(o.receiptUrl, "");
+            return raw || null;
+          })(),
           pickupNotes: (() => {
             const raw = str(o.pickupNotes, "");
             return raw || null;
@@ -4388,6 +4403,10 @@ export default function StaffView({
           })(),
           paidAt: (() => {
             const raw = str(entry.paidAt, "");
+            return raw || null;
+          })(),
+          receiptUrl: (() => {
+            const raw = str(entry.receiptUrl, "");
             return raw || null;
           })(),
         }))
@@ -9481,6 +9500,13 @@ export default function StaffView({
         ? reportsContent
         : cockpitContent;
 
+  const moduleLoadingFallback = (
+    <section className="card staff-console-card" role="status" aria-live="polite">
+      <div className="card-title">Loading workspace</div>
+      <p className="card-subtitle">Pulling in the selected staff tools for this surface.</p>
+    </section>
+  );
+
   if (!hasStaffAuthority) {
     return (
       <section className="card staff-console-card" role="alert" aria-live="assertive">
@@ -9642,7 +9668,7 @@ export default function StaffView({
           className={`staff-console-content ${isWorkspaceFocused ? "staff-console-content-focused" : ""}`}
           ref={moduleContentRef}
         >
-          {moduleContent}
+          <Suspense fallback={moduleLoadingFallback}>{moduleContent}</Suspense>
         </div>
       </div>
       <div className="staff-identity-statusline staff-identity-statusline-footer">

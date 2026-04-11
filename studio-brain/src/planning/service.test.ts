@@ -3,15 +3,18 @@ import assert from "node:assert/strict";
 import { createInMemoryMemoryStoreAdapter } from "../memory/inMemoryAdapter";
 import { createMemoryService } from "../memory/service";
 import { MemoryEventStore } from "../stores/memoryStores";
+import { findPlanningRepoRoot } from "./governance";
 import { PlanningNotFoundError, PlanningService, PlanningValidationError } from "./service";
 import { MemoryPlanningStore } from "./store";
+
+const repoRoot = findPlanningRepoRoot(process.cwd());
 
 test("planning service submits a packet bundle and seeds the curated role library", async () => {
   const eventStore = new MemoryEventStore();
   const service = new PlanningService({
     store: new MemoryPlanningStore(),
     eventStore,
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T14:00:00.000Z",
   });
 
@@ -47,7 +50,7 @@ test("planning service prepares a live swarm run and completes it with structure
   const service = new PlanningService({
     store: new MemoryPlanningStore(),
     eventStore,
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T14:15:00.000Z",
   });
 
@@ -277,7 +280,7 @@ test("planning service rejects live completion when wrapper integrity metadata d
   const service = new PlanningService({
     store: new MemoryPlanningStore(),
     eventStore: new MemoryEventStore(),
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T15:00:00.000Z",
   });
 
@@ -357,7 +360,7 @@ test("planning service compares packets and reports field differences", async ()
   const service = new PlanningService({
     store: new MemoryPlanningStore(),
     eventStore: new MemoryEventStore(),
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T14:30:00.000Z",
   });
 
@@ -384,7 +387,7 @@ test("planning service raises not found for unknown packets", async () => {
   const service = new PlanningService({
     store: new MemoryPlanningStore(),
     eventStore: new MemoryEventStore(),
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
   });
 
   await assert.rejects(() => service.getPacket("missing-packet"), PlanningNotFoundError);
@@ -394,7 +397,7 @@ test("planning service accepts raw draft plan markdown and preserves draft-plan 
   const service = new PlanningService({
     store: new MemoryPlanningStore(),
     eventStore: new MemoryEventStore(),
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T17:00:00.000Z",
   });
 
@@ -442,7 +445,7 @@ test("planning service builds a Studio Brain memory pack and writes structured c
     store: new MemoryPlanningStore(),
     eventStore: new MemoryEventStore(),
     memoryService,
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T18:30:00.000Z",
   });
 
@@ -478,7 +481,7 @@ test("planning service degrades gracefully when Studio Brain memory is unavailab
     store: new MemoryPlanningStore(),
     eventStore: new MemoryEventStore(),
     memoryService,
-    repoRoot: "D:/monsoonfire-portal",
+    repoRoot,
     now: () => "2026-03-21T19:00:00.000Z",
   });
 

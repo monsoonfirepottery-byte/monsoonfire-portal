@@ -13,7 +13,7 @@ import {
   type PlanningRunBundle,
   type PlanningSubmitRequest,
 } from "./contracts";
-import { findPlanningRepoRoot, loadPlanningControlPlaneModule } from "./governance";
+import { findPlanningRepoRoot, loadPlanningControlPlaneModule, resolvePlanningRepoRoot } from "./governance";
 import { PostgresPlanningStore, type PlanningStore } from "./store";
 
 type PlanningGovernanceBundle = {
@@ -412,7 +412,7 @@ export class PlanningService {
     this.store = options.store ?? new PostgresPlanningStore();
     this.eventStore = options.eventStore ?? null;
     this.memoryService = options.memoryService ?? null;
-    this.repoRoot = options.repoRoot ?? findPlanningRepoRoot();
+    this.repoRoot = resolvePlanningRepoRoot(options.repoRoot);
     this.now = options.now ?? (() => new Date().toISOString());
   }
 

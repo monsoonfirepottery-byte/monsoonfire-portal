@@ -35,11 +35,11 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined for the staff task-home rollout, kiln queue timeline route,
-// client-facing My Pieces redesign, portal handoff attribution path, Studio Brain
-// control tower actionability bridge, and current mainline vendor split while keeping
-// future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_800_000;
+// Total budgets re-baselined after the StaffView lazy split, dependency refresh,
+// kiln queue timeline route, client-facing My Pieces redesign, portal handoff
+// attribution path, and Studio Brain control tower actionability bridge while
+// keeping future regressions visible.
+const MAX_TOTAL_JS_BYTES = 1_805_000;
 const MAX_TOTAL_CSS_BYTES = 292_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

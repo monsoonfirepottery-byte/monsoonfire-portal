@@ -5,6 +5,7 @@ import {
   applyCors,
   asInt,
   db,
+  makeIdempotencyId,
   nowTs,
   requireAdmin,
   requireAuthUid,
@@ -17,8 +18,9 @@ import {
 import { z } from "zod";
 import {
   parseMaterialProductDoc,
-  parseMaterialsOrderDoc,
 } from "./firestoreConverters";
+import { STRIPE_SECRET_PARAMS } from "./stripeSecrets";
+import { createConfiguredCheckoutSession, readStripeIdempotencyKey } from "./stripeRuntime";
 
 const REGION = "us-central1";
 const PRODUCTS_COL = "materialsProducts";
@@ -46,8 +48,6 @@ const seedCatalogSchema = z.object({
   acknowledge: z.string().trim().max(120).optional(),
   reason: z.string().trim().min(8).max(240).optional(),
 });
-
-let stripeClient: Stripe | null = null;
 
 export const NON_DEV_MATERIALS_SEED_ACK = "ALLOW_NON_DEV_SAMPLE_SEEDING";
 const NON_DEV_MATERIALS_SEED_ENABLE_ENV = "ALLOW_NON_DEV_SAMPLE_SEEDING";
@@ -127,15 +127,6 @@ export function resolveSeedMaterialsCatalogPolicy(
     requiresAcknowledgement: false,
     reason: "Non-dev sample seeding explicitly enabled and acknowledged.",
   };
-}
-
-function getStripe(): Stripe {
-  const key = (process.env.STRIPE_SECRET_KEY ?? "").trim();
-  if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
-  if (!stripeClient) {
-    stripeClient = new Stripe(key);
-  }
-  return stripeClient;
 }
 
 function getPortalBaseUrl(req: RequestLike): string {
@@ -526,7 +517,7 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
 });
 
 export const createMaterialsCheckoutSession = onRequest(
-  { region: REGION, timeoutSeconds: 60 },
+  { region: REGION, timeoutSeconds: 60, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (applyCors(req, res)) return;
 
@@ -699,48 +690,124 @@ export const createMaterialsCheckoutSession = onRequest(
         return;
       }
 
-      const orderRef = db.collection(ORDERS_COL).doc();
-      const orderId = orderRef.id;
-
-      const stripe = getStripe();
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        line_items: lineItems,
-        success_url: `${baseUrl}/materials?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/materials?status=cancel`,
-        customer_email: email ?? undefined,
-        phone_number_collection: { enabled: true },
-        billing_address_collection: "auto",
-        automatic_tax: { enabled: true },
-        client_reference_id: orderId,
-        metadata: {
+      const cartFingerprint = Array.from(itemMap.entries())
+        .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+        .map(([productId, quantity]) => `${productId}:${quantity}`)
+        .join("|");
+      const requestDedupKey = readStripeIdempotencyKey(
+        req.headers as Record<string, unknown> | undefined,
+        makeIdempotencyId("materials-cart", uid, `${cartFingerprint}::${pickupNotes || "-"}`)
+      );
+      const orderId = makeIdempotencyId("materials-order", uid, requestDedupKey);
+      const orderRef = db.collection(ORDERS_COL).doc(orderId);
+      const existingSnap = await orderRef.get();
+      if (existingSnap.exists) {
+        const existing = (existingSnap.data() as Record<string, unknown>) ?? {};
+        res.status(200).json({
+          ok: true,
           orderId,
-          uid,
-          fulfillment: "pickup",
+          checkoutUrl: safeString(existing.checkoutUrl) || null,
+          receiptUrl: safeString(existing.receiptUrl) || null,
+          sessionId:
+            safeString(existing.stripeCheckoutSessionId) ||
+            safeString(existing.stripeSessionId) ||
+            null,
+        });
+        return;
+      }
+
+      const checkoutIdempotencyKey = makeIdempotencyId("materials-checkout", uid, requestDedupKey);
+      const { mode, session } = await createConfiguredCheckoutSession({
+        headers: req.headers as Record<string, unknown> | undefined,
+        fallbackIdempotencyKey: checkoutIdempotencyKey,
+        session: {
+          mode: "payment",
+          line_items: lineItems,
+          success_url: `${baseUrl}/materials?status=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${baseUrl}/materials?status=cancel`,
+          customer_email: email ?? undefined,
+          phone_number_collection: { enabled: true },
+          billing_address_collection: "auto",
+          automatic_tax: { enabled: true },
+          client_reference_id: orderId,
+          metadata: {
+            orderId,
+            materialsOrderId: orderId,
+            uid,
+            source: "materials",
+            fulfillment: "pickup",
+          },
         },
       });
 
       const t = nowTs();
-      await orderRef.set({
+      const paymentIntentId =
+        typeof session.payment_intent === "string" ? session.payment_intent : null;
+      const paymentBase = {
         uid,
-        displayName,
-        email,
-        items: orderItems,
-        status: "checkout_pending",
-        createdAt: t,
+        mode,
+        status: "checkout_created",
+        paymentDomain: "materials",
+        source: "materials_checkout",
+        orderId,
+        checkoutSessionId: session.id,
+        stripePaymentIntentId: paymentIntentId,
+        amountTotal: typeof session.amount_total === "number" ? session.amount_total : totalCents,
+        currency: typeof session.currency === "string" ? session.currency : currency.toLowerCase(),
+        receiptUrl: null,
         updatedAt: t,
-        totalCents,
-        currency,
-        stripeSessionId: session.id ?? null,
-        stripePaymentIntentId: null,
-        checkoutUrl: session.url ?? null,
-        pickupNotes: pickupNotes || null,
-      });
+      };
+      await Promise.all([
+        orderRef.set(
+          {
+            uid,
+            displayName,
+            email,
+            items: orderItems,
+            status: "checkout_pending",
+            paymentStatus: "checkout_created",
+            createdAt: t,
+            updatedAt: t,
+            totalCents,
+            currency,
+            stripeSessionId: session.id ?? null,
+            stripeCheckoutSessionId: session.id ?? null,
+            stripePaymentIntentId: paymentIntentId,
+            checkoutUrl: session.url ?? null,
+            receiptUrl: null,
+            pickupNotes: pickupNotes || null,
+            mode,
+            idempotencyKey: requestDedupKey,
+          },
+          { merge: true }
+        ),
+        db.collection("payments").doc(session.id).set(
+          {
+            ...paymentBase,
+            createdAt: t,
+          },
+          { merge: true }
+        ),
+        db
+          .collection("users")
+          .doc(uid)
+          .collection("payments")
+          .doc(session.id)
+          .set(
+            {
+              ...paymentBase,
+              createdAt: t,
+            },
+            { merge: true }
+          ),
+      ]);
 
       res.status(200).json({
         ok: true,
         orderId,
-        checkoutUrl: session.url,
+        checkoutUrl: session.url ?? null,
+        sessionId: session.id,
+        mode,
       });
     } catch (err: unknown) {
       logger.error("createMaterialsCheckoutSession failed", err);
@@ -751,99 +818,3 @@ export const createMaterialsCheckoutSession = onRequest(
     }
   }
 );
-
-export const stripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
-  const signature = req.headers["stripe-signature"];
-  if (!signature || typeof signature !== "string") {
-    res.status(400).send("Missing Stripe signature");
-    return;
-  }
-
-  const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET ?? "").trim();
-  if (!webhookSecret) {
-    res.status(500).send("STRIPE_WEBHOOK_SECRET not configured");
-    return;
-  }
-
-  let event: Stripe.Event;
-  try {
-    const stripe = getStripe();
-    event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
-  } catch (err: unknown) {
-    logger.error("stripeWebhook signature verification failed", err);
-    const message = err instanceof Error ? err.message : "Invalid signature";
-    res.status(400).send(`Webhook Error: ${message}`);
-    return;
-  }
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const orderId = session.metadata?.orderId;
-
-    if (!orderId) {
-      logger.warn("stripeWebhook missing orderId", { sessionId: session.id });
-      res.status(200).json({ ok: true });
-      return;
-    }
-
-    const orderRef = db.collection(ORDERS_COL).doc(orderId);
-
-    try {
-      await db.runTransaction(async (tx) => {
-        const orderSnap = await tx.get(orderRef);
-        if (!orderSnap.exists) {
-          logger.warn("stripeWebhook order not found", { orderId });
-          return;
-        }
-
-        const order = parseMaterialsOrderDoc(orderSnap.data());
-        if (order.status === "paid") return;
-
-        const items = order.items;
-        const t = nowTs();
-
-        tx.set(
-          orderRef,
-          {
-            status: "paid",
-            updatedAt: t,
-            paidAt: t,
-            stripePaymentIntentId: session.payment_intent ?? null,
-          },
-          { merge: true }
-        );
-
-        for (const item of items) {
-          const productId = safeString(item.productId).trim();
-          const quantity = Math.max(asInt(item.quantity, 0), 0);
-          if (!productId || quantity <= 0) continue;
-
-          const productRef = db.collection(PRODUCTS_COL).doc(productId);
-          const productSnap = await tx.get(productRef);
-          if (!productSnap.exists) continue;
-
-          const product = parseMaterialProductDoc(productSnap.data());
-          if (product.trackInventory !== true) continue;
-
-          const onHand = asInt(product.inventoryOnHand, 0);
-          const reserved = asInt(product.inventoryReserved, 0);
-          const nextOnHand = Math.max(onHand - quantity, 0);
-
-          tx.set(
-            productRef,
-            {
-              inventoryOnHand: nextOnHand,
-              inventoryReserved: reserved,
-              updatedAt: t,
-            },
-            { merge: true }
-          );
-        }
-      });
-    } catch (err) {
-      logger.error("stripeWebhook processing failed", err);
-    }
-  }
-
-  res.status(200).json({ ok: true });
-});

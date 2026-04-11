@@ -175,15 +175,20 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
         currency: normalizeCurrency(data.currency),
         pickupNotes: safeString(data.pickupNotes) || null,
         checkoutUrl: safeString(data.checkoutUrl) || null,
+        receiptUrl: safeString(data.receiptUrl) || null,
         createdAt: toIso(data.createdAt),
         updatedAt: toIso(data.updatedAt),
         items: normalizedItems,
       };
     });
 
-    const pendingMaterialsOrders = materialsOrders.filter((order) => order.status !== "paid");
+    const pendingMaterialsOrders = materialsOrders.filter(
+      (order) => order.status !== "paid" && order.status !== "picked_up"
+    );
 
-    const paidMaterialsOrders = materialsOrders.filter((order) => order.status === "paid");
+    const paidMaterialsOrders = materialsOrders.filter(
+      (order) => order.status === "paid" || order.status === "picked_up"
+    );
 
     const receiptsFromOrders = paidMaterialsOrders.map((order) => ({
       id: order.id,
@@ -194,6 +199,7 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
       currency: order.currency,
       paidAt: order.updatedAt,
       createdAt: order.createdAt,
+      receiptUrl: order.receiptUrl,
       metadata: {
         pickupNotes: order.pickupNotes,
         items: order.items,
@@ -214,6 +220,7 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
         currency: normalizeCurrency(data.currency),
         paidAt: toIso(data.paidAt),
         createdAt: toIso(data.createdAt),
+        receiptUrl: safeString(data.receiptUrl) || null,
         metadata: {
           eventId: safeString(data.eventId) || null,
           signupId: safeString(data.signupId) || null,

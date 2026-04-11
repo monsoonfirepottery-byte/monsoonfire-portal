@@ -184,7 +184,7 @@ function withMockFirestore<T>(
 
   db.doc = (path: string) => {
     const parts = path.split("/").filter((part) => part.length > 0);
-    const docId = parts.at(-1) ?? "";
+    const docId = parts[parts.length - 1] ?? "";
     const collectionName = parts.slice(0, -1).join("/");
     const rows = getCollectionRows(collectionName);
     const raw = Object.prototype.hasOwnProperty.call(rows, docId) ? rows[docId] : null;

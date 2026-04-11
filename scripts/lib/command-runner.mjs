@@ -6,6 +6,13 @@ function clean(value) {
   return String(value ?? "").trim();
 }
 
+function quoteForCmd(value) {
+  const raw = String(value ?? "");
+  if (!raw) return "\"\"";
+  if (!/[\s"&()^<>|]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '\\"')}"`;
+}
+
 export function resolvePlatformCommand(command, { platform = process.platform } = {}) {
   const raw = clean(command);
   if (!raw || /[\\/]/.test(raw) || /\.[A-Za-z0-9]+$/.test(raw)) {
@@ -15,6 +22,29 @@ export function resolvePlatformCommand(command, { platform = process.platform } 
     return `${raw}.cmd`;
   }
   return raw;
+}
+
+export function buildPlatformCommandInvocation(
+  command,
+  args = [],
+  { platform = process.platform } = {}
+) {
+  const resolvedCommand = resolvePlatformCommand(command, { platform });
+  const normalizedArgs = Array.isArray(args) ? args.map((entry) => String(entry)) : [];
+  if (
+    platform === "win32" &&
+    (resolvedCommand === "npm.cmd" || resolvedCommand === "npx.cmd")
+  ) {
+    const commandLine = [resolvedCommand, ...normalizedArgs].map(quoteForCmd).join(" ");
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", commandLine],
+    };
+  }
+  return {
+    command: resolvedCommand,
+    args: normalizedArgs,
+  };
 }
 
 export function joinPathEntries(entries, existingPath = "", { platform = process.platform } = {}) {
@@ -95,8 +125,10 @@ export function buildFirebaseCliInvocation(repoRoot, { env = process.env, platfo
 }
 
 export function runResolved(command, args = [], options = {}) {
-  const resolvedCommand = resolvePlatformCommand(command, { platform: options.platform || process.platform });
-  return spawnSync(resolvedCommand, args, {
+  const invocation = buildPlatformCommandInvocation(command, args, {
+    platform: options.platform || process.platform,
+  });
+  return spawnSync(invocation.command, invocation.args, {
     shell: false,
     ...options,
   });

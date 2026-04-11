@@ -11,8 +11,12 @@ const REPO_ROOT = resolve(__dirname, "..");
 const TARGET_FILES = [
   "scripts/test-rules.mjs",
   "scripts/start-emulators.mjs",
+  "scripts/pr-gate.mjs",
+  "scripts/phased-smoke-gate.mjs",
   "scripts/portal-pr-functional-gate.mjs",
   "scripts/deploy-firebase-safe.mjs",
+  "scripts/deploy-preflight.mjs",
+  "scripts/firestore-indexes-deploy.mjs",
 ];
 
 const RULES = [
@@ -30,6 +34,11 @@ const RULES = [
     id: "hardcoded-path-colon",
     message: "Use path.delimiter or prependPathEntries instead of hard-coded PATH separators.",
     pattern: /(?:join|split)\(\s*["']:(?:["'])\s*\)|PATH:\s*`[^`]*:[^`]*`/,
+  },
+  {
+    id: "shell-true-release-path",
+    message: "Avoid shell:true in release-path scripts; pass argv explicitly or use the shared command-runner helper.",
+    pattern: /shell:\s*true/,
   },
 ];
 

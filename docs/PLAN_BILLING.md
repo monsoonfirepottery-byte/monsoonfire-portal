@@ -79,6 +79,6 @@ Create a Billing page that makes payments feel calm and transparent. It should s
 ## Local seeding
 - Run `node functions/scripts/seedBilling.js` (with `FIRESTORE_EMULATOR_HOST` pointing at `127.0.0.1:8080` or your emulator) to create:
   - A checked-in event signup with an unpaid paymentStatus for `seed_raku_night`.
-  - A paid `eventCharges` record with line items for the same event.
-  - Two materials orders (one pending, one paid) so the summary cards and receipts have data.
+  - A paid `eventCharges` record with line items and a sample `receiptUrl` for the same event.
+  - Two materials orders: one pending with a sample `checkoutUrl`, and one paid with a sample `receiptUrl`, so the summary cards and receipt/continue-checkout states have data.
 - The script is emulator-safe and logs the affected doc IDs to the console.

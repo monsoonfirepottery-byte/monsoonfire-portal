@@ -107,10 +107,15 @@ export default defineConfig(({ mode }) => {
       minify: "terser",
       terserOptions: {
         module: true,
+        toplevel: true,
         compress: {
           passes: 2,
+          toplevel: true,
           pure_getters: true,
           drop_debugger: true,
+        },
+        mangle: {
+          toplevel: true,
         },
         format: {
           comments: false,

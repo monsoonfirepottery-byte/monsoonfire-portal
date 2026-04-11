@@ -247,7 +247,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
       </div>
       <div className="staff-note">
         Safe to edit in-app: {safeFields.join(", ") || "mode, publishable keys, IDs, URLs, feature toggles"}.
-        Secrets stay server-side only: {restrictedFields.join(", ")}.
+        Secrets stay server-side only: {restrictedFields.join(", ")}. One webhook endpoint serves portal, materials, events, and commission payments for the active mode.
       </div>
       {loading ? <div className="staff-note">Loading Stripe configuration...</div> : null}
       {status ? <div className="staff-note">{status}</div> : null}
@@ -374,10 +374,10 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
         <details className="staff-troubleshooting" open>
           <summary>Secret rotation checklist</summary>
           <div className="staff-list-compact">
-            <div className="staff-note">1. In Stripe Dashboard, create new API secret key + webhook signing secret for the target mode.</div>
-            <div className="staff-note">2. Update Cloud Functions secrets (`STRIPE_TEST_SECRET_KEY` / `STRIPE_LIVE_SECRET_KEY` and webhook secret).</div>
+            <div className="staff-note">1. In Stripe Dashboard, create the API secret key and webhook signing secret for the target mode.</div>
+            <div className="staff-note">2. Update the matching Cloud Functions secret pair: `STRIPE_TEST_SECRET_KEY` + `STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_SECRET_KEY` + `STRIPE_LIVE_WEBHOOK_SECRET`.</div>
             <div className="staff-note">3. Deploy functions with new secrets bound.</div>
-            <div className="staff-note">4. Run “Validate configuration” in this panel.</div>
+            <div className="staff-note">4. Run “Validate configuration” in this panel to confirm the active mode and unified webhook endpoint.</div>
             <div className="staff-note">5. After successful validation, remove old keys in Stripe Dashboard.</div>
           </div>
         </details>

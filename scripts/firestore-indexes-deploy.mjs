@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { runResolved } from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -87,11 +88,10 @@ function hasFirebaseCliSession() {
 }
 
 function runNpx(args, env) {
-  return spawnSync("npx", args, {
+  return runResolved("npx", args, {
     cwd: repoRoot,
     env,
     encoding: "utf8",
-    shell: process.platform === "win32",
   });
 }
 

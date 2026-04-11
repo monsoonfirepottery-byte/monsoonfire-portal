@@ -3144,7 +3144,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
       const resp = await client.postJson<CreateEventCheckoutSessionResponse>(
         "createEventCheckoutSession",
-        payload
+        payload,
+        {
+          headers: {
+            "Idempotency-Key": `events:${detail.id}:${signup.id}:${selectedAddOns.slice().sort().join(",") || "ticket"}`,
+          },
+        }
       );
 
       if (!resp.checkoutUrl) {

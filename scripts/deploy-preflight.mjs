@@ -4,7 +4,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +14,7 @@ import {
   resolvePortalAutomationEnvPath,
 } from "./lib/runtime-secrets.mjs";
 import { PORTAL_SECRET_SYNC_COMMAND } from "./lib/portal-automation-secrets.mjs";
+import { runResolved } from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -156,7 +156,7 @@ function parseAgentCredentialPayload(raw) {
 }
 
 function hasFirebaseCliSession() {
-  const probe = spawnSync("npx", ["firebase-tools", "projects:list", "--non-interactive", "--json"], {
+  const probe = runResolved("npx", ["firebase-tools", "projects:list", "--non-interactive", "--json"], {
     cwd: repoRoot,
     env: process.env,
     encoding: "utf8",
@@ -203,7 +203,7 @@ function canResolveFirebaseWebApiKey() {
     return { ok: true, source: "env" };
   }
 
-  const probe = spawnSync(
+  const probe = runResolved(
     "npx",
     ["firebase-tools", "apps:sdkconfig", "web", FIREBASE_WEB_APP_ID, "--project", FIREBASE_PROJECT_ID],
     {

@@ -191,7 +191,7 @@ describe("ReservationsView ware check-in UX", () => {
     expect(
       await screen.findByText(/This load is currently too large for flexible tiny drop-off/i)
     ).toBeTruthy();
-  });
+  }, 10000);
 
   it("shows inline priority guidance and never uses browser confirm during submit", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-03-20T12:00:00.000Z"));

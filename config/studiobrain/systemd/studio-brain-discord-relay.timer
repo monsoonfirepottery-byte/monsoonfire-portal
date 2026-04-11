@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic fallback Studio Brain Discord relay sync
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=1m
+AccuracySec=15s
+Persistent=true
+Unit=studio-brain-discord-relay.service
+
+[Install]
+WantedBy=timers.target

@@ -6,6 +6,10 @@ import {
   readPolicyFiles,
   validatePolicyFrontmatter,
 } from "./policy-docs.mjs";
+import {
+  buildCustomerServicePolicyArtifacts,
+  writeCustomerServicePolicyArtifacts,
+} from "./policy-governance.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +29,7 @@ const toEntry = (policy) => ({
 const main = async () => {
   const policyFiles = await readPolicyFiles(docsPoliciesPath, fs);
   const policies = [];
+  const generatedAt = new Date().toISOString();
 
   for (const filePath of policyFiles) {
     const raw = await fs.readFile(filePath, "utf8");
@@ -38,6 +43,7 @@ const main = async () => {
     policies.push({
       slug: policy.slug,
       title: policy.title,
+      version: policy.version,
       summary: policy.summary || "Policy summary unavailable.",
       status: policy.status || "draft",
       tags: policy.tags || [],
@@ -50,7 +56,7 @@ const main = async () => {
   }
 
   const indexPayload = {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     policies,
   };
 
@@ -58,8 +64,17 @@ const main = async () => {
 
   const entries = policies.map(toEntry);
   await fs.writeFile(outputPath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+  const governanceArtifacts = await buildCustomerServicePolicyArtifacts({
+    repoRoot,
+    policies,
+    generatedAt,
+  });
+  const governancePaths = await writeCustomerServicePolicyArtifacts(governanceArtifacts, { repoRoot });
   process.stdout.write(`Wrote ${entries.length} policy summaries to ${outputPath}\n`);
   process.stdout.write(`Updated policy source index at ${indexPath}\n`);
+  process.stdout.write(`Updated governance bundle at ${governancePaths.programPath}\n`);
+  process.stdout.write(`Updated policy inventory at ${governancePaths.inventoryPath}\n`);
+  process.stdout.write(`Updated policy resolution contract at ${governancePaths.resolutionPath}\n`);
 };
 
 main().catch((error) => {

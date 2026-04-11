@@ -1,0 +1,26 @@
+{
+    auto_https off
+    admin off
+}
+
+:18080 {
+    @notlan not remote_ip 192.168.1.0/24 127.0.0.1/8 ::1
+    respond @notlan "Forbidden" 403
+
+    basic_auth /* {
+        monitor $2a$14$lzm/IIqCvLA1IebIVW662.bMSip1PqQwONG9kjgaeKYM91XXwc6JW
+    }
+
+    reverse_proxy netdata:19999
+}
+
+:18081 {
+    @notlan not remote_ip 192.168.1.0/24 127.0.0.1/8 ::1
+    respond @notlan "Forbidden" 403
+
+    basic_auth /* {
+        monitor $2a$14$lzm/IIqCvLA1IebIVW662.bMSip1PqQwONG9kjgaeKYM91XXwc6JW
+    }
+
+    reverse_proxy uptime-kuma:3001
+}

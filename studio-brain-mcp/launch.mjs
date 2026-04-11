@@ -57,6 +57,16 @@ function normalizeBearer(value) {
   return /^bearer\s+/i.test(token) ? token : `Bearer ${token}`;
 }
 
+function resolveStudioBrainAuthHeader(env) {
+  return normalizeBearer(
+    env.STUDIO_BRAIN_MCP_AUTH_HEADER ||
+      env.STUDIO_BRAIN_MCP_ID_TOKEN ||
+      env.STUDIO_BRAIN_ID_TOKEN ||
+      env.STUDIO_BRAIN_AUTH_TOKEN ||
+      ""
+  );
+}
+
 function resolveFromRepoRoot(candidate, fallbackRelativePath = "") {
   const raw = clean(candidate || fallbackRelativePath);
   return raw ? resolve(repoRoot, raw) : "";
@@ -440,7 +450,7 @@ async function requestRemoteBootstrapContext({ env, query, threadInfo, timeoutMs
     "content-type": "application/json",
     accept: "application/json",
   };
-  const authHeader = normalizeBearer(env.STUDIO_BRAIN_MCP_ID_TOKEN || env.STUDIO_BRAIN_ID_TOKEN || "");
+  const authHeader = resolveStudioBrainAuthHeader(env);
   if (authHeader) headers.authorization = authHeader;
   const adminToken = clean(env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || env.STUDIO_BRAIN_ADMIN_TOKEN || "");
   if (adminToken) headers["x-studio-brain-admin-token"] = adminToken;
@@ -741,6 +751,9 @@ if (!clean(mergedEnv.STUDIO_BRAIN_MCP_ADMIN_TOKEN) && clean(mergedEnv.STUDIO_BRA
 if (!clean(mergedEnv.STUDIO_BRAIN_MCP_ID_TOKEN) && clean(mergedEnv.STUDIO_BRAIN_ID_TOKEN)) {
   mergedEnv.STUDIO_BRAIN_MCP_ID_TOKEN = clean(mergedEnv.STUDIO_BRAIN_ID_TOKEN);
 }
+if (!clean(mergedEnv.STUDIO_BRAIN_MCP_AUTH_HEADER)) {
+  mergedEnv.STUDIO_BRAIN_MCP_AUTH_HEADER = resolveStudioBrainAuthHeader(mergedEnv);
+}
 if (!clean(mergedEnv.STUDIO_BRAIN_MCP_BASE_URL)) {
   mergedEnv.STUDIO_BRAIN_MCP_BASE_URL = "http://192.168.1.226:8787";
 }
@@ -779,11 +792,18 @@ if (!clean(mergedEnv.PORTAL_AGENT_STAFF_CREDENTIALS)) {
 }
 
 await hydrateStartupAuth(mergedEnv);
+const normalizedAuthHeader = resolveStudioBrainAuthHeader(mergedEnv);
+if (normalizedAuthHeader) {
+  mergedEnv.STUDIO_BRAIN_MCP_AUTH_HEADER = normalizedAuthHeader;
+}
 if (!clean(mergedEnv.STUDIO_BRAIN_ID_TOKEN) && clean(mergedEnv.STUDIO_BRAIN_MCP_ID_TOKEN)) {
   mergedEnv.STUDIO_BRAIN_ID_TOKEN = clean(mergedEnv.STUDIO_BRAIN_MCP_ID_TOKEN);
 }
 if (!clean(mergedEnv.STUDIO_BRAIN_AUTH_TOKEN) && clean(mergedEnv.STUDIO_BRAIN_ID_TOKEN)) {
   mergedEnv.STUDIO_BRAIN_AUTH_TOKEN = clean(mergedEnv.STUDIO_BRAIN_ID_TOKEN);
+}
+if (!clean(mergedEnv.STUDIO_BRAIN_AUTH_TOKEN) && clean(mergedEnv.STUDIO_BRAIN_MCP_AUTH_HEADER)) {
+  mergedEnv.STUDIO_BRAIN_AUTH_TOKEN = clean(mergedEnv.STUDIO_BRAIN_MCP_AUTH_HEADER);
 }
 if (!clean(mergedEnv.STUDIO_BRAIN_ADMIN_TOKEN) && clean(mergedEnv.STUDIO_BRAIN_MCP_ADMIN_TOKEN)) {
   mergedEnv.STUDIO_BRAIN_ADMIN_TOKEN = clean(mergedEnv.STUDIO_BRAIN_MCP_ADMIN_TOKEN);
@@ -876,4 +896,3 @@ child.on("exit", (code, signal) => {
   }
   process.exit(code ?? 0);
 });
-

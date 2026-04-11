@@ -20,6 +20,8 @@ This package is intentionally isolated from the main `studio-brain/` app so it c
   - default: `http://192.168.1.226:8787`
 - `STUDIO_BRAIN_MCP_ID_TOKEN`
   - Firebase ID token for Studio Brain staff auth
+- `STUDIO_BRAIN_MCP_AUTH_HEADER`
+  - optional full `Authorization` header value (for example `Bearer <token>`); falls back to the ID token variables when unset
 - `STUDIO_BRAIN_MCP_ADMIN_TOKEN`
   - optional extra admin token for local/dev setups
 - `STUDIO_BRAIN_MCP_TIMEOUT_MS`

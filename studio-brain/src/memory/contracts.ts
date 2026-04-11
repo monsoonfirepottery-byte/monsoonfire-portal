@@ -6,12 +6,14 @@ export const MAX_MEMORY_IMPORT_ITEMS = 500;
 
 const embeddingValue = z.number().finite();
 const stringList = z.array(z.string().trim().min(1).max(128)).max(64);
+const memoryLayerListSchema = z.array(z.enum(["core", "working", "episodic", "canonical"])).max(4);
 
 export const embeddingSchema = z.array(embeddingValue).min(1).max(4096);
 export const retrievalModeSchema = z.enum(["hybrid", "semantic", "lexical"]);
 export const memoryQueryLaneSchema = z.enum(["interactive", "ops", "bulk"]);
 export const memoryStatusSchema = z.enum(["proposed", "accepted", "quarantined", "archived"]);
 export const memoryTypeSchema = z.enum(["working", "episodic", "semantic", "procedural"]);
+export const memoryLayerSchema = z.enum(["core", "working", "episodic", "canonical"]);
 export const memoryLoopStateSchema = z.enum(["open-loop", "resolved", "reopened", "superseded"]);
 export const memoryLoopLaneSchema = z.enum(["critical", "high", "watch", "stable"]);
 export const memoryLoopIncidentActionTypeSchema = z.enum([
@@ -48,6 +50,7 @@ export const memoryCaptureRequestSchema = z.object({
   occurredAt: z.string().datetime().optional(),
   status: memoryStatusSchema.optional(),
   memoryType: memoryTypeSchema.optional(),
+  memoryLayer: memoryLayerSchema.optional(),
   sourceConfidence: z.number().min(0).max(1).optional(),
   importance: z.number().min(0).max(1).optional(),
 });
@@ -59,6 +62,8 @@ export const memorySearchRequestSchema = z.object({
   runId: z.string().trim().min(1).max(128).optional(),
   sourceAllowlist: stringList.default([]),
   sourceDenylist: stringList.default([]),
+  layerAllowlist: memoryLayerListSchema.default([]),
+  layerDenylist: memoryLayerListSchema.default([]),
   retrievalMode: retrievalModeSchema.default("hybrid"),
   queryLane: memoryQueryLaneSchema.optional(),
   bulk: z.boolean().optional(),
@@ -70,11 +75,15 @@ export const memorySearchRequestSchema = z.object({
 
 export const memoryRecentRequestSchema = z.object({
   tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+  layerAllowlist: memoryLayerListSchema.default([]),
+  layerDenylist: memoryLayerListSchema.default([]),
   limit: z.number().int().min(1).max(200).default(20),
 });
 
 export const memoryStatsRequestSchema = z.object({
   tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+  layerAllowlist: memoryLayerListSchema.default([]),
+  layerDenylist: memoryLayerListSchema.default([]),
 });
 
 export const memoryContextRequestSchema = z.object({
@@ -85,6 +94,8 @@ export const memoryContextRequestSchema = z.object({
   seedMemoryId: z.string().trim().min(1).max(128).optional(),
   sourceAllowlist: stringList.default([]),
   sourceDenylist: stringList.default([]),
+  layerAllowlist: memoryLayerListSchema.default([]),
+  layerDenylist: memoryLayerListSchema.default([]),
   retrievalMode: retrievalModeSchema.default("hybrid"),
   queryLane: memoryQueryLaneSchema.optional(),
   bulk: z.boolean().optional(),
@@ -282,6 +293,7 @@ export type RetrievalMode = z.infer<typeof retrievalModeSchema>;
 export type MemoryQueryLane = z.infer<typeof memoryQueryLaneSchema>;
 export type MemoryStatus = z.infer<typeof memoryStatusSchema>;
 export type MemoryType = z.infer<typeof memoryTypeSchema>;
+export type MemoryLayer = z.infer<typeof memoryLayerSchema>;
 export type MemoryLoopState = z.infer<typeof memoryLoopStateSchema>;
 export type MemoryLoopLane = z.infer<typeof memoryLoopLaneSchema>;
 export type MemoryLoopIncidentActionType = z.infer<typeof memoryLoopIncidentActionTypeSchema>;
@@ -300,6 +312,7 @@ export type MemoryRecord = {
   occurredAt: string | null;
   status: MemoryStatus;
   memoryType: MemoryType;
+  memoryLayer: MemoryLayer;
   sourceConfidence: number;
   importance: number;
 };
@@ -329,6 +342,29 @@ export type MemoryStats = {
   total: number;
   lastCapturedAt: string | null;
   bySource: Array<{ source: string; count: number }>;
+  byLayer: Array<{ layer: MemoryLayer; count: number }>;
+  byStatus?: Array<{ status: MemoryStatus; count: number }>;
+  continuity?: {
+    state: "ready" | "continuity_degraded" | "missing" | "unknown";
+    fallbackSources: Array<{ source: string; count: number }>;
+    continuityHitRate: number;
+    degradedStartupRate: number;
+  };
+  consolidation?: {
+    status: "idle" | "running" | "success" | "failed" | "stale" | "unavailable";
+    mode: string | null;
+    lastRunAt: string | null;
+    nextRunAt: string | null;
+    successCount: number;
+    failureCount: number;
+    promotionCount: number;
+    quarantineCount: number;
+    archiveCount: number;
+    repairedEdgeCount: number;
+    staleWarning: boolean;
+    lastError: string | null;
+    influence: string[];
+  };
 };
 
 export type MemoryImportResult = {
@@ -491,6 +527,8 @@ export type MemoryContextResult = {
     retrievalMode: RetrievalMode;
     sourceAllowlist: string[];
     sourceDenylist: string[];
+    layerAllowlist: MemoryLayer[];
+    layerDenylist: MemoryLayer[];
     temporalAnchorAt: string | null;
     includeExplain: boolean;
     expandRelationships: boolean;
@@ -509,9 +547,19 @@ export type MemoryContextResult = {
       scopedRows: number;
       searchRows: number;
       mergedRows: number;
+      byLayer: Array<{ layer: MemoryLayer; count: number }>;
+      selectedByLayer: Array<{ layer: MemoryLayer; count: number }>;
+      fallbackByLayer: Array<{ layer: MemoryLayer; count: number }>;
     };
     retrievalModeUsed: RetrievalMode;
     includeTenantFallback: boolean;
+    consolidationInfluence?: {
+      status: "idle" | "running" | "success" | "failed" | "stale" | "unavailable";
+      mode: string | null;
+      lastRunAt: string | null;
+      nextRunAt: string | null;
+      focusAreas: string[];
+    };
     tenantRowsTimedOut?: boolean;
     degradedComputeMode?: boolean;
     queryDegradation?: {

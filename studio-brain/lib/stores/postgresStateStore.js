@@ -67,6 +67,37 @@ class PostgresStateStore {
         const pool = (0, postgres_1.getPgPool)();
         await pool.query("INSERT INTO studio_state_diff (from_snapshot_date, to_snapshot_date, changes) VALUES ($1::date, $2::date, $3::jsonb)", [diff.fromSnapshotDate, diff.toSnapshotDate, JSON.stringify(diff.changes)]);
     }
+    async saveOverseerRun(run) {
+        const pool = (0, postgres_1.getPgPool)();
+        await pool.query(`
+      INSERT INTO brain_overseer_runs (
+        run_id,
+        computed_at,
+        overall_status,
+        delivery_dedupe_key,
+        raw_payload
+      )
+      VALUES ($1, $2::timestamptz, $3, $4, $5::jsonb)
+      ON CONFLICT (run_id) DO UPDATE SET
+        computed_at = EXCLUDED.computed_at,
+        overall_status = EXCLUDED.overall_status,
+        delivery_dedupe_key = EXCLUDED.delivery_dedupe_key,
+        raw_payload = EXCLUDED.raw_payload
+      `, [run.runId, run.computedAt, run.overallStatus, run.delivery.dedupeKey, JSON.stringify(run)]);
+    }
+    async getLatestOverseerRun() {
+        const pool = (0, postgres_1.getPgPool)();
+        const result = await pool.query("SELECT raw_payload FROM brain_overseer_runs ORDER BY computed_at DESC LIMIT 1");
+        if (!result.rowCount)
+            return null;
+        return result.rows[0].raw_payload;
+    }
+    async listRecentOverseerRuns(limit) {
+        const pool = (0, postgres_1.getPgPool)();
+        const bounded = Math.max(1, Math.min(limit, 500));
+        const result = await pool.query("SELECT raw_payload FROM brain_overseer_runs ORDER BY computed_at DESC LIMIT $1", [bounded]);
+        return result.rows.map((row) => row.raw_payload);
+    }
     async listRecentJobRuns(limit) {
         const pool = (0, postgres_1.getPgPool)();
         const bounded = Math.max(1, Math.min(limit, 500));

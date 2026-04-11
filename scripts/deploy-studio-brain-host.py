@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 import argparse
 import json
@@ -8,32 +10,120 @@ import os
 import re
 import secrets
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
+from textwrap import dedent
 import urllib.request
 
-try:
-    import paramiko
-except ImportError as exc:  # pragma: no cover
-    raise SystemExit("paramiko is required to deploy Studio Brain to the remote host") from exc
+SCRIPTS_LIB = Path(__file__).resolve().parent / "lib"
+if str(SCRIPTS_LIB) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_LIB))
+
+from studiobrain_host_access import connect_studiobrain_ssh, install_remote_fail2ban_allowlist, load_studiobrain_deploy_env
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_STUDIO_BRAIN = REPO_ROOT / "studio-brain"
 ENV_PATH = REPO_ROOT / "secrets/studio-brain/studio-brain-mcp.env"
 PORTAL_ENV_PATH = REPO_ROOT / "secrets/portal/portal-automation.env"
+HOME_PORTAL_ENV_PATH = Path.home() / "secrets" / "portal" / "portal-automation.env"
+PORTAL_AGENT_STAFF_JSON_PATH = REPO_ROOT / "secrets" / "portal" / "portal-agent-staff.json"
+HOME_PORTAL_AGENT_STAFF_JSON_PATH = Path.home() / "secrets" / "portal" / "portal-agent-staff.json"
 STUDIO_AUTOMATION_ENV_PATH = REPO_ROOT / "secrets" / "studio-brain" / "studio-brain-automation.env"
 HOME_STUDIO_AUTOMATION_ENV_PATH = Path.home() / "secrets" / "studio-brain" / "studio-brain-automation.env"
+HOME_STUDIO_MCP_ENV_PATH = Path.home() / "secrets" / "studio-brain" / "studio-brain-mcp.env"
 INTEGRITY_MANIFEST_PATH = REPO_ROOT / "studio-brain/.env.integrity.json"
 REMOTE_PARENT = "/home/wuff/monsoonfire-portal"
 REMOTE_ROOT = f"{REMOTE_PARENT}/studio-brain"
+REMOTE_HOME = "/home/wuff"
+REMOTE_USER_SYSTEMD_DIR = f"{REMOTE_HOME}/.config/systemd/user"
+REMOTE_SERVICE_PATH = f"{REMOTE_USER_SYSTEMD_DIR}/studio-brain.service"
+REMOTE_PORTAL_ENV_PATH = f"{REMOTE_PARENT}/secrets/portal/portal-automation.env"
+REMOTE_PORTAL_AGENT_STAFF_JSON_PATH = f"{REMOTE_PARENT}/secrets/portal/portal-agent-staff.json"
+REMOTE_PORTAL_GOOGLE_ADC_PATH = f"{REMOTE_PARENT}/secrets/portal/application_default_credentials.json"
+DEFAULT_LOCAL_GOOGLE_ADC_PATH = (
+    Path(os.environ["APPDATA"]) / "gcloud" / "application_default_credentials.json"
+    if os.environ.get("APPDATA")
+    else Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+)
 STATIC_SUPPORT_PATHS = (
     REPO_ROOT / ".governance" / "planning",
     REPO_ROOT / "contracts" / "planning.schema.json",
+    REPO_ROOT / "scripts" / "open-memory-consolidate.mjs",
+    REPO_ROOT / "scripts" / "open-memory-overnight-iterate.mjs",
+    REPO_ROOT / "scripts" / "open-memory.mjs",
+    REPO_ROOT / "scripts" / "codex" / "open-memory-automation.mjs",
+    REPO_ROOT / "scripts" / "codex" / "phone-notify.mjs",
     REPO_ROOT / "scripts" / "lib" / "planning-control-plane.mjs",
+    REPO_ROOT / "scripts" / "lib" / "open-memory-import-utils.mjs",
+    REPO_ROOT / "scripts" / "studio-brain-discord-relay.mjs",
+    REPO_ROOT / "scripts" / "studio-network-profile.mjs",
+    REPO_ROOT / "scripts" / "studio-brain-url-resolution.mjs",
+    REPO_ROOT / "scripts" / "lib" / "codex-automation-env.mjs",
+    REPO_ROOT / "scripts" / "lib" / "codex-startup-reliability.mjs",
+    REPO_ROOT / "scripts" / "lib" / "codex-worktree-utils.mjs",
+    REPO_ROOT / "scripts" / "lib" / "firebase-auth-token.mjs",
+    REPO_ROOT / "scripts" / "lib" / "studio-brain-startup-auth.mjs",
+    REPO_ROOT / "scripts" / "lib" / "studio-brain-memory-write.mjs",
+    REPO_ROOT / "scripts" / "lib" / "codex-session-memory-utils.mjs",
+    REPO_ROOT / "scripts" / "lib" / "hybrid-memory-utils.mjs",
+    REPO_ROOT / "scripts" / "lib" / "pst-memory-utils.mjs",
+    REPO_ROOT / "scripts" / "studio-brain-discord-action-runner.mjs",
+    REPO_ROOT / "scripts" / "install-studiobrain-fail2ban-sshd.sh",
+    REPO_ROOT / "scripts" / "install-studiobrain-discord-relay.sh",
+    REPO_ROOT / "scripts" / "install-studiobrain-healthcheck.sh",
+    REPO_ROOT / "scripts" / "install-studiobrain-monitoring.sh",
+    REPO_ROOT / "config" / "studiobrain" / "discord" / "agentcontrol-runtime-catalog.json",
+    REPO_ROOT / "config" / "studiobrain" / "discord" / "agentcontrol-memes.json",
+    REPO_ROOT / "config" / "studiobrain" / "fail2ban" / "sshd.local",
+    REPO_ROOT / "config" / "studiobrain" / "monitoring",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-backup.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-backup.timer",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-backup.sh",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-disk-alert.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-disk-alert.timer",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-disk-alert.sh",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.timer",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.sh",
 )
 HOST_DRIFT_ALLOWLIST_PATH = REPO_ROOT / "studio-brain" / "host-drift-allowlist.json"
+DISCORD_ENV_PATH = REPO_ROOT / "secrets" / "studio-brain" / "discord-mcp.env"
+HOME_DISCORD_ENV_PATH = Path.home() / "secrets" / "studio-brain" / "discord-mcp.env"
+DISCORD_ENV_KEYS_TO_MIRROR = (
+    "STUDIO_BRAIN_MEMORY_INGEST_ENABLED",
+    "STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET",
+    "STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES",
+    "STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS",
+    "STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS",
+    "STUDIO_BRAIN_OVERSEER_DISCORD_ENABLED",
+    "STUDIO_BRAIN_DISCORD_CONVERSATION_MODE",
+    "STUDIO_BRAIN_DISCORD_REPLY_TRIGGER_POLICY",
+    "STUDIO_BRAIN_DISCORD_AMBIENT_REPLY_COOLDOWN_MS",
+    "STUDIO_BRAIN_DISCORD_SIGNS_OF_LIFE",
+    "STUDIO_BRAIN_DISCORD_MEME_COOLDOWN_MS",
+    "STUDIO_BRAIN_DISCORD_SELF_STATE_MODE",
+    "STUDIO_BRAIN_DISCORD_AUTHORITY_MODE",
+    "STUDIO_BRAIN_DISCORD_MEMORY_SCOPE",
+    "STUDIO_BRAIN_DISCORD_ACTION_INTENT_HANDLING",
+    "STUDIO_BRAIN_DISCORD_REPLY_MODE",
+    "STUDIO_BRAIN_DISCORD_CODEX_EXECUTABLE",
+    "STUDIO_BRAIN_DISCORD_CODEX_MODEL",
+    "STUDIO_BRAIN_DISCORD_CODEX_REASONING_EFFORT",
+    "STUDIO_BRAIN_DISCORD_CODEX_EXEC_ROOT",
+    "STUDIO_BRAIN_DISCORD_CODEX_TIMEOUT_MS",
+    "STUDIO_BRAIN_DISCORD_CODEX_HISTORY_LIMIT",
+    "STUDIO_BRAIN_DISCORD_ACTIONS_ROOT",
+    "STUDIO_BRAIN_DISCORD_ACTION_TIMEOUT_MS",
+    "STUDIO_BRAIN_DISCORD_ACTIONS_FULL_PERMISSIONS",
+    "STUDIO_BRAIN_DISCORD_GUILD_ID",
+    "STUDIO_BRAIN_DISCORD_CHANNEL_ID",
+)
+DISCORD_ENV_MAPPINGS = {
+    "DISCORD_APPLICATION_ID": "STUDIO_BRAIN_DISCORD_APPLICATION_ID",
+}
 LOCAL_EXCLUDES = {
     ".env",
     ".env.local",
@@ -43,21 +133,10 @@ LOCAL_EXCLUDES = {
 
 
 def load_env() -> dict[str, str]:
-    text = ENV_PATH.read_text()
-    keys = [
-        "STUDIO_BRAIN_DEPLOY_HOST",
-        "STUDIO_BRAIN_DEPLOY_PORT",
-        "STUDIO_BRAIN_DEPLOY_USER",
-        "STUDIO_BRAIN_DEPLOY_PASSWORD",
-        "STUDIO_BRAIN_MCP_BASE_URL",
-    ]
-    values: dict[str, str] = {}
-    for key in keys:
-        match = re.search(rf"^{key}=(.*)$", text, re.M)
-        if not match or not match.group(1).strip():
-            raise SystemExit(f"missing required deploy secret: {key}")
-        values[key] = match.group(1).strip()
-    return values
+    return load_studiobrain_deploy_env(
+        env_path=ENV_PATH,
+        home_env_path=HOME_STUDIO_MCP_ENV_PATH,
+    )
 
 
 def load_optional_env_file(path: Path) -> dict[str, str]:
@@ -78,6 +157,27 @@ def load_optional_env_files(paths: tuple[Path, ...]) -> dict[str, str]:
     for path in paths:
         values.update(load_optional_env_file(path))
     return values
+
+
+def resolve_local_google_adc_paths(env_values: dict[str, str]) -> tuple[Path, ...]:
+    raw_candidates = (
+        env_values.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
+        os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
+        str(DEFAULT_LOCAL_GOOGLE_ADC_PATH),
+    )
+    resolved: list[Path] = []
+    seen: set[str] = set()
+    for raw_candidate in raw_candidates:
+        candidate = str(raw_candidate or "").strip()
+        if not candidate:
+            continue
+        path = Path(candidate).expanduser()
+        normalized = str(path.resolve()) if path.exists() else str(path)
+        if normalized in seen or not path.exists():
+            continue
+        seen.add(normalized)
+        resolved.append(path)
+    return tuple(resolved)
 
 
 def load_drift_paths() -> tuple[str, ...]:
@@ -130,13 +230,32 @@ def create_archive() -> Path:
     with tarfile.open(archive_path, "w:gz") as tar:
         archive_roots = [LOCAL_STUDIO_BRAIN, *load_integrity_support_paths()]
         for root_path in archive_roots:
-            paths = root_path.rglob("*") if root_path.is_dir() else [root_path]
+            if not root_path.exists():
+                continue
+            if root_path.is_dir():
+                seen: set[str] = set()
+                paths = []
+                for pattern in ("*", ".*"):
+                    for path in root_path.rglob(pattern):
+                        normalized = str(path.resolve())
+                        if normalized in seen:
+                            continue
+                        seen.add(normalized)
+                        paths.append(path)
+            else:
+                paths = [root_path]
             for path in paths:
                 rel = path.relative_to(REPO_ROOT)
                 parts = set(rel.parts)
                 if "node_modules" in parts or "output" in parts or ".git" in parts:
                     continue
                 if path.name in LOCAL_EXCLUDES:
+                    continue
+                if path.suffix == ".sh":
+                    normalized = path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
+                    tar_info = tar.gettarinfo(str(path), arcname=rel.as_posix())
+                    tar_info.size = len(normalized)
+                    tar.addfile(tar_info, BytesIO(normalized))
                     continue
                 tar.add(path, arcname=rel.as_posix())
     return archive_path
@@ -158,15 +277,154 @@ def extract_pid_candidate(text: str) -> str | None:
     return None
 
 
-def restart_remote(ssh: "paramiko.SSHClient", base_url: str) -> dict[str, object]:
+def resolve_remote_node_binary(ssh: "paramiko.SSHClient", timeout: int = 30) -> str:
+    out, err, code = ssh_exec(ssh, "bash -lc 'command -v node'", timeout=timeout)
+    candidate = next((line.strip() for line in out.splitlines() if line.strip()), "")
+    if code != 0 or not candidate:
+        raise RuntimeError(err or out or "failed to resolve remote node binary")
+    return candidate
+
+
+def ensure_remote_dir(ssh: "paramiko.SSHClient", path: str, timeout: int = 30) -> None:
+    out, err, code = ssh_exec(ssh, f"mkdir -p {path}", timeout=timeout)
+    if code != 0:
+        raise RuntimeError(err or out or f"failed to create remote directory {path}")
+
+
+def upload_optional_file(
+    ssh: "paramiko.SSHClient",
+    sftp: "paramiko.SFTPClient",
+    local_paths: tuple[Path, ...],
+    remote_path: str,
+    mode: int = 0o600,
+) -> dict[str, object]:
+    local_path = next((path for path in local_paths if path.exists()), None)
+    if local_path is None:
+        return {"uploaded": False, "path": remote_path, "source": "missing-local-file"}
+    ensure_remote_dir(ssh, Path(remote_path).parent.as_posix())
+    sftp.put(str(local_path), remote_path)
+    try:
+        sftp.chmod(remote_path, mode)
+    except OSError:
+        pass
+    return {"uploaded": True, "path": remote_path, "source": str(local_path)}
+
+
+def collect_discord_runtime_env(values: dict[str, str]) -> dict[str, str]:
+    runtime_values: dict[str, str] = {}
+    for key in DISCORD_ENV_KEYS_TO_MIRROR:
+        value = values.get(key, "").strip()
+        if value:
+            runtime_values[key] = value
+    for source_key, target_key in DISCORD_ENV_MAPPINGS.items():
+        value = values.get(source_key, "").strip()
+        if value:
+            runtime_values[target_key] = value
+    if runtime_values.get("STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET"):
+        runtime_values.setdefault("STUDIO_BRAIN_MEMORY_INGEST_ENABLED", "true")
+    return runtime_values
+
+
+def sync_remote_env_values(
+    ssh: "paramiko.SSHClient",
+    updates: dict[str, str],
+    *,
+    remote_env_path: str = f"{REMOTE_ROOT}/.env.local",
+    timeout: int = 30,
+) -> dict[str, object]:
+    if not updates:
+        return {"updated": False, "path": remote_env_path, "keys": []}
     command = f"""
 python3 - <<'PY'
+from pathlib import Path
+import json
+
+path = Path({json.dumps(remote_env_path)})
+updates = {json.dumps(updates)}
+
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+updated_keys = set()
+for index, raw_line in enumerate(lines):
+    stripped = raw_line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in raw_line:
+        continue
+    key, _ = raw_line.split("=", 1)
+    normalized_key = key.strip()
+    if normalized_key in updates:
+        lines[index] = f"{{normalized_key}}={{updates[normalized_key]}}"
+        updated_keys.add(normalized_key)
+
+for key, value in updates.items():
+    if key in updated_keys:
+        continue
+    if lines and lines[-1].strip():
+        lines.append("")
+    lines.append(f"{{key}}={{value}}")
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+try:
+    path.chmod(0o600)
+except OSError:
+    pass
+
+print(json.dumps({{"updated": True, "path": str(path), "keys": sorted(updates.keys())}}))
+PY
+"""
+    out, err, code = ssh_exec(ssh, command, timeout=timeout)
+    if code != 0:
+        raise RuntimeError(err or out or f"failed to update remote env values in {remote_env_path}")
+    parsed = extract_json_payload(out.strip())
+    if isinstance(parsed, dict):
+        return parsed
+    return {"updated": True, "path": remote_env_path, "keys": sorted(updates.keys())}
+
+
+def render_remote_service_unit(node_binary: str) -> str:
+    return (
+        dedent(
+            f"""
+            [Unit]
+            Description=Studio Brain API (Monsoonfire)
+            After=network-online.target
+            Wants=network-online.target
+
+            [Service]
+            Type=simple
+            WorkingDirectory={REMOTE_ROOT}
+            EnvironmentFile={REMOTE_ROOT}/.env
+            EnvironmentFile=-{REMOTE_ROOT}/.env.local
+            ExecStart={node_binary} lib/index.js
+            Restart=always
+            RestartSec=5
+            KillSignal=SIGINT
+            TimeoutStopSec=30
+            StandardOutput=journal
+            StandardError=journal
+
+            [Install]
+            WantedBy=default.target
+            """
+        ).strip()
+        + "\n"
+    )
+
+
+def restart_remote(ssh: "paramiko.SSHClient", base_url: str) -> dict[str, object]:
+    node_binary = resolve_remote_node_binary(ssh)
+    service_unit = render_remote_service_unit(node_binary)
+    command = f"""
+python3 - <<'PY'
+from datetime import datetime, timezone
 import os
 import signal
 import subprocess
+import json
 from pathlib import Path
 
 root = Path({json.dumps(REMOTE_ROOT)})
+service_path = Path({json.dumps(REMOTE_SERVICE_PATH)})
+service_unit = {json.dumps(service_unit)}
 
 def load_env_file(path: Path) -> dict[str, str]:
     values = {{}}
@@ -180,7 +438,28 @@ def load_env_file(path: Path) -> dict[str, str]:
         values[key.strip()] = value.strip().strip('"').strip("'")
     return values
 
-proc_list = subprocess.run("pgrep -f 'node lib/index.js'", shell=True, capture_output=True, text=True, cwd=root)
+service_path.parent.mkdir(parents=True, exist_ok=True)
+if service_path.exists():
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup_path = service_path.with_name(f"{{service_path.name}}.bak.{{timestamp}}")
+    backup_path.write_text(service_path.read_text(encoding="utf-8"), encoding="utf-8")
+service_path.write_text(service_unit, encoding="utf-8")
+try:
+    service_path.chmod(0o644)
+except OSError:
+    pass
+
+subprocess.run(["systemctl", "--user", "daemon-reload"], cwd=root, check=True)
+subprocess.run(["systemctl", "--user", "stop", "studio-brain.service"], cwd=root, check=False)
+subprocess.run(["systemctl", "--user", "reset-failed", "studio-brain.service"], cwd=root, check=False)
+subprocess.run("pkill -f 'npm run build && node lib/index.js' || true", shell=True, cwd=root, check=False)
+subprocess.run(
+    "pkill -f 'node /home/wuff/monsoonfire-portal/studio-brain/node_modules/.bin/tsc -p tsconfig.json' || true",
+    shell=True,
+    cwd=root,
+    check=False,
+)
+proc_list = subprocess.run("pgrep -f '^node lib/index.js$'", shell=True, capture_output=True, text=True, cwd=root)
 for line in proc_list.stdout.splitlines():
     line = line.strip()
     if line.isdigit():
@@ -188,34 +467,36 @@ for line in proc_list.stdout.splitlines():
             os.kill(int(line), signal.SIGTERM)
         except ProcessLookupError:
             pass
-subprocess.run('pkill -f "node lib/index.js" || true', shell=True, cwd=root, check=False)
+subprocess.run("pkill -f '^node lib/index.js$' || true", shell=True, cwd=root, check=False)
 lock_path = root / ".studio-brain.runtime.lock"
 if lock_path.exists():
     lock_path.unlink()
-
-env = os.environ.copy()
-env.update(load_env_file(root / ".env"))
-env.update(load_env_file(root / ".env.local"))
-log = open(root / "studio-brain.log", "a", encoding="utf-8")
-proc = subprocess.Popen(
-    ["node", "lib/index.js"],
+subprocess.run(["systemctl", "--user", "start", "studio-brain.service"], cwd=root, check=True)
+status = subprocess.run(
+    ["systemctl", "--user", "show", "studio-brain.service", "-p", "MainPID", "-p", "ActiveState", "-p", "SubState"],
     cwd=root,
-    env=env,
-    stdout=log,
-    stderr=log,
-    start_new_session=True,
+    capture_output=True,
+    text=True,
+    check=True,
 )
-print(proc.pid)
+payload = {{}}
+for line in status.stdout.splitlines():
+    if "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    payload[key] = value
+print(json.dumps(payload))
 PY
 """
     out, err, code = ssh_exec(ssh, command, timeout=30)
-    pid = extract_pid_candidate(out)
-    if pid is None:
+    status_payload = extract_json_payload(out.strip()) if out.strip() else None
+    pid = str((status_payload or {}).get("MainPID", "")).strip() if isinstance(status_payload, dict) else ""
+    if not pid:
         if code != 0:
             raise RuntimeError(err or out or "remote restart failed")
         raise RuntimeError(f"restart did not return a pid: {out!r}")
     health = None
-    for _ in range(40):
+    for _ in range(90):
         try:
             with urllib.request.urlopen(f"{base_url.rstrip('/')}/healthz", timeout=5) as response:
                 if response.status == 200:
@@ -227,15 +508,50 @@ PY
         if code != 0:
             raise RuntimeError(err or out or "remote restart failed")
         raise RuntimeError("service did not return healthy after restart")
-    log_out, _, _ = ssh_exec(ssh, f"cd {REMOTE_ROOT} && tail -n 120 studio-brain.log", timeout=30)
+    status_out, _, _ = ssh_exec(
+        ssh,
+        "systemctl --user show studio-brain.service -p MainPID -p ActiveState -p SubState -p ExecStart -p NRestarts",
+        timeout=30,
+    )
+    journal_out, _, _ = ssh_exec(ssh, "journalctl --user -u studio-brain.service -n 120 --no-pager", timeout=30)
     return {
         "pid": pid,
+        "nodeBinary": node_binary,
         "restartExitCode": code,
         "restartStdout": [line for line in out.splitlines() if line.strip()][-10:],
         "restartStderr": [line for line in err.splitlines() if line.strip()][-10:],
         "health": health,
-        "resumeFailureInTail": "autonomic_loop_driver_resume_failed" in log_out,
-        "tail": log_out.splitlines()[-25:],
+        "resumeFailureInTail": "autonomic_loop_driver_resume_failed" in journal_out,
+        "tail": journal_out.splitlines()[-25:],
+        "serviceState": [line for line in status_out.splitlines() if line.strip()],
+    }
+
+
+def install_remote_discord_relay(ssh: "paramiko.SSHClient") -> dict[str, object]:
+    local_installer = REPO_ROOT / "scripts" / "install-studiobrain-discord-relay.sh"
+    if not local_installer.exists():
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "source_missing",
+            "message": "Current checkout does not include scripts/install-studiobrain-discord-relay.sh; leaving any existing host relay install unchanged.",
+            "stdout": [],
+            "stderr": [],
+            "timerState": [],
+        }
+    command = f"cd {REMOTE_PARENT} && bash ./scripts/install-studiobrain-discord-relay.sh"
+    out, err, code = ssh_exec(ssh, command, timeout=180)
+    timer_state, _, _ = ssh_exec(
+        ssh,
+        "systemctl show -p ActiveState -p SubState -p UnitFileState -p NextElapseUSecRealtime studio-brain-discord-relay.timer",
+        timeout=30,
+    )
+    return {
+        "ok": code == 0,
+        "exitCode": code,
+        "stdout": [line for line in out.splitlines() if line.strip()][-20:],
+        "stderr": [line for line in err.splitlines() if line.strip()][-20:],
+        "timerState": [line for line in timer_state.splitlines() if line.strip()],
     }
 
 
@@ -513,7 +829,7 @@ PY
 
 def deploy() -> dict[str, object]:
     env = load_env()
-    portal_env = load_optional_env_file(PORTAL_ENV_PATH)
+    portal_env = load_optional_env_files((PORTAL_ENV_PATH, HOME_PORTAL_ENV_PATH))
     studio_env = load_optional_env_files(
         (
             STUDIO_AUTOMATION_ENV_PATH,
@@ -522,24 +838,51 @@ def deploy() -> dict[str, object]:
             LOCAL_STUDIO_BRAIN / ".env",
         )
     )
+    discord_env = load_optional_env_files((DISCORD_ENV_PATH, HOME_DISCORD_ENV_PATH))
+    discord_runtime_env = collect_discord_runtime_env(discord_env)
+    google_adc_paths = resolve_local_google_adc_paths(portal_env)
     drift_paths = load_drift_paths()
     run_local_build()
     archive = create_archive()
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(
-        env["STUDIO_BRAIN_DEPLOY_HOST"],
-        port=int(env["STUDIO_BRAIN_DEPLOY_PORT"]),
-        username=env["STUDIO_BRAIN_DEPLOY_USER"],
-        password=env["STUDIO_BRAIN_DEPLOY_PASSWORD"],
-        timeout=10,
-    )
+    ssh, ssh_auth = connect_studiobrain_ssh(env, timeout=10)
     sftp = ssh.open_sftp()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     remote_archive = f"/tmp/studio-brain-host-deploy-{timestamp}.tar.gz"
     backup_dir = f"/home/wuff/studio-brain-drift-backup-{timestamp}"
     try:
         sftp.put(str(archive), remote_archive)
+        discord_env_sync = upload_optional_file(
+            ssh,
+            sftp,
+            (DISCORD_ENV_PATH, HOME_DISCORD_ENV_PATH),
+            f"{REMOTE_PARENT}/secrets/studio-brain/discord-mcp.env",
+        )
+        portal_env_sync = upload_optional_file(
+            ssh,
+            sftp,
+            (PORTAL_ENV_PATH, HOME_PORTAL_ENV_PATH),
+            REMOTE_PORTAL_ENV_PATH,
+        )
+        portal_staff_credentials_sync = upload_optional_file(
+            ssh,
+            sftp,
+            (PORTAL_AGENT_STAFF_JSON_PATH, HOME_PORTAL_AGENT_STAFF_JSON_PATH),
+            REMOTE_PORTAL_AGENT_STAFF_JSON_PATH,
+        )
+        portal_google_adc_sync = upload_optional_file(
+            ssh,
+            sftp,
+            google_adc_paths,
+            REMOTE_PORTAL_GOOGLE_ADC_PATH,
+        )
+        portal_env_updates = {"PORTAL_AGENT_STAFF_CREDENTIALS": REMOTE_PORTAL_AGENT_STAFF_JSON_PATH}
+        if portal_google_adc_sync.get("uploaded"):
+            portal_env_updates["GOOGLE_APPLICATION_CREDENTIALS"] = REMOTE_PORTAL_GOOGLE_ADC_PATH
+        portal_runtime_sync = sync_remote_env_values(
+            ssh,
+            portal_env_updates,
+            remote_env_path=REMOTE_PORTAL_ENV_PATH,
+        )
         move_lines = "\n".join(
             f"if [ -e {REMOTE_ROOT}/{path} ]; then mkdir -p {backup_dir}/{Path(path).parent.as_posix()}; mv {REMOTE_ROOT}/{path} {backup_dir}/{path}; fi"
             for path in drift_paths
@@ -554,8 +897,14 @@ tar -xzf {remote_archive}
         out, err, code = ssh_exec(ssh, command, timeout=180)
         if code != 0:
             raise RuntimeError(err or out or "remote sync failed")
+        fail2ban = install_remote_fail2ban_allowlist(ssh, env=env, remote_parent=REMOTE_PARENT)
+        runtime_env_updates = dict(discord_runtime_env)
+        if portal_google_adc_sync.get("uploaded"):
+            runtime_env_updates["GOOGLE_APPLICATION_CREDENTIALS"] = REMOTE_PORTAL_GOOGLE_ADC_PATH
+        runtime_env_sync = sync_remote_env_values(ssh, runtime_env_updates)
         remote_admin_token, admin_token_source = ensure_remote_admin_token(ssh)
         restart = restart_remote(ssh, env["STUDIO_BRAIN_MCP_BASE_URL"])
+        discord_relay = install_remote_discord_relay(ssh)
         backup_refresh = run_remote_json(
             ssh,
             f"cd {REMOTE_PARENT} && node ./scripts/studiobrain-backup-drill.mjs verify --json --strict --mode live_host_authoritative --approved-remote-runner",
@@ -621,6 +970,10 @@ tar -xzf {remote_archive}
         blockers = []
         if restart["resumeFailureInTail"]:
             blockers.append("resume_failure_signature_reappeared")
+        if not fail2ban["ok"]:
+            blockers.append("ssh_fail2ban_allowlist_install_failed")
+        if not discord_relay["ok"]:
+            blockers.append("discord_relay_install_failed")
         if not posture["ok"]:
             blockers.append("authoritative_posture_failed")
         if not backup_freshness["ok"]:
@@ -631,7 +984,16 @@ tar -xzf {remote_archive}
             "status": "pass" if not blockers else "shadow_fallback_required",
             "remoteArchive": remote_archive,
             "backupDir": backup_dir,
+            "sshAuth": ssh_auth,
+            "fail2ban": fail2ban,
+            "discordEnvSync": discord_env_sync,
+            "portalEnvSync": portal_env_sync,
+            "portalStaffCredentialsSync": portal_staff_credentials_sync,
+            "portalGoogleAdcSync": portal_google_adc_sync,
+            "portalRuntimeSync": portal_runtime_sync,
+            "runtimeEnvSync": runtime_env_sync,
             "restart": restart,
+            "discordRelay": discord_relay,
             "backupRefresh": backup_refresh,
             "opsCockpit": ops_cockpit,
             "posture": posture,

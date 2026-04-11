@@ -14,12 +14,25 @@ const DEFAULT_TARGET_FILES = [
   "studio-brain/.env.network.profile",
   "studio-brain/.env.contract.schema.json",
   "studio-brain/docker-compose.yml",
+  "studio-brain/docker/otel-collector.yaml",
   "studio-brain/scripts/preflight.mjs",
   "studio-brain/scripts/env-contract-validator.mjs",
   "studio-brain/scripts/validateCompose.mjs",
   "studio-brain/scripts/validate-env-contract.mjs",
   "studio-brain/host-drift-allowlist.json",
   "scripts/studio-network-profile.mjs",
+  "scripts/studio-brain-url-resolution.mjs",
+  "scripts/install-studiobrain-healthcheck.sh",
+  "scripts/install-studiobrain-monitoring.sh",
+  "scripts/lib/codex-automation-env.mjs",
+  "scripts/lib/codex-startup-reliability.mjs",
+  "scripts/lib/codex-worktree-utils.mjs",
+  "scripts/lib/firebase-auth-token.mjs",
+  "scripts/lib/studio-brain-startup-auth.mjs",
+  "scripts/lib/studio-brain-memory-write.mjs",
+  "scripts/lib/codex-session-memory-utils.mjs",
+  "scripts/lib/hybrid-memory-utils.mjs",
+  "scripts/lib/pst-memory-utils.mjs",
   "scripts/lib/studiobrain-posture-policy.mjs",
   "scripts/start-emulators.mjs",
   "scripts/studiobrain-network-check.mjs",
@@ -29,12 +42,30 @@ const DEFAULT_TARGET_FILES = [
   "scripts/test-studio-brain-auth.mjs",
   "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",
+  "scripts/integrity-check.mjs",
   "scripts/deploy-studio-brain-host.py",
   "scripts/pr-gate.mjs",
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/functions-cors-smoke.mjs",
+  "scripts/generate-runtime-docs.mjs",
   "scripts/stability-guardrails.mjs",
+  "config/studiobrain/monitoring/Caddyfile",
+  "config/studiobrain/monitoring/docker-compose.yml",
+  "config/studiobrain/monitoring/netdata-overrides/docker.conf",
+  "config/studiobrain/monitoring/netdata-overrides/netdata.conf",
+  "config/studiobrain/monitoring/netdata-overrides/systemdunits.conf",
+  "config/studiobrain/monitoring/scripts/bootstrap-kuma-monitors.js",
+  "config/studiobrain/systemd/studio-brain-backup.service",
+  "config/studiobrain/systemd/studio-brain-backup.timer",
+  "config/studiobrain/systemd/studio-brain-backup.sh",
+  "config/studiobrain/systemd/studio-brain-disk-alert.service",
+  "config/studiobrain/systemd/studio-brain-disk-alert.timer",
+  "config/studiobrain/systemd/studio-brain-disk-alert.sh",
+  "config/studiobrain/systemd/studio-brain-discord-relay.service",
+  "config/studiobrain/systemd/studio-brain-discord-relay.timer",
+  "config/studiobrain/systemd/studio-brain-discord-relay.sh",
+  "docs/generated/studiobrain-runtime-contract.generated.md",
   "docs/policies/STUDIO_OS_V3_RETENTION.md",
   "docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md",
   "website/scripts/deploy.mjs",
@@ -44,6 +75,8 @@ const DEFAULT_TARGET_FILES = [
 const DEFAULT_OVERRIDE_ENV_VAR = "STUDIO_BRAIN_INTEGRITY_OVERRIDE";
 const OVERRIDE_REQUIRED_KEYS = ["owner", "reason", "expiresAt"];
 const TEXT_FILE_EXTENSIONS = new Set([
+  ".conf",
+  ".js",
   ".json",
   ".md",
   ".mjs",
@@ -52,6 +85,8 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".py",
   ".schema",
   ".sh",
+  ".service",
+  ".timer",
   ".yml",
   ".yaml",
 ]);
@@ -185,6 +220,9 @@ function readCanonicalFile(filePath) {
 function shouldNormalizeText(filePath) {
   const normalized = String(filePath || "").replace(/\\/g, "/");
   if (/\/\.env(?:\.|$)/.test(normalized)) {
+    return true;
+  }
+  if (/(^|\/)Caddyfile$/.test(normalized)) {
     return true;
   }
   const ext = normalized.includes(".") ? `.${normalized.split(".").pop()}` : "";

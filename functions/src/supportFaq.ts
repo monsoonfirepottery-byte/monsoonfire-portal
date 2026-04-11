@@ -16,6 +16,8 @@ type SupportRequestCategory =
   | "Studio"
   | "Other";
 
+type PolicySourceType = "canonical_summary" | "announcement_summary" | "operational_faq";
+
 type FaqEntry = {
   id: string;
   question: string;
@@ -23,6 +25,9 @@ type FaqEntry = {
   category: SupportRequestCategory;
   tags: string[];
   rank: number;
+  policySlug?: string | null;
+  policyVersion?: string | null;
+  sourceType?: PolicySourceType | null;
 };
 
 function normalizeCategory(value: unknown): SupportRequestCategory {
@@ -53,6 +58,28 @@ function normalizeTags(value: unknown): string[] {
     .map((item) => item.toLowerCase());
 }
 
+function normalizePolicySlug(value: unknown): string | null {
+  const slug = typeof value === "string" ? value.trim() : "";
+  if (!slug) return null;
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : null;
+}
+
+function normalizePolicyVersion(value: unknown): string | null {
+  const version = typeof value === "string" ? value.trim() : "";
+  return version || null;
+}
+
+function normalizeSourceType(value: unknown): PolicySourceType | null {
+  if (
+    value === "canonical_summary" ||
+    value === "announcement_summary" ||
+    value === "operational_faq"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function normalizeFaqEntry(
   id: string,
   data: Record<string, unknown>
@@ -73,6 +100,9 @@ function normalizeFaqEntry(
     category: normalizeCategory(data.category),
     tags,
     rank,
+    policySlug: normalizePolicySlug(data.policySlug),
+    policyVersion: normalizePolicyVersion(data.policyVersion),
+    sourceType: normalizeSourceType(data.sourceType),
   };
 }
 

@@ -2,6 +2,7 @@ type ImportMetaStudioBrainEnv = { VITE_STUDIO_BRAIN_BASE_URL?: string };
 type ImportMetaEnv = ImportMetaStudioBrainEnv;
 
 const STUDIO_BRAIN_ENV = (import.meta.env ?? {}) as ImportMetaEnv;
+const STUDIO_BRAIN_BASE_URL_OVERRIDE_KEY = "mf:studio-brain-base-url";
 const LOCAL_STUDIO_BRAIN_PORT = 8787;
 const LOCAL_LOOPBACK_IPv6 = "[::1]";
 
@@ -61,6 +62,28 @@ function resolveBrowserHostname(override?: string): string {
   }
   if (typeof window === "undefined") return "";
   return window.location.hostname.toLowerCase();
+}
+
+function safeLocalStorageGet(key: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(window.localStorage.getItem(key) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value.trim()) {
+      window.localStorage.setItem(key, value.trim());
+      return;
+    }
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures; runtime callers surface the resulting resolution state.
+  }
 }
 
 function isBrowserLocalHost(browserHostname?: string): boolean {
@@ -132,7 +155,8 @@ function resolveStudioBrainBaseUrlFromContext({
   configuredBaseUrl,
   browserHostname,
 }: ResolveStudioBrainOptions = {}): StudioBrainResolution {
-  const configured = configuredBaseUrl ?? STUDIO_BRAIN_ENV.VITE_STUDIO_BRAIN_BASE_URL?.trim();
+  const configured =
+    configuredBaseUrl?.trim() || getStoredStudioBrainBaseUrlOverride() || STUDIO_BRAIN_ENV.VITE_STUDIO_BRAIN_BASE_URL?.trim() || "";
   const browserHost = resolveBrowserHostname(browserHostname);
 
   if (!configured) {
@@ -179,6 +203,18 @@ function resolveStudioBrainBaseUrlFromContext({
     enabled: true,
     reason: "",
   };
+}
+
+export function getStoredStudioBrainBaseUrlOverride(): string {
+  return safeLocalStorageGet(STUDIO_BRAIN_BASE_URL_OVERRIDE_KEY);
+}
+
+export function setStoredStudioBrainBaseUrlOverride(value: string) {
+  safeLocalStorageSet(STUDIO_BRAIN_BASE_URL_OVERRIDE_KEY, value);
+}
+
+export function clearStoredStudioBrainBaseUrlOverride() {
+  safeLocalStorageSet(STUDIO_BRAIN_BASE_URL_OVERRIDE_KEY, "");
 }
 
 export function resolveStudioBrainBaseUrlResolution(options: ResolveStudioBrainOptions = {}): StudioBrainResolution {

@@ -9,6 +9,7 @@ class MemoryStateStore {
     snapshots = [];
     jobRuns = new Map();
     diffs = [];
+    overseerRuns = [];
     async saveStudioState(snapshot) {
         const existing = this.snapshots.findIndex((s) => s.snapshotDate === snapshot.snapshotDate);
         if (existing >= 0) {
@@ -32,6 +33,22 @@ class MemoryStateStore {
     }
     async saveStudioStateDiff(diff) {
         this.diffs.push(diff);
+    }
+    async saveOverseerRun(run) {
+        const existing = this.overseerRuns.findIndex((row) => row.runId === run.runId);
+        if (existing >= 0) {
+            this.overseerRuns[existing] = run;
+        }
+        else {
+            this.overseerRuns.push(run);
+        }
+        this.overseerRuns.sort((a, b) => b.computedAt.localeCompare(a.computedAt));
+    }
+    async getLatestOverseerRun() {
+        return this.overseerRuns[0] ?? null;
+    }
+    async listRecentOverseerRuns(limit) {
+        return this.overseerRuns.slice(0, Math.max(1, limit));
     }
     async listRecentJobRuns(limit) {
         const bounded = Math.max(1, limit);

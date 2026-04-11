@@ -3,10 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MemoryValidationError = void 0;
 exports.createMemoryService = createMemoryService;
 const node_crypto_1 = require("node:crypto");
+const node_fs_1 = require("node:fs");
+const node_path_1 = require("node:path");
 const zod_1 = require("zod");
 const embedding_1 = require("./embedding");
+const associationScout_1 = require("./associationScout");
 const contracts_1 = require("./contracts");
 const nanny_1 = require("./nanny");
+const layers_1 = require("./layers");
 const SENSITIVE_KEY_PATTERN = /(secret|password|authorization|api[-_]?key|cookie|session)/i;
 const SENSITIVE_TOKEN_COMPONENT_PATTERN = /(^|_)(token|jwt|bearer|access|refresh|id)($|_)/i;
 const SAFE_TOKEN_COMPONENT_PATTERN = /(^|_)(topic_tokens|participant_tokens|token_count|tokens_count|structure_signal_count)($|_)/i;
@@ -31,6 +35,12 @@ const MESSAGE_ID_PATTERN = /<[^>]+>/g;
 const DATE_PATTERN = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/g;
 const GRAPH_RELATION_LIMIT = 64;
 const ENTITY_INDEX_LIMIT = 96;
+const MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"];
+const MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"];
+const MEMORY_SERVICE_REPO_ROOT = (0, node_path_1.resolve)(__dirname, "..", "..", "..");
+const MEMORY_CONSOLIDATION_CONNECTION_SOURCE = "memory-consolidation-connection";
+const MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE = "memory-consolidation-promotion-candidate";
+const MEMORY_CONSOLIDATION_PROMOTED_SOURCE = "memory-consolidation-promoted";
 class MemoryValidationError extends Error {
     constructor(message) {
         super(message);
@@ -133,6 +143,34 @@ const MEMORY_QUERY_FALLBACK_STAGE_TIMEOUT_MS = readBoundedEnvInt("STUDIO_BRAIN_M
 const MEMORY_QUERY_EMBED_TIMEOUT_MS = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_EMBED_TIMEOUT_MS", Math.max(1_000, Math.min(2_000, Math.floor(MEMORY_QUERY_ROUTE_TIMEOUT_MS * 0.1))), 1_000, 60_000);
 const MEMORY_QUERY_ENABLE_SEMANTIC_TIMEOUT_FALLBACK = readBoolEnv("STUDIO_BRAIN_MEMORY_SEARCH_SEMANTIC_TIMEOUT_FALLBACK", false);
 const MEMORY_QUERY_ENABLE_LEXICAL_TIMEOUT_FALLBACK = readBoolEnv("STUDIO_BRAIN_MEMORY_QUERY_LEXICAL_TIMEOUT_FALLBACK", true);
+const MEMORY_WORKING_TTL_HOURS = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_WORKING_TTL_HOURS", 72, 1, 24 * 30);
+const MEMORY_CONSOLIDATION_STALE_WARNING_HOURS = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_STALE_WARNING_HOURS", 36, 1, 24 * 30);
+const MEMORY_CONSOLIDATION_PROMOTION_CONFIDENCE_THRESHOLD = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_PROMOTION_CONFIDENCE_THRESHOLD ?? "0.8") || 0.8));
+const MEMORY_CONSOLIDATION_PROMOTION_IMPORTANCE_THRESHOLD = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_PROMOTION_IMPORTANCE_THRESHOLD ?? "0.65") || 0.65));
+const MEMORY_CONSOLIDATION_DEDUPE_SIMILARITY_THRESHOLD = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_DEDUPE_SIMILARITY_THRESHOLD ?? "0.92") || 0.92));
+const MEMORY_CONSOLIDATION_REPAIR_THRESHOLD = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_REPAIR_THRESHOLD ?? "0.7") || 0.7));
+const MEMORY_CONSOLIDATION_CONNECTION_NOTES_ENABLED = readBoolEnv("STUDIO_BRAIN_MEMORY_CONSOLIDATION_CONNECTION_NOTES_ENABLED", true);
+const MEMORY_CONSOLIDATION_CONNECTION_NOTE_MIN_SCORE = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_CONNECTION_NOTE_MIN_SCORE ?? "0.7") || 0.7));
+const MEMORY_CONSOLIDATION_MAX_CONNECTION_NOTES = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_MAX_CONNECTION_NOTES", 12, 1, 128);
+const MEMORY_CONSOLIDATION_WIDE_SEARCH_ENABLED = readBoolEnv("STUDIO_BRAIN_MEMORY_CONSOLIDATION_WIDE_SEARCH_ENABLED", true);
+const MEMORY_CONSOLIDATION_WIDE_QUERY_LIMIT = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_WIDE_QUERY_LIMIT", 6, 1, 16);
+const MEMORY_CONSOLIDATION_WIDE_SEARCH_RESULT_LIMIT = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_WIDE_SEARCH_RESULT_LIMIT", 24, 1, 128);
+const MEMORY_CONSOLIDATION_WIDE_RELATED_LIMIT = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_WIDE_RELATED_LIMIT", 64, 4, 256);
+const MEMORY_CONSOLIDATION_SOURCE_BALANCING_ENABLED = readBoolEnv("STUDIO_BRAIN_MEMORY_CONSOLIDATION_SOURCE_BALANCING_ENABLED", true);
+const MEMORY_CONSOLIDATION_SECOND_PASS_ENABLED = readBoolEnv("STUDIO_BRAIN_MEMORY_CONSOLIDATION_SECOND_PASS_ENABLED", true);
+const MEMORY_CONSOLIDATION_SECOND_PASS_MAX_QUERIES = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_SECOND_PASS_MAX_QUERIES", 6, 0, 24);
+const MEMORY_CONSOLIDATION_SECOND_PASS_SEARCH_LIMIT = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_SECOND_PASS_SEARCH_LIMIT", 12, 1, 64);
+const MEMORY_CONSOLIDATION_SECOND_PASS_RELATED_LIMIT = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_SECOND_PASS_RELATED_LIMIT", 18, 0, 128);
+const MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP ?? "0.2") || 0.2));
+const MEMORY_CONSOLIDATION_FAMILY_MIN_COUNT = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_FAMILY_MIN_COUNT", 2, 1, 12);
+const MEMORY_CONSOLIDATION_THEME_CLUSTER_MIN_SIMILARITY = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_THEME_CLUSTER_MIN_SIMILARITY ?? "0.38") || 0.38));
+const MEMORY_CONSOLIDATION_THEME_MAX_CLUSTERS = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_THEME_MAX_CLUSTERS", 12, 1, 64);
+const MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_ENABLED = readBoolEnv("STUDIO_BRAIN_MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_ENABLED", true);
+const MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_MIN_CONFIDENCE = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_MIN_CONFIDENCE ?? "0.72") || 0.72));
+const MEMORY_CONSOLIDATION_THEME_PROMOTION_CONFIRM_MIN_FAMILIES = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_THEME_PROMOTION_CONFIRM_MIN_FAMILIES", 3, 2, 6);
+const MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES", 3, 1, 64);
+const MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_MEMORIES_PER_BUNDLE = readBoundedEnvInt("STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_MEMORIES_PER_BUNDLE", 10, 2, 20);
+const MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_INTENT_MIN_CONFIDENCE = Math.max(0, Math.min(1, Number(process.env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_INTENT_MIN_CONFIDENCE ?? "0.58") || 0.58));
 function toNormalizedMetadataKey(value) {
     return String(value ?? "")
         .trim()
@@ -270,6 +308,1258 @@ function normalizeMetadata(value) {
         return {};
     return value;
 }
+function resolveMemoryArtifactPath(relativePath) {
+    return (0, node_path_1.resolve)(MEMORY_SERVICE_REPO_ROOT, ...relativePath);
+}
+function readJsonArtifact(relativePath) {
+    try {
+        const target = resolveMemoryArtifactPath(relativePath);
+        if (!(0, node_fs_1.existsSync)(target))
+            return null;
+        return JSON.parse((0, node_fs_1.readFileSync)(target, "utf8"));
+    }
+    catch {
+        return null;
+    }
+}
+function readMemoryConsolidationArtifact() {
+    return readJsonArtifact(MEMORY_CONSOLIDATION_RELATIVE_PATH);
+}
+function writeMemoryConsolidationArtifact(artifact) {
+    const target = resolveMemoryArtifactPath(MEMORY_CONSOLIDATION_RELATIVE_PATH);
+    (0, node_fs_1.mkdirSync)((0, node_path_1.resolve)(target, ".."), { recursive: true });
+    (0, node_fs_1.writeFileSync)(target, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
+    return target;
+}
+function readMemoryBriefArtifact() {
+    return readJsonArtifact(MEMORY_BRIEF_RELATIVE_PATH);
+}
+function countByLayer(rows) {
+    const counts = new Map();
+    for (const row of rows) {
+        counts.set(row.memoryLayer, (counts.get(row.memoryLayer) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+        .map(([layer, count]) => ({ layer, count }))
+        .sort((left, right) => right.count - left.count || left.layer.localeCompare(right.layer));
+}
+function countByLayerFromSearchRows(rows) {
+    const counts = new Map();
+    for (const row of rows) {
+        counts.set(row.memoryLayer, (counts.get(row.memoryLayer) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+        .map(([layer, count]) => ({ layer, count }))
+        .sort((left, right) => right.count - left.count || left.layer.localeCompare(right.layer));
+}
+function countByStatus(rows) {
+    const counts = new Map();
+    for (const row of rows) {
+        counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+        .map(([status, count]) => ({ status, count }))
+        .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status));
+}
+function applyDefaultWorkingTtl(metadata, occurredAt) {
+    if (metadata.expiresAt)
+        return metadata;
+    const anchorMs = Number.isFinite(Date.parse(occurredAt ?? "")) ? Date.parse(occurredAt ?? "") : Date.now();
+    return {
+        ...metadata,
+        expiresAt: new Date(anchorMs + MEMORY_WORKING_TTL_HOURS * 60 * 60 * 1000).toISOString(),
+    };
+}
+function hasCanonicalLineage(metadata) {
+    const derivedIds = metadata.derivedFromIds;
+    if (Array.isArray(derivedIds) && derivedIds.some((value) => normalizeText(value)))
+        return true;
+    return Boolean(normalizeText(metadata.corpusRecordId)
+        || normalizeText(metadata.corpus_record_id)
+        || normalizeText(metadata.corpusSourceUnitId)
+        || normalizeText(metadata.corpus_source_unit_id)
+        || normalizeText(metadata.sourceArtifactPath)
+        || normalizeText(metadata.source_artifact_path)
+        || normalizeText(metadata.sourcePath)
+        || normalizeText(metadata.source_path)
+        || normalizeText(metadata.lineagePointer)
+        || normalizeText(metadata.lineage_pointer));
+}
+function withCanonicalLineage(metadata, input) {
+    if (hasCanonicalLineage(metadata))
+        return metadata;
+    return {
+        ...metadata,
+        lineagePointer: input.clientRequestId || input.id,
+        sourceArtifactPath: normalizeText(metadata.sourceArtifactPath) || normalizeText(metadata.sourcePath) || `memory://${input.source}/${input.id}`,
+    };
+}
+function deriveCaptureLayer(input) {
+    return (0, layers_1.deriveMemoryLayer)({
+        memoryLayer: input.memoryLayer,
+        memoryType: input.memoryType,
+        source: input.source,
+        tags: input.tags,
+        content: input.content,
+        metadata: input.metadata,
+    });
+}
+function synthesizeCoreRowsFromBrief(brief, tenantId, anchorAt) {
+    const generatedAt = normalizeText(brief?.generatedAt) || anchorAt;
+    const rows = [];
+    const coreBlocks = Array.isArray(brief?.layers?.coreBlocks) ? brief.layers.coreBlocks : [];
+    for (const [index, content] of coreBlocks.entries()) {
+        const trimmed = normalizeText(content);
+        if (!trimmed)
+            continue;
+        rows.push({
+            id: `core-block:${index}:${(0, node_crypto_1.createHash)("sha1").update(trimmed).digest("hex").slice(0, 16)}`,
+            tenantId,
+            agentId: "studio-brain-startup",
+            runId: "startup-context",
+            content: trimmed,
+            source: "startup-context",
+            tags: ["core-block"],
+            metadata: {
+                source: "startup-context",
+                memoryLayer: "core",
+                readOnly: true,
+                synthesizedFrom: MEMORY_BRIEF_RELATIVE_PATH.join("/"),
+            },
+            createdAt: generatedAt,
+            occurredAt: generatedAt,
+            status: "accepted",
+            memoryType: "procedural",
+            memoryLayer: "core",
+            sourceConfidence: 0.94,
+            importance: 0.9,
+        });
+    }
+    return rows;
+}
+function normalizeContentClusterKey(content) {
+    return content
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/[^a-z0-9@:/._ -]+/g, "")
+        .trim()
+        .slice(0, 240);
+}
+function duplicateClusterKeyForRow(row) {
+    const metadata = normalizeMetadata(row.metadata);
+    const fingerprint = normalizeText(metadata.fingerprint);
+    if (fingerprint)
+        return `fingerprint:${fingerprint}`;
+    return `content:${(0, node_crypto_1.createHash)("sha1")
+        .update(`${row.tenantId ?? "none"}|${row.source}|${normalizeContentClusterKey(row.content)}|${row.tags.join(",")}`)
+        .digest("hex")
+        .slice(0, 24)}`;
+}
+function consolidationPrecedenceScore(row) {
+    let score = 0;
+    if (row.memoryLayer === "canonical")
+        score += 400;
+    else if (row.memoryLayer === "episodic" && row.status === "accepted")
+        score += 300;
+    else if (row.memoryLayer === "episodic")
+        score += 220;
+    else if (row.memoryLayer === "working")
+        score += 120;
+    if (normalizeSource(row.source) === "codex-compaction-promoted")
+        score += 40;
+    if (normalizeSource(row.source) === "codex-compaction-window")
+        score += 20;
+    if (normalizeSource(row.source) === "codex-compaction-raw")
+        score -= 10;
+    score += Math.round(row.sourceConfidence * 100) + Math.round(row.importance * 60);
+    return score;
+}
+function extractLoopStateHint(row) {
+    const metadata = normalizeMetadata(row.metadata);
+    return normalizeText(metadata.loopState || metadata.currentState || metadata.state).toLowerCase();
+}
+function isDreamConnectionNoteSource(source) {
+    return normalizeSource(source) === MEMORY_CONSOLIDATION_CONNECTION_SOURCE;
+}
+function isDreamConnectionNoteRow(row) {
+    if (isDreamConnectionNoteSource(row.source))
+        return true;
+    const metadata = normalizeMetadata(row.metadata);
+    return normalizeText(metadata?.dreamCycleNoteType || metadata?.dreamNoteType || metadata?.consolidationSynthesizedNoteType) === "connection";
+}
+function countClusterSources(rows, limit = 6) {
+    const counts = new Map();
+    for (const row of rows) {
+        const source = normalizeSource(row.source);
+        if (!source)
+            continue;
+        counts.set(source, (counts.get(source) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+        .map(([source, count]) => ({ source, count }))
+        .sort((left, right) => right.count - left.count || left.source.localeCompare(right.source))
+        .slice(0, limit);
+}
+function normalizeDreamQuerySeed(value) {
+    return String(value ?? "")
+        .replace(/\[[^\]]+\]\s*/g, " ")
+        .replace(/^fallback:/i, " ")
+        .replace(/^query=/i, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 180);
+}
+function shouldUseDreamQuerySeed(value) {
+    const normalized = normalizeDreamQuerySeed(value).toLowerCase();
+    if (!normalized || normalized.length < 8)
+        return false;
+    if (normalized.includes("startup-context"))
+        return false;
+    if (normalized.includes("persona/current-goal"))
+        return false;
+    if (normalized.includes("continuity brief"))
+        return false;
+    if (looksLikePseudoDecisionTraceText(normalized))
+        return false;
+    if (normalized === "accepted corpus artifacts" || normalized === "promoted jsonl" || normalized === "sqlite materialization") {
+        return false;
+    }
+    return true;
+}
+function appendDreamQuerySeed(target, seen, value) {
+    const normalized = normalizeDreamQuerySeed(value);
+    if (!shouldUseDreamQuerySeed(normalized))
+        return;
+    const dedupe = normalized.toLowerCase();
+    if (seen.has(dedupe))
+        return;
+    seen.add(dedupe);
+    target.push(normalized);
+}
+const DREAM_CANDIDATE_FAMILY_ORDER = [
+    "canonical-accepted",
+    "episodic-accepted",
+    "channel-manual",
+    "compaction-promoted",
+    "working-scratch",
+    "compaction-raw",
+];
+const DREAM_CANDIDATE_SPILLOVER_ORDER = [
+    "episodic-accepted",
+    "canonical-accepted",
+    "channel-manual",
+    "compaction-promoted",
+    "working-scratch",
+    "compaction-raw",
+];
+const DREAM_CANDIDATE_FAMILY_SHARES = {
+    "canonical-accepted": 0.25,
+    "episodic-accepted": 0.25,
+    "channel-manual": 0.2,
+    "compaction-promoted": 0.15,
+    "working-scratch": 0.05,
+    "compaction-raw": 0.1,
+};
+function isDreamPromotionCandidateSource(source) {
+    return normalizeSource(source) === MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE;
+}
+function isDreamGeneratedRow(row) {
+    return isDreamConnectionNoteRow(row) || isDreamPromotionCandidateSource(row.source);
+}
+function dreamSourceFamilyKey(row) {
+    const normalized = normalizeSource(row.source);
+    if (normalized === "codex-compaction-raw")
+        return "compaction-raw";
+    if (normalized.startsWith("codex-compaction-"))
+        return "compaction-promoted";
+    if (row.memoryLayer === "canonical" && row.status === "accepted")
+        return "canonical-accepted";
+    if (row.memoryLayer === "episodic" && row.status === "accepted")
+        return "episodic-accepted";
+    if (row.memoryLayer === "working")
+        return "working-scratch";
+    return "channel-manual";
+}
+function dreamCandidatePriorityScore(row) {
+    const metadata = normalizeMetadata(row.metadata);
+    const family = dreamSourceFamilyKey(row);
+    let score = consolidationPrecedenceScore(row);
+    if (row.memoryLayer === "episodic" && row.status === "accepted")
+        score += 40;
+    if (hasCanonicalLineage(metadata))
+        score += 35;
+    if (row.status === "proposed")
+        score -= 10;
+    if (family === "compaction-promoted")
+        score -= 28;
+    if (family === "compaction-raw")
+        score -= 72;
+    if (family === "channel-manual")
+        score += 16;
+    if (family === "canonical-accepted")
+        score += 24;
+    if (row.memoryLayer === "working")
+        score -= 28;
+    return score;
+}
+function countByDreamFamily(rows, limit = 10) {
+    const counts = new Map();
+    for (const row of rows) {
+        const family = dreamSourceFamilyKey(row);
+        counts.set(family, (counts.get(family) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+        .map(([family, count]) => ({ family, count }))
+        .sort((left, right) => right.count - left.count || left.family.localeCompare(right.family))
+        .slice(0, limit);
+}
+function determineDreamMixQuality(counts, warnings) {
+    if (warnings.some((warning) => warning.includes("compaction-raw")))
+        return "raw-heavy";
+    const activeFamilies = counts.filter((entry) => entry.count > 0).length;
+    if (activeFamilies >= 4 && warnings.length === 0)
+        return "balanced";
+    if (activeFamilies >= 2)
+        return "mixed";
+    return "narrow";
+}
+function selectDreamCandidates(rows, limit) {
+    if (!MEMORY_CONSOLIDATION_SOURCE_BALANCING_ENABLED || rows.length <= 1) {
+        const selectedRows = rows.slice(0, limit);
+        const actual = countByDreamFamily(selectedRows, DREAM_CANDIDATE_FAMILY_ORDER.length);
+        const quota = DREAM_CANDIDATE_FAMILY_ORDER.map((family) => ({
+            family,
+            share: DREAM_CANDIDATE_FAMILY_SHARES[family],
+            availableCount: actual.find((entry) => entry.family === family)?.count ?? 0,
+            targetCount: actual.find((entry) => entry.family === family)?.count ?? 0,
+            selectedCount: actual.find((entry) => entry.family === family)?.count ?? 0,
+        }));
+        return {
+            rows: selectedRows,
+            familyQuotaPlan: quota,
+            familyQuotaActual: quota,
+            dominanceWarnings: [],
+            mixQuality: determineDreamMixQuality(actual, []),
+        };
+    }
+    const requestedLimit = Math.max(1, Math.min(limit, rows.length));
+    const sortedRows = [...rows].sort((left, right) => dreamCandidatePriorityScore(right) - dreamCandidatePriorityScore(left));
+    const buckets = new Map();
+    for (const family of DREAM_CANDIDATE_FAMILY_ORDER)
+        buckets.set(family, []);
+    for (const row of sortedRows) {
+        const bucket = buckets.get(dreamSourceFamilyKey(row)) || [];
+        bucket.push(row);
+        buckets.set(dreamSourceFamilyKey(row), bucket);
+    }
+    const rawAvailable = buckets.get("compaction-raw")?.length ?? 0;
+    const nonRawAvailable = DREAM_CANDIDATE_FAMILY_ORDER
+        .filter((family) => family !== "compaction-raw")
+        .reduce((sum, family) => sum + (buckets.get(family)?.length ?? 0), 0);
+    const boundedLimit = rawAvailable > 0 && nonRawAvailable > 0 && MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP < 1
+        ? Math.max(1, Math.min(requestedLimit, Math.max(nonRawAvailable, Math.floor(nonRawAvailable / Math.max(0.01, 1 - MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP)))))
+        : requestedLimit;
+    const nonEmptyFamilies = DREAM_CANDIDATE_FAMILY_ORDER.filter((family) => (buckets.get(family)?.length ?? 0) > 0);
+    const minimumPerFamily = nonEmptyFamilies.length === 0
+        ? 0
+        : boundedLimit >= nonEmptyFamilies.length * MEMORY_CONSOLIDATION_FAMILY_MIN_COUNT
+            ? MEMORY_CONSOLIDATION_FAMILY_MIN_COUNT
+            : 1;
+    const quotas = new Map();
+    let allocated = 0;
+    for (const family of DREAM_CANDIDATE_FAMILY_ORDER) {
+        const available = buckets.get(family)?.length ?? 0;
+        if (available <= 0) {
+            quotas.set(family, 0);
+            continue;
+        }
+        const shareTarget = Math.floor(boundedLimit * DREAM_CANDIDATE_FAMILY_SHARES[family]);
+        let target = Math.max(minimumPerFamily, shareTarget);
+        if (family === "compaction-raw") {
+            target = Math.min(target, Math.max(minimumPerFamily, Math.floor(boundedLimit * MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP)));
+        }
+        target = Math.min(target, available);
+        quotas.set(family, target);
+        allocated += target;
+    }
+    for (const family of DREAM_CANDIDATE_SPILLOVER_ORDER) {
+        if (allocated >= boundedLimit)
+            break;
+        const available = buckets.get(family)?.length ?? 0;
+        const current = quotas.get(family) ?? 0;
+        if (available <= current)
+            continue;
+        const remaining = available - current;
+        const allowance = family === "compaction-raw"
+            ? Math.max(0, Math.floor(boundedLimit * MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP) - current)
+            : remaining;
+        if (allowance <= 0)
+            continue;
+        const grant = Math.min(remaining, allowance, boundedLimit - allocated);
+        quotas.set(family, current + grant);
+        allocated += grant;
+    }
+    if (allocated < boundedLimit) {
+        for (const family of DREAM_CANDIDATE_SPILLOVER_ORDER) {
+            if (allocated >= boundedLimit)
+                break;
+            const available = buckets.get(family)?.length ?? 0;
+            const current = quotas.get(family) ?? 0;
+            if (available <= current)
+                continue;
+            const grant = Math.min(available - current, boundedLimit - allocated);
+            quotas.set(family, current + grant);
+            allocated += grant;
+        }
+    }
+    const selected = [];
+    for (const family of DREAM_CANDIDATE_FAMILY_ORDER) {
+        const bucket = buckets.get(family) || [];
+        selected.push(...bucket.slice(0, quotas.get(family) ?? 0));
+    }
+    const selectedRows = selected
+        .sort((left, right) => {
+        const precedenceDelta = consolidationPrecedenceScore(right) - consolidationPrecedenceScore(left);
+        if (precedenceDelta !== 0)
+            return precedenceDelta;
+        return (right.occurredAt || right.createdAt).localeCompare(left.occurredAt || left.createdAt);
+    })
+        .slice(0, boundedLimit);
+    const familyCounts = countByDreamFamily(selectedRows, DREAM_CANDIDATE_FAMILY_ORDER.length);
+    const familyCountsMap = new Map(familyCounts.map((entry) => [entry.family, entry.count]));
+    const total = Math.max(1, selectedRows.length);
+    const dominanceWarnings = [];
+    for (const entry of familyCounts) {
+        const share = entry.count / total;
+        if (entry.family === "compaction-raw" && share > MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP) {
+            dominanceWarnings.push(`compaction-raw exceeded ${(MEMORY_CONSOLIDATION_RAW_COMPACTION_SHARE_CAP * 100).toFixed(0)}% of selected candidates`);
+        }
+        else if (share > 0.45) {
+            dominanceWarnings.push(`${entry.family} exceeded 45% of selected candidates`);
+        }
+    }
+    const familyQuotaPlan = DREAM_CANDIDATE_FAMILY_ORDER.map((family) => ({
+        family,
+        share: DREAM_CANDIDATE_FAMILY_SHARES[family],
+        availableCount: buckets.get(family)?.length ?? 0,
+        targetCount: quotas.get(family) ?? 0,
+    }));
+    const familyQuotaActual = familyQuotaPlan.map((entry) => ({
+        ...entry,
+        selectedCount: familyCountsMap.get(entry.family) ?? 0,
+    }));
+    return {
+        rows: selectedRows,
+        familyQuotaPlan,
+        familyQuotaActual,
+        dominanceWarnings,
+        mixQuality: determineDreamMixQuality(familyCounts, dominanceWarnings),
+    };
+}
+function buildClusterInspectionDetail(input) {
+    const metadata = normalizeMetadata(input.primary.metadata);
+    const earliestOccurredAt = input.rows
+        .map((row) => normalizeText(row.occurredAt || row.createdAt))
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right))[0] || null;
+    const latestOccurredAt = input.rows
+        .map((row) => normalizeText(row.occurredAt || row.createdAt))
+        .filter(Boolean)
+        .sort((left, right) => right.localeCompare(left))[0] || null;
+    return {
+        clusterKey: input.clusterKey,
+        primaryId: input.primary.id,
+        primarySource: normalizeSource(input.primary.source),
+        primaryLayer: input.primary.memoryLayer,
+        primaryStatus: input.primary.status,
+        clusterSize: input.rows.length,
+        duplicateIds: input.pairAssessments.map((entry) => entry.row.id),
+        duplicateSources: Array.from(new Set(input.pairAssessments.map((entry) => normalizeSource(entry.row.source)))).slice(0, 8),
+        reasons: input.clusterReasons,
+        strongestSimilarity: Number(input.strongestSimilarity.toFixed(3)),
+        meanSimilarity: Number(input.meanSimilarity.toFixed(3)),
+        promotionConfidence: Number(input.promotionConfidence.toFixed(3)),
+        promotionImportance: Number(input.promotionImportance.toFixed(3)),
+        corroboratingAcceptedEpisodic: input.corroboratingAcceptedEpisodic,
+        provenanceBacked: input.provenanceBacked,
+        nonRawSupport: input.nonRawSupport,
+        acceptedOrLineageSupport: input.acceptedOrLineageSupport,
+        conflictingLoopState: input.conflictingLoopState,
+        loopStates: input.loopStates,
+        sourceSummary: countClusterSources(input.rows),
+        earliestOccurredAt,
+        latestOccurredAt,
+        subjectKey: normalizeSubjectKey(metadata.subjectKey || metadata.subject) || null,
+        threadKey: normalizeText(threadKeyFromMetadata(metadata)) || null,
+        loopKey: normalizeText(loopClusterKeyFromMetadata(metadata)) || null,
+    };
+}
+function buildConsolidationTopicLabel(primary, rows) {
+    const primaryMetadata = normalizeMetadata(primary.metadata);
+    const subjectKey = normalizeSubjectKey(primaryMetadata.subjectKey || primaryMetadata.subject);
+    if (subjectKey)
+        return subjectKey;
+    const threadKey = normalizeText(threadKeyFromMetadata(primaryMetadata));
+    if (threadKey)
+        return threadKey;
+    const loopKey = normalizeText(loopClusterKeyFromMetadata(primaryMetadata));
+    if (loopKey)
+        return loopKey;
+    for (const row of rows) {
+        const metadata = normalizeMetadata(row.metadata);
+        const candidate = normalizeSubjectKey(metadata.subjectKey || metadata.subject)
+            || normalizeText(threadKeyFromMetadata(metadata))
+            || normalizeText(loopClusterKeyFromMetadata(metadata));
+        if (candidate)
+            return candidate;
+    }
+    return primary.content.replace(/\s+/g, " ").trim().slice(0, 96);
+}
+function buildConnectionRecommendation(input) {
+    if (input.conflictingLoopState) {
+        return "Hold this thread in quarantine until the conflicting loop state is resolved.";
+    }
+    if (input.shouldPromote) {
+        return "Keep this as the readable map for the promoted canonical thread.";
+    }
+    if (input.acceptedOrLineageSupport) {
+        return input.corroboratingAcceptedEpisodic >= 2 || input.provenanceBacked
+            ? "Keep the thread linked and wait for stronger corroboration before another promotion attempt."
+            : "Preserve the thread as a connection note until provenance is stronger.";
+    }
+    return "Treat this as weak overlap only and wait for better evidence before trusting it.";
+}
+function buildConsolidationConnectionNote(input) {
+    const duplicateIds = input.pairAssessments.map((entry) => entry.row.id);
+    const topicLabel = buildConsolidationTopicLabel(input.primary, input.rows);
+    const sourceSummary = countClusterSources(input.rows);
+    const recommendation = buildConnectionRecommendation({
+        shouldPromote: Boolean(input.promotedId),
+        conflictingLoopState: input.conflictingLoopState,
+        acceptedOrLineageSupport: input.acceptedOrLineageSupport,
+        corroboratingAcceptedEpisodic: input.corroboratingAcceptedEpisodic,
+        provenanceBacked: input.provenanceBacked,
+    });
+    const acceptedCount = input.rows.filter((row) => row.status === "accepted").length;
+    const proposedCount = input.rows.filter((row) => row.status === "proposed").length;
+    const canonicalCount = input.rows.filter((row) => row.memoryLayer === "canonical").length;
+    const actionability = evaluateDreamConnectionActionability({
+        rows: input.rows,
+        recommendation,
+        acceptedOrLineageSupport: input.acceptedOrLineageSupport,
+        corroboratingAcceptedEpisodic: input.corroboratingAcceptedEpisodic,
+        provenanceBacked: input.provenanceBacked,
+        contradictionCount: input.conflictingLoopState ? 1 : 0,
+        promotedId: input.promotedId || null,
+    });
+    const topicText = topicLabel ? `"${topicLabel}"` : "this thread";
+    const sharedSignals = input.clusterReasons.length > 0 ? input.clusterReasons.join(", ") : "soft context overlap";
+    const sourceText = sourceSummary.map((entry) => `${entry.source}(${entry.count})`).join(", ");
+    const primaryText = input.primary.content.replace(/\s+/g, " ").trim().slice(0, 220);
+    const content = [
+        `Dream connection note: ${input.rows.length} memories converge on ${topicText}.`,
+        `Primary memory: ${primaryText}`,
+        `Shared signals: ${sharedSignals}.`,
+        `Support: accepted=${acceptedCount}, proposed=${proposedCount}, canonical=${canonicalCount}, corroborating_episodic=${input.corroboratingAcceptedEpisodic}, provenance_backed=${input.provenanceBacked ? "yes" : "no"}, non_raw_support=${input.nonRawSupport ? "yes" : "no"}.`,
+        sourceText ? `Sources: ${sourceText}.` : "",
+        `Recommendation: ${recommendation}`,
+    ]
+        .filter(Boolean)
+        .join(" ");
+    const id = `dream-connection:${(0, node_crypto_1.createHash)("sha1").update(`${input.tenantId ?? "none"}|${input.clusterKey}`).digest("hex").slice(0, 24)}`;
+    const materialSignature = buildConnectionNoteMaterialSignature({
+        noteId: id,
+        topicLabel,
+        recommendation,
+        relatedIds: input.rows.map((row) => row.id),
+        acceptedCount,
+        canonicalCount,
+        contradictionCount: input.conflictingLoopState ? 1 : 0,
+        promotedId: input.promotedId || null,
+    });
+    const sourceConfidence = Math.max(0.35, Math.min(0.94, input.primary.sourceConfidence));
+    const importance = Math.max(0.45, Math.min(0.96, input.primary.importance));
+    const status = input.conflictingLoopState
+        ? "proposed"
+        : input.acceptedOrLineageSupport
+            ? "accepted"
+            : "proposed";
+    return {
+        id,
+        content,
+        status,
+        tags: Array.from(new Set([
+            ...input.primary.tags,
+            "dream-cycle",
+            "memory-consolidation",
+            "connection-note",
+            input.mode,
+        ])).slice(0, 32),
+        metadata: {
+            derivedFromIds: input.rows.map((row) => row.id),
+            relatedMemoryIds: input.rows.map((row) => row.id).slice(0, 32),
+            threadRootMemoryId: input.primary.id,
+            sourceArtifactPath: MEMORY_CONSOLIDATION_RELATIVE_PATH.join("/"),
+            focusAreas: input.focusAreas.slice(0, 6),
+            dreamCycleNoteType: "connection",
+            connectionTopic: topicLabel,
+            connectionRecommendation: recommendation,
+            connectionMaterialSignature: materialSignature,
+            connectionActionability: {
+                actionable: actionability.actionable,
+                reasons: actionability.reasons,
+                groundedRecommendation: actionability.groundedRecommendation,
+                resolvedClaim: actionability.resolvedClaim,
+            },
+            entityHints: Array.from(new Set(input.rows.flatMap((row) => readStringValues(normalizeMetadata(row.metadata).entityHints, 24)))).slice(0, 24),
+            patternHints: Array.from(new Set([
+                ...input.rows.flatMap((row) => readStringValues(normalizeMetadata(row.metadata).patternHints, 24)),
+                ...input.clusterReasons.map((reason) => `dream:${reason}`),
+            ])).slice(0, 24),
+            consolidation: {
+                runId: input.runId,
+                mode: input.mode,
+                clusterKey: input.clusterKey,
+                promotedId: input.promotedId || null,
+                duplicateIds,
+                strongestSimilarity: Number(input.strongestSimilarity.toFixed(3)),
+                meanSimilarity: Number(input.meanSimilarity.toFixed(3)),
+                reasons: input.clusterReasons,
+                corroboratingAcceptedEpisodic: input.corroboratingAcceptedEpisodic,
+                provenanceBacked: input.provenanceBacked,
+                nonRawSupport: input.nonRawSupport,
+            },
+        },
+        sourceConfidence,
+        importance,
+        topicLabel,
+        recommendation,
+        sourceSummary,
+        materialSignature,
+        actionable: actionability.actionable,
+        actionabilityReasons: actionability.reasons,
+    };
+}
+function buildConsolidationContentTokens(content, max = 96) {
+    const tokens = new Set();
+    for (const token of String(content ?? "")
+        .toLowerCase()
+        .split(/[^a-z0-9@:/._-]+/g)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length >= 4 && entry.length <= 64)) {
+        tokens.add(token);
+        if (tokens.size >= max)
+            break;
+    }
+    return Array.from(tokens);
+}
+function buildConsolidationHintTokens(value, max = 96) {
+    const tokens = new Set();
+    for (const token of readStringValues(value, max * 3)) {
+        const normalized = normalizeText(token).toLowerCase();
+        if (!normalized)
+            continue;
+        tokens.add(normalized);
+        if (tokens.size >= max)
+            break;
+    }
+    return Array.from(tokens);
+}
+function jaccardSimilarity(left, right) {
+    if (left.length === 0 || right.length === 0)
+        return 0;
+    const leftSet = new Set(left);
+    const rightSet = new Set(right);
+    let intersect = 0;
+    for (const value of leftSet) {
+        if (rightSet.has(value))
+            intersect += 1;
+    }
+    const union = leftSet.size + rightSet.size - intersect;
+    return union > 0 ? intersect / union : 0;
+}
+function consolidationLineageKey(row) {
+    const metadata = normalizeMetadata(row.metadata);
+    return normalizeText(metadata.corpusRecordId
+        || metadata.corpus_record_id
+        || metadata.sourceArtifactPath
+        || metadata.source_artifact_path
+        || metadata.lineagePointer
+        || metadata.lineage_pointer).toLowerCase();
+}
+function buildConsolidationBucketKeys(row) {
+    const metadata = normalizeMetadata(row.metadata);
+    const keys = new Set();
+    keys.add(duplicateClusterKeyForRow(row));
+    const threadKey = normalizeText(threadKeyFromMetadata(metadata));
+    if (threadKey)
+        keys.add(`thread:${threadKey.toLowerCase()}`);
+    const loopKey = normalizeText(loopClusterKeyFromMetadata(metadata));
+    if (loopKey)
+        keys.add(`loop:${loopKey.toLowerCase()}`);
+    const subjectKey = normalizeSubjectKey(metadata.subjectKey || metadata.subject);
+    if (subjectKey)
+        keys.add(`subject:${subjectKey}`);
+    const lineageKey = consolidationLineageKey(row);
+    if (lineageKey)
+        keys.add(`lineage:${lineageKey}`);
+    return Array.from(keys);
+}
+function calculateConsolidationSimilarity(left, right) {
+    const leftMetadata = normalizeMetadata(left.metadata);
+    const rightMetadata = normalizeMetadata(right.metadata);
+    const leftFingerprint = normalizeText(leftMetadata.fingerprint);
+    const rightFingerprint = normalizeText(rightMetadata.fingerprint);
+    const fingerprintMatch = Boolean(leftFingerprint) && leftFingerprint === rightFingerprint;
+    const sameNormalizedContent = normalizeContentClusterKey(left.content) !== ""
+        && normalizeContentClusterKey(left.content) === normalizeContentClusterKey(right.content);
+    const sameThread = normalizeText(threadKeyFromMetadata(leftMetadata)) !== ""
+        && normalizeText(threadKeyFromMetadata(leftMetadata)) === normalizeText(threadKeyFromMetadata(rightMetadata));
+    const sameLoop = normalizeText(loopClusterKeyFromMetadata(leftMetadata)) !== ""
+        && normalizeText(loopClusterKeyFromMetadata(leftMetadata)) === normalizeText(loopClusterKeyFromMetadata(rightMetadata));
+    const sameSubject = normalizeSubjectKey(leftMetadata.subjectKey || leftMetadata.subject) !== ""
+        && normalizeSubjectKey(leftMetadata.subjectKey || leftMetadata.subject) === normalizeSubjectKey(rightMetadata.subjectKey || rightMetadata.subject);
+    const sameLineage = consolidationLineageKey(left) !== ""
+        && consolidationLineageKey(left) === consolidationLineageKey(right);
+    if (fingerprintMatch || sameNormalizedContent) {
+        return {
+            score: fingerprintMatch ? 1 : 0.98,
+            tokenOverlap: 1,
+            entityOverlap: 1,
+            patternOverlap: 1,
+            fingerprintMatch,
+            sameThread,
+            sameLoop,
+            sameSubject,
+            sameLineage,
+        };
+    }
+    const tokenOverlap = jaccardSimilarity(buildConsolidationContentTokens(left.content), buildConsolidationContentTokens(right.content));
+    const entityOverlap = jaccardSimilarity(buildConsolidationHintTokens(leftMetadata.entityHints), buildConsolidationHintTokens(rightMetadata.entityHints));
+    const patternOverlap = jaccardSimilarity(buildConsolidationHintTokens(leftMetadata.patternHints), buildConsolidationHintTokens(rightMetadata.patternHints));
+    const score = Math.max(0, Math.min(1, tokenOverlap * 0.56
+        + entityOverlap * 0.18
+        + patternOverlap * 0.12
+        + (sameThread ? 0.06 : 0)
+        + (sameLoop ? 0.06 : 0)
+        + (sameSubject ? 0.04 : 0)
+        + (sameLineage ? 0.08 : 0)
+        + (normalizeSource(left.source) === normalizeSource(right.source) ? 0.04 : 0)));
+    return {
+        score: Number(score.toFixed(3)),
+        tokenOverlap: Number(tokenOverlap.toFixed(3)),
+        entityOverlap: Number(entityOverlap.toFixed(3)),
+        patternOverlap: Number(patternOverlap.toFixed(3)),
+        fingerprintMatch,
+        sameThread,
+        sameLoop,
+        sameSubject,
+        sameLineage,
+    };
+}
+function buildConsolidationClusters(rows, threshold) {
+    const parents = rows.map((_, index) => index);
+    const find = (index) => {
+        let current = index;
+        while (parents[current] !== current) {
+            parents[current] = parents[parents[current]];
+            current = parents[current];
+        }
+        return current;
+    };
+    const union = (left, right) => {
+        const leftRoot = find(left);
+        const rightRoot = find(right);
+        if (leftRoot === rightRoot)
+            return;
+        parents[rightRoot] = leftRoot;
+    };
+    let comparedPairCount = 0;
+    const bucketMap = new Map();
+    for (const [index, row] of rows.entries()) {
+        for (const bucketKey of buildConsolidationBucketKeys(row)) {
+            const bucket = bucketMap.get(bucketKey) || [];
+            bucket.push(index);
+            bucketMap.set(bucketKey, bucket);
+        }
+    }
+    for (const bucket of bucketMap.values()) {
+        if (bucket.length < 2)
+            continue;
+        const compareSet = Array.from(new Set(bucket))
+            .sort((left, right) => consolidationPrecedenceScore(rows[right]) - consolidationPrecedenceScore(rows[left]))
+            .slice(0, 48);
+        for (let index = 0; index < compareSet.length; index += 1) {
+            for (let offset = index + 1; offset < compareSet.length; offset += 1) {
+                const leftIndex = compareSet[index];
+                const rightIndex = compareSet[offset];
+                comparedPairCount += 1;
+                const metrics = calculateConsolidationSimilarity(rows[leftIndex], rows[rightIndex]);
+                if (metrics.fingerprintMatch || metrics.score >= threshold) {
+                    union(leftIndex, rightIndex);
+                }
+            }
+        }
+    }
+    const groups = new Map();
+    for (const [index, row] of rows.entries()) {
+        const root = find(index);
+        const bucket = groups.get(root) || [];
+        bucket.push(row);
+        groups.set(root, bucket);
+    }
+    const clusters = Array.from(groups.values())
+        .filter((bucket) => bucket.length >= 2)
+        .map((bucket) => {
+        const sorted = [...bucket].sort((left, right) => consolidationPrecedenceScore(right) - consolidationPrecedenceScore(left));
+        const exactClusterKeys = Array.from(new Set(sorted.map((row) => duplicateClusterKeyForRow(row))));
+        const keySource = exactClusterKeys.length === 1
+            ? exactClusterKeys[0]
+            : `cluster:${(0, node_crypto_1.createHash)("sha1").update(sorted.map((row) => row.id).join("|")).digest("hex").slice(0, 24)}`;
+        return {
+            key: keySource,
+            rows: sorted,
+            exactClusterKeys,
+        };
+    })
+        .sort((left, right) => right.rows.length - left.rows.length || left.key.localeCompare(right.key));
+    return {
+        clusters,
+        comparedPairCount,
+        softClusterCount: clusters.filter((cluster) => cluster.exactClusterKeys.length > 1).length,
+    };
+}
+function buildConsolidationThemeKeys(row) {
+    const metadata = normalizeMetadata(row.metadata);
+    const keys = new Map();
+    const push = (themeType, themeKey) => {
+        const normalizedType = normalizePatternType(themeType);
+        const normalizedKey = normalizePatternKey(themeKey);
+        if (!normalizedType || !normalizedKey)
+            return;
+        keys.set(`${normalizedType}|${normalizedKey}`, {
+            themeType: normalizedType,
+            themeKey: normalizedKey,
+        });
+    };
+    const threadKey = normalizeText(threadKeyFromMetadata(metadata));
+    const loopKey = normalizeText(loopClusterKeyFromMetadata(metadata));
+    const subjectKey = normalizeSubjectKey(metadata.subjectKey || metadata.subject);
+    const lineageKey = consolidationLineageKey(row);
+    if (threadKey)
+        push("thread", threadKey);
+    if (loopKey)
+        push("loop", loopKey);
+    if (subjectKey)
+        push("subject", subjectKey);
+    if (lineageKey)
+        push("lineage", lineageKey);
+    for (const raw of readStringValues(metadata.entityHints, 16).slice(0, 4)) {
+        const [rawType, rawKey] = String(raw).split(":");
+        const entityType = normalizeEntityType(rawType || "entity");
+        const entityKey = normalizeEntityKey(rawKey || raw);
+        if (!entityKey)
+            continue;
+        push(`entity:${entityType || "entity"}`, entityKey);
+    }
+    for (const raw of readStringValues(metadata.patternHints, 16).slice(0, 4)) {
+        const [rawType, rawKey] = String(raw).split(":");
+        const patternType = normalizePatternType(rawType || "pattern");
+        const patternKey = normalizePatternKey(rawKey || raw);
+        if (!patternKey || patternType.startsWith("dream"))
+            continue;
+        push(`pattern:${patternType}`, patternKey);
+    }
+    return Array.from(keys.values());
+}
+function buildConsolidationThemeClusters(rows, hardClusterRowIds) {
+    const bucketMap = new Map();
+    for (const row of rows) {
+        if (hardClusterRowIds.has(row.id))
+            continue;
+        if (isDreamGeneratedRow(row))
+            continue;
+        for (const entry of buildConsolidationThemeKeys(row)) {
+            const bucketKey = `${entry.themeType}|${entry.themeKey}`;
+            const bucket = bucketMap.get(bucketKey) || {
+                themeType: entry.themeType,
+                themeKey: entry.themeKey,
+                rows: [],
+            };
+            bucket.rows.push(row);
+            bucketMap.set(bucketKey, bucket);
+        }
+    }
+    const out = [];
+    for (const bucket of bucketMap.values()) {
+        const dedupedRows = Array.from(new Map(bucket.rows.map((row) => [row.id, row])).values())
+            .sort((left, right) => dreamCandidatePriorityScore(right) - dreamCandidatePriorityScore(left))
+            .slice(0, MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_MEMORIES_PER_BUNDLE);
+        if (dedupedRows.length < 2)
+            continue;
+        const primary = dedupedRows[0];
+        const pairAssessments = dedupedRows.slice(1).map((row) => ({
+            row,
+            metrics: calculateConsolidationSimilarity(primary, row),
+        }));
+        const strongestSimilarity = pairAssessments.reduce((max, entry) => Math.max(max, entry.metrics.score), 0);
+        const meanSimilarity = pairAssessments.reduce((sum, entry) => sum + entry.metrics.score, 0) / Math.max(1, pairAssessments.length);
+        const acceptedOrLineageSupport = dedupedRows.some((row) => row.status === "accepted" || hasCanonicalLineage(normalizeMetadata(row.metadata)));
+        if (strongestSimilarity < MEMORY_CONSOLIDATION_THEME_CLUSTER_MIN_SIMILARITY
+            && !(acceptedOrLineageSupport && dedupedRows.length >= 3)) {
+            continue;
+        }
+        const reasons = Array.from(new Set([
+            `shared-${bucket.themeType}`,
+            ...pairAssessments.flatMap((entry) => summarizeConsolidationReasons(entry.metrics)),
+        ])).slice(0, 8);
+        out.push({
+            key: `${bucket.themeType}:${bucket.themeKey}`,
+            themeType: bucket.themeType,
+            themeKey: bucket.themeKey,
+            rows: dedupedRows,
+            strongestSimilarity: Number(strongestSimilarity.toFixed(3)),
+            meanSimilarity: Number(meanSimilarity.toFixed(3)),
+            reasons,
+        });
+    }
+    const themePriority = (themeType) => {
+        if (themeType === "thread")
+            return 6;
+        if (themeType === "loop")
+            return 5;
+        if (themeType === "subject")
+            return 4;
+        if (themeType === "lineage")
+            return 3;
+        if (themeType.startsWith("entity:"))
+            return 2;
+        if (themeType.startsWith("pattern:"))
+            return 1;
+        return 0;
+    };
+    const deduped = new Map();
+    for (const cluster of out) {
+        const signature = cluster.rows.map((row) => row.id).sort((left, right) => left.localeCompare(right)).join("|");
+        const existing = deduped.get(signature);
+        if (!existing) {
+            deduped.set(signature, cluster);
+            continue;
+        }
+        const shouldReplace = themePriority(cluster.themeType) > themePriority(existing.themeType)
+            || (themePriority(cluster.themeType) === themePriority(existing.themeType)
+                && (cluster.strongestSimilarity > existing.strongestSimilarity
+                    || (cluster.strongestSimilarity === existing.strongestSimilarity
+                        && cluster.meanSimilarity > existing.meanSimilarity)));
+        if (shouldReplace) {
+            deduped.set(signature, cluster);
+        }
+    }
+    return Array.from(deduped.values())
+        .sort((left, right) => right.rows.length - left.rows.length
+        || right.strongestSimilarity - left.strongestSimilarity
+        || right.meanSimilarity - left.meanSimilarity
+        || left.key.localeCompare(right.key))
+        .slice(0, MEMORY_CONSOLIDATION_THEME_MAX_CLUSTERS);
+}
+function buildAssociationScoutBundle(input) {
+    return {
+        runId: input.runId,
+        mode: input.mode,
+        bundleId: input.bundleId,
+        bundleType: input.bundleType,
+        themeType: input.themeType,
+        themeKey: input.themeKey,
+        recallPass: input.recallPass ?? "initial",
+        originatingBundleId: input.originatingBundleId ?? null,
+        replayQueries: (input.replayQueries ?? []).slice(0, 6),
+        focusAreas: input.focusAreas.slice(0, 6),
+        rows: input.rows.slice(0, MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_MEMORIES_PER_BUNDLE).map((row) => {
+            const metadata = normalizeMetadata(row.metadata);
+            return {
+                id: row.id,
+                source: normalizeSource(row.source),
+                memoryLayer: row.memoryLayer === "core" ? "episodic" : row.memoryLayer,
+                status: row.status,
+                content: row.content.replace(/\s+/g, " ").trim().slice(0, 320),
+                sourceConfidence: Number(row.sourceConfidence.toFixed(3)),
+                importance: Number(row.importance.toFixed(3)),
+                occurredAt: row.occurredAt || row.createdAt || null,
+                tags: row.tags.slice(0, 12),
+                metadata: {
+                    subjectKey: normalizeSubjectKey(metadata.subjectKey || metadata.subject) || null,
+                    threadKey: normalizeText(threadKeyFromMetadata(metadata)) || null,
+                    loopKey: normalizeText(loopClusterKeyFromMetadata(metadata)) || null,
+                    lineageKey: consolidationLineageKey(row) || null,
+                    entityHints: readStringValues(metadata.entityHints, 16).slice(0, 8),
+                    patternHints: readStringValues(metadata.patternHints, 16).slice(0, 8),
+                },
+            };
+        }),
+    };
+}
+function buildAssociationBundleContext(input) {
+    const primary = input.rows[0];
+    const loopStates = Array.from(new Set(input.rows.map((row) => extractLoopStateHint(row)).filter(Boolean)));
+    const sourceFamilyMix = countByDreamFamily(input.rows, DREAM_CANDIDATE_FAMILY_ORDER.length);
+    const sourceFamilies = sourceFamilyMix.map((entry) => entry.family);
+    const acceptedSupportCount = input.rows.filter((row) => row.status === "accepted").length;
+    const lineageSupportCount = input.rows.filter((row) => hasCanonicalLineage(normalizeMetadata(row.metadata))).length;
+    return {
+        bundleId: input.bundleId,
+        bundleType: input.bundleType,
+        themeType: input.themeType,
+        themeKey: input.themeKey,
+        rows: input.rows,
+        primary,
+        strongestSimilarity: input.strongestSimilarity,
+        meanSimilarity: input.meanSimilarity,
+        reasons: input.reasons,
+        acceptedOrLineageSupport: acceptedSupportCount > 0 || lineageSupportCount > 0,
+        conflictingLoopState: loopStates.length > 1,
+        corroboratingAcceptedEpisodic: input.rows.filter((row) => row.memoryLayer === "episodic" && row.status === "accepted" && !isDreamGeneratedRow(row)).length,
+        provenanceBacked: lineageSupportCount > 0,
+        nonRawSupport: input.rows.some((row) => !normalizeSource(row.source).includes("raw")),
+        sourceFamilyMix,
+        sourceFamilies,
+        acceptedSupportCount,
+        lineageSupportCount,
+        recallPass: input.recallPass ?? "initial",
+        originatingBundleId: input.originatingBundleId ?? null,
+        replayQueries: (input.replayQueries ?? []).slice(0, 6),
+        addedRowIds: (input.addedRowIds ?? []).slice(0, 24),
+    };
+}
+function buildPromotionCandidateFingerprint(bundle, proposal, intent) {
+    return (0, node_crypto_1.createHash)("sha1")
+        .update([
+        "promotion-candidate",
+        normalizePatternType(bundle.themeType),
+        normalizePatternKey(bundle.themeKey),
+        normalizeContentClusterKey(proposal.theme),
+        normalizeContentClusterKey(intent.title),
+    ].join("|"))
+        .digest("hex")
+        .slice(0, 24);
+}
+function selectBundleSupportRows(bundle, intent, rowsById) {
+    const ids = filterAssociationScoutIntentIds(intent, new Set(rowsById.keys()));
+    const supportedRows = ids
+        .map((id) => rowsById.get(id))
+        .filter((row) => Boolean(row));
+    return supportedRows.length > 0 ? supportedRows : bundle.rows.slice(0, 8);
+}
+function countAcceptedNonRawSupport(rows) {
+    return rows.filter((row) => row.status === "accepted" && !normalizeSource(row.source).includes("raw")).length;
+}
+function countNonCompactionFamilies(rows) {
+    return Array.from(new Set(rows.map((row) => dreamSourceFamilyKey(row)).filter((family) => !family.startsWith("compaction")))).length;
+}
+function countNonRawSupport(rows) {
+    return rows.filter((row) => !normalizeSource(row.source).includes("raw")).length;
+}
+function buildConnectionNoteMaterialSignature(input) {
+    return (0, node_crypto_1.createHash)("sha1")
+        .update(stableStringify({
+        noteId: input.noteId,
+        topicLabel: normalizeText(input.topicLabel).toLowerCase(),
+        recommendation: normalizeText(input.recommendation).toLowerCase(),
+        relatedIds: [...input.relatedIds].sort((left, right) => left.localeCompare(right)),
+        acceptedCount: Math.max(0, Math.trunc(input.acceptedCount)),
+        canonicalCount: Math.max(0, Math.trunc(input.canonicalCount)),
+        contradictionCount: Math.max(0, Math.trunc(input.contradictionCount)),
+        promoted: Boolean(input.promotedId),
+    }))
+        .digest("hex")
+        .slice(0, 24);
+}
+function readConnectionNoteMaterialSignature(row) {
+    const metadata = normalizeMetadata(row?.metadata);
+    return normalizeText(metadata.connectionMaterialSignature || metadata.connection_signature);
+}
+function evaluateDreamConnectionActionability(input) {
+    const nonRawSupportCount = countNonRawSupport(input.rows);
+    const groundedRecommendation = nonRawSupportCount >= 2 && isActionableDreamRecommendation(input.recommendation);
+    const resolvedClaim = input.contradictionCount === 0
+        && input.acceptedOrLineageSupport
+        && nonRawSupportCount >= 2
+        && (input.corroboratingAcceptedEpisodic >= 2
+            || input.provenanceBacked
+            || Boolean(input.promotedId));
+    const actionable = groundedRecommendation || resolvedClaim;
+    const reasons = [
+        groundedRecommendation ? "grounded-operator-recommendation" : "recommendation-not-grounded",
+        resolvedClaim ? "resolved-claim-supported" : "resolved-claim-not-supported",
+        nonRawSupportCount < 2 ? "insufficient-non-raw-support" : "",
+        input.contradictionCount > 0 ? "contradictions-present" : "",
+    ].filter(Boolean);
+    return {
+        actionable,
+        reasons,
+        groundedRecommendation,
+        resolvedClaim,
+    };
+}
+function filterAssociationScoutIntentIds(intent, validIds) {
+    return Array.from(new Set([...intent.memoryIds, ...intent.targetIds].filter((id) => validIds.has(id)))).slice(0, 12);
+}
+function buildAssociationIntentConnectionNote(input) {
+    const relatedIds = filterAssociationScoutIntentIds(input.intent, new Set(input.rowsById.keys()));
+    const relatedRows = relatedIds
+        .map((id) => input.rowsById.get(id))
+        .filter((row) => Boolean(row));
+    const noteRows = relatedRows.length > 0 ? relatedRows : input.bundle.rows;
+    const primary = noteRows[0] || input.bundle.primary;
+    const topicLabel = normalizeText(input.intent.title)
+        || normalizeText(input.proposal.theme)
+        || buildConsolidationTopicLabel(primary, noteRows);
+    const recommendation = normalizeText(input.intent.recommendation)
+        || `Keep this association as a readable intent thread until stronger corroboration lands.`;
+    const contradictionText = input.proposal.contradictions.length > 0
+        ? `Contradictions: ${input.proposal.contradictions.slice(0, 3).join("; ")}.`
+        : "";
+    const followUpText = input.proposal.followUpQueries.length > 0
+        ? `Follow-up queries: ${input.proposal.followUpQueries.slice(0, 3).join("; ")}.`
+        : "";
+    const sourceSummary = countClusterSources(noteRows);
+    const sourceText = sourceSummary.map((entry) => `${entry.source}(${entry.count})`).join(", ");
+    const acceptedCount = noteRows.filter((row) => row.status === "accepted").length;
+    const canonicalCount = noteRows.filter((row) => row.memoryLayer === "canonical").length;
+    const supportRows = noteRows.filter((row) => row.status === "accepted" || hasCanonicalLineage(normalizeMetadata(row.metadata)));
+    const actionability = evaluateDreamConnectionActionability({
+        rows: noteRows,
+        recommendation,
+        acceptedOrLineageSupport: supportRows.length > 0,
+        corroboratingAcceptedEpisodic: input.bundle.corroboratingAcceptedEpisodic,
+        provenanceBacked: input.bundle.provenanceBacked,
+        contradictionCount: input.proposal.contradictions.length,
+        promotedId: null,
+    });
+    const content = [
+        `Dream association intent: ${noteRows.length} memories likely belong to "${topicLabel || "shared context"}".`,
+        `Scout summary: ${input.proposal.summary}`,
+        `Intent: ${input.intent.explanation}`,
+        contradictionText,
+        followUpText,
+        sourceText ? `Sources: ${sourceText}.` : "",
+        `Recommendation: ${recommendation}`,
+    ].filter(Boolean).join(" ");
+    const id = `dream-connection:${(0, node_crypto_1.createHash)("sha1").update(`${input.tenantId ?? "none"}|${input.bundle.bundleId}|${input.intent.title}`).digest("hex").slice(0, 24)}`;
+    const status = input.bundle.conflictingLoopState
+        ? "proposed"
+        : supportRows.length > 0 && input.proposal.confidence >= 0.66
+            ? "accepted"
+            : "proposed";
+    const materialSignature = buildConnectionNoteMaterialSignature({
+        noteId: id,
+        topicLabel,
+        recommendation,
+        relatedIds: noteRows.map((row) => row.id),
+        acceptedCount,
+        canonicalCount,
+        contradictionCount: input.proposal.contradictions.length,
+        promotedId: null,
+    });
+    const confidence = Math.max(primary.sourceConfidence, Math.min(0.96, Math.max(input.proposal.confidence, input.intent.confidence)));
+    const importance = Math.max(primary.importance, Math.min(0.98, 0.42 + noteRows.length * 0.08 + input.proposal.confidence * 0.28));
+    return {
+        id,
+        content,
+        status,
+        tags: Array.from(new Set([
+            ...primary.tags,
+            "dream-cycle",
+            "memory-consolidation",
+            "connection-note",
+            "association-intent",
+            input.mode,
+        ])).slice(0, 32),
+        metadata: {
+            derivedFromIds: noteRows.map((row) => row.id),
+            relatedMemoryIds: noteRows.map((row) => row.id).slice(0, 32),
+            threadRootMemoryId: primary.id,
+            sourceArtifactPath: MEMORY_CONSOLIDATION_RELATIVE_PATH.join("/"),
+            focusAreas: input.focusAreas.slice(0, 6),
+            dreamCycleNoteType: "connection",
+            dreamIntentType: "association-intent",
+            connectionTopic: topicLabel,
+            connectionRecommendation: recommendation,
+            connectionMaterialSignature: materialSignature,
+            connectionActionability: {
+                actionable: actionability.actionable,
+                reasons: actionability.reasons,
+                groundedRecommendation: actionability.groundedRecommendation,
+                resolvedClaim: actionability.resolvedClaim,
+            },
+            entityHints: Array.from(new Set(noteRows.flatMap((row) => readStringValues(normalizeMetadata(row.metadata).entityHints, 24)))).slice(0, 24),
+            patternHints: Array.from(new Set([
+                ...noteRows.flatMap((row) => readStringValues(normalizeMetadata(row.metadata).patternHints, 24)),
+                `dream:${input.bundle.themeType}`,
+            ])).slice(0, 24),
+            consolidation: {
+                runId: input.runId,
+                mode: input.mode,
+                clusterKey: input.bundle.bundleId,
+                strongestSimilarity: Number(input.bundle.strongestSimilarity.toFixed(3)),
+                meanSimilarity: Number(input.bundle.meanSimilarity.toFixed(3)),
+                reasons: input.bundle.reasons,
+                corroboratingAcceptedEpisodic: input.bundle.corroboratingAcceptedEpisodic,
+                provenanceBacked: input.bundle.provenanceBacked,
+                nonRawSupport: input.bundle.nonRawSupport,
+            },
+            associationScout: {
+                provider: input.proposal.provider,
+                model: input.proposal.model,
+                theme: input.proposal.theme,
+                summary: input.proposal.summary,
+                confidence: Number(input.proposal.confidence.toFixed(3)),
+                contradictions: input.proposal.contradictions.slice(0, 6),
+                followUpQueries: input.proposal.followUpQueries.slice(0, 6),
+                intentType: input.intent.type,
+                intentConfidence: Number(input.intent.confidence.toFixed(3)),
+                intentTitle: input.intent.title,
+                intentExplanation: input.intent.explanation,
+            },
+        },
+        sourceConfidence: Math.max(0.38, Math.min(0.96, confidence)),
+        importance: Math.max(0.45, Math.min(0.98, importance)),
+        topicLabel,
+        recommendation,
+        sourceSummary,
+        materialSignature,
+        actionable: actionability.actionable,
+        actionabilityReasons: actionability.reasons,
+    };
+}
+function summarizeConsolidationReasons(metrics) {
+    const reasons = [];
+    if (metrics.fingerprintMatch)
+        reasons.push("fingerprint-match");
+    if (metrics.tokenOverlap >= 0.7)
+        reasons.push("high-token-overlap");
+    if (metrics.entityOverlap >= 0.45)
+        reasons.push("entity-overlap");
+    if (metrics.patternOverlap >= 0.45)
+        reasons.push("pattern-overlap");
+    if (metrics.sameThread)
+        reasons.push("shared-thread");
+    if (metrics.sameLoop)
+        reasons.push("shared-loop");
+    if (metrics.sameSubject)
+        reasons.push("shared-subject");
+    if (metrics.sameLineage)
+        reasons.push("shared-lineage");
+    return reasons.slice(0, 6);
+}
+function relationTypeForConsolidation(metrics) {
+    if (metrics.fingerprintMatch || metrics.score >= 0.97)
+        return "duplicate-of";
+    if (metrics.sameLineage)
+        return "lineage-overlap";
+    if (metrics.sameLoop || metrics.sameThread)
+        return "consolidates-with";
+    return "context-overlap";
+}
 function readExpiryMs(metadata) {
     const expiresAt = normalizeText(metadata.expiresAt);
     if (!expiresAt)
@@ -299,6 +1589,67 @@ function filterExpiredMemoryRecords(rows, nowMs = Date.now()) {
 }
 function normalizeText(value) {
     return typeof value === "string" ? value.trim() : "";
+}
+function looksLikeStartupPlaceholderText(value) {
+    const normalized = normalizeText(value).toLowerCase();
+    return Boolean(normalized) && (normalized.includes("[startup-context]") || normalized === "startup-context");
+}
+function looksLikePseudoDecisionTraceText(value) {
+    const normalized = normalizeText(value).toLowerCase();
+    if (!normalized)
+        return false;
+    if (looksLikeStartupPlaceholderText(normalized))
+        return true;
+    if (normalized.includes("startup continuity loaded")
+        || normalized.includes("context loaded")
+        || normalized.includes("fallback retrieval")
+        || normalized.includes("fallback strategy")
+        || normalized.includes("query replay")
+        || normalized.includes("resume startup query")
+        || normalized.includes("startup query")
+        || normalized.includes("semantic fallback")
+        || normalized.includes("lexical timeout fallback")
+        || normalized.includes("open-memory-cli")) {
+        return true;
+    }
+    const activityLike = /\b(search|query|retrieval|lookup|look up|context)\b/.test(normalized);
+    const traceLike = /\b(ran|executed|loaded|used|performed|replayed|fallback)\b/.test(normalized);
+    const decisionLike = /\b(decision|resolved|confirmed|approved|quarantined|promoted|next action|owner|blocker)\b/.test(normalized);
+    return activityLike && traceLike && !decisionLike;
+}
+function isPseudoDecisionTrace(input) {
+    const source = normalizeSource(String(input.source ?? ""));
+    if (source === "startup-context")
+        return true;
+    const metadata = normalizeMetadata(input.metadata);
+    const kindHints = [
+        normalizeSource(String(metadata.kind ?? "")),
+        normalizeSource(String(metadata.type ?? "")),
+        normalizeSource(String(metadata.memoryKind ?? "")),
+        normalizeSource(String(metadata.rememberKind ?? "")),
+        normalizeSource(String(metadata.codexTraceKind ?? "")),
+    ].filter(Boolean);
+    if (kindHints.some((value) => value.includes("startup-context") || value.includes("query-replay"))) {
+        return true;
+    }
+    const text = [
+        normalizeText(metadata.subject),
+        normalizeText(metadata.title),
+        normalizeText(metadata.summary),
+        normalizeText(input.content),
+    ]
+        .filter(Boolean)
+        .join("\n");
+    return looksLikePseudoDecisionTraceText(text);
+}
+function isActionableDreamRecommendation(value) {
+    const normalized = normalizeText(value);
+    if (!normalized)
+        return false;
+    if (/\b(preserve the thread|keep this association as a readable intent thread|keep the thread linked|treat this as weak overlap|wait for stronger corroboration|preserve the thread as a connection note)\b/i.test(normalized)) {
+        return false;
+    }
+    return /\b(confirm|notify|reuse|promote|quarantine|split|review|archive|rerun|triage|reconcile|disable|enable|update|verify|investigate|label|route|fix|close|publish)\b/i.test(normalized);
 }
 function extractEmailAddresses(value, max = 64) {
     const out = [];
@@ -558,7 +1909,12 @@ function enrichCaptureMetadata(payload) {
         entityHints.add(`ticket:${ticket}`);
     const contextSignals = normalizeMetadata(enriched.contextSignals);
     const signals = parseQuerySignals(`${subject}\n${payload.content.slice(0, 14_000)}`);
-    contextSignals.decisionLike = contextSignals.decisionLike === true || signals.decision;
+    const pseudoDecisionTrace = isPseudoDecisionTrace({
+        source: normalizeSource(String(enriched.source ?? "")),
+        content: payload.content,
+        metadata: enriched,
+    });
+    contextSignals.decisionLike = pseudoDecisionTrace ? false : contextSignals.decisionLike === true || signals.decision;
     contextSignals.actionLike = contextSignals.actionLike === true || signals.action;
     contextSignals.blockerLike = contextSignals.blockerLike === true || signals.blocker;
     contextSignals.deadlineLike = contextSignals.deadlineLike === true || signals.deadline;
@@ -651,6 +2007,13 @@ function sanitizeStringList(values) {
     if (!Array.isArray(values))
         return [];
     return values.map((value) => normalizeSource(value)).filter(Boolean);
+}
+function applyDreamDefaultSourceDenylist(allowlist, denylist) {
+    const merged = new Set(denylist);
+    if (!allowlist.includes(MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE)) {
+        merged.add(MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE);
+    }
+    return Array.from(merged.values()).sort((left, right) => left.localeCompare(right));
 }
 function normalizeEntityType(value) {
     return String(value ?? "")
@@ -1510,6 +2873,37 @@ function inferImportance(tags, metadata) {
         return clamp01(metadata.importance);
     }
     return 0.5;
+}
+function shouldDefaultAcceptedEpisodic(input) {
+    if (input.statusProvided)
+        return false;
+    if (isPseudoDecisionTrace({ source: input.source, content: input.content, metadata: input.metadata }))
+        return false;
+    const hints = [
+        normalizeSource(input.source),
+        ...input.tags.map((tag) => normalizeSource(tag)),
+        normalizeSource(String(input.metadata.kind ?? "")),
+        normalizeSource(String(input.metadata.type ?? "")),
+        normalizeSource(String(input.metadata.memoryKind ?? "")),
+        normalizeSource(String(input.metadata.rememberKind ?? "")),
+        normalizeSource(String(input.metadata.codexTraceKind ?? "")),
+    ].filter(Boolean);
+    if (hints.some((value) => [
+        "decision",
+        "checkpoint",
+        "handoff",
+        "blocker",
+        "progress",
+        "thought",
+        "finding",
+        "action",
+        "open_loop",
+        "open-loop",
+        "codex-trace",
+    ].some((hint) => value.includes(hint)))) {
+        return true;
+    }
+    return /\b(decision|checkpoint|handoff|blocker|resolved blocker|progress update|next action|open loop|open-loop|finding)\b/i.test(input.content);
 }
 function buildContextualizedContent(payload) {
     const metadata = normalizeMetadata(payload.metadata);
@@ -2431,6 +3825,21 @@ function toSearchResultFromRecord(row, overrides, anchorMs = Date.now()) {
 }
 function createMemoryService(options) {
     const embeddingAdapter = options.embeddingAdapter ?? new embedding_1.NullEmbeddingAdapter();
+    const associationScoutAvailability = options.associationScout === undefined
+        ? (0, associationScout_1.describeAssociationScoutEnv)()
+        : {
+            enabled: Boolean(options.associationScout),
+            available: Boolean(options.associationScout),
+            model: options.associationScout ? "custom" : "disabled",
+            provider: options.associationScout ? "codex-cli" : "auto",
+            resolvedProvider: options.associationScout ? "codex-cli" : null,
+            apiKeySource: null,
+            codexExecutable: null,
+            reasoningEffort: "low",
+            executionRoot: null,
+            reason: options.associationScout ? null : "disabled",
+        };
+    const associationScout = options.associationScout === undefined ? (0, associationScout_1.createAssociationScoutFromEnv)() : options.associationScout;
     const defaultTenantId = options.defaultTenantId ?? null;
     const defaultAgentId = options.defaultAgentId ?? "memory-api";
     const defaultRunId = options.defaultRunId ?? "open-memory-v1";
@@ -2475,6 +3884,8 @@ function createMemoryService(options) {
         retrievalMode: params.retrievalMode,
         sourceAllowlist: [...params.allowSources].sort((left, right) => left.localeCompare(right)),
         sourceDenylist: [...params.denySources].sort((left, right) => left.localeCompare(right)),
+        layerAllowlist: [...params.allowLayers].sort((left, right) => left.localeCompare(right)),
+        layerDenylist: [...params.denyLayers].sort((left, right) => left.localeCompare(right)),
         limit: Math.max(1, params.limit),
     });
     const writeSearchFallbackCache = (cacheKey, rows) => {
@@ -2515,6 +3926,8 @@ function createMemoryService(options) {
         retrievalMode: params.retrievalMode,
         sourceAllowlist: [...params.sourceAllowlist].sort((left, right) => left.localeCompare(right)),
         sourceDenylist: [...params.sourceDenylist].sort((left, right) => left.localeCompare(right)),
+        layerAllowlist: [...params.layerAllowlist].sort((left, right) => left.localeCompare(right)),
+        layerDenylist: [...params.layerDenylist].sort((left, right) => left.localeCompare(right)),
         maxItems: Math.max(1, params.maxItems),
         scanLimit: Math.max(1, params.scanLimit),
     });
@@ -2556,6 +3969,206 @@ function createMemoryService(options) {
             retrievalModeUsed: entry.retrievalModeUsed,
         };
     };
+    const loadConsolidationCandidates = async (input) => {
+        const uniqueRows = new Map();
+        const suppressedPseudoDecisionIds = new Set();
+        const suppressedPseudoDecisionExamples = [];
+        const notePseudoDecisionSuppression = (row) => {
+            if (!isPseudoDecisionTrace({ source: row.source, content: row.content, metadata: normalizeMetadata(row.metadata) })) {
+                return false;
+            }
+            suppressedPseudoDecisionIds.add(row.id);
+            if (suppressedPseudoDecisionExamples.length < 8) {
+                suppressedPseudoDecisionExamples.push(row.content.replace(/\s+/g, " ").trim().slice(0, 140));
+            }
+            return true;
+        };
+        const addRows = (rows) => {
+            for (const row of rows) {
+                if (!row)
+                    continue;
+                if (row.memoryLayer === "core")
+                    continue;
+                if (row.status === "archived" || row.status === "quarantined")
+                    continue;
+                if (isExpiredRecord(row))
+                    continue;
+                if (isDreamGeneratedRow(row))
+                    continue;
+                if (notePseudoDecisionSuppression(row))
+                    continue;
+                uniqueRows.set(row.id, row);
+            }
+        };
+        const recentCreatedRows = filterExpiredMemoryRecords(await (options.store.recentCreated
+            ? options.store.recentCreated({
+                tenantId: input.tenantId,
+                layerDenylist: ["core"],
+                excludeStatuses: ["archived", "quarantined"],
+                limit: input.maxCandidates,
+            })
+            : options.store.recent({
+                tenantId: input.tenantId,
+                layerDenylist: ["core"],
+                excludeStatuses: ["archived", "quarantined"],
+                limit: input.maxCandidates,
+            }))).filter((row) => row.memoryLayer !== "core" && !isDreamGeneratedRow(row));
+        addRows(recentCreatedRows);
+        const recentOccurredRows = filterExpiredMemoryRecords(await options.store.recent({
+            tenantId: input.tenantId,
+            layerDenylist: ["core"],
+            excludeStatuses: ["archived", "quarantined"],
+            limit: Math.max(input.maxCandidates, Math.min(400, input.maxCandidates * 2)),
+        })).filter((row) => row.memoryLayer !== "core" && !isDreamGeneratedRow(row));
+        addRows(recentOccurredRows);
+        const brief = readMemoryBriefArtifact();
+        const querySeeds = [];
+        const querySeen = new Set();
+        for (const focusArea of input.focusAreas)
+            appendDreamQuerySeed(querySeeds, querySeen, focusArea);
+        for (const focusArea of brief?.consolidation?.focusAreas ?? [])
+            appendDreamQuerySeed(querySeeds, querySeen, focusArea);
+        for (const focusArea of brief?.layers?.episodicMemory ?? [])
+            appendDreamQuerySeed(querySeeds, querySeen, focusArea);
+        for (const row of Array.from(uniqueRows.values()).sort((left, right) => consolidationPrecedenceScore(right) - consolidationPrecedenceScore(left)).slice(0, 10)) {
+            const metadata = normalizeMetadata(row.metadata);
+            appendDreamQuerySeed(querySeeds, querySeen, normalizeSubjectKey(metadata.subjectKey || metadata.subject));
+            appendDreamQuerySeed(querySeeds, querySeen, threadKeyFromMetadata(metadata));
+            appendDreamQuerySeed(querySeeds, querySeen, loopClusterKeyFromMetadata(metadata));
+            appendDreamQuerySeed(querySeeds, querySeen, row.content.replace(/\s+/g, " ").trim().slice(0, 120));
+            if (querySeeds.length >= MEMORY_CONSOLIDATION_WIDE_QUERY_LIMIT)
+                break;
+        }
+        const boundedQuerySeeds = querySeeds.slice(0, MEMORY_CONSOLIDATION_WIDE_QUERY_LIMIT);
+        let queryExpansionCount = 0;
+        if (MEMORY_CONSOLIDATION_WIDE_SEARCH_ENABLED && boundedQuerySeeds.length > 0) {
+            for (const query of boundedQuerySeeds) {
+                const hits = filterExpiredSearchResults(await options.store.search({
+                    query,
+                    tenantId: input.tenantId,
+                    retrievalMode: "lexical",
+                    layerDenylist: ["core"],
+                    sourceDenylist: [MEMORY_CONSOLIDATION_CONNECTION_SOURCE, MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE],
+                    limit: MEMORY_CONSOLIDATION_WIDE_SEARCH_RESULT_LIMIT,
+                }));
+                const beforeCount = uniqueRows.size;
+                addRows(hits);
+                queryExpansionCount += Math.max(0, uniqueRows.size - beforeCount);
+            }
+        }
+        let relatedExpansionCount = 0;
+        if (MEMORY_CONSOLIDATION_WIDE_SEARCH_ENABLED && options.store.related) {
+            const candidateRows = Array.from(uniqueRows.values())
+                .sort((left, right) => consolidationPrecedenceScore(right) - consolidationPrecedenceScore(left))
+                .slice(0, 12);
+            const seedIds = candidateRows.map((row) => row.id);
+            const entityHintMap = new Map();
+            const patternHintMap = new Map();
+            for (const query of boundedQuerySeeds) {
+                for (const hint of extractQueryEntityHints(query)) {
+                    entityHintMap.set(`${hint.entityType}|${hint.entityKey}`, hint);
+                }
+                for (const hint of extractQueryPatternHints(query)) {
+                    patternHintMap.set(`${hint.patternType}|${hint.patternKey}`, hint);
+                }
+            }
+            for (const row of candidateRows) {
+                const metadata = normalizeMetadata(row.metadata);
+                const subjectKey = normalizeSubjectKey(metadata.subjectKey || metadata.subject);
+                const threadKey = threadKeyFromMetadata(metadata);
+                const loopKey = loopClusterKeyFromMetadata(metadata);
+                if (subjectKey) {
+                    patternHintMap.set(`topic|${normalizePatternKey(subjectKey)}`, {
+                        patternType: "topic",
+                        patternKey: normalizePatternKey(subjectKey),
+                        weight: 0.82,
+                    });
+                }
+                if (threadKey) {
+                    patternHintMap.set(`thread|${normalizePatternKey(threadKey)}`, {
+                        patternType: "thread",
+                        patternKey: normalizePatternKey(threadKey),
+                        weight: 0.88,
+                    });
+                }
+                if (loopKey) {
+                    patternHintMap.set(`loop-cluster|${normalizePatternKey(loopKey)}`, {
+                        patternType: "loop-cluster",
+                        patternKey: normalizePatternKey(loopKey),
+                        weight: 0.9,
+                    });
+                }
+                for (const token of readStringValues(metadata.entityHints, 16).slice(0, 8)) {
+                    const [rawType, rawKey] = String(token).split(":");
+                    const entityType = normalizeEntityType(rawType);
+                    const entityKey = normalizeEntityKey(rawKey);
+                    if (!entityType || !entityKey)
+                        continue;
+                    entityHintMap.set(`${entityType}|${entityKey}`, { entityType, entityKey, weight: 0.7 });
+                }
+            }
+            if (seedIds.length > 0 || entityHintMap.size > 0 || patternHintMap.size > 0) {
+                const related = await options.store.related({
+                    tenantId: input.tenantId,
+                    seedIds,
+                    entityHints: Array.from(entityHintMap.values()).slice(0, 24),
+                    patternHints: Array.from(patternHintMap.values()).slice(0, 24),
+                    limit: MEMORY_CONSOLIDATION_WIDE_RELATED_LIMIT,
+                    maxHops: 2,
+                    includeSeed: false,
+                });
+                const relatedIds = related
+                    .map((row) => row.id)
+                    .filter((id) => !uniqueRows.has(id))
+                    .slice(0, MEMORY_CONSOLIDATION_WIDE_RELATED_LIMIT);
+                if (relatedIds.length > 0) {
+                    const relatedRows = await options.store.getByIds({
+                        tenantId: input.tenantId,
+                        ids: relatedIds,
+                    });
+                    const beforeCount = uniqueRows.size;
+                    addRows(relatedRows);
+                    relatedExpansionCount = Math.max(0, uniqueRows.size - beforeCount);
+                }
+            }
+        }
+        const candidateCap = Math.min(2_000, Math.max(input.maxCandidates, input.maxCandidates + boundedQuerySeeds.length * MEMORY_CONSOLIDATION_WIDE_SEARCH_RESULT_LIMIT + MEMORY_CONSOLIDATION_WIDE_RELATED_LIMIT));
+        const finalRows = Array.from(uniqueRows.values())
+            .sort((left, right) => {
+            const precedenceDelta = consolidationPrecedenceScore(right) - consolidationPrecedenceScore(left);
+            if (precedenceDelta !== 0)
+                return precedenceDelta;
+            return (right.occurredAt || right.createdAt).localeCompare(left.occurredAt || left.createdAt);
+        })
+            .slice(0, candidateCap);
+        const preBalanceCandidateCount = finalRows.length;
+        const selectionLimit = Math.min(finalRows.length, Math.max(input.maxCandidates, Math.min(800, Math.max(input.maxCandidates * 2, 24))));
+        const balancedSelection = selectDreamCandidates(finalRows, selectionLimit);
+        const balancedRows = balancedSelection.rows;
+        return {
+            rows: balancedRows,
+            details: {
+                recentCreatedCount: recentCreatedRows.length,
+                recentOccurredCount: recentOccurredRows.length,
+                queryExpansionCount,
+                relatedExpansionCount,
+                uniqueCandidateCount: balancedRows.length,
+                preBalanceCandidateCount,
+                postBalanceCandidateCount: balancedRows.length,
+                querySeeds: boundedQuerySeeds,
+                seedIds: balancedRows.slice(0, 12).map((row) => row.id),
+                byLayer: countByLayer(balancedRows),
+                bySource: countClusterSources(balancedRows, 10),
+                byFamily: countByDreamFamily(balancedRows, 10),
+                familyQuotaPlan: balancedSelection.familyQuotaPlan,
+                familyQuotaActual: balancedSelection.familyQuotaActual,
+                dominanceWarnings: balancedSelection.dominanceWarnings,
+                mixQuality: balancedSelection.mixQuality,
+                suppressedPseudoDecisionCount: suppressedPseudoDecisionIds.size,
+                suppressedPseudoDecisionExamples,
+            },
+        };
+    };
     const capture = async (raw, captureOptions) => {
         let parsed;
         try {
@@ -2579,18 +4192,55 @@ function createMemoryService(options) {
                 source: normalizedSource,
                 clientRequestId: parsed.clientRequestId,
             });
-        const metadata = redactSensitiveMetadata(enrichCaptureMetadata({
+        const requestedMetadata = {
+            ...parsed.metadata,
+            source: normalizedSource,
+            _memoryNanny: routing.metadata,
+        };
+        const derivedLayer = deriveCaptureLayer({
+            memoryLayer: parsed.memoryLayer,
+            memoryType: parsed.memoryType,
+            source: normalizedSource,
+            tags: parsed.tags,
+            content: parsed.content,
+            metadata: requestedMetadata,
+        });
+        if (derivedLayer === "core") {
+            throw new MemoryValidationError("Core memory blocks are synthesized from startup continuity and role packs, not captured through the general memory API.");
+        }
+        const enrichedMetadata = enrichCaptureMetadata({
             source: normalizedSource,
             content: parsed.content,
             tags: parsed.tags,
-            metadata: {
-                ...parsed.metadata,
+            metadata: requestedMetadata,
+        });
+        const metadataWithLayer = {
+            ...enrichedMetadata,
+            memoryLayer: derivedLayer,
+        };
+        const ttlAwareMetadata = derivedLayer === "working"
+            ? applyDefaultWorkingTtl(metadataWithLayer, parsed.occurredAt ?? null)
+            : metadataWithLayer;
+        const lineageAwareMetadata = derivedLayer === "canonical"
+            ? withCanonicalLineage(ttlAwareMetadata, {
+                id,
                 source: normalizedSource,
-                _memoryNanny: routing.metadata,
-            },
-        }));
-        const status = normalizeStatus(parsed.status, normalizedSource, parsed.content);
-        const memoryType = normalizeMemoryType(parsed.memoryType);
+                clientRequestId: parsed.clientRequestId ?? null,
+            })
+            : ttlAwareMetadata;
+        const metadata = redactSensitiveMetadata(lineageAwareMetadata);
+        let status = normalizeStatus(parsed.status, normalizedSource, parsed.content);
+        if (derivedLayer === "episodic" &&
+            shouldDefaultAcceptedEpisodic({
+                statusProvided: typeof parsed.status === "string",
+                source: normalizedSource,
+                tags: parsed.tags,
+                content: parsed.content,
+                metadata,
+            })) {
+            status = "accepted";
+        }
+        const memoryType = (0, layers_1.defaultMemoryTypeForLayer)(derivedLayer, normalizeMemoryType(parsed.memoryType));
         const sourceConfidence = clamp01(parsed.sourceConfidence, sourceConfidenceForSource(normalizedSource));
         const importance = clamp01(parsed.importance, inferImportance(parsed.tags, metadata));
         const contextualizedContent = buildContextualizedContent({
@@ -2620,6 +4270,7 @@ function createMemoryService(options) {
                 ...metadata,
                 status,
                 memoryType,
+                memoryLayer: derivedLayer,
                 sourceConfidence,
                 importance,
             },
@@ -2628,6 +4279,7 @@ function createMemoryService(options) {
             clientRequestId: parsed.clientRequestId ?? null,
             status,
             memoryType,
+            memoryLayer: derivedLayer,
             sourceConfidence,
             importance,
             contextualizedContent,
@@ -2925,7 +4577,9 @@ function createMemoryService(options) {
         }
         const effectiveRetrievalMode = parsed.retrievalMode === "lexical" ? "lexical" : embedding ? parsed.retrievalMode : "lexical";
         const allowSources = sanitizeStringList(parsed.sourceAllowlist);
-        const denySources = sanitizeStringList(parsed.sourceDenylist);
+        const denySources = applyDreamDefaultSourceDenylist(allowSources, sanitizeStringList(parsed.sourceDenylist));
+        const allowLayers = (0, layers_1.normalizeMemoryLayerList)(parsed.layerAllowlist);
+        const denyLayers = (0, layers_1.normalizeMemoryLayerList)(parsed.layerDenylist);
         const cacheKey = buildSearchFallbackCacheKey({
             tenantId,
             agentId: parsed.agentId,
@@ -2934,6 +4588,8 @@ function createMemoryService(options) {
             retrievalMode: effectiveRetrievalMode,
             allowSources,
             denySources,
+            allowLayers,
+            denyLayers,
             limit: parsed.limit,
         });
         let rows = [];
@@ -2946,6 +4602,8 @@ function createMemoryService(options) {
             runId: parsed.runId,
             sourceAllowlist: allowSources,
             sourceDenylist: denySources,
+            layerAllowlist: allowLayers,
+            layerDenylist: denyLayers,
             minScore: parsed.minScore,
             explain: parsed.explain,
             embedding: embedding ?? undefined,
@@ -3010,6 +4668,8 @@ function createMemoryService(options) {
                     runId: parsed.runId,
                     sourceAllowlist: allowSources,
                     sourceDenylist: denySources,
+                    layerAllowlist: allowLayers,
+                    layerDenylist: denyLayers,
                     excludeStatuses: ["quarantined"],
                     limit: Math.max(parsed.limit * 6, 120),
                 }), fallbackStageTimeoutMs, "memory search recent fallback stage"));
@@ -3074,6 +4734,7 @@ function createMemoryService(options) {
                 throw primarySearchError;
             }
         }
+        rows = rows.filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, allowLayers, denyLayers));
         if (!usedStaleCacheFallback && rows.length > 0) {
             writeSearchFallbackCache(cacheKey, rows);
         }
@@ -3213,12 +4874,14 @@ function createMemoryService(options) {
         const applyRequestedScope = (rowsInput) => {
             const requestedAgentId = String(parsed.agentId ?? "").trim();
             const requestedRunId = String(parsed.runId ?? "").trim();
-            if (!requestedAgentId && !requestedRunId)
+            if (!requestedAgentId && !requestedRunId && allowLayers.length === 0 && denyLayers.length === 0)
                 return rowsInput;
             return rowsInput.filter((row) => {
                 if (requestedAgentId && row.agentId !== requestedAgentId)
                     return false;
                 if (requestedRunId && row.runId !== requestedRunId)
+                    return false;
+                if (!(0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, allowLayers, denyLayers))
                     return false;
                 return true;
             });
@@ -3309,6 +4972,8 @@ function createMemoryService(options) {
         const tenantId = normalizeTenant(parsed.tenantId);
         return filterExpiredMemoryRecords(await options.store.recent({
             tenantId,
+            layerAllowlist: (0, layers_1.normalizeMemoryLayerList)(parsed.layerAllowlist),
+            layerDenylist: (0, layers_1.normalizeMemoryLayerList)(parsed.layerDenylist),
             limit: parsed.limit,
         }));
     };
@@ -3349,7 +5014,70 @@ function createMemoryService(options) {
             throw normalizeError(error);
         }
         const tenantId = normalizeTenant(parsed.tenantId);
-        return options.store.stats({ tenantId });
+        const base = await options.store.stats({
+            tenantId,
+            layerAllowlist: (0, layers_1.normalizeMemoryLayerList)(parsed.layerAllowlist),
+            layerDenylist: (0, layers_1.normalizeMemoryLayerList)(parsed.layerDenylist),
+        });
+        const brief = readMemoryBriefArtifact();
+        const consolidation = readMemoryConsolidationArtifact();
+        const fallbackCounts = new Map();
+        for (const source of brief?.fallbackSources ?? []) {
+            const normalized = normalizeSource(source);
+            if (!normalized)
+                continue;
+            fallbackCounts.set(normalized, (fallbackCounts.get(normalized) ?? 0) + 1);
+        }
+        const lastRunAt = normalizeText(consolidation?.finishedAt || consolidation?.lastSuccessAt || brief?.consolidation?.lastRunAt);
+        const nextRunAt = normalizeText(consolidation?.nextRunAt || brief?.consolidation?.nextRunAt);
+        const lastRunMs = Number.isFinite(Date.parse(lastRunAt)) ? Date.parse(lastRunAt) : null;
+        const staleWarning = lastRunMs === null
+            ? true
+            : Date.now() - lastRunMs > MEMORY_CONSOLIDATION_STALE_WARNING_HOURS * 60 * 60 * 1000;
+        return {
+            ...base,
+            byLayer: base.byLayer.length > 0 ? base.byLayer : countByLayer([]),
+            byStatus: base.byStatus ?? [],
+            continuity: {
+                state: brief?.continuityState === "ready" || brief?.continuityState === "continuity_degraded" || brief?.continuityState === "missing"
+                    ? brief.continuityState
+                    : "unknown",
+                fallbackSources: Array.from(fallbackCounts.entries())
+                    .map(([source, count]) => ({ source, count }))
+                    .sort((left, right) => right.count - left.count || left.source.localeCompare(right.source)),
+                continuityHitRate: brief?.continuityState === "ready" ? 1 : 0,
+                degradedStartupRate: brief?.continuityState === "continuity_degraded" ? 1 : 0,
+            },
+            consolidation: {
+                status: consolidation?.status === "running"
+                    ? "running"
+                    : consolidation?.status === "failed"
+                        ? "failed"
+                        : staleWarning
+                            ? "stale"
+                            : lastRunAt
+                                ? "success"
+                                : brief?.consolidation?.mode === "unavailable"
+                                    ? "unavailable"
+                                    : "idle",
+                mode: normalizeText(consolidation?.mode || brief?.consolidation?.mode) || null,
+                lastRunAt: lastRunAt || null,
+                nextRunAt: nextRunAt || null,
+                successCount: lastRunAt ? 1 : 0,
+                failureCount: consolidation?.status === "failed" ? 1 : 0,
+                promotionCount: Math.max(0, Number(consolidation?.promotionCount ?? 0)),
+                quarantineCount: Math.max(0, Number(consolidation?.quarantineCount ?? 0)),
+                archiveCount: Math.max(0, Number(consolidation?.archiveCount ?? 0)),
+                repairedEdgeCount: Math.max(0, Number(consolidation?.repairedEdgeCount ?? 0)),
+                staleWarning,
+                lastError: normalizeText(consolidation?.lastError) || null,
+                influence: Array.isArray(consolidation?.focusAreas)
+                    ? consolidation.focusAreas.map((entry) => normalizeText(entry)).filter(Boolean).slice(0, 6)
+                    : Array.isArray(brief?.consolidation?.focusAreas)
+                        ? brief.consolidation.focusAreas.map((entry) => normalizeText(entry)).filter(Boolean).slice(0, 6)
+                        : [],
+            },
+        };
     };
     const loops = async (raw) => {
         let parsed;
@@ -4892,9 +6620,13 @@ function createMemoryService(options) {
         const stageTimeoutMs = MEMORY_QUERY_STAGE_TIMEOUT_MS;
         const fallbackStageTimeoutMs = MEMORY_QUERY_FALLBACK_STAGE_TIMEOUT_MS;
         const sourceAllowlist = sanitizeStringList(parsed.sourceAllowlist);
-        const sourceDenylist = sanitizeStringList(parsed.sourceDenylist);
+        const sourceDenylist = applyDreamDefaultSourceDenylist(sourceAllowlist, sanitizeStringList(parsed.sourceDenylist));
+        const layerAllowlist = (0, layers_1.normalizeMemoryLayerList)(parsed.layerAllowlist);
+        const layerDenylist = (0, layers_1.normalizeMemoryLayerList)(parsed.layerDenylist);
         const queryEntityHints = query ? extractQueryEntityHints(query) : [];
         const queryPatternHints = query ? extractQueryPatternHints(query) : [];
+        const briefArtifact = readMemoryBriefArtifact();
+        const consolidationArtifact = readMemoryConsolidationArtifact();
         const contextFallbackCacheKey = query
             ? buildContextFallbackCacheKey({
                 tenantId: tenantResolution.tenantId,
@@ -4904,6 +6636,8 @@ function createMemoryService(options) {
                 retrievalMode,
                 sourceAllowlist,
                 sourceDenylist,
+                layerAllowlist,
+                layerDenylist,
                 maxItems: parsed.maxItems,
                 scanLimit: parsed.scanLimit,
             })
@@ -5033,6 +6767,8 @@ function createMemoryService(options) {
                 tenantId: tenantResolution.tenantId,
                 sourceAllowlist,
                 sourceDenylist,
+                layerAllowlist,
+                layerDenylist,
                 excludeStatuses: ["quarantined"],
                 limit: parsed.scanLimit,
             }), stageTimeoutMs, "memory context tenant recent stage");
@@ -5047,6 +6783,8 @@ function createMemoryService(options) {
                     tenantId: tenantResolution.tenantId,
                     sourceAllowlist,
                     sourceDenylist,
+                    layerAllowlist,
+                    layerDenylist,
                     excludeStatuses: ["quarantined"],
                     limit: Math.max(parsed.maxItems * 6, Math.min(parsed.scanLimit, 96)),
                 }), fallbackStageTimeoutMs, "memory context tenant recent fallback stage");
@@ -5065,16 +6803,22 @@ function createMemoryService(options) {
                 return false;
             if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist))
                 return false;
+            if (!(0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist))
+                return false;
             if (row.status === "quarantined")
                 return false;
             return true;
         });
         const effectiveRows = scopedRows.length === 0 && parsed.includeTenantFallback && (agentId !== null || runId !== null)
-            ? filterExpiredMemoryRecords(tenantRows).filter((row) => sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined")
+            ? filterExpiredMemoryRecords(tenantRows).filter((row) => sourceAllowed(row.source, sourceAllowlist, sourceDenylist)
+                && (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist)
+                && row.status !== "quarantined")
             : scopedRows;
         const tenantFallbackUsedForEmptyScope = effectiveRows.length > 0 && scopedRows.length === 0 && (agentId !== null || runId !== null) && parsed.includeTenantFallback;
         const matchesContextScope = (row) => {
             if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist))
+                return false;
+            if (!(0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist))
                 return false;
             if (row.status === "quarantined")
                 return false;
@@ -5088,9 +6832,10 @@ function createMemoryService(options) {
                 return false;
             return true;
         };
+        const coreRows = synthesizeCoreRowsFromBrief(briefArtifact, tenantResolution.tenantId, new Date().toISOString()).filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist));
         const knownRows = new Map();
         const threadBuckets = new Map();
-        for (const row of effectiveRows) {
+        for (const row of [...coreRows, ...effectiveRows]) {
             knownRows.set(row.id, row);
             const threadKey = threadKeyFromMetadata(normalizeMetadata(row.metadata));
             if (!threadKey)
@@ -5124,6 +6869,8 @@ function createMemoryService(options) {
                     runId: runId ?? undefined,
                     sourceAllowlist,
                     sourceDenylist,
+                    layerAllowlist,
+                    layerDenylist,
                     retrievalMode: effectiveRetrievalMode,
                     minScore: 0,
                     explain: parsed.explain,
@@ -5145,6 +6892,8 @@ function createMemoryService(options) {
                             runId: runId ?? undefined,
                             sourceAllowlist,
                             sourceDenylist,
+                            layerAllowlist,
+                            layerDenylist,
                             retrievalMode: "lexical",
                             minScore: 0,
                             explain: parsed.explain,
@@ -5173,6 +6922,8 @@ function createMemoryService(options) {
                             runId: runId ?? undefined,
                             sourceAllowlist,
                             sourceDenylist,
+                            layerAllowlist,
+                            layerDenylist,
                             excludeStatuses: ["quarantined"],
                             limit: Math.max(parsed.maxItems * 8, 120),
                         }), fallbackStageTimeoutMs, "memory context recent fallback stage"));
@@ -5232,12 +6983,39 @@ function createMemoryService(options) {
                 retrievalModeUsed = cached.retrievalModeUsed;
             }
         }
+        searchRows = searchRows.filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist));
         const degradedComputeMode = tenantRowsTimedOut || queryFallbackActivated;
         const scoredById = new Map();
         for (const row of searchRows) {
             scoredById.set(row.id, row);
         }
-        for (const row of effectiveRows) {
+        for (const row of coreRows) {
+            if (scoredById.has(row.id))
+                continue;
+            scoredById.set(row.id, toSearchResultFromRecord(row, {
+                score: 0.94,
+                matchedBy: ["core-block"],
+                scoreBreakdown: {
+                    rrf: 0.32,
+                    sourceTrust: row.sourceConfidence,
+                    recency: 0.88,
+                    importance: row.importance,
+                    session: 0,
+                    lexical: 0,
+                    semantic: 0,
+                    sessionLane: 0,
+                },
+            }, temporalAnchorMs));
+        }
+        for (const row of [...effectiveRows].sort((left, right) => {
+            const priorityDelta = (0, layers_1.memoryLayerPriority)(left.memoryLayer) - (0, layers_1.memoryLayerPriority)(right.memoryLayer);
+            if (priorityDelta !== 0)
+                return priorityDelta;
+            const acceptedDelta = Number(right.status === "accepted") - Number(left.status === "accepted");
+            if (acceptedDelta !== 0)
+                return acceptedDelta;
+            return right.createdAt.localeCompare(left.createdAt);
+        })) {
             if (scoredById.has(row.id))
                 continue;
             const session = runId && row.runId === runId ? 1 : agentId && row.agentId === agentId ? 0.5 : 0;
@@ -5311,6 +7089,15 @@ function createMemoryService(options) {
             ranked = await mergeLoopStatePointerRows(ranked);
         }
         ranked = ranked.sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt));
+        const layerOrderedRanked = [...ranked].sort((left, right) => {
+            const layerDelta = (0, layers_1.memoryLayerPriority)(left.memoryLayer) - (0, layers_1.memoryLayerPriority)(right.memoryLayer);
+            if (layerDelta !== 0)
+                return layerDelta;
+            const acceptedDelta = Number(right.status === "accepted") - Number(left.status === "accepted");
+            if (acceptedDelta !== 0)
+                return acceptedDelta;
+            return right.score - left.score || right.createdAt.localeCompare(left.createdAt);
+        });
         const selected = [];
         let usedChars = 0;
         let droppedByBudget = 0;
@@ -5362,7 +7149,7 @@ function createMemoryService(options) {
                     ? parsed.maxItems - 1
                     : parsed.maxItems
             : parsed.maxItems;
-        for (const candidate of ranked) {
+        for (const candidate of layerOrderedRanked) {
             if (selected.length >= primarySelectionLimit)
                 break;
             addWithBudget(candidate);
@@ -5502,6 +7289,8 @@ function createMemoryService(options) {
                 retrievalMode: retrievalModeUsed,
                 sourceAllowlist,
                 sourceDenylist,
+                layerAllowlist,
+                layerDenylist,
                 temporalAnchorAt: parsed.temporalAnchorAt ?? null,
                 includeExplain: parsed.explain,
                 tenantFallbackUsedForEmptyScope,
@@ -5520,9 +7309,32 @@ function createMemoryService(options) {
                     scopedRows: scopedRows.length,
                     searchRows: searchRows.length,
                     mergedRows: ranked.length,
+                    byLayer: countByLayer([...coreRows, ...effectiveRows]),
+                    selectedByLayer: countByLayerFromSearchRows(selected),
+                    fallbackByLayer: countByLayerFromSearchRows(ranked.filter((row) => row.matchedBy.includes("recent") || row.matchedBy.includes("context-recent-fallback"))),
                 },
                 retrievalModeUsed,
                 includeTenantFallback: parsed.includeTenantFallback,
+                consolidationInfluence: {
+                    status: consolidationArtifact?.status === "running"
+                        ? "running"
+                        : consolidationArtifact?.status === "failed"
+                            ? "failed"
+                            : normalizeText(consolidationArtifact?.finishedAt || consolidationArtifact?.lastSuccessAt)
+                                ? "success"
+                                : briefArtifact?.consolidation?.mode === "unavailable"
+                                    ? "unavailable"
+                                    : "idle",
+                    mode: normalizeText(consolidationArtifact?.mode || briefArtifact?.consolidation?.mode) || null,
+                    lastRunAt: normalizeText(consolidationArtifact?.finishedAt || consolidationArtifact?.lastSuccessAt || briefArtifact?.consolidation?.lastRunAt)
+                        || null,
+                    nextRunAt: normalizeText(consolidationArtifact?.nextRunAt || briefArtifact?.consolidation?.nextRunAt) || null,
+                    focusAreas: Array.isArray(consolidationArtifact?.focusAreas)
+                        ? consolidationArtifact.focusAreas.map((entry) => normalizeText(entry)).filter(Boolean).slice(0, 6)
+                        : Array.isArray(briefArtifact?.consolidation?.focusAreas)
+                            ? briefArtifact.consolidation.focusAreas.map((entry) => normalizeText(entry)).filter(Boolean).slice(0, 6)
+                            : [],
+                },
                 tenantRowsTimedOut,
                 degradedComputeMode,
             },
@@ -6749,6 +8561,2000 @@ function createMemoryService(options) {
             briefing,
         };
     };
+    const consolidate = async (raw = {}) => {
+        let parsed;
+        try {
+            parsed = zod_1.z.object({
+                tenantId: zod_1.z.string().trim().min(1).max(128).optional(),
+                mode: zod_1.z.enum(["idle", "overnight"]).default("idle"),
+                runId: zod_1.z.string().trim().min(1).max(160).default(`memory-consolidation-${new Date().toISOString().replace(/[:.]/g, "-")}`),
+                maxCandidates: zod_1.z.number().int().min(1).max(5_000).default(100),
+                maxWrites: zod_1.z.number().int().min(1).max(1_000).default(25),
+                timeBudgetMs: zod_1.z.number().int().min(5_000).max(30 * 60_000).default(120_000),
+                focusAreas: zod_1.z.array(zod_1.z.string().trim().min(1).max(160)).max(12).default([]),
+            }).parse(raw ?? {});
+        }
+        catch (error) {
+            throw normalizeError(error);
+        }
+        const tenantId = normalizeTenant(parsed.tenantId);
+        const startedAtMs = Date.now();
+        const startedAt = new Date(startedAtMs).toISOString();
+        const phaseTimingsMs = {
+            candidateSelection: 0,
+            duplicateClustering: 0,
+            associationScout: 0,
+            relationshipRepair: 0,
+            promotionEvaluation: 0,
+            artifactPublish: 0,
+        };
+        const candidateSelectionStartedAtMs = Date.now();
+        const candidateSelection = await loadConsolidationCandidates({
+            tenantId,
+            maxCandidates: parsed.maxCandidates,
+            focusAreas: parsed.focusAreas,
+        });
+        const recentRows = candidateSelection.rows;
+        phaseTimingsMs.candidateSelection = Date.now() - candidateSelectionStartedAtMs;
+        const duplicateClusteringStartedAtMs = Date.now();
+        const clusterBuild = buildConsolidationClusters(recentRows, MEMORY_CONSOLIDATION_DEDUPE_SIMILARITY_THRESHOLD);
+        const clusters = clusterBuild.clusters;
+        phaseTimingsMs.duplicateClustering = Date.now() - duplicateClusteringStartedAtMs;
+        let writes = 0;
+        let promotionCount = 0;
+        let archiveCount = 0;
+        let quarantineCount = 0;
+        let repairedEdgeCount = 0;
+        let connectionNoteCount = 0;
+        let associationIntentCount = 0;
+        let associationBundleCount = 0;
+        let associationConnectionNoteCount = 0;
+        let themeClusterCount = 0;
+        const focusAreas = [...parsed.focusAreas];
+        const artifactOutputs = [MEMORY_CONSOLIDATION_RELATIVE_PATH.join("/")];
+        const promotionIds = [];
+        const archiveIds = [];
+        const quarantineIds = [];
+        const repairedClusterIds = [];
+        const connectionNoteIds = [];
+        const repairDetails = [];
+        const clusterInspectionDetails = [];
+        const connectionNoteDetails = [];
+        const promotionDetails = [];
+        const archiveDetails = [];
+        const quarantineDetails = [];
+        const associationDetails = [];
+        const associationErrors = [];
+        const promotionCandidateDetails = [];
+        const queryReplayDetails = [];
+        const bundleOrigins = [];
+        const writeAudit = [];
+        const phaseAudit = [];
+        const decisionAudit = [];
+        const promotionCandidatesByFingerprint = new Map();
+        const existingConnectionNotesById = new Map();
+        const initialAssociationOutcomes = [];
+        let synthesisBundleCount = 0;
+        let promotionCandidateCount = 0;
+        let promotionCandidateConfirmedCount = 0;
+        let stalledCandidateCount = 0;
+        let secondPassQueriesUsed = 0;
+        let actionableInsightCount = 0;
+        let suppressedConnectionNoteCount = 0;
+        let suppressedPseudoDecisionCount = Number(candidateSelection.details.suppressedPseudoDecisionCount ?? 0);
+        const topActions = [];
+        const topActionSeen = new Set();
+        let writeAuditDroppedCount = 0;
+        let phaseAuditDroppedCount = 0;
+        let decisionAuditDroppedCount = 0;
+        let writeAuditSequence = 0;
+        let phaseAuditSequence = 0;
+        let decisionAuditSequence = 0;
+        function recordWriteAudit(entry) {
+            const nextEntry = {
+                sequence: writeAuditSequence += 1,
+                at: new Date().toISOString(),
+                elapsedMs: Math.max(0, Date.now() - startedAtMs),
+                ...entry,
+            };
+            if (writeAudit.length >= 256) {
+                writeAuditDroppedCount += 1;
+                return;
+            }
+            writeAudit.push(nextEntry);
+        }
+        function recordPhaseAudit(entry) {
+            const nextEntry = {
+                sequence: phaseAuditSequence += 1,
+                at: new Date().toISOString(),
+                elapsedMs: Math.max(0, Date.now() - startedAtMs),
+                ...entry,
+            };
+            if (phaseAudit.length >= 256) {
+                phaseAuditDroppedCount += 1;
+                return;
+            }
+            phaseAudit.push(nextEntry);
+        }
+        function recordDecisionAudit(entry) {
+            const nextEntry = {
+                sequence: decisionAuditSequence += 1,
+                at: new Date().toISOString(),
+                elapsedMs: Math.max(0, Date.now() - startedAtMs),
+                ...entry,
+            };
+            if (decisionAudit.length >= 256) {
+                decisionAuditDroppedCount += 1;
+                return;
+            }
+            decisionAudit.push(nextEntry);
+        }
+        recordPhaseAudit({
+            phase: "candidateSelection",
+            event: "complete",
+            durationMs: phaseTimingsMs.candidateSelection,
+            count: recentRows.length,
+            summary: `Loaded ${recentRows.length} candidates for consolidation.`,
+        });
+        recordPhaseAudit({
+            phase: "duplicateClustering",
+            event: "complete",
+            durationMs: phaseTimingsMs.duplicateClustering,
+            count: clusters.length,
+            summary: `Built ${clusters.length} hard clusters and ${clusterBuild.softClusterCount} soft clusters.`,
+        });
+        if (suppressedPseudoDecisionCount > 0) {
+            recordDecisionAudit({
+                phase: "candidateSelection",
+                decision: "pseudo-decision-suppression",
+                status: "skipped",
+                reasons: ["pseudo-decision-filter", `count:${suppressedPseudoDecisionCount}`],
+                detail: (candidateSelection.details.suppressedPseudoDecisionExamples ?? []).slice(0, 2).join(" | "),
+            });
+        }
+        const addTopAction = (text, priority = 0.5) => {
+            const normalized = normalizeText(text).replace(/\s+/g, " ").trim();
+            if (!normalized || looksLikePseudoDecisionTraceText(normalized) || looksLikeStartupPlaceholderText(normalized))
+                return;
+            const dedupe = normalized.toLowerCase();
+            if (topActionSeen.has(dedupe))
+                return;
+            topActionSeen.add(dedupe);
+            topActions.push({ text: normalized.slice(0, 180), priority });
+        };
+        const associationScoutStatus = {
+            enabled: associationScoutAvailability.enabled,
+            available: associationScoutAvailability.available,
+            provider: associationScoutAvailability.provider,
+            resolvedProvider: associationScoutAvailability.resolvedProvider,
+            model: associationScoutAvailability.model,
+            apiKeySource: associationScoutAvailability.apiKeySource,
+            codexExecutable: associationScoutAvailability.codexExecutable,
+            reasoningEffort: associationScoutAvailability.reasoningEffort,
+            executionRoot: associationScoutAvailability.executionRoot,
+            reason: associationScoutAvailability.reason,
+        };
+        const loadExistingPromotionCandidates = async () => {
+            const existing = filterExpiredMemoryRecords(await options.store.recent({
+                tenantId,
+                sourceAllowlist: [MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE],
+                excludeStatuses: ["archived"],
+                limit: 256,
+            }));
+            for (const row of existing) {
+                const fingerprint = normalizeText(normalizeMetadata(row.metadata).thesisFingerprint);
+                if (!fingerprint)
+                    continue;
+                promotionCandidatesByFingerprint.set(fingerprint, row);
+            }
+        };
+        const loadExistingConnectionNotes = async () => {
+            const existing = filterExpiredMemoryRecords(await options.store.recent({
+                tenantId,
+                sourceAllowlist: [MEMORY_CONSOLIDATION_CONNECTION_SOURCE],
+                excludeStatuses: ["archived", "quarantined"],
+                limit: 256,
+            }));
+            for (const row of existing) {
+                existingConnectionNotesById.set(row.id, row);
+            }
+        };
+        await loadExistingPromotionCandidates();
+        await loadExistingConnectionNotes();
+        const applyConsolidationRepairSignals = async (input) => {
+            if (!options.store.indexSignals || input.relations.length === 0)
+                return 0;
+            const indexInput = deriveSignalIndex({
+                memoryId: input.row.id,
+                tenantId: input.row.tenantId,
+                content: input.row.content,
+                metadata: normalizeMetadata(input.row.metadata),
+                source: normalizeSource(input.row.source),
+                tags: input.row.tags,
+            });
+            const edgeSeen = new Set(indexInput.edges.map((edge) => `${edge.targetId}|${normalizeEntityType(edge.relationType) || "related"}`));
+            const entitySeen = new Set(indexInput.entities.map((entity) => `${normalizeEntityType(entity.entityType)}|${normalizeEntityKey(entity.entityKey)}`));
+            const patternSeen = new Set(indexInput.patterns.map((pattern) => `${normalizePatternType(pattern.patternType)}|${normalizePatternKey(pattern.patternKey)}`));
+            let appended = 0;
+            for (const relation of input.relations) {
+                const beforeCount = indexInput.edges.length;
+                appendEdge(indexInput.edges, edgeSeen, input.row.id, relation.targetId, relation.relationType, relation.weight, relation.evidence);
+                if (indexInput.edges.length > beforeCount)
+                    appended += 1;
+            }
+            appendEntity(indexInput.entities, entitySeen, "cluster", input.clusterKey, input.clusterKey, 0.92);
+            appendPattern(indexInput.patterns, patternSeen, "consolidation-cluster", input.clusterKey, input.clusterKey, 0.92);
+            appendPattern(indexInput.patterns, patternSeen, "consolidation-mode", input.mode, input.mode, 0.72);
+            await options.store.indexSignals(indexInput);
+            return appended;
+        };
+        const scoutAssociationBundle = async (bundle) => {
+            if (!associationScout)
+                return null;
+            if (associationBundleCount >= MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES)
+                return null;
+            const startedAtMs = Date.now();
+            recordPhaseAudit({
+                phase: "associationScout",
+                event: "start",
+                bundleId: bundle.bundleId,
+                clusterKey: bundle.primary.id,
+                count: bundle.rows.length,
+                summary: `Evaluating association bundle ${bundle.bundleId}.`,
+            });
+            try {
+                const proposal = await associationScout.scout(buildAssociationScoutBundle({
+                    runId: parsed.runId,
+                    mode: parsed.mode,
+                    bundleId: bundle.bundleId,
+                    bundleType: bundle.bundleType,
+                    themeType: bundle.themeType,
+                    themeKey: bundle.themeKey,
+                    recallPass: bundle.recallPass,
+                    originatingBundleId: bundle.originatingBundleId,
+                    replayQueries: bundle.replayQueries,
+                    focusAreas,
+                    rows: bundle.rows,
+                }));
+                associationBundleCount += 1;
+                phaseTimingsMs.associationScout += Date.now() - startedAtMs;
+                recordPhaseAudit({
+                    phase: "associationScout",
+                    event: "complete",
+                    bundleId: bundle.bundleId,
+                    clusterKey: bundle.primary.id,
+                    durationMs: Date.now() - startedAtMs,
+                    count: proposal?.intents?.length ?? 0,
+                    summary: `Association bundle ${bundle.bundleId} produced ${proposal?.intents?.length ?? 0} intents.`,
+                });
+                return proposal;
+            }
+            catch (error) {
+                associationBundleCount += 1;
+                phaseTimingsMs.associationScout += Date.now() - startedAtMs;
+                recordPhaseAudit({
+                    phase: "associationScout",
+                    event: "failed",
+                    bundleId: bundle.bundleId,
+                    clusterKey: bundle.primary.id,
+                    durationMs: Date.now() - startedAtMs,
+                    reason: error instanceof Error ? error.message : String(error),
+                    summary: `Association bundle ${bundle.bundleId} failed.`,
+                });
+                if (associationErrors.length < 12) {
+                    associationErrors.push({
+                        bundleId: bundle.bundleId,
+                        bundleType: bundle.bundleType,
+                        themeType: bundle.themeType,
+                        themeKey: bundle.themeKey,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+                return null;
+            }
+        };
+        const executeAssociationProposal = async (input) => {
+            const validIds = new Set(input.bundle.rows.map((row) => row.id));
+            const rowsById = new Map(input.bundle.rows.map((row) => [row.id, row]));
+            const intents = input.proposal.intents
+                .filter((intent) => intent.confidence >= MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_INTENT_MIN_CONFIDENCE)
+                .map((intent) => ({
+                ...intent,
+                memoryIds: intent.memoryIds.filter((id) => validIds.has(id)).slice(0, 12),
+                targetIds: intent.targetIds.filter((id) => validIds.has(id)).slice(0, 12),
+            }))
+                .filter((intent) => intent.memoryIds.length > 0);
+            associationIntentCount += intents.length;
+            const followUpQueries = Array.from(new Set([
+                ...input.proposal.followUpQueries,
+                ...intents
+                    .filter((intent) => intent.type === "follow_up_query")
+                    .map((intent) => normalizeDreamQuerySeed(intent.query || intent.title)),
+            ]
+                .map((entry) => normalizeDreamQuerySeed(entry))
+                .filter(Boolean))).slice(0, 6);
+            for (const query of followUpQueries) {
+                appendDreamQuerySeed(focusAreas, new Set(focusAreas.map((value) => value.toLowerCase())), query);
+            }
+            const bundleAccepted = input.proposal.confidence >= MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_INTENT_MIN_CONFIDENCE || intents.length > 0;
+            recordDecisionAudit({
+                phase: "associationScout",
+                decision: "bundle-evaluated",
+                status: bundleAccepted ? "accepted" : "skipped",
+                clusterKey: input.bundle.bundleId,
+                bundleId: input.bundle.bundleId,
+                reasons: input.bundle.reasons.slice(0, 8),
+                confidence: Number(input.proposal.confidence.toFixed(3)),
+                contradictionCount: input.proposal.contradictions.length,
+                intentCount: intents.length,
+                followUpQueryCount: followUpQueries.length,
+                detail: input.proposal.theme,
+            });
+            let wroteNote = false;
+            let createdCandidateId = null;
+            let confirmedPromotionId = null;
+            const connectionIntent = intents.find((intent) => intent.type === "connection_note");
+            if (connectionIntent
+                && MEMORY_CONSOLIDATION_CONNECTION_NOTES_ENABLED
+                && connectionNoteCount < MEMORY_CONSOLIDATION_MAX_CONNECTION_NOTES
+                && writes < parsed.maxWrites) {
+                const noteDraft = buildAssociationIntentConnectionNote({
+                    tenantId,
+                    runId: parsed.runId,
+                    mode: parsed.mode,
+                    bundle: input.bundle,
+                    proposal: input.proposal,
+                    intent: connectionIntent,
+                    rowsById,
+                    focusAreas,
+                });
+                const existingNote = existingConnectionNotesById.get(noteDraft.id) ?? null;
+                const existingSignature = readConnectionNoteMaterialSignature(existingNote);
+                if (!noteDraft.actionable) {
+                    suppressedConnectionNoteCount += 1;
+                    recordDecisionAudit({
+                        phase: "associationScout",
+                        decision: "connection-note",
+                        status: "skipped",
+                        clusterKey: input.bundle.bundleId,
+                        bundleId: input.bundle.bundleId,
+                        memoryId: existingNote?.id || noteDraft.id,
+                        reasons: ["not-actionable", ...noteDraft.actionabilityReasons].slice(0, 8),
+                        confidence: Number(connectionIntent.confidence.toFixed(3)),
+                        contradictionCount: input.proposal.contradictions.length,
+                        detail: connectionIntent.title,
+                    });
+                }
+                else if (existingSignature && existingSignature === noteDraft.materialSignature) {
+                    suppressedConnectionNoteCount += 1;
+                    recordDecisionAudit({
+                        phase: "associationScout",
+                        decision: "connection-note",
+                        status: "skipped",
+                        clusterKey: input.bundle.bundleId,
+                        bundleId: input.bundle.bundleId,
+                        memoryId: existingNote?.id || noteDraft.id,
+                        reasons: ["unchanged-connection-note", ...noteDraft.actionabilityReasons].slice(0, 8),
+                        confidence: Number(connectionIntent.confidence.toFixed(3)),
+                        contradictionCount: input.proposal.contradictions.length,
+                        detail: connectionIntent.title,
+                    });
+                }
+                else {
+                    const storedNote = await capture({
+                        id: noteDraft.id,
+                        tenantId,
+                        agentId: options.defaultAgentId,
+                        runId: parsed.runId,
+                        content: noteDraft.content,
+                        source: MEMORY_CONSOLIDATION_CONNECTION_SOURCE,
+                        tags: noteDraft.tags,
+                        metadata: noteDraft.metadata,
+                        status: noteDraft.status,
+                        memoryType: "episodic",
+                        memoryLayer: "episodic",
+                        sourceConfidence: noteDraft.sourceConfidence,
+                        importance: noteDraft.importance,
+                    }, { bypassRunWriteBurstLimit: true });
+                    existingConnectionNotesById.set(storedNote.id, storedNote);
+                    writes += 1;
+                    connectionNoteCount += 1;
+                    associationConnectionNoteCount += 1;
+                    connectionNoteIds.push(storedNote.id);
+                    if (storedNote.status === "accepted") {
+                        actionableInsightCount += 1;
+                    }
+                    addTopAction(noteDraft.recommendation, storedNote.status === "accepted" ? 0.84 : 0.62);
+                    const relatedIds = filterAssociationScoutIntentIds(connectionIntent, validIds);
+                    const noteRepairEdges = await applyConsolidationRepairSignals({
+                        row: storedNote,
+                        clusterKey: input.bundle.bundleId,
+                        mode: parsed.mode,
+                        relations: relatedIds.map((targetId) => ({
+                            targetId,
+                            relationType: targetId === input.bundle.primary.id
+                                ? "thread-root"
+                                : normalizeEntityType(connectionIntent.relationType || "associates-with") || "associates-with",
+                            weight: Math.max(MEMORY_CONSOLIDATION_REPAIR_THRESHOLD, Number(Math.max(connectionIntent.confidence, input.proposal.confidence).toFixed(3))),
+                            evidence: {
+                                via: "memory-consolidation-association-intent",
+                                runId: parsed.runId,
+                                bundleId: input.bundle.bundleId,
+                                theme: input.proposal.theme,
+                            },
+                        })),
+                    });
+                    repairedEdgeCount += noteRepairEdges;
+                    if (noteRepairEdges > 0) {
+                        recordWriteAudit({
+                            phase: "associationScout",
+                            action: "repair-signals",
+                            writeKind: "signal-index",
+                            memoryId: storedNote.id,
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            targetIds: relatedIds,
+                            edgeCount: noteRepairEdges,
+                            detail: "Indexed connection-note relationships from association intent.",
+                            proposalTheme: input.proposal.theme,
+                            intentTitle: connectionIntent.title,
+                            reasons: input.bundle.reasons.slice(0, 8),
+                        });
+                    }
+                    if (connectionNoteDetails.length < 12) {
+                        connectionNoteDetails.push({
+                            clusterKey: input.bundle.bundleId,
+                            memoryId: storedNote.id,
+                            primaryId: input.bundle.primary.id,
+                            promotedId: input.promotedId || null,
+                            status: noteDraft.status,
+                            topic: noteDraft.topicLabel,
+                            recommendation: noteDraft.recommendation,
+                            repairedEdges: noteRepairEdges,
+                            reasons: input.bundle.reasons,
+                            strongestSimilarity: Number(input.bundle.strongestSimilarity.toFixed(3)),
+                            meanSimilarity: Number(input.bundle.meanSimilarity.toFixed(3)),
+                            sourceSummary: noteDraft.sourceSummary,
+                            associationTheme: input.proposal.theme,
+                            associationModel: input.proposal.model,
+                        });
+                    }
+                    recordWriteAudit({
+                        phase: "associationScout",
+                        action: "connection-note",
+                        writeKind: "memory-record",
+                        memoryId: storedNote.id,
+                        source: storedNote.source,
+                        status: storedNote.status,
+                        statusBefore: null,
+                        statusAfter: storedNote.status,
+                        memoryLayer: storedNote.memoryLayer,
+                        memoryType: storedNote.memoryType,
+                        clusterKey: input.bundle.bundleId,
+                        bundleId: input.bundle.bundleId,
+                        targetIds: relatedIds,
+                        detail: connectionIntent.title,
+                        proposalTheme: input.proposal.theme,
+                        intentTitle: connectionIntent.title,
+                        reasons: input.bundle.reasons.slice(0, 8),
+                    });
+                    recordDecisionAudit({
+                        phase: "associationScout",
+                        decision: "connection-note",
+                        status: storedNote.status === "accepted" ? "accepted" : "proposed",
+                        clusterKey: input.bundle.bundleId,
+                        bundleId: input.bundle.bundleId,
+                        memoryId: storedNote.id,
+                        reasons: input.bundle.reasons.slice(0, 8),
+                        confidence: Number(connectionIntent.confidence.toFixed(3)),
+                        contradictionCount: input.proposal.contradictions.length,
+                        intentCount: intents.length,
+                        followUpQueryCount: input.proposal.followUpQueries.length,
+                        detail: connectionIntent.title,
+                    });
+                    wroteNote = true;
+                }
+            }
+            const repairIntents = intents.filter((intent) => intent.type === "repair_edges");
+            for (const intent of repairIntents) {
+                if (writes >= parsed.maxWrites || input.bundle.conflictingLoopState)
+                    break;
+                const sourceRow = rowsById.get(intent.memoryIds[0]);
+                if (!sourceRow)
+                    continue;
+                const targets = Array.from(new Set([...intent.memoryIds.slice(1), ...intent.targetIds]))
+                    .filter((id) => id !== sourceRow.id && validIds.has(id))
+                    .slice(0, 8);
+                if (targets.length === 0)
+                    continue;
+                const repaired = await applyConsolidationRepairSignals({
+                    row: sourceRow,
+                    clusterKey: input.bundle.bundleId,
+                    mode: parsed.mode,
+                    relations: targets.map((targetId) => ({
+                        targetId,
+                        relationType: normalizeEntityType(intent.relationType || "associates-with") || "associates-with",
+                        weight: Math.max(MEMORY_CONSOLIDATION_REPAIR_THRESHOLD, Number(intent.confidence.toFixed(3))),
+                        evidence: {
+                            via: "memory-consolidation-association-intent",
+                            runId: parsed.runId,
+                            bundleId: input.bundle.bundleId,
+                            explanation: intent.explanation,
+                        },
+                    })),
+                });
+                repairedEdgeCount += repaired;
+                if (repaired > 0) {
+                    recordWriteAudit({
+                        phase: "associationScout",
+                        action: "repair-signals",
+                        writeKind: "signal-index",
+                        memoryId: sourceRow.id,
+                        clusterKey: input.bundle.bundleId,
+                        bundleId: input.bundle.bundleId,
+                        targetIds: targets,
+                        edgeCount: repaired,
+                        detail: intent.title,
+                        proposalTheme: input.proposal.theme,
+                        intentTitle: intent.title,
+                        reasons: input.bundle.reasons.slice(0, 8),
+                    });
+                    repairedClusterIds.push(input.bundle.bundleId);
+                }
+            }
+            const promotionIntent = intents.find((intent) => intent.type === "promotion_candidate");
+            const quarantineIntent = intents.find((intent) => intent.type === "quarantine_candidate");
+            const candidateIntent = promotionIntent ?? quarantineIntent ?? null;
+            if (candidateIntent) {
+                const supportingRows = selectBundleSupportRows(input.bundle, candidateIntent, rowsById);
+                const sourceFamilyMix = countByDreamFamily(supportingRows, DREAM_CANDIDATE_FAMILY_ORDER.length);
+                const sourceFamilies = sourceFamilyMix.map((entry) => entry.family);
+                const acceptedOrLineageRow = supportingRows.some((row) => row.status === "accepted" || hasCanonicalLineage(normalizeMetadata(row.metadata)));
+                const contradictionCount = input.proposal.contradictions.length;
+                const thesisFingerprint = buildPromotionCandidateFingerprint(input.bundle, input.proposal, candidateIntent);
+                const existingCandidate = promotionCandidatesByFingerprint.get(thesisFingerprint) ?? null;
+                const promotionIntentConfidence = promotionIntent?.confidence ?? 0;
+                const candidateConfidence = Math.max(candidateIntent.confidence, input.proposal.confidence);
+                const candidateImportance = supportingRows.reduce((sum, row) => sum + row.importance, 0) / Math.max(1, supportingRows.length);
+                const candidateReasons = [
+                    candidateIntent.type,
+                    input.bundle.conflictingLoopState ? "conflicting-loop-state" : "",
+                    candidateIntent.confidence < MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_MIN_CONFIDENCE
+                        ? "candidate-confidence-below-threshold"
+                        : "",
+                    input.proposal.confidence < 0.75 ? "bundle-confidence-below-threshold" : "",
+                    contradictionCount > 1 ? "contradiction-threshold-exceeded" : "",
+                    supportingRows.length < 3 ? "insufficient-supporting-rows" : "",
+                    countNonCompactionFamilies(supportingRows) < 2 ? "insufficient-source-families" : "",
+                    !acceptedOrLineageRow ? "missing-accepted-or-lineage-support" : "",
+                ].filter(Boolean);
+                const candidateEligible = Boolean(promotionIntent)
+                    && MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_ENABLED
+                    && !input.bundle.conflictingLoopState
+                    && promotionIntentConfidence >= MEMORY_CONSOLIDATION_THEME_PROMOTION_CANDIDATE_MIN_CONFIDENCE
+                    && input.proposal.confidence >= 0.75
+                    && contradictionCount <= 1
+                    && supportingRows.length >= 3
+                    && countNonCompactionFamilies(supportingRows) >= 2
+                    && acceptedOrLineageRow;
+                const confirmGateA = supportingRows.some((row) => row.memoryLayer === "canonical" || hasCanonicalLineage(normalizeMetadata(row.metadata)))
+                    && supportingRows.filter((row) => row.status === "accepted" && ["episodic-accepted", "channel-manual"].includes(dreamSourceFamilyKey(row))).length >= 2;
+                const confirmGateB = countAcceptedNonRawSupport(supportingRows) >= 3
+                    && countNonCompactionFamilies(supportingRows) >= MEMORY_CONSOLIDATION_THEME_PROMOTION_CONFIRM_MIN_FAMILIES;
+                const shouldQuarantineCandidate = input.bundle.conflictingLoopState
+                    || contradictionCount >= 2
+                    || Boolean(quarantineIntent && quarantineIntent.confidence >= 0.7);
+                const candidateActionable = shouldQuarantineCandidate
+                    ? (input.bundle.conflictingLoopState
+                        || contradictionCount >= 2
+                        || (countAcceptedNonRawSupport(supportingRows) >= 2 && countNonCompactionFamilies(supportingRows) >= 2))
+                    : (countAcceptedNonRawSupport(supportingRows) >= 2
+                        && countNonCompactionFamilies(supportingRows) >= 2
+                        && acceptedOrLineageRow);
+                if (!candidateActionable)
+                    candidateReasons.push("not-actionable");
+                if (shouldQuarantineCandidate && writes < parsed.maxWrites) {
+                    if (!candidateActionable) {
+                        recordDecisionAudit({
+                            phase: "associationScout",
+                            decision: "quarantine",
+                            status: "skipped",
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            reasons: candidateReasons.slice(0, 8),
+                            confidence: Number(candidateIntent.confidence.toFixed(3)),
+                            contradictionCount,
+                            detail: candidateIntent.title,
+                        });
+                    }
+                    else {
+                        const candidateId = existingCandidate?.id || `dream-promotion-candidate:${thesisFingerprint}`;
+                        const baseMetadata = normalizeMetadata(existingCandidate?.metadata);
+                        const quarantinedCandidate = await capture({
+                            id: candidateId,
+                            tenantId,
+                            agentId: options.defaultAgentId,
+                            runId: parsed.runId,
+                            content: existingCandidate?.content
+                                || `Dream promotion candidate quarantined: ${input.proposal.theme}\n\n${input.proposal.summary}`,
+                            source: MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE,
+                            tags: Array.from(new Set([...(existingCandidate?.tags ?? []), "dream-cycle", "promotion-candidate", "quarantined"])),
+                            metadata: {
+                                ...baseMetadata,
+                                candidateForLayer: "canonical",
+                                thesisFingerprint,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                sourceFamilyMix,
+                                scoutConfidence: Number(candidateIntent.confidence.toFixed(3)),
+                                bundleConfidence: Number(input.proposal.confidence.toFixed(3)),
+                                contradictionCount,
+                                verifierReasons: candidateReasons,
+                                originatingBundleIds: Array.from(new Set([input.bundle.bundleId, input.bundle.originatingBundleId].filter(Boolean))),
+                                replayLineage: input.bundle.recallPass === "second-pass"
+                                    ? {
+                                        originatingBundleId: input.bundle.originatingBundleId,
+                                        replayQueries: input.bundle.replayQueries,
+                                        addedRowIds: input.bundle.addedRowIds,
+                                    }
+                                    : null,
+                                quarantinedByConsolidation: {
+                                    runId: parsed.runId,
+                                    contradictionCount,
+                                    reasons: candidateReasons,
+                                },
+                            },
+                            status: "quarantined",
+                            memoryType: "episodic",
+                            memoryLayer: "episodic",
+                            sourceConfidence: Number(candidateConfidence.toFixed(3)),
+                            importance: Number(candidateImportance.toFixed(3)),
+                        }, { bypassRunWriteBurstLimit: true });
+                        writes += 1;
+                        quarantineCount += 1;
+                        quarantineIds.push(quarantinedCandidate.id);
+                        promotionCandidatesByFingerprint.set(thesisFingerprint, quarantinedCandidate);
+                        actionableInsightCount += 1;
+                        addTopAction(`Keep "${input.proposal.theme}" quarantined until the contradiction is resolved.`, 0.96);
+                        addTopAction(`Review and split the supporting memories for "${input.proposal.theme}" before the next dream pass.`, 0.88);
+                        recordWriteAudit({
+                            phase: "associationScout",
+                            action: "quarantine",
+                            writeKind: "memory-record",
+                            memoryId: quarantinedCandidate.id,
+                            source: quarantinedCandidate.source,
+                            status: "quarantined",
+                            statusBefore: existingCandidate?.status ?? null,
+                            statusAfter: "quarantined",
+                            memoryLayer: quarantinedCandidate.memoryLayer,
+                            memoryType: quarantinedCandidate.memoryType,
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            targetIds: supportingRows.map((row) => row.id),
+                            detail: candidateIntent.title,
+                            proposalTheme: input.proposal.theme,
+                            intentTitle: candidateIntent.title,
+                            reasons: candidateReasons.slice(0, 8),
+                        });
+                        recordDecisionAudit({
+                            phase: "associationScout",
+                            decision: "quarantine",
+                            status: "quarantined",
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            memoryId: quarantinedCandidate.id,
+                            reasons: candidateReasons.slice(0, 8),
+                            confidence: Number(candidateIntent.confidence.toFixed(3)),
+                            contradictionCount,
+                            detail: candidateIntent.title,
+                        });
+                        if (promotionCandidateDetails.length < 16) {
+                            promotionCandidateDetails.push({
+                                thesisFingerprint,
+                                bundleId: input.bundle.bundleId,
+                                recallPass: input.bundle.recallPass,
+                                status: "quarantined",
+                                sourceFamilyMix,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                contradictionCount,
+                                verifierReasons: candidateReasons,
+                            });
+                        }
+                    }
+                }
+                else if (candidateEligible && candidateActionable) {
+                    const confirmationAllowed = Boolean(existingCandidate)
+                        && (input.bundle.recallPass === "second-pass" || (existingCandidate?.runId ?? null) !== parsed.runId)
+                        && (confirmGateA || confirmGateB);
+                    if (confirmationAllowed && writes < parsed.maxWrites) {
+                        const promoted = await capture({
+                            id: `dream-promotion:${thesisFingerprint}`,
+                            tenantId,
+                            agentId: options.defaultAgentId,
+                            runId: parsed.runId,
+                            content: `Dream promotion: ${input.proposal.theme}\n\n${input.proposal.summary}`,
+                            source: MEMORY_CONSOLIDATION_PROMOTED_SOURCE,
+                            tags: ["dream-cycle", "promoted", "canonical-memory"],
+                            metadata: {
+                                thesisFingerprint,
+                                candidateForLayer: "canonical",
+                                derivedFromIds: supportingRows.map((row) => row.id),
+                                sourceFamilyMix,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                confirmedFromCandidateId: existingCandidate?.id || null,
+                                sourceArtifactPath: `memory://${MEMORY_CONSOLIDATION_PROMOTED_SOURCE}/${thesisFingerprint}`,
+                                associationScout: {
+                                    provider: input.proposal.provider,
+                                    model: input.proposal.model,
+                                    theme: input.proposal.theme,
+                                },
+                            },
+                            status: "accepted",
+                            memoryType: (0, layers_1.defaultMemoryTypeForLayer)("canonical"),
+                            memoryLayer: "canonical",
+                            sourceConfidence: Number(candidateConfidence.toFixed(3)),
+                            importance: Number(candidateImportance.toFixed(3)),
+                        }, { bypassRunWriteBurstLimit: true });
+                        writes += 1;
+                        promotionCount += 1;
+                        promotionCandidateConfirmedCount += 1;
+                        confirmedPromotionId = promoted.id;
+                        promotionIds.push(promoted.id);
+                        actionableInsightCount += 1;
+                        addTopAction(`Reuse the promoted "${input.proposal.theme}" memory as the canonical thread for future startup context.`, 0.98);
+                        addTopAction(`Review downstream memories that still overlap "${input.proposal.theme}" and archive or relabel stragglers.`, 0.86);
+                        const promotedRepairEdges = await applyConsolidationRepairSignals({
+                            row: promoted,
+                            clusterKey: input.bundle.bundleId,
+                            mode: parsed.mode,
+                            relations: supportingRows.map((row) => ({
+                                targetId: row.id,
+                                relationType: "derived-from",
+                                weight: Math.max(MEMORY_CONSOLIDATION_REPAIR_THRESHOLD, Number(candidateIntent.confidence.toFixed(3))),
+                                evidence: {
+                                    via: "memory-consolidation-promotion-confirmation",
+                                    runId: parsed.runId,
+                                    thesisFingerprint,
+                                    bundleId: input.bundle.bundleId,
+                                },
+                            })),
+                        });
+                        repairedEdgeCount += promotedRepairEdges;
+                        recordWriteAudit({
+                            phase: "associationScout",
+                            action: "promotion",
+                            writeKind: "memory-record",
+                            memoryId: promoted.id,
+                            source: promoted.source,
+                            status: promoted.status,
+                            statusBefore: null,
+                            statusAfter: promoted.status,
+                            memoryLayer: promoted.memoryLayer,
+                            memoryType: promoted.memoryType,
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            targetIds: supportingRows.map((row) => row.id),
+                            detail: candidateIntent.title,
+                            proposalTheme: input.proposal.theme,
+                            intentTitle: candidateIntent.title,
+                            reasons: candidateReasons.slice(0, 8),
+                        });
+                        recordDecisionAudit({
+                            phase: "associationScout",
+                            decision: "promotion",
+                            status: "promoted",
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            memoryId: promoted.id,
+                            reasons: candidateReasons.slice(0, 8),
+                            confidence: Number(candidateIntent.confidence.toFixed(3)),
+                            importance: Number(candidateImportance.toFixed(3)),
+                            contradictionCount,
+                            detail: candidateIntent.title,
+                        });
+                        if (promotionDetails.length < 12) {
+                            promotionDetails.push({
+                                clusterKey: input.bundle.bundleId,
+                                primaryId: input.bundle.primary.id,
+                                status: "promoted",
+                                thesisFingerprint,
+                                sourceFamilyMix,
+                                supportingIds: supportingRows.map((row) => row.id),
+                            });
+                        }
+                        if (promotionCandidateDetails.length < 16) {
+                            promotionCandidateDetails.push({
+                                thesisFingerprint,
+                                bundleId: input.bundle.bundleId,
+                                recallPass: input.bundle.recallPass,
+                                status: "confirmed",
+                                promotedId: promoted.id,
+                                sourceFamilyMix,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                verifierReasons: candidateReasons,
+                            });
+                        }
+                    }
+                    else if (!existingCandidate && writes < parsed.maxWrites) {
+                        const candidate = await capture({
+                            id: `dream-promotion-candidate:${thesisFingerprint}`,
+                            tenantId,
+                            agentId: options.defaultAgentId,
+                            runId: parsed.runId,
+                            content: `Dream promotion candidate: ${input.proposal.theme}\n\n${input.proposal.summary}`,
+                            source: MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE,
+                            tags: ["dream-cycle", "promotion-candidate"],
+                            metadata: {
+                                candidateForLayer: "canonical",
+                                thesisFingerprint,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                sourceFamilyMix,
+                                sourceFamilies,
+                                scoutConfidence: Number(candidateIntent.confidence.toFixed(3)),
+                                bundleConfidence: Number(input.proposal.confidence.toFixed(3)),
+                                contradictionCount,
+                                verifierReasons: candidateReasons,
+                                originatingBundleIds: Array.from(new Set([input.bundle.bundleId, input.bundle.originatingBundleId].filter(Boolean))),
+                                replayLineage: input.bundle.recallPass === "second-pass"
+                                    ? {
+                                        originatingBundleId: input.bundle.originatingBundleId,
+                                        replayQueries: input.bundle.replayQueries,
+                                        addedRowIds: input.bundle.addedRowIds,
+                                    }
+                                    : null,
+                            },
+                            status: "proposed",
+                            memoryType: "episodic",
+                            memoryLayer: "episodic",
+                            sourceConfidence: Number(candidateConfidence.toFixed(3)),
+                            importance: Number(candidateImportance.toFixed(3)),
+                        }, { bypassRunWriteBurstLimit: true });
+                        writes += 1;
+                        promotionCandidateCount += 1;
+                        createdCandidateId = candidate.id;
+                        promotionCandidatesByFingerprint.set(thesisFingerprint, candidate);
+                        recordWriteAudit({
+                            phase: "associationScout",
+                            action: "promotion-candidate",
+                            writeKind: "memory-record",
+                            memoryId: candidate.id,
+                            source: candidate.source,
+                            status: candidate.status,
+                            statusBefore: null,
+                            statusAfter: candidate.status,
+                            memoryLayer: candidate.memoryLayer,
+                            memoryType: candidate.memoryType,
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            targetIds: supportingRows.map((row) => row.id),
+                            detail: candidateIntent.title,
+                            proposalTheme: input.proposal.theme,
+                            intentTitle: candidateIntent.title,
+                            reasons: candidateReasons.slice(0, 8),
+                        });
+                        recordDecisionAudit({
+                            phase: "associationScout",
+                            decision: "promotion-candidate",
+                            status: "proposed",
+                            clusterKey: input.bundle.bundleId,
+                            bundleId: input.bundle.bundleId,
+                            memoryId: candidate.id,
+                            reasons: candidateReasons.slice(0, 8),
+                            confidence: Number(candidateIntent.confidence.toFixed(3)),
+                            importance: Number(candidateImportance.toFixed(3)),
+                            contradictionCount,
+                            detail: candidateIntent.title,
+                        });
+                        if (promotionCandidateDetails.length < 16) {
+                            promotionCandidateDetails.push({
+                                thesisFingerprint,
+                                bundleId: input.bundle.bundleId,
+                                recallPass: input.bundle.recallPass,
+                                status: "proposed",
+                                candidateId: candidate.id,
+                                sourceFamilyMix,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                verifierReasons: candidateReasons,
+                            });
+                        }
+                    }
+                    else if (existingCandidate && input.bundle.recallPass === "second-pass") {
+                        stalledCandidateCount += 1;
+                        if (promotionCandidateDetails.length < 16) {
+                            promotionCandidateDetails.push({
+                                thesisFingerprint,
+                                bundleId: input.bundle.bundleId,
+                                recallPass: input.bundle.recallPass,
+                                status: "stalled",
+                                candidateId: existingCandidate.id,
+                                sourceFamilyMix,
+                                supportingIds: supportingRows.map((row) => row.id),
+                                verifierReasons: candidateReasons,
+                            });
+                        }
+                    }
+                }
+                else if (!candidateActionable && candidateIntent) {
+                    recordDecisionAudit({
+                        phase: "associationScout",
+                        decision: promotionIntent ? "promotion-candidate" : "quarantine",
+                        status: "skipped",
+                        clusterKey: input.bundle.bundleId,
+                        bundleId: input.bundle.bundleId,
+                        reasons: candidateReasons.slice(0, 8),
+                        confidence: Number(candidateIntent.confidence.toFixed(3)),
+                        contradictionCount,
+                        detail: candidateIntent.title,
+                    });
+                }
+            }
+            if (associationDetails.length < 16) {
+                associationDetails.push({
+                    bundleId: input.bundle.bundleId,
+                    bundleType: input.bundle.bundleType,
+                    themeType: input.bundle.themeType,
+                    themeKey: input.bundle.themeKey,
+                    theme: input.proposal.theme,
+                    confidence: Number(input.proposal.confidence.toFixed(3)),
+                    model: input.proposal.model,
+                    provider: input.proposal.provider,
+                    contradictionCount: input.proposal.contradictions.length,
+                    recallPass: input.bundle.recallPass,
+                    originatingBundleId: input.bundle.originatingBundleId,
+                    followUpQueries: followUpQueries.slice(0, 4),
+                    wroteNote,
+                    createdCandidateId,
+                    confirmedPromotionId,
+                    intents: intents.map((intent) => ({
+                        type: intent.type,
+                        confidence: Number(intent.confidence.toFixed(3)),
+                        title: intent.title,
+                        memoryIds: intent.memoryIds,
+                        targetIds: intent.targetIds,
+                    })),
+                });
+            }
+            return {
+                wroteNote,
+                bundleAccepted,
+                followUpQueries,
+                createdCandidateId,
+                confirmedPromotionId,
+            };
+        };
+        try {
+            for (const cluster of clusters) {
+                if (Date.now() - startedAtMs > parsed.timeBudgetMs)
+                    break;
+                if (writes >= parsed.maxWrites)
+                    break;
+                recordPhaseAudit({
+                    phase: "promotionEvaluation",
+                    event: "start",
+                    clusterKey: cluster.key,
+                    count: cluster.rows.length,
+                    summary: `Evaluating hard cluster ${cluster.key}.`,
+                });
+                const primary = cluster.rows[0];
+                const duplicates = cluster.rows.slice(1);
+                const pairAssessments = duplicates.map((row) => ({
+                    row,
+                    metrics: calculateConsolidationSimilarity(primary, row),
+                }));
+                const strongestSimilarity = pairAssessments.reduce((max, entry) => Math.max(max, entry.metrics.score), 0);
+                const meanSimilarity = pairAssessments.reduce((sum, entry) => sum + entry.metrics.score, 0) / Math.max(1, pairAssessments.length);
+                const loopStates = Array.from(new Set(cluster.rows.map((row) => extractLoopStateHint(row)).filter(Boolean)));
+                const conflictingLoopState = loopStates.length > 1;
+                const corroboratingAcceptedEpisodic = cluster.rows.filter((row) => row.memoryLayer === "episodic" && row.status === "accepted" && !isDreamGeneratedRow(row)).length;
+                const provenanceBacked = cluster.rows.some((row) => hasCanonicalLineage(normalizeMetadata(row.metadata)));
+                const nonRawSupport = cluster.rows.some((row) => !normalizeSource(row.source).includes("raw"));
+                const meanConfidence = cluster.rows.reduce((sum, row) => sum + row.sourceConfidence, 0) / Math.max(1, cluster.rows.length);
+                const meanImportance = cluster.rows.reduce((sum, row) => sum + row.importance, 0) / Math.max(1, cluster.rows.length);
+                const promotionConfidence = Math.max(primary.sourceConfidence, meanConfidence);
+                const promotionImportance = Math.max(primary.importance, meanImportance);
+                const clusterReasons = Array.from(new Set(pairAssessments.flatMap((entry) => summarizeConsolidationReasons(entry.metrics))));
+                const acceptedOrLineageSupport = cluster.rows.some((row) => row.status === "accepted" || hasCanonicalLineage(normalizeMetadata(row.metadata)));
+                const bundleContext = buildAssociationBundleContext({
+                    bundleId: cluster.key,
+                    bundleType: "hard-cluster",
+                    themeType: "duplicate-cluster",
+                    themeKey: cluster.key,
+                    rows: cluster.rows,
+                    strongestSimilarity,
+                    meanSimilarity,
+                    reasons: clusterReasons,
+                });
+                if (clusterInspectionDetails.length < 16) {
+                    clusterInspectionDetails.push(buildClusterInspectionDetail({
+                        clusterKey: cluster.key,
+                        primary,
+                        rows: cluster.rows,
+                        pairAssessments,
+                        clusterReasons,
+                        strongestSimilarity,
+                        meanSimilarity,
+                        promotionConfidence,
+                        promotionImportance,
+                        corroboratingAcceptedEpisodic,
+                        provenanceBacked,
+                        nonRawSupport,
+                        acceptedOrLineageSupport,
+                        conflictingLoopState,
+                        loopStates,
+                    }));
+                }
+                const shouldCreateConnectionNote = MEMORY_CONSOLIDATION_CONNECTION_NOTES_ENABLED
+                    && connectionNoteCount < MEMORY_CONSOLIDATION_MAX_CONNECTION_NOTES
+                    && pairAssessments.length > 0
+                    && (strongestSimilarity >= MEMORY_CONSOLIDATION_CONNECTION_NOTE_MIN_SCORE || clusterReasons.length > 0);
+                const writeConnectionNote = async (promotedId) => {
+                    if (!shouldCreateConnectionNote || writes >= parsed.maxWrites)
+                        return;
+                    const proposal = await scoutAssociationBundle(bundleContext);
+                    if (proposal) {
+                        const scoutOutcome = await executeAssociationProposal({
+                            bundle: bundleContext,
+                            proposal,
+                            promotedId,
+                        });
+                        if (scoutOutcome.wroteNote
+                            || proposal.intents.some((intent) => intent.type === "connection_note"
+                                && intent.confidence >= MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_INTENT_MIN_CONFIDENCE)) {
+                            return;
+                        }
+                    }
+                    const noteDraft = buildConsolidationConnectionNote({
+                        tenantId,
+                        runId: parsed.runId,
+                        mode: parsed.mode,
+                        clusterKey: cluster.key,
+                        primary,
+                        rows: cluster.rows,
+                        pairAssessments,
+                        clusterReasons,
+                        strongestSimilarity,
+                        meanSimilarity,
+                        acceptedOrLineageSupport,
+                        conflictingLoopState,
+                        corroboratingAcceptedEpisodic,
+                        provenanceBacked,
+                        nonRawSupport,
+                        focusAreas,
+                        promotedId,
+                    });
+                    const existingNote = existingConnectionNotesById.get(noteDraft.id) ?? null;
+                    const existingSignature = readConnectionNoteMaterialSignature(existingNote);
+                    if (!noteDraft.actionable) {
+                        suppressedConnectionNoteCount += 1;
+                        recordDecisionAudit({
+                            phase: "promotionEvaluation",
+                            decision: "connection-note",
+                            status: "skipped",
+                            clusterKey: cluster.key,
+                            memoryId: existingNote?.id || noteDraft.id,
+                            reasons: ["not-actionable", ...noteDraft.actionabilityReasons].slice(0, 8),
+                            confidence: Number(noteDraft.sourceConfidence.toFixed(3)),
+                            importance: Number(noteDraft.importance.toFixed(3)),
+                            detail: noteDraft.topicLabel,
+                        });
+                        return;
+                    }
+                    if (existingSignature && existingSignature === noteDraft.materialSignature) {
+                        suppressedConnectionNoteCount += 1;
+                        recordDecisionAudit({
+                            phase: "promotionEvaluation",
+                            decision: "connection-note",
+                            status: "skipped",
+                            clusterKey: cluster.key,
+                            memoryId: existingNote?.id || noteDraft.id,
+                            reasons: ["unchanged-connection-note", ...noteDraft.actionabilityReasons].slice(0, 8),
+                            confidence: Number(noteDraft.sourceConfidence.toFixed(3)),
+                            importance: Number(noteDraft.importance.toFixed(3)),
+                            detail: noteDraft.topicLabel,
+                        });
+                        return;
+                    }
+                    const storedNote = await capture({
+                        id: noteDraft.id,
+                        tenantId,
+                        agentId: options.defaultAgentId,
+                        runId: parsed.runId,
+                        content: noteDraft.content,
+                        source: MEMORY_CONSOLIDATION_CONNECTION_SOURCE,
+                        tags: noteDraft.tags,
+                        metadata: noteDraft.metadata,
+                        status: noteDraft.status,
+                        memoryType: "episodic",
+                        memoryLayer: "episodic",
+                        sourceConfidence: noteDraft.sourceConfidence,
+                        importance: noteDraft.importance,
+                    }, { bypassRunWriteBurstLimit: true });
+                    existingConnectionNotesById.set(storedNote.id, storedNote);
+                    writes += 1;
+                    connectionNoteCount += 1;
+                    connectionNoteIds.push(storedNote.id);
+                    if (storedNote.status === "accepted") {
+                        actionableInsightCount += 1;
+                    }
+                    addTopAction(noteDraft.recommendation, storedNote.status === "accepted" ? 0.78 : 0.56);
+                    const noteRepairEdges = await applyConsolidationRepairSignals({
+                        row: storedNote,
+                        clusterKey: cluster.key,
+                        mode: parsed.mode,
+                        relations: cluster.rows.map((row) => ({
+                            targetId: row.id,
+                            relationType: row.id === primary.id ? "thread-root" : relationTypeForConsolidation(calculateConsolidationSimilarity(primary, row)),
+                            weight: row.id === primary.id
+                                ? 0.92
+                                : Math.max(MEMORY_CONSOLIDATION_REPAIR_THRESHOLD, calculateConsolidationSimilarity(primary, row).score),
+                            evidence: {
+                                via: "memory-consolidation-connection-note",
+                                runId: parsed.runId,
+                                clusterKey: cluster.key,
+                            },
+                        })),
+                    });
+                    repairedEdgeCount += noteRepairEdges;
+                    if (noteRepairEdges > 0) {
+                        recordWriteAudit({
+                            phase: "promotionEvaluation",
+                            action: "repair-signals",
+                            writeKind: "signal-index",
+                            memoryId: storedNote.id,
+                            clusterKey: cluster.key,
+                            targetIds: cluster.rows.map((row) => row.id),
+                            edgeCount: noteRepairEdges,
+                            detail: "Indexed fallback connection-note relationships for hard cluster.",
+                            reasons: clusterReasons.slice(0, 8),
+                        });
+                    }
+                    if (connectionNoteDetails.length < 12) {
+                        connectionNoteDetails.push({
+                            clusterKey: cluster.key,
+                            memoryId: storedNote.id,
+                            primaryId: primary.id,
+                            promotedId: promotedId || null,
+                            status: noteDraft.status,
+                            topic: noteDraft.topicLabel,
+                            recommendation: noteDraft.recommendation,
+                            repairedEdges: noteRepairEdges,
+                            reasons: clusterReasons,
+                            strongestSimilarity: Number(strongestSimilarity.toFixed(3)),
+                            meanSimilarity: Number(meanSimilarity.toFixed(3)),
+                            sourceSummary: noteDraft.sourceSummary,
+                        });
+                    }
+                    recordWriteAudit({
+                        phase: "promotionEvaluation",
+                        action: "connection-note",
+                        writeKind: "memory-record",
+                        memoryId: storedNote.id,
+                        source: storedNote.source,
+                        status: storedNote.status,
+                        statusBefore: null,
+                        statusAfter: storedNote.status,
+                        memoryLayer: storedNote.memoryLayer,
+                        memoryType: storedNote.memoryType,
+                        clusterKey: cluster.key,
+                        targetIds: cluster.rows.map((row) => row.id),
+                        detail: noteDraft.topicLabel,
+                        reasons: clusterReasons.slice(0, 8),
+                    });
+                    recordDecisionAudit({
+                        phase: "promotionEvaluation",
+                        decision: "connection-note",
+                        status: storedNote.status === "accepted" ? "accepted" : "proposed",
+                        clusterKey: cluster.key,
+                        memoryId: storedNote.id,
+                        reasons: clusterReasons.slice(0, 8),
+                        confidence: Number(noteDraft.sourceConfidence.toFixed(3)),
+                        importance: Number(noteDraft.importance.toFixed(3)),
+                        detail: noteDraft.topicLabel,
+                    });
+                };
+                if (conflictingLoopState && writes < parsed.maxWrites) {
+                    recordDecisionAudit({
+                        phase: "promotionEvaluation",
+                        decision: "quarantine",
+                        status: "quarantined",
+                        clusterKey: cluster.key,
+                        reasons: ["conflicting-loop-state", ...clusterReasons].slice(0, 8),
+                        confidence: Number(promotionConfidence.toFixed(3)),
+                        importance: Number(promotionImportance.toFixed(3)),
+                        detail: `Cluster ${cluster.key} has conflicting loop states: ${loopStates.join(", ")}`,
+                    });
+                    actionableInsightCount += 1;
+                    addTopAction(`Keep cluster ${cluster.key} quarantined until the conflicting loop states are reconciled.`, 0.94);
+                    addTopAction(`Review the conflicting memories in cluster ${cluster.key} and relabel or split them before the next overnight run.`, 0.86);
+                    for (const assessment of pairAssessments.filter((entry) => entry.row.status !== "quarantined")) {
+                        if (writes >= parsed.maxWrites)
+                            break;
+                        const row = assessment.row;
+                        await capture({
+                            id: row.id,
+                            tenantId: row.tenantId,
+                            agentId: row.agentId,
+                            runId: row.runId,
+                            content: row.content,
+                            source: row.source,
+                            tags: row.tags,
+                            metadata: {
+                                ...normalizeMetadata(row.metadata),
+                                quarantinedByConsolidation: {
+                                    runId: parsed.runId,
+                                    reason: "conflicting-loop-state",
+                                    primaryId: primary.id,
+                                    clusterKey: cluster.key,
+                                    similarityScore: assessment.metrics.score,
+                                    reasons: summarizeConsolidationReasons(assessment.metrics),
+                                },
+                            },
+                            occurredAt: row.occurredAt ?? undefined,
+                            status: "quarantined",
+                            memoryType: row.memoryType,
+                            memoryLayer: row.memoryLayer,
+                            sourceConfidence: row.sourceConfidence,
+                            importance: row.importance,
+                        }, { bypassRunWriteBurstLimit: true, skipSignalIndexing: true });
+                        writes += 1;
+                        quarantineCount += 1;
+                        quarantineIds.push(row.id);
+                        recordWriteAudit({
+                            phase: "promotionEvaluation",
+                            action: "quarantine",
+                            writeKind: "memory-record",
+                            memoryId: row.id,
+                            source: row.source,
+                            status: "quarantined",
+                            statusBefore: row.status,
+                            statusAfter: "quarantined",
+                            memoryLayer: row.memoryLayer,
+                            memoryType: row.memoryType,
+                            clusterKey: cluster.key,
+                            targetIds: [primary.id],
+                            detail: "Conflicting loop state within consolidation cluster.",
+                            reasons: summarizeConsolidationReasons(assessment.metrics),
+                        });
+                        if (quarantineDetails.length < 12) {
+                            quarantineDetails.push({
+                                clusterKey: cluster.key,
+                                memoryId: row.id,
+                                primaryId: primary.id,
+                                similarityScore: assessment.metrics.score,
+                                reasons: summarizeConsolidationReasons(assessment.metrics),
+                                reason: "conflicting-loop-state",
+                            });
+                        }
+                    }
+                    if (promotionDetails.length < 12) {
+                        promotionDetails.push({
+                            clusterKey: cluster.key,
+                            primaryId: primary.id,
+                            status: "quarantined",
+                            reasons: ["conflicting-loop-state"],
+                            meanConfidence: Number(promotionConfidence.toFixed(3)),
+                            meanImportance: Number(promotionImportance.toFixed(3)),
+                            corroboratingAcceptedEpisodic,
+                        });
+                    }
+                    await writeConnectionNote(null);
+                    recordPhaseAudit({
+                        phase: "promotionEvaluation",
+                        event: "complete",
+                        clusterKey: cluster.key,
+                        count: cluster.rows.length,
+                        summary: `Cluster ${cluster.key} quarantined due to conflicting loop state.`,
+                    });
+                    continue;
+                }
+                const shouldPromote = primary.status === "accepted"
+                    && provenanceBacked
+                    && promotionConfidence >= MEMORY_CONSOLIDATION_PROMOTION_CONFIDENCE_THRESHOLD
+                    && promotionImportance >= MEMORY_CONSOLIDATION_PROMOTION_IMPORTANCE_THRESHOLD
+                    && (corroboratingAcceptedEpisodic >= 2 || (provenanceBacked && nonRawSupport));
+                const promotionDecisionReasons = shouldPromote
+                    ? ["accepted", "provenance-backed", "promotion-threshold-met", ...clusterReasons].slice(0, 8)
+                    : [
+                        primary.status !== "accepted" ? "primary-not-accepted" : "",
+                        !provenanceBacked ? "missing-provenance" : "",
+                        promotionConfidence < MEMORY_CONSOLIDATION_PROMOTION_CONFIDENCE_THRESHOLD ? "confidence-below-threshold" : "",
+                        promotionImportance < MEMORY_CONSOLIDATION_PROMOTION_IMPORTANCE_THRESHOLD ? "importance-below-threshold" : "",
+                        corroboratingAcceptedEpisodic < 2 && !(provenanceBacked && nonRawSupport) ? "insufficient-corroboration" : "",
+                    ].filter(Boolean);
+                recordDecisionAudit({
+                    phase: "promotionEvaluation",
+                    decision: "promotion",
+                    status: shouldPromote ? "promoted" : "skipped",
+                    clusterKey: cluster.key,
+                    reasons: promotionDecisionReasons,
+                    confidence: Number(promotionConfidence.toFixed(3)),
+                    importance: Number(promotionImportance.toFixed(3)),
+                    detail: primary.id,
+                });
+                const relationshipRepairStartedAtMs = Date.now();
+                const repairCandidates = pairAssessments.filter((entry) => acceptedOrLineageSupport
+                    && entry.metrics.score >= MEMORY_CONSOLIDATION_REPAIR_THRESHOLD
+                    && !conflictingLoopState);
+                if (repairCandidates.length > 0) {
+                    const repairedForPrimary = await applyConsolidationRepairSignals({
+                        row: primary,
+                        clusterKey: cluster.key,
+                        mode: parsed.mode,
+                        relations: repairCandidates.map((entry) => ({
+                            targetId: entry.row.id,
+                            relationType: relationTypeForConsolidation(entry.metrics),
+                            weight: Math.max(MEMORY_CONSOLIDATION_REPAIR_THRESHOLD, entry.metrics.score),
+                            evidence: {
+                                via: "memory-consolidation",
+                                runId: parsed.runId,
+                                clusterKey: cluster.key,
+                                reasons: summarizeConsolidationReasons(entry.metrics),
+                                similarity: entry.metrics,
+                            },
+                        })),
+                    });
+                    repairedEdgeCount += repairedForPrimary;
+                    if (repairedForPrimary > 0) {
+                        recordWriteAudit({
+                            phase: "relationshipRepair",
+                            action: "repair-signals",
+                            writeKind: "signal-index",
+                            memoryId: primary.id,
+                            clusterKey: cluster.key,
+                            targetIds: repairCandidates.map((entry) => entry.row.id),
+                            edgeCount: repairedForPrimary,
+                            detail: "Indexed hard-cluster relationship repairs.",
+                            reasons: clusterReasons.slice(0, 8),
+                        });
+                        repairedClusterIds.push(cluster.key);
+                    }
+                    if (repairDetails.length < 12) {
+                        repairDetails.push({
+                            clusterKey: cluster.key,
+                            primaryId: primary.id,
+                            duplicateIds: repairCandidates.map((entry) => entry.row.id),
+                            repairedEdges: repairedForPrimary,
+                            strongestSimilarity: Number(strongestSimilarity.toFixed(3)),
+                            meanSimilarity: Number(meanSimilarity.toFixed(3)),
+                            reasons: clusterReasons,
+                            relationTypes: Array.from(new Set(repairCandidates.map((entry) => relationTypeForConsolidation(entry.metrics)))),
+                        });
+                    }
+                }
+                phaseTimingsMs.relationshipRepair += Date.now() - relationshipRepairStartedAtMs;
+                const promotionEvaluationStartedAtMs = Date.now();
+                let promotedId = null;
+                if (shouldPromote && writes < parsed.maxWrites) {
+                    const promoted = await capture({
+                        tenantId,
+                        agentId: options.defaultAgentId,
+                        runId: parsed.runId,
+                        content: primary.content,
+                        source: MEMORY_CONSOLIDATION_PROMOTED_SOURCE,
+                        tags: Array.from(new Set([...primary.tags, "memory-consolidation", "promoted"])).slice(0, 32),
+                        metadata: {
+                            derivedFromIds: cluster.rows.map((row) => row.id),
+                            sourceArtifactPath: MEMORY_CONSOLIDATION_RELATIVE_PATH.join("/"),
+                            focusAreas: focusAreas.slice(0, 6),
+                            consolidation: {
+                                runId: parsed.runId,
+                                mode: parsed.mode,
+                                clusterKey: cluster.key,
+                                corroboratingAcceptedEpisodic,
+                                strongestSimilarity: Number(strongestSimilarity.toFixed(3)),
+                                meanSimilarity: Number(meanSimilarity.toFixed(3)),
+                                reasons: clusterReasons,
+                            },
+                        },
+                        status: "accepted",
+                        memoryType: "semantic",
+                        memoryLayer: "canonical",
+                        sourceConfidence: Math.min(0.98, promotionConfidence),
+                        importance: Math.min(0.98, promotionImportance),
+                    }, { bypassRunWriteBurstLimit: true });
+                    writes += 1;
+                    promotionCount += 1;
+                    promotionIds.push(promoted.id);
+                    promotedId = promoted.id;
+                    actionableInsightCount += 1;
+                    addTopAction(`Reuse the promoted cluster ${cluster.key} as the canonical memory thread for future startup context.`, 0.97);
+                    addTopAction(`Archive or relabel remaining duplicates linked to cluster ${cluster.key}.`, 0.84);
+                    recordWriteAudit({
+                        phase: "promotionEvaluation",
+                        action: "promotion",
+                        writeKind: "memory-record",
+                        memoryId: promoted.id,
+                        source: promoted.source,
+                        status: promoted.status,
+                        statusBefore: null,
+                        statusAfter: promoted.status,
+                        memoryLayer: promoted.memoryLayer,
+                        memoryType: promoted.memoryType,
+                        clusterKey: cluster.key,
+                        targetIds: cluster.rows.map((row) => row.id),
+                        detail: "Promoted stable cluster into canonical memory.",
+                        reasons: promotionDecisionReasons,
+                    });
+                    const promotedRepairEdges = await applyConsolidationRepairSignals({
+                        row: promoted,
+                        clusterKey: cluster.key,
+                        mode: parsed.mode,
+                        relations: cluster.rows.map((row) => ({
+                            targetId: row.id,
+                            relationType: row.id === primary.id ? "derived-from" : relationTypeForConsolidation(calculateConsolidationSimilarity(primary, row)),
+                            weight: row.id === primary.id ? 0.92 : Math.max(MEMORY_CONSOLIDATION_REPAIR_THRESHOLD, calculateConsolidationSimilarity(primary, row).score),
+                            evidence: {
+                                via: "memory-consolidation-promotion",
+                                runId: parsed.runId,
+                                clusterKey: cluster.key,
+                            },
+                        })),
+                    });
+                    repairedEdgeCount += promotedRepairEdges;
+                    if (promotedRepairEdges > 0) {
+                        recordWriteAudit({
+                            phase: "promotionEvaluation",
+                            action: "repair-signals",
+                            writeKind: "signal-index",
+                            memoryId: promoted.id,
+                            clusterKey: cluster.key,
+                            targetIds: cluster.rows.map((row) => row.id),
+                            edgeCount: promotedRepairEdges,
+                            detail: "Indexed promoted canonical memory relationships.",
+                            reasons: clusterReasons.slice(0, 8),
+                        });
+                    }
+                    if (focusAreas.length < 6) {
+                        focusAreas.push(primary.content.replace(/\s+/g, " ").trim().slice(0, 120));
+                    }
+                }
+                if (promotionDetails.length < 12) {
+                    promotionDetails.push({
+                        clusterKey: cluster.key,
+                        primaryId: primary.id,
+                        promotedId,
+                        status: shouldPromote ? "promoted" : "skipped",
+                        reasons: shouldPromote
+                            ? promotionDecisionReasons
+                            : promotionDecisionReasons,
+                        strongestSimilarity: Number(strongestSimilarity.toFixed(3)),
+                        meanSimilarity: Number(meanSimilarity.toFixed(3)),
+                        meanConfidence: Number(promotionConfidence.toFixed(3)),
+                        meanImportance: Number(promotionImportance.toFixed(3)),
+                        corroboratingAcceptedEpisodic,
+                    });
+                }
+                phaseTimingsMs.promotionEvaluation += Date.now() - promotionEvaluationStartedAtMs;
+                await writeConnectionNote(promotedId);
+                for (const assessment of pairAssessments) {
+                    if (writes >= parsed.maxWrites)
+                        break;
+                    const row = assessment.row;
+                    if (row.status === "archived")
+                        continue;
+                    await capture({
+                        id: row.id,
+                        tenantId: row.tenantId,
+                        agentId: row.agentId,
+                        runId: row.runId,
+                        content: row.content,
+                        source: row.source,
+                        tags: row.tags,
+                        metadata: {
+                            ...normalizeMetadata(row.metadata),
+                            archivedByConsolidation: {
+                                runId: parsed.runId,
+                                primaryId: primary.id,
+                                mode: parsed.mode,
+                                clusterKey: cluster.key,
+                                similarityScore: assessment.metrics.score,
+                                reasons: summarizeConsolidationReasons(assessment.metrics),
+                            },
+                        },
+                        occurredAt: row.occurredAt ?? undefined,
+                        status: "archived",
+                        memoryType: row.memoryType,
+                        memoryLayer: row.memoryLayer,
+                        sourceConfidence: row.sourceConfidence,
+                        importance: row.importance,
+                    }, { bypassRunWriteBurstLimit: true, skipSignalIndexing: true });
+                    writes += 1;
+                    archiveCount += 1;
+                    archiveIds.push(row.id);
+                    recordWriteAudit({
+                        phase: "promotionEvaluation",
+                        action: "archive",
+                        writeKind: "memory-record",
+                        memoryId: row.id,
+                        source: row.source,
+                        status: "archived",
+                        statusBefore: row.status,
+                        statusAfter: "archived",
+                        memoryLayer: row.memoryLayer,
+                        memoryType: row.memoryType,
+                        clusterKey: cluster.key,
+                        targetIds: [primary.id],
+                        detail: "Archived lower-precedence duplicate after consolidation.",
+                        reasons: summarizeConsolidationReasons(assessment.metrics),
+                    });
+                    if (archiveDetails.length < 12) {
+                        archiveDetails.push({
+                            clusterKey: cluster.key,
+                            memoryId: row.id,
+                            primaryId: primary.id,
+                            similarityScore: assessment.metrics.score,
+                            reasons: summarizeConsolidationReasons(assessment.metrics),
+                        });
+                    }
+                }
+                recordPhaseAudit({
+                    phase: "promotionEvaluation",
+                    event: "complete",
+                    clusterKey: cluster.key,
+                    count: cluster.rows.length,
+                    summary: `Cluster ${cluster.key} complete: promoted=${shouldPromote} archived=${Math.max(0, pairAssessments.length)}.`,
+                });
+            }
+            const hardClusterRowIds = new Set(clusters.flatMap((cluster) => cluster.rows.map((row) => row.id)));
+            const themeClusters = buildConsolidationThemeClusters(recentRows, hardClusterRowIds);
+            themeClusterCount = themeClusters.length;
+            if (!associationScoutStatus.available && themeClusterCount > 0 && associationErrors.length < 12) {
+                associationErrors.push({
+                    bundleId: null,
+                    bundleType: "theme-cluster",
+                    themeType: "association-scout",
+                    themeKey: associationScoutStatus.reason || "unavailable",
+                    error: `association scout unavailable (${associationScoutStatus.reason || "unavailable"})`,
+                    model: associationScoutStatus.model,
+                    apiKeySource: associationScoutStatus.apiKeySource,
+                });
+            }
+            const maxInitialAssociationBundles = parsed.mode === "overnight" && MEMORY_CONSOLIDATION_SECOND_PASS_ENABLED
+                ? Math.max(1, MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES - 1)
+                : MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES;
+            for (const themeCluster of themeClusters) {
+                if (Date.now() - startedAtMs > parsed.timeBudgetMs)
+                    break;
+                if (writes >= parsed.maxWrites)
+                    break;
+                if (associationBundleCount >= maxInitialAssociationBundles)
+                    break;
+                const bundleContext = buildAssociationBundleContext({
+                    bundleId: themeCluster.key,
+                    bundleType: "theme-cluster",
+                    themeType: themeCluster.themeType,
+                    themeKey: themeCluster.themeKey,
+                    rows: themeCluster.rows,
+                    strongestSimilarity: themeCluster.strongestSimilarity,
+                    meanSimilarity: themeCluster.meanSimilarity,
+                    reasons: themeCluster.reasons,
+                });
+                const proposal = await scoutAssociationBundle(bundleContext);
+                if (proposal) {
+                    const outcome = await executeAssociationProposal({
+                        bundle: bundleContext,
+                        proposal,
+                    });
+                    initialAssociationOutcomes.push({
+                        bundle: bundleContext,
+                        proposal,
+                        bundleAccepted: outcome.bundleAccepted,
+                        followUpQueries: outcome.followUpQueries,
+                        createdCandidateId: outcome.createdCandidateId,
+                        confirmedPromotionId: outcome.confirmedPromotionId,
+                    });
+                    if (bundleOrigins.length < 24) {
+                        bundleOrigins.push({
+                            bundleId: bundleContext.bundleId,
+                            recallPass: "initial",
+                            bundleType: bundleContext.bundleType,
+                            themeType: bundleContext.themeType,
+                            themeKey: bundleContext.themeKey,
+                            sourceFamilyMix: bundleContext.sourceFamilyMix,
+                            replayQueries: [],
+                            addedRowIds: [],
+                        });
+                    }
+                }
+            }
+            if (parsed.mode === "overnight"
+                && MEMORY_CONSOLIDATION_SECOND_PASS_ENABLED
+                && MEMORY_CONSOLIDATION_SECOND_PASS_MAX_QUERIES > 0
+                && associationScoutStatus.available) {
+                let remainingReplayQueries = MEMORY_CONSOLIDATION_SECOND_PASS_MAX_QUERIES;
+                const replayCandidates = initialAssociationOutcomes
+                    .filter((entry) => entry.bundleAccepted && entry.followUpQueries.length > 0)
+                    .sort((left, right) => right.proposal.confidence - left.proposal.confidence)
+                    .slice(0, 3);
+                for (const replayCandidate of replayCandidates) {
+                    if (remainingReplayQueries <= 0)
+                        break;
+                    if (Date.now() - startedAtMs > parsed.timeBudgetMs)
+                        break;
+                    if (writes >= parsed.maxWrites)
+                        break;
+                    if (associationBundleCount >= MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES)
+                        break;
+                    const replayQueries = replayCandidate.followUpQueries.slice(0, Math.min(2, remainingReplayQueries));
+                    if (replayQueries.length === 0)
+                        continue;
+                    remainingReplayQueries -= replayQueries.length;
+                    secondPassQueriesUsed += replayQueries.length;
+                    const seenIds = new Set(replayCandidate.bundle.rows.map((row) => row.id));
+                    const addedRows = [];
+                    const addReplayRow = (row) => {
+                        if (!row)
+                            return;
+                        if (seenIds.has(row.id))
+                            return;
+                        if (row.status === "archived" || row.status === "quarantined")
+                            return;
+                        if (isExpiredRecord(row))
+                            return;
+                        if (isDreamGeneratedRow(row))
+                            return;
+                        seenIds.add(row.id);
+                        if (addedRows.length < 12) {
+                            addedRows.push(row);
+                        }
+                    };
+                    for (const query of replayQueries) {
+                        if (addedRows.length >= 12)
+                            break;
+                        const lexicalHits = filterExpiredSearchResults(await options.store.search({
+                            query,
+                            tenantId,
+                            retrievalMode: "lexical",
+                            layerDenylist: ["core"],
+                            sourceDenylist: [MEMORY_CONSOLIDATION_CONNECTION_SOURCE, MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE],
+                            limit: MEMORY_CONSOLIDATION_SECOND_PASS_SEARCH_LIMIT,
+                        }));
+                        for (const hit of lexicalHits) {
+                            const fetched = await options.store.getByIds({ tenantId, ids: [hit.id] });
+                            addReplayRow(fetched[0]);
+                            if (addedRows.length >= 12)
+                                break;
+                        }
+                        if (addedRows.length >= 12 || !options.store.related || MEMORY_CONSOLIDATION_SECOND_PASS_RELATED_LIMIT <= 0) {
+                            continue;
+                        }
+                        const entityHints = extractQueryEntityHints(query);
+                        const patternHints = extractQueryPatternHints(query);
+                        const related = await options.store.related({
+                            tenantId,
+                            seedIds: replayCandidate.bundle.rows.slice(0, 4).map((row) => row.id),
+                            entityHints: entityHints.slice(0, 8),
+                            patternHints: patternHints.slice(0, 8),
+                            limit: MEMORY_CONSOLIDATION_SECOND_PASS_RELATED_LIMIT,
+                            maxHops: 1,
+                            includeSeed: false,
+                        });
+                        const relatedIds = related
+                            .map((entry) => entry.id)
+                            .filter((id) => !seenIds.has(id))
+                            .slice(0, MEMORY_CONSOLIDATION_SECOND_PASS_RELATED_LIMIT);
+                        if (relatedIds.length > 0) {
+                            const relatedRows = await options.store.getByIds({ tenantId, ids: relatedIds });
+                            for (const row of relatedRows) {
+                                addReplayRow(row);
+                                if (addedRows.length >= 12)
+                                    break;
+                            }
+                        }
+                    }
+                    const familyMixBefore = countByDreamFamily(replayCandidate.bundle.rows, DREAM_CANDIDATE_FAMILY_ORDER.length);
+                    const combinedRows = Array.from(new Map([...replayCandidate.bundle.rows, ...addedRows].map((row) => [row.id, row])).values())
+                        .sort((left, right) => dreamCandidatePriorityScore(right) - dreamCandidatePriorityScore(left))
+                        .slice(0, MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_MEMORIES_PER_BUNDLE);
+                    const familyMixAfter = countByDreamFamily(combinedRows, DREAM_CANDIDATE_FAMILY_ORDER.length);
+                    const nonEmptyFamiliesAfter = familyMixAfter.filter((entry) => entry.count > 0).length;
+                    const nonCompactionFamiliesAfter = countNonCompactionFamilies(combinedRows);
+                    const synthesisBundleId = `synthesis:${replayCandidate.bundle.bundleId}`;
+                    let replayDropped = false;
+                    let replayDropReason = null;
+                    if (addedRows.length === 0) {
+                        replayDropped = true;
+                        replayDropReason = "no-new-rows";
+                    }
+                    else if (nonEmptyFamiliesAfter < 2) {
+                        replayDropped = true;
+                        replayDropReason = "single-source-family";
+                    }
+                    else if (nonCompactionFamiliesAfter < 1) {
+                        replayDropped = true;
+                        replayDropReason = "missing-non-compaction-family";
+                    }
+                    queryReplayDetails.push({
+                        originBundleId: replayCandidate.bundle.bundleId,
+                        synthesisBundleId: replayDropped ? null : synthesisBundleId,
+                        queries: replayQueries,
+                        addedMemoryIds: addedRows.map((row) => row.id),
+                        familyMixBefore,
+                        familyMixAfter,
+                        dropped: replayDropped,
+                        reason: replayDropReason,
+                    });
+                    if (replayDropped)
+                        continue;
+                    const synthesisBundle = buildAssociationBundleContext({
+                        bundleId: synthesisBundleId,
+                        bundleType: "synthesis-bundle",
+                        themeType: replayCandidate.bundle.themeType,
+                        themeKey: replayCandidate.bundle.themeKey,
+                        rows: combinedRows,
+                        strongestSimilarity: replayCandidate.bundle.strongestSimilarity,
+                        meanSimilarity: replayCandidate.bundle.meanSimilarity,
+                        reasons: Array.from(new Set([...replayCandidate.bundle.reasons, "second-pass-recall"])).slice(0, 8),
+                        recallPass: "second-pass",
+                        originatingBundleId: replayCandidate.bundle.bundleId,
+                        replayQueries,
+                        addedRowIds: addedRows.map((row) => row.id),
+                    });
+                    synthesisBundleCount += 1;
+                    if (bundleOrigins.length < 24) {
+                        bundleOrigins.push({
+                            bundleId: synthesisBundle.bundleId,
+                            recallPass: "second-pass",
+                            bundleType: synthesisBundle.bundleType,
+                            themeType: synthesisBundle.themeType,
+                            themeKey: synthesisBundle.themeKey,
+                            originatingBundleId: replayCandidate.bundle.bundleId,
+                            replayQueries,
+                            addedRowIds: addedRows.map((row) => row.id),
+                            sourceFamilyMix: synthesisBundle.sourceFamilyMix,
+                        });
+                    }
+                    const synthesisProposal = await scoutAssociationBundle(synthesisBundle);
+                    if (synthesisProposal) {
+                        await executeAssociationProposal({
+                            bundle: synthesisBundle,
+                            proposal: synthesisProposal,
+                        });
+                    }
+                }
+            }
+            const finishedAt = new Date().toISOString();
+            const recallPasses = [
+                {
+                    pass: "initial",
+                    attemptedBundles: themeClusterCount,
+                    evaluatedBundles: initialAssociationOutcomes.length,
+                    acceptedBundles: initialAssociationOutcomes.filter((entry) => entry.bundleAccepted).length,
+                },
+                {
+                    pass: "second-pass",
+                    attemptedBundles: synthesisBundleCount,
+                    queriesUsed: secondPassQueriesUsed,
+                    droppedBundles: queryReplayDetails.filter((entry) => entry.dropped).length,
+                },
+            ];
+            const resolvedTopActions = topActions
+                .sort((left, right) => right.priority - left.priority || left.text.localeCompare(right.text))
+                .map((entry) => entry.text)
+                .slice(0, 6);
+            const actionabilityPassed = promotionCount + quarantineCount > 0
+                && resolvedTopActions.length >= 2
+                && !candidateSelection.details.querySeeds.some((value) => looksLikeStartupPlaceholderText(value) || looksLikePseudoDecisionTraceText(value));
+            const actionabilityStatus = actionabilityPassed
+                ? "passed"
+                : parsed.mode === "overnight"
+                    ? "rathole"
+                    : "repair";
+            const summary = `Processed ${recentRows.length} candidates across ${clusters.length} clusters`
+                + `${clusterBuild.softClusterCount > 0 ? ` (${clusterBuild.softClusterCount} soft clusters)` : ""}; `
+                + `promoted ${promotionCount}, archived ${archiveCount}, quarantined ${quarantineCount}, repaired ${repairedEdgeCount} links, `
+                + `wrote ${connectionNoteCount} connection notes, suppressed ${suppressedConnectionNoteCount} unchanged or non-actionable notes, executed ${associationIntentCount} association intents across ${associationBundleCount} bundles, `
+                + `created ${promotionCandidateCount} promotion candidates, confirmed ${promotionCandidateConfirmedCount}, and used ${secondPassQueriesUsed} second-pass queries`
+                + `${associationScoutStatus.available ? "" : ` (association scout unavailable: ${associationScoutStatus.reason || "unavailable"})`}.`;
+            const artifactPublishStartedAtMs = Date.now();
+            recordPhaseAudit({
+                phase: "artifactPublish",
+                event: "start",
+                summary: "Persisting memory consolidation artifact.",
+            });
+            phaseTimingsMs.artifactPublish = Date.now() - artifactPublishStartedAtMs;
+            recordPhaseAudit({
+                phase: "artifactPublish",
+                event: "complete",
+                durationMs: phaseTimingsMs.artifactPublish,
+                summary: "Memory consolidation artifact persisted.",
+            });
+            const artifact = {
+                schema: "studio-brain.memory-consolidation.v1",
+                runId: parsed.runId,
+                mode: parsed.mode,
+                status: "success",
+                actionabilityStatus,
+                actionableInsightCount,
+                suppressedConnectionNoteCount,
+                suppressedPseudoDecisionCount,
+                topActions: resolvedTopActions,
+                summary,
+                startedAt,
+                finishedAt,
+                durationMs: Date.now() - startedAtMs,
+                candidateCount: recentRows.length,
+                clusterCount: clusters.length,
+                softClusterCount: clusterBuild.softClusterCount,
+                themeClusterCount,
+                comparedPairCount: clusterBuild.comparedPairCount,
+                promotionCount,
+                archiveCount,
+                quarantineCount,
+                repairedEdgeCount,
+                connectionNoteCount,
+                associationScoutStatus,
+                associationBundleCount,
+                associationIntentCount,
+                associationConnectionNoteCount,
+                focusAreas: focusAreas.slice(0, 8),
+                lastError: null,
+                lastSuccessAt: finishedAt,
+                nextRunAt: new Date(Date.now() + (parsed.mode === "overnight" ? 24 : 4) * 60 * 60 * 1000).toISOString(),
+                outputs: artifactOutputs,
+                candidateSelectionDetails: candidateSelection.details,
+                familyQuotaPlan: candidateSelection.details.familyQuotaPlan,
+                familyQuotaActual: candidateSelection.details.familyQuotaActual,
+                dominanceWarnings: candidateSelection.details.dominanceWarnings,
+                recallPasses,
+                queryReplayDetails,
+                synthesisBundleCount,
+                secondPassQueriesUsed,
+                promotionCandidateCount: Array.from(promotionCandidatesByFingerprint.values()).filter((row) => row.status === "proposed").length,
+                promotionCandidateConfirmedCount,
+                stalledCandidateCount,
+                promotionCandidateDetails,
+                bundleOrigins,
+                phaseCounts: {
+                    candidateSelection: recentRows.length,
+                    duplicateClustering: clusters.length,
+                    associationScout: associationBundleCount,
+                    relationshipRepair: repairedEdgeCount,
+                    promotionEvaluation: promotionCount + quarantineCount,
+                    artifactPublish: 1,
+                },
+                phaseTimingsMs,
+                writes,
+                promotionIds,
+                archiveIds,
+                quarantineIds,
+                repairedClusterIds,
+                repairDetails,
+                clusterInspectionDetails,
+                connectionNoteIds,
+                connectionNoteDetails,
+                associationDetails,
+                associationErrors,
+                promotionDetails,
+                archiveDetails,
+                quarantineDetails,
+                writeAudit,
+                writeAuditDroppedCount,
+                phaseAudit,
+                phaseAuditDroppedCount,
+                decisionAudit,
+                decisionAuditDroppedCount,
+            };
+            writeMemoryConsolidationArtifact(artifact);
+            return artifact;
+        }
+        catch (error) {
+            const finishedAt = new Date().toISOString();
+            const recallPasses = [
+                {
+                    pass: "initial",
+                    attemptedBundles: themeClusterCount,
+                    evaluatedBundles: initialAssociationOutcomes.length,
+                    acceptedBundles: initialAssociationOutcomes.filter((entry) => entry.bundleAccepted).length,
+                },
+                {
+                    pass: "second-pass",
+                    attemptedBundles: synthesisBundleCount,
+                    queriesUsed: secondPassQueriesUsed,
+                    droppedBundles: queryReplayDetails.filter((entry) => entry.dropped).length,
+                },
+            ];
+            const summary = `Processed ${recentRows.length} candidates across ${clusters.length} clusters before failing; `
+                + `promoted ${promotionCount}, archived ${archiveCount}, quarantined ${quarantineCount}, repaired ${repairedEdgeCount} links, `
+                + `wrote ${connectionNoteCount} connection notes, suppressed ${suppressedConnectionNoteCount} unchanged or non-actionable notes, executed ${associationIntentCount} association intents across ${associationBundleCount} bundles, `
+                + `created ${promotionCandidateCount} promotion candidates, confirmed ${promotionCandidateConfirmedCount}, and used ${secondPassQueriesUsed} second-pass queries`
+                + `${associationScoutStatus.available ? "" : ` (association scout unavailable: ${associationScoutStatus.reason || "unavailable"})`}.`;
+            const artifactPublishStartedAtMs = Date.now();
+            recordPhaseAudit({
+                phase: "artifactPublish",
+                event: "start",
+                summary: "Persisting failed memory consolidation artifact.",
+            });
+            phaseTimingsMs.artifactPublish = Date.now() - artifactPublishStartedAtMs;
+            recordPhaseAudit({
+                phase: "artifactPublish",
+                event: "failed",
+                durationMs: phaseTimingsMs.artifactPublish,
+                reason: error instanceof Error ? error.message : String(error),
+                summary: "Failed memory consolidation artifact persisted.",
+            });
+            const artifact = {
+                schema: "studio-brain.memory-consolidation.v1",
+                runId: parsed.runId,
+                mode: parsed.mode,
+                status: "failed",
+                actionabilityStatus: parsed.mode === "overnight" ? "rathole" : "repair",
+                actionableInsightCount,
+                suppressedConnectionNoteCount,
+                suppressedPseudoDecisionCount,
+                topActions: topActions
+                    .sort((left, right) => right.priority - left.priority || left.text.localeCompare(right.text))
+                    .map((entry) => entry.text)
+                    .slice(0, 6),
+                summary,
+                startedAt,
+                finishedAt,
+                durationMs: Date.now() - startedAtMs,
+                candidateCount: recentRows.length,
+                clusterCount: clusters.length,
+                softClusterCount: clusterBuild.softClusterCount,
+                themeClusterCount,
+                comparedPairCount: clusterBuild.comparedPairCount,
+                promotionCount,
+                archiveCount,
+                quarantineCount,
+                repairedEdgeCount,
+                connectionNoteCount,
+                associationScoutStatus,
+                associationBundleCount,
+                associationIntentCount,
+                associationConnectionNoteCount,
+                focusAreas: focusAreas.slice(0, 8),
+                lastError: error instanceof Error ? error.message : String(error),
+                lastSuccessAt: null,
+                nextRunAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                outputs: artifactOutputs,
+                candidateSelectionDetails: candidateSelection.details,
+                familyQuotaPlan: candidateSelection.details.familyQuotaPlan,
+                familyQuotaActual: candidateSelection.details.familyQuotaActual,
+                dominanceWarnings: candidateSelection.details.dominanceWarnings,
+                recallPasses,
+                queryReplayDetails,
+                synthesisBundleCount,
+                secondPassQueriesUsed,
+                promotionCandidateCount: Array.from(promotionCandidatesByFingerprint.values()).filter((row) => row.status === "proposed").length,
+                promotionCandidateConfirmedCount,
+                stalledCandidateCount,
+                promotionCandidateDetails,
+                bundleOrigins,
+                phaseCounts: {
+                    candidateSelection: recentRows.length,
+                    duplicateClustering: clusters.length,
+                    associationScout: associationBundleCount,
+                    relationshipRepair: repairedEdgeCount,
+                    promotionEvaluation: promotionCount + quarantineCount,
+                    artifactPublish: 1,
+                },
+                phaseTimingsMs,
+                writes,
+                promotionIds,
+                archiveIds,
+                quarantineIds,
+                repairedClusterIds,
+                repairDetails,
+                clusterInspectionDetails,
+                connectionNoteIds,
+                connectionNoteDetails,
+                associationDetails,
+                associationErrors,
+                promotionDetails,
+                archiveDetails,
+                quarantineDetails,
+                writeAudit,
+                writeAuditDroppedCount,
+                phaseAudit,
+                phaseAuditDroppedCount,
+                decisionAudit,
+                decisionAuditDroppedCount,
+            };
+            writeMemoryConsolidationArtifact(artifact);
+            throw error;
+        }
+    };
     return {
         capture,
         search,
@@ -6767,5 +10573,6 @@ function createMemoryService(options) {
         backfillSignalIndexing,
         scrubSyntheticThreadMetadata,
         importBatch,
+        consolidate,
     };
 }

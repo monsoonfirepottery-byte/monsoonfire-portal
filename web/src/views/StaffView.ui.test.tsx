@@ -94,6 +94,14 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
   ),
 }));
 
+vi.mock("./staff/StudioBrainControlTowerModule", () => ({
+  default: ({ disabled }: { disabled: boolean }) => (
+    <div data-testid="control-tower-sentinel" data-disabled={disabled ? "true" : "false"}>
+      Control Tower sentinel
+    </div>
+  ),
+}));
+
 vi.mock("./staff/LendingModule", () => ({
   default: () => <div data-testid="lending-sentinel">Lending sentinel</div>,
 }));
@@ -248,6 +256,24 @@ describe("StaffView cockpit routing", () => {
     expect(screen.getByTestId("operations-focus-lending")).toBeTruthy();
     expect(screen.getByTestId("lending-sentinel")).toBeTruthy();
     expect(screen.queryByTestId("operations-overview")).toBeNull();
+  });
+
+  it("renders the browser control tower on the canonical control-tower route", async () => {
+    window.history.replaceState({}, "", "/staff/cockpit/control-tower");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+      />
+    );
+
+    const controlTower = await screen.findByTestId("control-tower-sentinel");
+    expect(controlTower).toBeTruthy();
+    expect(controlTower.getAttribute("data-disabled")).toBe("false");
   });
 
   it("maps legacy /staff/system navigation to the cockpit platform tab", async () => {

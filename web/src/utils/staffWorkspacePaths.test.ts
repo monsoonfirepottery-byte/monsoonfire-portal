@@ -157,6 +157,14 @@ describe("resolveStaffWorkspaceMatch", () => {
       canonicalPath: "/staff/cockpit/module-telemetry",
       mode: "cockpit",
     });
+    expect(resolveStaffWorkspaceMatch("/staff/control-tower")).toEqual({
+      canonicalPath: "/staff/cockpit/control-tower",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/control_tower")).toEqual({
+      canonicalPath: "/staff/cockpit/control-tower",
+      mode: "cockpit",
+    });
     expect(resolveStaffWorkspaceMatch("/staff/finance")).toEqual({
       canonicalPath: "/staff/cockpit/finance",
       mode: "cockpit",
@@ -254,6 +262,10 @@ describe("resolveStaffWorkspaceMatch", () => {
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/policy_agent_ops")).toEqual({
       canonicalPath: "/staff/cockpit/policy-agent-ops",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/cockpit/control-tower")).toEqual({
+      canonicalPath: "/staff/cockpit/control-tower",
       mode: "cockpit",
     });
   });

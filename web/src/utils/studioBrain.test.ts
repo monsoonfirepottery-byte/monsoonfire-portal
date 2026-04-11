@@ -1,10 +1,19 @@
-import { describe, expect, it } from "vitest";
+/** @vitest-environment jsdom */
+
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  clearStoredStudioBrainBaseUrlOverride,
+  getStoredStudioBrainBaseUrlOverride,
   isStudioBrainUrlAllowedForBrowser,
   resolveStudioBrainBaseUrlResolution,
   resolveStudioBrainBaseUrlWithContext,
+  setStoredStudioBrainBaseUrlOverride,
   studioBrainUrlBlockReason,
 } from "./studioBrain";
+
+afterEach(() => {
+  clearStoredStudioBrainBaseUrlOverride();
+});
 
 describe("studioBrain URL resolution", () => {
   it("returns localhost fallback for localhost hosts when unset", () => {
@@ -171,6 +180,19 @@ describe("resolveStudioBrainBaseUrlResolution", () => {
     expect(resolution.enabled).toBe(true);
     expect(resolution.baseUrl).toBe("https://studio-brain.monsoonfire-portal.example");
     expect(resolution.reason).toBe("");
+  });
+
+  it("uses stored browser override when explicit config is absent", () => {
+    setStoredStudioBrainBaseUrlOverride("https://studio-brain.runtime.example");
+    const resolution = resolveStudioBrainBaseUrlResolution({
+      browserHostname: "portal.monsoonfire.com",
+    });
+    expect(getStoredStudioBrainBaseUrlOverride()).toBe("https://studio-brain.runtime.example");
+    expect(resolution.configured).toBe(true);
+    expect(resolution.enabled).toBe(true);
+    expect(resolution.baseUrl).toBe("https://studio-brain.runtime.example");
+    clearStoredStudioBrainBaseUrlOverride();
+    expect(getStoredStudioBrainBaseUrlOverride()).toBe("");
   });
 
   it("returns disabled with parse failure reason for malformed configured URL", () => {

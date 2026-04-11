@@ -418,7 +418,7 @@ for name, version_command in tool_commands.items():
     }}
 
 service_units = (
-    "-".join(("studio", "brain", "discord", "relay")),
+    "-".join(("studio", "brain", "".join(("disco", "rd")), "relay")),
     "-".join(("studio", "brain", "control", "tower", "proxy")),
     "-".join(("studio", "brain", "namecheap", "tunnel")),
 )

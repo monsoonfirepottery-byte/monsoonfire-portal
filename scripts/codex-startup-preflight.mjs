@@ -12,6 +12,10 @@ import {
   inspectTokenFreshness,
   startupRecoveryStep,
 } from "./lib/codex-startup-reliability.mjs";
+import {
+  inspectStartupTranscriptTelemetry,
+  logStartupTelemetryToolcall,
+} from "./lib/codex-startup-telemetry.mjs";
 import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 
@@ -125,6 +129,10 @@ async function main() {
     scanLimit: 120,
   });
   const startupLatency = startup.startupLatency || evaluateStartupLatency(startup.latencyMs);
+  const transcriptTelemetry = inspectStartupTranscriptTelemetry({
+    env: process.env,
+    cwd: REPO_ROOT,
+  });
   const mcpBridge = options.includeMcpSmoke ? probeMcpBridge() : null;
   const status =
     reachability.ok &&
@@ -150,15 +158,75 @@ async function main() {
         ok: Boolean(startup.ok),
         reason: clean(startup.reason),
         reasonCode: clean(startup.reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE),
+        continuityState: clean(startup.continuityState || "missing"),
         error: clean(startup.error),
         itemCount: Number(startup.itemCount || 0),
         contextSummary: clean(startup.contextSummary).slice(0, 300),
+        fallbackSources: Array.isArray(startup.fallbackSources) ? startup.fallbackSources.slice(0, 8) : [],
+        memoryBriefPath: clean(startup.memoryBriefPath),
+        consolidationMode: clean(startup.memoryBrief?.consolidation?.mode || "unavailable"),
         latency: startupLatency,
         recoveryStep: startupRecoveryStep(startup.reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE),
+        telemetry: {
+          toolName: "studio_brain_startup_context",
+          toolStatus: "called",
+          toolObservedInTranscript: transcriptTelemetry.startupToolObserved,
+          toolCalledBeforeFirstAssistantMessage: transcriptTelemetry.startupToolCalledBeforeFirstAssistantMessage,
+          groundingLineEmitted: transcriptTelemetry.groundingLineEmitted,
+          groundingLineObserved: transcriptTelemetry.groundingLineObserved,
+          repoReadsBeforeStartupContext: transcriptTelemetry.repoReadsBeforeStartupContext,
+          repoReadTelemetryObserved: transcriptTelemetry.repoReadTelemetryObserved,
+          transcriptSource: transcriptTelemetry.source,
+          threadId: transcriptTelemetry.threadId,
+          rolloutPath: transcriptTelemetry.rolloutPath,
+        },
       },
       ...(mcpBridge ? { mcpBridge } : {}),
     },
   };
+
+  logStartupTelemetryToolcall({
+    tool: "codex-startup-preflight",
+    action: "startup-bootstrap",
+    ok: report.status === "pass",
+    durationMs: startupLatency.latencyMs ?? null,
+    errorType: report.status === "pass" ? null : "startup-preflight",
+    errorMessage:
+      clean(report.checks.startupContext.error) ||
+      clean(reachability.error) ||
+      clean(mcpBridge?.error) ||
+      null,
+    context: {
+      startup: {
+        toolName: "studio_brain_startup_context",
+        startupToolStatus: "called",
+        reasonCode: report.checks.startupContext.reasonCode,
+        continuityState: report.checks.startupContext.continuityState,
+        latencyMs: startupLatency.latencyMs ?? null,
+        recoveryStep: report.checks.startupContext.recoveryStep,
+        groundingLineEmitted: transcriptTelemetry.groundingLineEmitted,
+        groundingLineObserved: transcriptTelemetry.groundingLineObserved,
+        repoReadsBeforeStartupContext: transcriptTelemetry.repoReadsBeforeStartupContext,
+        repoReadTelemetryObserved: transcriptTelemetry.repoReadTelemetryObserved,
+        startupToolObservedInTranscript: transcriptTelemetry.startupToolObserved,
+        startupToolCalledBeforeFirstAssistantMessage: transcriptTelemetry.startupToolCalledBeforeFirstAssistantMessage,
+        telemetryCoverage: {
+          groundingLine: transcriptTelemetry.groundingLineObserved,
+          preStartupRepoReads: transcriptTelemetry.repoReadTelemetryObserved,
+          fullyObserved:
+            transcriptTelemetry.groundingLineObserved === true &&
+            transcriptTelemetry.repoReadTelemetryObserved === true,
+        },
+        transcriptSource: transcriptTelemetry.source,
+        threadId: transcriptTelemetry.threadId || null,
+        rolloutPath: transcriptTelemetry.rolloutPath || null,
+      },
+      studioBrainReachable: reachability.ok,
+      mcpBridgeOk: mcpBridge?.ok ?? null,
+    },
+    env: process.env,
+    cwd: REPO_ROOT,
+  });
 
   if (options.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -169,6 +237,8 @@ async function main() {
   process.stdout.write(`studio brain: ${reachability.ok ? "reachable" : `unreachable (${reachability.error || "unknown"})`}\n`);
   process.stdout.write(`token: ${tokenFreshness.state}\n`);
   process.stdout.write(`startup reason: ${report.checks.startupContext.reasonCode}\n`);
+  process.stdout.write(`continuity state: ${report.checks.startupContext.continuityState}\n`);
+  process.stdout.write(`dream cycle: ${report.checks.startupContext.consolidationMode}\n`);
   process.stdout.write(`startup latency: ${startupLatency.latencyMs ?? "n/a"}ms (${startupLatency.state})\n`);
   if (mcpBridge) {
     process.stdout.write(`mcp bridge: ${mcpBridge.ok ? "reachable" : `unreachable (${mcpBridge.error || "unknown"})`}\n`);

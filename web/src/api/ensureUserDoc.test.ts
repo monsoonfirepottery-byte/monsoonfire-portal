@@ -18,10 +18,14 @@ async function loadEnsureUserDocModule(): Promise<EnsureModule> {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("ensureUserDocForSession", () => {
@@ -110,5 +114,54 @@ describe("ensureUserDocForSession", () => {
     expect(third.code).not.toBe("RETRY_SUPPRESSED");
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("does not trust legacy localStorage success markers from previous browser sessions", async () => {
+    const key = "bootstrapped:user_legacy:project_1";
+    window.localStorage.setItem(key, "1");
+
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ ok: true, userCreated: false, profileCreated: false })
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const { ensureUserDocForSession } = await loadEnsureUserDocModule();
+    const result = await ensureUserDocForSession({
+      uid: "user_legacy",
+      projectId: "project_1",
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-123",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(key)).toBeNull();
+    expect(window.sessionStorage.getItem(key)).toBe("1");
+  });
+
+  it("re-checks ensureUserDoc after a new browser session starts", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ ok: true, userCreated: false, profileCreated: false })
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const firstModule = await loadEnsureUserDocModule();
+    const args = {
+      uid: "user_browser_session",
+      projectId: "project_1",
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-123",
+    };
+
+    const first = await firstModule.ensureUserDocForSession(args);
+    expect(first.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    window.sessionStorage.clear();
+
+    const secondModule = await loadEnsureUserDocModule();
+    const second = await secondModule.ensureUserDocForSession(args);
+    expect(second.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

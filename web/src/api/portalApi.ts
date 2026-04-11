@@ -425,6 +425,10 @@ const portalAuthRetryGuardByRoute = new Map<
   { tokenSignature: string; blockedUntilMs: number; reason: string }
 >();
 
+function normalizePortalBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, "");
+}
+
 function safeStringifyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -442,12 +446,30 @@ function makeTokenSignature(token: string): string {
   return `sig_${(hash >>> 0).toString(16)}`;
 }
 
-function makePortalActionKey(route: string, payload: unknown): string {
-  return `${route}::${safeStringifyJson(payload)}`;
+function makeCredentialSignature(token?: string): string {
+  const trimmed = token?.trim() ?? "";
+  return trimmed ? makeTokenSignature(trimmed) : "none";
 }
 
-function makePortalRetryKey(route: string): string {
-  return `POST:${route.toLowerCase()}`;
+function makePortalScopeKey(baseUrl: string, idToken: string, adminToken?: string): string {
+  return [
+    normalizePortalBaseUrl(baseUrl).toLowerCase(),
+    `id=${makeCredentialSignature(idToken)}`,
+    `admin=${makeCredentialSignature(adminToken)}`,
+  ].join("::");
+}
+
+function makePortalActionKey(scopeKey: string, route: string, payload: unknown): string {
+  return `${scopeKey}::${route}::${safeStringifyJson(payload)}`;
+}
+
+function makePortalRetryKey(baseUrl: string, route: string, adminToken?: string): string {
+  return [
+    "POST",
+    normalizePortalBaseUrl(baseUrl).toLowerCase(),
+    route.toLowerCase(),
+    `admin=${makeCredentialSignature(adminToken)}`,
+  ].join(":");
 }
 
 function buildCurlExample(url: string, payload: unknown, includeAdminToken: boolean): string {
@@ -486,7 +508,15 @@ async function callFn<TReq, TResp>(
   args: PortalApiCallArgs<TReq>
 ): Promise<PortalApiCallResult<TResp>> {
   const route = LEGACY_RESERVATION_FN_PATHS[fn] ?? fn;
-  const actionKey = args.signal ? null : makePortalActionKey(route, args.payload ?? {});
+  const normalizedBaseUrl = normalizePortalBaseUrl(baseUrl);
+  const trimmedAdminToken = args.adminToken?.trim() || undefined;
+  const actionKey = args.signal
+    ? null
+    : makePortalActionKey(
+        makePortalScopeKey(normalizedBaseUrl, args.idToken, trimmedAdminToken),
+        route,
+        args.payload ?? {}
+      );
   if (actionKey) {
     const existingInFlight = portalInFlightByAction.get(actionKey) as
       | Promise<PortalApiCallResult<TResp>>
@@ -497,10 +527,10 @@ async function callFn<TReq, TResp>(
   }
 
   const run = async (): Promise<PortalApiCallResult<TResp>> => {
-    const url = `${baseUrl.replace(/\/$/, "")}/${route}`;
+    const url = `${normalizedBaseUrl}/${route}`;
     const requestId = makeRequestId();
     const startedAtMs = Date.now();
-    const retryGuardKey = makePortalRetryKey(route);
+    const retryGuardKey = makePortalRetryKey(normalizedBaseUrl, route, trimmedAdminToken);
     const tokenSignature = makeTokenSignature(args.idToken);
 
     const metaStart: PortalApiMeta = {
@@ -509,7 +539,7 @@ async function callFn<TReq, TResp>(
       fn,
       url,
       payload: args.payload,
-      curlExample: buildCurlExample(url, args.payload, !!args.adminToken),
+      curlExample: buildCurlExample(url, args.payload, Boolean(trimmedAdminToken)),
     };
     publishRequestTelemetry({
       atIso: metaStart.atIso,
@@ -587,7 +617,7 @@ async function callFn<TReq, TResp>(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${args.idToken}`,
-          ...(args.adminToken ? { "x-admin-token": args.adminToken } : {}),
+          ...(trimmedAdminToken ? { "x-admin-token": trimmedAdminToken } : {}),
         },
         body: JSON.stringify(args.payload ?? {}),
         signal: abortController.signal,

@@ -8,14 +8,26 @@ function clean(value) {
   return String(value ?? "").trim();
 }
 
+function resolveConfiguredPath(repoRoot, configuredPath) {
+  const raw = clean(configuredPath);
+  return raw ? resolve(repoRoot, raw) : "";
+}
+
 export function resolvePortalEnvPath(repoRoot, env = process.env) {
-  return resolve(clean(env.PORTAL_AUTOMATION_ENV_PATH) || resolve(repoRoot, "secrets", "portal", "portal-automation.env"));
+  const explicit = resolveConfiguredPath(repoRoot, env.PORTAL_AUTOMATION_ENV_PATH);
+  const candidates = [
+    explicit,
+    resolve(repoRoot, "secrets", "portal", "portal-automation.env"),
+    resolve(homedir(), "secrets", "portal", "portal-automation.env"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || explicit || candidates[1] || "";
 }
 
 export function resolvePortalCredentialsPath(repoRoot, env = process.env) {
   const candidates = [
-    clean(env.PORTAL_AGENT_STAFF_CREDENTIALS),
+    resolveConfiguredPath(repoRoot, env.PORTAL_AGENT_STAFF_CREDENTIALS),
     resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json"),
+    resolve(homedir(), "secrets", "portal", "portal-agent-staff.json"),
     resolve(homedir(), ".ssh", "portal-agent-staff.json"),
   ].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || "";

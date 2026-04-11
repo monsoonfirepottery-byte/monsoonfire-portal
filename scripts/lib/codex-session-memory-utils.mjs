@@ -580,11 +580,18 @@ export function buildThreadBootstrapQuery({ threadInfo = null, threadName = "", 
     cwdBase &&
     cwdBase.toLowerCase() !== homeBase.toLowerCase() &&
     !["users", "home", "micah"].includes(cwdBase.toLowerCase());
+  const inferredLane = inferProjectLane({
+    path: normalizedCwd,
+  });
+  const laneSeed =
+    inferredLane && !["unknown", "general-dev", "personal"].includes(inferredLane) ? inferredLane : "";
   const queryParts = dedupeStrings([
     clean(threadName),
     clean(threadInfo?.title),
     clean(threadInfo?.firstUserMessage),
     clean(threadInfo?.threadId),
+    laneSeed,
+    laneSeed.includes("-") ? laneSeed.replace(/-/g, " ") : "",
     includeCwdSeed ? cwdBase : "",
     ...historyLines,
   ]);
@@ -1273,6 +1280,28 @@ function rowScopeMatchesThread(row, threadInfo) {
   return Boolean((currentThreadId && rowThreadId === currentThreadId) || (currentCwd && rowCwd === currentCwd));
 }
 
+function rowProjectLane(row) {
+  const metadata = rowMetadata(row);
+  const sourceMetadata = toRecord(metadata.sourceMetadata);
+  return normalizeSource(sourceMetadata.projectLane || metadata.projectLane || metadata.lane || metadata.signalLane || "");
+}
+
+function threadProjectLane(threadInfo) {
+  const cwdLane = inferProjectLane({
+    path: normalizeThreadCwd(threadInfo?.cwd),
+  });
+  if (cwdLane && !["unknown", "general-dev", "personal"].includes(cwdLane)) {
+    return normalizeSource(cwdLane);
+  }
+  return normalizeSource(
+    inferProjectLane({
+      path: normalizeThreadCwd(threadInfo?.cwd),
+      title: clean(threadInfo?.title),
+      text: clean(threadInfo?.firstUserMessage),
+    })
+  );
+}
+
 function rowSourcePenalty(row, threadInfo, profile = "startup-strict") {
   const normalizedProfile = normalizeContinuityProfile(profile);
   const metadata = rowMetadata(row);
@@ -1320,20 +1349,38 @@ function rowSourcePenalty(row, threadInfo, profile = "startup-strict") {
 export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = true, profile = "startup-strict" } = {}) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const normalizedProfile = normalizeContinuityProfile(profile);
+  const currentProjectLane = threadProjectLane(threadInfo);
   return rows
     .map((row, index) => {
       const metadata = rowMetadata(row);
       const baseScore = Number(row?.score);
       const normalizedBaseScore = Number.isFinite(baseScore) ? baseScore : 0.45;
       const penalty = rowSourcePenalty(row, threadInfo, normalizedProfile);
+      const exactScopeMatch = rowScopeMatchesThread(row, threadInfo);
+      const rowLane = rowProjectLane(row);
+      const laneMatch = Boolean(currentProjectLane && rowLane && currentProjectLane === rowLane);
       const scopeBoost =
         normalizedProfile === "task-broad"
-          ? rowScopeMatchesThread(row, threadInfo)
+          ? exactScopeMatch
             ? 0.04
             : 0
-          : rowScopeMatchesThread(row, threadInfo)
+          : exactScopeMatch
             ? 0.12
             : 0;
+      const laneBoost =
+        normalizedProfile === "task-broad"
+          ? laneMatch
+            ? 0.03
+            : 0
+          : laneMatch
+            ? 0.24
+            : 0;
+      const lanePenalty =
+        !exactScopeMatch && currentProjectLane && rowLane && !laneMatch
+          ? normalizedProfile === "task-broad"
+            ? 0.01
+            : 0.16
+          : 0;
       const profileBoost =
         normalizedProfile === "profile-fast-lane" &&
         clean(metadata.scopeClass).toLowerCase() === "personal"
@@ -1345,7 +1392,8 @@ export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = tr
         normalizedProfile === "task-broad"
           ? 0
           : Math.max(0, 0.1 - preferredStartupSourcePriority(row?.source, normalizedProfile) * 0.01);
-      const rankScore = normalizedBaseScore + scopeBoost + profileBoost + startupBoost + priorityBoost - penalty;
+      const rankScore =
+        normalizedBaseScore + scopeBoost + laneBoost + profileBoost + startupBoost + priorityBoost - penalty - lanePenalty;
       return {
         row,
         index,

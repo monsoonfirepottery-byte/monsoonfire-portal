@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { mintStaffIdTokenFromPortalEnv, normalizeBearer } from "../scripts/lib/firebase-auth-token.mjs";
+import { inferProjectLane } from "../scripts/lib/hybrid-memory-utils.mjs";
 import {
   filterExpiredRows,
   loadBootstrapArtifacts,
@@ -20,7 +21,9 @@ const DEFAULT_TIMEOUT_MS = parsePositiveInt(process.env.STUDIO_BRAIN_MCP_TIMEOUT
 const ADMIN_TOKEN = process.env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || process.env.STUDIO_BRAIN_ADMIN_TOKEN || "";
 const AUTH_REFRESH_MIN_INTERVAL_MS = 10_000;
 const DEFAULT_REPO_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_HOME_SECRETS_CREDENTIALS_PATH = resolve(homedir(), "secrets", "portal", "portal-agent-staff.json");
 const DEFAULT_HOME_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
+const GENERIC_PROJECT_LANES = new Set(["", "unknown", "general-dev"]);
 
 let authorizationHeader = normalizeBearer(
   process.env.STUDIO_BRAIN_MCP_AUTH_HEADER ||
@@ -39,6 +42,10 @@ function parsePositiveInt(value, fallback) {
 
 function clean(value) {
   return String(value ?? "").trim();
+}
+
+function summarizeText(value, maxChars = 220) {
+  return clean(value).replace(/\s+/g, " ").slice(0, maxChars);
 }
 
 function withOptionalString(schema) {
@@ -69,13 +76,211 @@ const bootstrapThreadInfo = {
   firstUserMessage: clean(bootstrapArtifacts.metadata?.firstUserMessage),
 };
 
+function buildSyntheticBootstrapRows() {
+  const rows = [];
+  const pushRow = (source, content, metadata = {}) => {
+    const summary = summarizeText(content, 240);
+    if (!summary) return;
+    rows.push({
+      source,
+      content: clean(content),
+      summary,
+      metadata: {
+        source,
+        ...metadata,
+      },
+    });
+  };
+
+  const blocker = bootstrapArtifacts.startupBlocker;
+  if (clean(blocker?.status).toLowerCase() === "blocked") {
+    const parts = [
+      summarizeText(blocker.firstSignal || blocker.remoteError || blocker.failureClass || "Startup continuity is blocked.", 220),
+    ];
+    if (clean(blocker.unblockStep)) {
+      parts.push(`Unblock: ${summarizeText(blocker.unblockStep, 180)}`);
+    }
+    pushRow("codex-startup-blocker", parts.filter(Boolean).join(" "), {
+      failureClass: clean(blocker.failureClass),
+      createdAt: clean(blocker.createdAt),
+      threadId: bootstrapThreadInfo.threadId,
+      tags: ["startup-blocker", "bootstrap-artifact"],
+    });
+  }
+
+  const envelope = bootstrapArtifacts.continuityEnvelope;
+  const envelopeParts = [];
+  if (clean(envelope?.currentGoal)) {
+    envelopeParts.push(`Current goal: ${summarizeText(envelope.currentGoal, 180)}.`);
+  }
+  if (clean(envelope?.lastHandoffSummary)) {
+    envelopeParts.push(`Last handoff: ${summarizeText(envelope.lastHandoffSummary, 180)}.`);
+  }
+  const primaryEnvelopeBlocker = Array.isArray(envelope?.blockers) ? envelope.blockers.find((row) => clean(row?.summary)) : null;
+  if (primaryEnvelopeBlocker) {
+    envelopeParts.push(`Open blocker: ${summarizeText(primaryEnvelopeBlocker.summary, 180)}.`);
+  }
+  if (clean(envelope?.nextRecommendedAction)) {
+    envelopeParts.push(`Next action: ${summarizeText(envelope.nextRecommendedAction, 180)}.`);
+  }
+  if (envelopeParts.length > 0) {
+    pushRow("codex-continuity-envelope", envelopeParts.join(" "), {
+      createdAt: clean(envelope?.updatedAt || envelope?.createdAt),
+      threadId: bootstrapThreadInfo.threadId,
+      tags: ["continuity-envelope", "bootstrap-artifact"],
+    });
+  }
+
+  const handoff = bootstrapArtifacts.handoff;
+  const handoffParts = [];
+  if (clean(handoff?.summary || handoff?.workCompleted || handoff?.activeGoal)) {
+    handoffParts.push(
+      summarizeText(handoff.summary || handoff.workCompleted || handoff.activeGoal, 220)
+    );
+  }
+  if (clean(handoff?.nextRecommendedAction)) {
+    handoffParts.push(`Next: ${summarizeText(handoff.nextRecommendedAction, 180)}`);
+  }
+  if (handoffParts.length > 0) {
+    pushRow("codex-handoff", handoffParts.join(" "), {
+      createdAt: clean(handoff?.createdAt),
+      threadId: bootstrapThreadInfo.threadId,
+      tags: ["handoff", "bootstrap-artifact"],
+    });
+  }
+
+  return rows;
+}
+
 function bootstrapItems() {
   const items = Array.isArray(bootstrapArtifacts.context?.items) ? bootstrapArtifacts.context.items : [];
-  return rankBootstrapRows(filterExpiredRows(items), bootstrapThreadInfo);
+  return rankBootstrapRows(filterExpiredRows([...items, ...buildSyntheticBootstrapRows()]), bootstrapThreadInfo);
 }
 
 function hasBootstrapContext() {
-  return bootstrapItems().length > 0;
+  return (
+    bootstrapItems().length > 0 ||
+    Boolean(clean(bootstrapArtifacts.context?.summary)) ||
+    clean(bootstrapArtifacts.startupBlocker?.status).toLowerCase() === "blocked" ||
+    Boolean(clean(bootstrapArtifacts.handoff?.summary || bootstrapArtifacts.handoff?.workCompleted || bootstrapArtifacts.handoff?.activeGoal)) ||
+    Boolean(
+      clean(
+        bootstrapArtifacts.continuityEnvelope?.currentGoal ||
+          bootstrapArtifacts.continuityEnvelope?.lastHandoffSummary ||
+          bootstrapArtifacts.continuityEnvelope?.nextRecommendedAction
+      )
+    )
+  );
+}
+
+function bootstrapContinuityState() {
+  const contextDiagnostics =
+    bootstrapArtifacts.context?.diagnostics && typeof bootstrapArtifacts.context.diagnostics === "object"
+      ? bootstrapArtifacts.context.diagnostics
+      : {};
+  if (clean(bootstrapArtifacts.startupBlocker?.status).toLowerCase() === "blocked") {
+    return "blocked";
+  }
+  const diagnosticState = clean(contextDiagnostics.continuityState);
+  if (diagnosticState) return diagnosticState;
+  const envelopeState = clean(
+    bootstrapArtifacts.continuityEnvelope?.continuityState || bootstrapArtifacts.continuityEnvelope?.startup?.continuityState
+  );
+  if (envelopeState) return envelopeState;
+  return bootstrapItems().length > 0 ? "ready" : "missing";
+}
+
+function rowProjectLane(row) {
+  return clean(
+    row?.metadata?.projectLane ||
+      row?.metadata?.sourceMetadata?.projectLane ||
+      row?.sourceMetadata?.projectLane ||
+      row?.projectLane ||
+      row?.metadata?.lane ||
+      row?.metadata?.signalLane
+  );
+}
+
+function resolveDominantProjectLane(rows = []) {
+  const scores = new Map();
+  rows.forEach((row, index) => {
+    const lane = rowProjectLane(row);
+    if (!lane || GENERIC_PROJECT_LANES.has(lane)) return;
+    const weight = Math.max(rows.length - index, 1);
+    scores.set(lane, (scores.get(lane) || 0) + weight);
+  });
+  const ranked = [...scores.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  if (ranked.length > 0) return ranked[0][0];
+
+  const diagnosticLane = clean(
+    bootstrapArtifacts.context?.diagnostics?.projectLane || bootstrapArtifacts.context?.diagnostics?.dominantProjectLane
+  );
+  if (diagnosticLane && !GENERIC_PROJECT_LANES.has(diagnosticLane)) {
+    return diagnosticLane;
+  }
+
+  const inferredLane = inferProjectLane({
+    path: bootstrapThreadInfo.cwd,
+    title: bootstrapThreadInfo.title,
+    text: bootstrapThreadInfo.firstUserMessage,
+  });
+  return GENERIC_PROJECT_LANES.has(inferredLane) ? "" : clean(inferredLane);
+}
+
+function localBootstrapDiagnostics(rows = bootstrapItems()) {
+  const contextDiagnostics =
+    bootstrapArtifacts.context?.diagnostics && typeof bootstrapArtifacts.context.diagnostics === "object"
+      ? bootstrapArtifacts.context.diagnostics
+      : {};
+  const continuityState = bootstrapContinuityState();
+  const blockerReason = clean(bootstrapArtifacts.startupBlocker?.failureClass);
+  const projectLane = resolveDominantProjectLane(rows);
+  return {
+    ...contextDiagnostics,
+    bootstrapContextLoaded: hasBootstrapContext(),
+    fallbackUsed: true,
+    fallbackStrategy: "bootstrap-artifact",
+    continuityState,
+    continuityAvailable: continuityState === "ready",
+    continuityReason: clean(contextDiagnostics.continuityReason || blockerReason),
+    continuityReasonCode: clean(contextDiagnostics.continuityReasonCode || blockerReason),
+    projectLane: clean(contextDiagnostics.projectLane || projectLane),
+    dominantProjectLane: clean(contextDiagnostics.dominantProjectLane || projectLane),
+  };
+}
+
+function localBootstrapRecentPayload(limit = 20) {
+  const rows = bootstrapItems().slice(0, Math.max(1, limit));
+  return {
+    ok: true,
+    rows,
+    results: rows,
+    diagnostics: localBootstrapDiagnostics(rows),
+    summary: clean(bootstrapArtifacts.context?.summary) || summarizeRows(rows, 500),
+  };
+}
+
+function localBootstrapStatsPayload() {
+  const rows = bootstrapItems();
+  const counts = new Map();
+  for (const row of rows) {
+    const source = clean(row?.source || row?.metadata?.source || "bootstrap-artifact");
+    counts.set(source, (counts.get(source) || 0) + 1);
+  }
+  return {
+    ok: true,
+    stats: {
+      total: rows.length,
+      bySource: [...counts.entries()]
+        .map(([source, count]) => ({ source, count }))
+        .sort((left, right) => right.count - left.count || left.source.localeCompare(right.source)),
+    },
+    diagnostics: {
+      ...localBootstrapDiagnostics(rows),
+      approximate: true,
+      dataScope: "bootstrap-artifact",
+    },
+  };
 }
 
 function summarizeRows(rows, maxChars = 400) {
@@ -147,6 +352,48 @@ function extractPayloadRows(payload) {
   return [];
 }
 
+async function requestStartupSearchPayload({
+  query,
+  requestedMaxItems,
+  tenantId,
+  baseUrl,
+  timeoutMs,
+  applyBootstrapBias,
+}) {
+  const payload = await studioBrainRequest({
+    method: "POST",
+    path: "/api/memory/search",
+    body: {
+      query,
+      limit: Math.min(Math.max(requestedMaxItems * 4, 24), 80),
+      tenantId,
+      sourceAllowlist: applyBootstrapBias ? preferredStartupSources() : undefined,
+      sourceDenylist: [],
+    },
+    baseUrl,
+    timeoutMs,
+  });
+  const rawRows = extractPayloadRows(payload);
+  const rankedRows = rankBootstrapRows(filterExpiredRows(rawRows), bootstrapThreadInfo).slice(0, requestedMaxItems);
+  if (rankedRows.length === 0) {
+    return null;
+  }
+  return rewriteContextPayload(
+    {
+      ...payload,
+      context: {
+        items: rawRows,
+        summary: clean(payload?.summary),
+        diagnostics: {
+          ...(payload?.diagnostics && typeof payload.diagnostics === "object" ? payload.diagnostics : {}),
+          startupSelectionStrategy: "search-first",
+        },
+      },
+    },
+    rankedRows
+  );
+}
+
 function rewriteContextPayload(payload, rows) {
   const root = payload && typeof payload === "object" ? { ...payload } : {};
   const context =
@@ -156,12 +403,13 @@ function rewriteContextPayload(payload, rows) {
         ? { ...root.payload }
         : { ...root };
   context.items = rows;
-  if (!clean(context.summary)) {
-    context.summary = summarizeRows(rows, 600);
-  }
+  context.summary = summarizeRows(rows, 600) || clean(context.summary);
+  const projectLane = resolveDominantProjectLane(rows);
   context.diagnostics = {
     ...(context.diagnostics && typeof context.diagnostics === "object" ? context.diagnostics : {}),
     bootstrapContextLoaded: hasBootstrapContext(),
+    projectLane: clean(context.diagnostics?.projectLane || projectLane),
+    dominantProjectLane: clean(context.diagnostics?.dominantProjectLane || projectLane),
   };
   root.context = context;
   root.items = rows;
@@ -174,6 +422,7 @@ function localBootstrapContextPayload(query, maxItems, maxChars) {
   const rows = localBootstrapSearch(query, maxItems);
   const summary =
     clean(bootstrapArtifacts.context?.summary) || summarizeRows(rows, Math.max(256, Math.min(600, maxChars || 600)));
+  const diagnostics = localBootstrapDiagnostics(rows);
   return {
     context: {
       ...(bootstrapArtifacts.context && typeof bootstrapArtifacts.context === "object" ? bootstrapArtifacts.context : {}),
@@ -181,21 +430,15 @@ function localBootstrapContextPayload(query, maxItems, maxChars) {
       summary: summary.slice(0, Math.max(256, maxChars || 8000)),
       diagnostics: {
         ...(bootstrapArtifacts.context?.diagnostics && typeof bootstrapArtifacts.context.diagnostics === "object"
-          ? bootstrapArtifacts.context.diagnostics
-          : {}),
-        bootstrapContextLoaded: true,
-        fallbackUsed: true,
-        fallbackStrategy: "bootstrap-artifact",
+            ? bootstrapArtifacts.context.diagnostics
+            : {}),
+          ...diagnostics,
+        },
       },
-    },
-    items: rows.slice(0, Math.max(1, maxItems)),
-    summary: summary.slice(0, Math.max(256, maxChars || 8000)),
-    diagnostics: {
-      bootstrapContextLoaded: true,
-      fallbackUsed: true,
-      fallbackStrategy: "bootstrap-artifact",
-    },
-  };
+      items: rows.slice(0, Math.max(1, maxItems)),
+      summary: summary.slice(0, Math.max(256, maxChars || 8000)),
+      diagnostics,
+    };
 }
 
 function defaultStartupContextQuery() {
@@ -206,6 +449,11 @@ function defaultStartupContextQuery() {
     clean(bootstrapThreadInfo.cwd) ||
     "Studio Brain startup continuity"
   );
+}
+
+function preferLocalStartupContext() {
+  const value = clean(process.env.STUDIO_BRAIN_STARTUP_CONTEXT_PREFER_LOCAL).toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 async function handleMemoryContextRequest({
@@ -226,8 +474,29 @@ async function handleMemoryContextRequest({
     throw new Error("query is required");
   }
 
+  if (allowDefaultQuery && !agentId && !runId && hasBootstrapContext() && preferLocalStartupContext()) {
+    return asToolResult(localBootstrapContextPayload(resolvedQuery, requestedMaxItems, requestedMaxChars));
+  }
+
   try {
     const applyBootstrapBias = hasBootstrapContext() && !agentId && !runId;
+    if (allowDefaultQuery && !agentId && !runId) {
+      try {
+        const searchPayload = await requestStartupSearchPayload({
+          query: resolvedQuery,
+          requestedMaxItems,
+          tenantId,
+          baseUrl,
+          timeoutMs,
+          applyBootstrapBias,
+        });
+        if (searchPayload) {
+          return asToolResult(searchPayload);
+        }
+      } catch {
+        // Fall through to the broader context route when startup search is unavailable.
+      }
+    }
     const payload = await studioBrainRequest({
       method: "POST",
       path: "/api/memory/context",
@@ -249,7 +518,29 @@ async function handleMemoryContextRequest({
       (payload?.payload && typeof payload.payload === "object" && Array.isArray(payload.payload.items) ? payload.payload.items : null) ||
       extractPayloadRows(payload);
     const rankedRows = rankBootstrapRows(filterExpiredRows(rawRows), bootstrapThreadInfo).slice(0, requestedMaxItems);
-    return asToolResult(rewriteContextPayload(payload, rankedRows));
+    return asToolResult(
+      rewriteContextPayload(
+        {
+          ...payload,
+          context: {
+            ...(payload?.context && typeof payload.context === "object"
+              ? payload.context
+              : payload?.payload && typeof payload.payload === "object"
+                ? payload.payload
+                : {}),
+            diagnostics: {
+              ...(payload?.context?.diagnostics && typeof payload.context.diagnostics === "object"
+                ? payload.context.diagnostics
+                : payload?.diagnostics && typeof payload.diagnostics === "object"
+                  ? payload.diagnostics
+                  : {}),
+              startupSelectionStrategy: "context-fallback",
+            },
+          },
+        },
+        rankedRows
+      )
+    );
   } catch (error) {
     if (hasBootstrapContext()) {
       return asToolResult(localBootstrapContextPayload(resolvedQuery, requestedMaxItems, requestedMaxChars));
@@ -260,7 +551,12 @@ async function handleMemoryContextRequest({
 
 function resolveDefaultCredentialsPath() {
   const explicitPath = clean(process.env.PORTAL_AGENT_STAFF_CREDENTIALS);
-  const candidates = [explicitPath, DEFAULT_REPO_CREDENTIALS_PATH, DEFAULT_HOME_CREDENTIALS_PATH].filter(Boolean);
+  const candidates = [
+    explicitPath,
+    DEFAULT_REPO_CREDENTIALS_PATH,
+    DEFAULT_HOME_SECRETS_CREDENTIALS_PATH,
+    DEFAULT_HOME_CREDENTIALS_PATH,
+  ].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || DEFAULT_REPO_CREDENTIALS_PATH;
 }
 
@@ -469,11 +765,8 @@ server.registerTool(
           ok: true,
           rows,
           results: rows,
-          diagnostics: {
-            bootstrapContextLoaded: true,
-            fallbackUsed: true,
-            fallbackStrategy: "bootstrap-artifact",
-          },
+          diagnostics: localBootstrapDiagnostics(),
+          summary: clean(bootstrapArtifacts.context?.summary) || summarizeRows(rows, 500),
         });
       }
       return asToolError(error);
@@ -519,6 +812,9 @@ server.registerTool(
         )
       );
     } catch (error) {
+      if (hasBootstrapContext()) {
+        return asToolResult(localBootstrapRecentPayload(limit ?? 20));
+      }
       return asToolError(error);
     }
   }
@@ -544,6 +840,9 @@ server.registerTool(
       });
       return asToolResult(payload);
     } catch (error) {
+      if (hasBootstrapContext()) {
+        return asToolResult(localBootstrapStatsPayload());
+      }
       return asToolError(error);
     }
   }

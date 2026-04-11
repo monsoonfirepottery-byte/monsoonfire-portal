@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node ./server.mjs",
     "smoke": "node ./smoke.mjs",
-    "test": "node --test ./server.test.mjs"
+    "test": "node --test ./server.test.mjs ./thread-context.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",

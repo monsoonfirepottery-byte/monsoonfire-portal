@@ -152,3 +152,20 @@ Use this as the single source for runtime vars introduced by the backend-orchest
    - `npm run studio:env:verify` (from repo root)
 3. Redaction policy:
    - logs and status surfaces should use redacted fields (`[set]`/`[redacted]`) for token/secret/password variables.
+
+## Roborock connector bridge (Home Assistant)
+
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `STUDIO_BRAIN_ROBOROCK_PROVIDER` | Connector transport mode (`stub` or `home_assistant`) | No | `stub` |
+| `STUDIO_BRAIN_ROBOROCK_BASE_URL` | Home Assistant base URL (for example `http://homeassistant.local:8123`) | When provider is `home_assistant` | empty |
+| `STUDIO_BRAIN_ROBOROCK_ACCESS_TOKEN` | Home Assistant long-lived access token | When provider is `home_assistant` | empty |
+| `STUDIO_BRAIN_ROBOROCK_ENTITY_IDS` | Optional comma-separated allowlist of `vacuum.*` entities | No | empty |
+| `STUDIO_BRAIN_ROBOROCK_TIMEOUT_MS` | Connector HTTP timeout in milliseconds | No | `10000` |
+| `STUDIO_BRAIN_ROBOROCK_VERIFY_TLS` | TLS verification intent flag (logged for posture visibility) | No | `true` |
+| `STUDIO_BRAIN_ROBOROCK_HA_ENTITY_ID` | Home Assistant `vacuum.*` entity id used for command execution | For write commands | empty |
+| `STUDIO_BRAIN_ROBOROCK_HA_SERVICE_DOMAIN_FULL` | Service domain for whole-floor start command | No | `vacuum` |
+| `STUDIO_BRAIN_ROBOROCK_HA_SERVICE_START_FULL` | Service name for whole-floor start command | No | `start` |
+| `STUDIO_BRAIN_ROBOROCK_HA_SERVICE_DOMAIN_ROOM` | Service domain for room-targeted command | No | `roborock` |
+| `STUDIO_BRAIN_ROBOROCK_HA_SERVICE_START_ROOM` | Service name for room-targeted command | No | `vacuum_clean_segment` |
+| `STUDIO_BRAIN_ROBOROCK_HA_ROOM_IDS_PARAM` | JSON body key name for room ids payload | No | `segments` |

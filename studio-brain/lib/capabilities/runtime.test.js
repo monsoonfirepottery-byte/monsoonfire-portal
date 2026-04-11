@@ -119,3 +119,64 @@ const registry_1 = require("../connectors/registry");
     const events = await eventStore.listRecent(1);
     strict_1.default.equal(events[0].action, "capability.roborock.devices.read.executed");
 });
+(0, node_test_1.default)("execute uses mapped roborock full-clean write action", async () => {
+    const eventStore = new memoryStores_1.MemoryEventStore();
+    const logger = { debug: () => { }, info: () => { }, warn: () => { }, error: () => { } };
+    const seen = [];
+    const connectorRegistry = new registry_1.ConnectorRegistry([
+        {
+            id: "roborock",
+            target: "roborock",
+            version: "0.2.0",
+            readOnly: false,
+            async health() {
+                return {
+                    ok: true,
+                    latencyMs: 1,
+                    availability: "healthy",
+                    requestId: "h1",
+                    inputHash: "in",
+                    outputHash: "out",
+                };
+            },
+            async readStatus() {
+                return {
+                    requestId: "r1",
+                    inputHash: "ih",
+                    outputHash: "oh",
+                    rawCount: 1,
+                    devices: [{ id: "rr-1", label: "Vacuum", online: true, batteryPct: 70, attributes: {} }],
+                };
+            },
+            async execute(ctx, req) {
+                seen.push({ intent: req.intent, action: req.action });
+                return this.readStatus(ctx, req.input);
+            },
+        },
+    ], logger);
+    const runtime = new runtime_1.CapabilityRuntime(runtime_1.defaultCapabilities, eventStore, undefined, undefined, undefined, connectorRegistry);
+    const created = await runtime.create({
+        actorType: "staff",
+        actorId: "staff-1",
+        ownerUid: "owner-1",
+        effectiveScopes: [],
+    }, {
+        capabilityId: "roborock.clean.start_full",
+        rationale: "Run whole-floor clean before opening.",
+        previewSummary: "Start full cleaning",
+        requestInput: {},
+        expectedEffects: ["Starts roborock clean job."],
+        requestedBy: "staff-1",
+    });
+    strict_1.default.ok(created.proposal);
+    strict_1.default.equal(created.proposal.status, "pending_approval");
+    await runtime.approve(created.proposal.id, "ops-lead", "Approved for scheduled studio cleaning.");
+    const executed = await runtime.execute(created.proposal.id, {
+        actorType: "staff",
+        actorId: "staff-1",
+        ownerUid: "owner-1",
+        effectiveScopes: [],
+    }, {});
+    strict_1.default.equal(executed.decision.allowed, true);
+    strict_1.default.deepEqual(seen, [{ intent: "write", action: "clean.start_full" }]);
+});

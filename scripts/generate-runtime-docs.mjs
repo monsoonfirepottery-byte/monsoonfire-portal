@@ -284,7 +284,11 @@ function escapeCell(value) {
 }
 
 function relativePath(absPath) {
-  return absPath.startsWith(`${REPO_ROOT}/`) ? absPath.slice(REPO_ROOT.length + 1) : absPath;
+  const normalizedRoot = String(REPO_ROOT).replace(/\\/g, "/");
+  const normalizedPath = String(absPath ?? "").replace(/\\/g, "/");
+  return normalizedPath.startsWith(`${normalizedRoot}/`)
+    ? normalizedPath.slice(normalizedRoot.length + 1)
+    : normalizedPath;
 }
 
 function emit(payload, asJson) {

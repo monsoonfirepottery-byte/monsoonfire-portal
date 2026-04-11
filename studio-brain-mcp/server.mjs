@@ -192,6 +192,66 @@ function localBootstrapContextPayload(query, maxItems, maxChars) {
   };
 }
 
+function defaultStartupContextQuery() {
+  return (
+    clean(bootstrapThreadInfo.firstUserMessage) ||
+    clean(bootstrapThreadInfo.title) ||
+    clean(bootstrapThreadInfo.threadId) ||
+    clean(bootstrapThreadInfo.cwd) ||
+    "Studio Brain startup continuity"
+  );
+}
+
+async function handleMemoryContextRequest({
+  query,
+  agentId,
+  runId,
+  maxItems,
+  maxChars,
+  tenantId,
+  baseUrl,
+  timeoutMs,
+  allowDefaultQuery = false,
+}) {
+  const requestedMaxItems = maxItems ?? 12;
+  const requestedMaxChars = maxChars ?? 8000;
+  const resolvedQuery = clean(query) || (allowDefaultQuery ? defaultStartupContextQuery() : "");
+  if (!resolvedQuery) {
+    throw new Error("query is required");
+  }
+
+  try {
+    const applyBootstrapBias = hasBootstrapContext() && !agentId && !runId;
+    const payload = await studioBrainRequest({
+      method: "POST",
+      path: "/api/memory/context",
+      body: {
+        query: resolvedQuery,
+        agentId,
+        runId,
+        maxItems: applyBootstrapBias ? Math.min(Math.max(requestedMaxItems * 2, 16), 40) : requestedMaxItems,
+        maxChars: requestedMaxChars,
+        tenantId,
+        sourceAllowlist: applyBootstrapBias ? preferredStartupSources() : undefined,
+        sourceDenylist: [],
+      },
+      baseUrl,
+      timeoutMs,
+    });
+    const rawRows =
+      (payload?.context && typeof payload.context === "object" && Array.isArray(payload.context.items) ? payload.context.items : null) ||
+      (payload?.payload && typeof payload.payload === "object" && Array.isArray(payload.payload.items) ? payload.payload.items : null) ||
+      extractPayloadRows(payload);
+    const rankedRows = rankBootstrapRows(filterExpiredRows(rawRows), bootstrapThreadInfo).slice(0, requestedMaxItems);
+    return asToolResult(rewriteContextPayload(payload, rankedRows));
+  } catch (error) {
+    if (hasBootstrapContext()) {
+      return asToolResult(localBootstrapContextPayload(resolvedQuery, requestedMaxItems, requestedMaxChars));
+    }
+    return asToolError(error);
+  }
+}
+
 function resolveDefaultCredentialsPath() {
   const explicitPath = clean(process.env.PORTAL_AGENT_STAFF_CREDENTIALS);
   const candidates = [explicitPath, DEFAULT_REPO_CREDENTIALS_PATH, DEFAULT_HOME_CREDENTIALS_PATH].filter(Boolean);
@@ -484,6 +544,36 @@ server.registerTool(
 );
 
 server.registerTool(
+  "studio_brain_startup_context",
+  {
+    title: "Studio Brain Startup Context",
+    description: "Return the bounded startup continuity context for a fresh thread before broad repo exploration.",
+    inputSchema: {
+      query: withOptionalString(z.string()),
+      agentId: withOptionalString(z.string()),
+      runId: withOptionalString(z.string()),
+      maxItems: z.number().int().min(1).max(50).optional(),
+      maxChars: z.number().int().min(128).max(20000).optional(),
+      tenantId: withOptionalString(z.string()),
+      baseUrl: z.string().url().optional(),
+      timeoutMs: z.number().int().positive().max(60000).optional(),
+    },
+  },
+  async ({ query, agentId, runId, maxItems, maxChars, tenantId, baseUrl, timeoutMs }) =>
+    handleMemoryContextRequest({
+      query,
+      agentId,
+      runId,
+      maxItems,
+      maxChars,
+      tenantId,
+      baseUrl,
+      timeoutMs,
+      allowDefaultQuery: true,
+    })
+);
+
+server.registerTool(
   "studio_brain_memory_context",
   {
     title: "Studio Brain Memory Context",
@@ -499,40 +589,18 @@ server.registerTool(
       timeoutMs: z.number().int().positive().max(60000).optional(),
     },
   },
-  async ({ query, agentId, runId, maxItems, maxChars, tenantId, baseUrl, timeoutMs }) => {
-    try {
-      const requestedMaxItems = maxItems ?? 12;
-      const requestedMaxChars = maxChars ?? 8000;
-      const applyBootstrapBias = hasBootstrapContext() && !agentId && !runId;
-      const payload = await studioBrainRequest({
-        method: "POST",
-        path: "/api/memory/context",
-        body: {
-          query,
-          agentId,
-          runId,
-          maxItems: applyBootstrapBias ? Math.min(Math.max(requestedMaxItems * 2, 16), 40) : requestedMaxItems,
-          maxChars: requestedMaxChars,
-          tenantId,
-          sourceAllowlist: applyBootstrapBias ? preferredStartupSources() : undefined,
-          sourceDenylist: [],
-        },
-        baseUrl,
-        timeoutMs,
-      });
-      const rawRows =
-        (payload?.context && typeof payload.context === "object" && Array.isArray(payload.context.items) ? payload.context.items : null) ||
-        (payload?.payload && typeof payload.payload === "object" && Array.isArray(payload.payload.items) ? payload.payload.items : null) ||
-        extractPayloadRows(payload);
-      const rankedRows = rankBootstrapRows(filterExpiredRows(rawRows), bootstrapThreadInfo).slice(0, requestedMaxItems);
-      return asToolResult(rewriteContextPayload(payload, rankedRows));
-    } catch (error) {
-      if (hasBootstrapContext()) {
-        return asToolResult(localBootstrapContextPayload(query, maxItems ?? 12, maxChars ?? 8000));
-      }
-      return asToolError(error);
-    }
-  }
+  async ({ query, agentId, runId, maxItems, maxChars, tenantId, baseUrl, timeoutMs }) =>
+    handleMemoryContextRequest({
+      query,
+      agentId,
+      runId,
+      maxItems,
+      maxChars,
+      tenantId,
+      baseUrl,
+      timeoutMs,
+      allowDefaultQuery: false,
+    })
 );
 
 server.registerTool(

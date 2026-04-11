@@ -1,0 +1,593 @@
+.control-tower-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.control-tower-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(71, 140, 157, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(14, 18, 24, 0.96), rgba(10, 12, 18, 0.92));
+  border: 1px solid rgba(136, 152, 179, 0.18);
+  box-shadow: 0 28px 64px rgba(2, 6, 12, 0.28);
+}
+
+.control-tower-hero h1,
+.control-tower-section-card h2,
+.control-tower-palette h2,
+.control-tower-drawer h2 {
+  margin: 0;
+  font-family: "Sora", var(--display-font, sans-serif);
+  letter-spacing: -0.03em;
+}
+
+.control-tower-hero p,
+.control-tower-section-header p,
+.control-tower-drawer-header p {
+  margin: 0;
+  color: rgba(223, 227, 235, 0.74);
+  line-height: 1.6;
+}
+
+.control-tower-kicker {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(132, 179, 201, 0.82);
+}
+
+.control-tower-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.control-tower-hero-actions,
+.control-tower-status-row,
+.control-tower-room-actions,
+.control-tower-service-actions,
+.control-tower-session-meta,
+.control-tower-palette-actions,
+.control-tower-next-footer,
+.control-tower-event-footer,
+.control-tower-drawer-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.control-tower-stat-grid,
+.control-tower-attention-grid,
+.control-tower-channel-grid,
+.control-tower-room-grid,
+.control-tower-service-grid,
+.control-tower-board-grid,
+.control-tower-palette-grid,
+.control-tower-room-meta-grid,
+.control-tower-form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.control-tower-stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.control-tower-stat-card,
+.control-tower-attention-card,
+.control-tower-board-card,
+.control-tower-channel-card,
+.control-tower-room-card,
+.control-tower-service-card,
+.control-tower-next-card,
+.control-tower-pinned-card,
+.control-tower-event-card,
+.control-tower-session-card,
+.control-tower-room-meta-card,
+.control-tower-palette-card,
+.control-tower-attach-card,
+.control-tower-send-card {
+  border-radius: 18px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(14, 18, 24, 0.82);
+  box-shadow: 0 14px 30px rgba(3, 8, 15, 0.24);
+}
+
+.control-tower-stat-card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-tower-stat-card span,
+.control-tower-room-meta-card span,
+.control-tower-service-impact,
+.control-tower-room-project,
+.control-tower-service-change,
+.control-tower-session-meta,
+.control-tower-pinned-card span {
+  font-size: 12px;
+  color: rgba(214, 221, 228, 0.62);
+}
+
+.control-tower-stat-card strong {
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.control-tower-status-row {
+  color: rgba(214, 221, 228, 0.72);
+  font-size: 13px;
+}
+
+.control-tower-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.95fr);
+  gap: 18px;
+}
+
+.control-tower-main,
+.control-tower-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.control-tower-section-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.control-tower-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.control-tower-attention-grid,
+.control-tower-channel-grid,
+.control-tower-room-grid,
+.control-tower-service-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.control-tower-attention-card,
+.control-tower-board-card,
+.control-tower-channel-card,
+.control-tower-room-card,
+.control-tower-service-card,
+.control-tower-next-card,
+.control-tower-pinned-card,
+.control-tower-room-meta-card,
+.control-tower-palette-card,
+.control-tower-attach-card,
+.control-tower-send-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-tower-card-top,
+.control-tower-event-meta,
+.control-tower-session-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.control-tower-board-list,
+.control-tower-memory-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-tower-board-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.control-tower-board-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(214, 221, 228, 0.58);
+}
+
+.control-tower-attention-card h3,
+.control-tower-board-card h3,
+.control-tower-channel-card h3,
+.control-tower-room-card h3,
+.control-tower-service-card h3,
+.control-tower-next-card h3,
+.control-tower-pinned-card h3,
+.control-tower-palette-card h3 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.control-tower-attention-card p,
+.control-tower-board-card p,
+.control-tower-channel-card p,
+.control-tower-memory-card p,
+.control-tower-room-card p,
+.control-tower-service-card p,
+.control-tower-next-card p,
+.control-tower-pinned-card p,
+.control-tower-event-card p,
+.control-tower-palette-card p,
+.control-tower-attach-card p,
+.control-tower-send-card p {
+  margin: 0;
+  color: rgba(223, 227, 235, 0.74);
+  line-height: 1.55;
+}
+
+.control-tower-room-card {
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.control-tower-room-card:hover,
+.control-tower-room-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(132, 179, 201, 0.34);
+  box-shadow: 0 18px 34px rgba(8, 12, 20, 0.28);
+  outline: none;
+}
+
+.control-tower-room-name,
+.control-tower-service-name {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.control-tower-room-footer,
+.control-tower-next-footer,
+.control-tower-event-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: rgba(214, 221, 228, 0.64);
+  font-size: 12px;
+}
+
+.control-tower-next-list,
+.control-tower-pinned-list,
+.control-tower-timeline,
+.control-tower-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-tower-memory-card {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(14, 18, 24, 0.72);
+}
+
+.control-tower-memory-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.control-tower-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.control-tower-memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-tower-memory-list span {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(223, 227, 235, 0.78);
+}
+
+.control-tower-pill-danger,
+.control-tower-tone-danger,
+.control-tower-event-critical {
+  border-color: rgba(178, 87, 69, 0.38);
+  background: rgba(47, 20, 19, 0.8);
+}
+
+.control-tower-pill-warn,
+.control-tower-tone-warn,
+.control-tower-event-warning {
+  border-color: rgba(196, 152, 78, 0.32);
+  background: rgba(43, 32, 17, 0.8);
+}
+
+.control-tower-pill-ok,
+.control-tower-tone-ok {
+  border-color: rgba(93, 168, 133, 0.28);
+  background: rgba(16, 34, 26, 0.8);
+}
+
+.control-tower-pill-neutral,
+.control-tower-tone-neutral,
+.control-tower-event-info {
+  border-color: rgba(136, 152, 179, 0.16);
+}
+
+.control-tower-palette-backdrop,
+.control-tower-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 12, 0.56);
+  backdrop-filter: blur(8px);
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.control-tower-palette,
+.control-tower-drawer {
+  width: min(1100px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(136, 152, 179, 0.18);
+  background: linear-gradient(180deg, rgba(11, 15, 22, 0.98), rgba(8, 11, 18, 0.96));
+  box-shadow: 0 28px 64px rgba(1, 5, 12, 0.38);
+}
+
+.control-tower-drawer {
+  width: min(760px, calc(100vw - 40px));
+  margin-left: auto;
+}
+
+.control-tower-palette-header,
+.control-tower-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.control-tower-palette-grid {
+  grid-template-columns: 0.9fr 1.1fr;
+}
+
+.control-tower-palette-grid-jump {
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+}
+
+.control-tower-room-meta-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.control-tower-palette-tabs {
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(10, 13, 19, 0.82);
+  margin-bottom: 18px;
+}
+
+.control-tower-palette-tab {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(223, 227, 235, 0.74);
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.control-tower-palette-tab.is-active {
+  background: rgba(132, 179, 201, 0.18);
+  color: rgba(244, 247, 250, 0.96);
+}
+
+.control-tower-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.control-tower-palette-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.control-tower-form-grid label,
+.control-tower-send-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-tower-palette-search span,
+.control-tower-form-grid label span,
+.control-tower-send-card label span {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(214, 221, 228, 0.68);
+}
+
+.control-tower-palette-search input,
+.control-tower-form-grid input,
+.control-tower-form-grid textarea,
+.control-tower-send-card textarea,
+.control-tower-setup-row input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(136, 152, 179, 0.2);
+  background: rgba(11, 15, 22, 0.92);
+  color: var(--text, #f5f7fb);
+  padding: 12px 14px;
+}
+
+.control-tower-palette-search input:focus,
+.control-tower-form-grid input:focus,
+.control-tower-form-grid textarea:focus,
+.control-tower-send-card textarea:focus,
+.control-tower-setup-row input:focus {
+  outline: none;
+  border-color: rgba(132, 179, 201, 0.42);
+  box-shadow: 0 0 0 3px rgba(132, 179, 201, 0.12);
+}
+
+.control-tower-palette-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-tower-palette-result {
+  text-align: left;
+  border-radius: 16px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(14, 18, 24, 0.82);
+  box-shadow: 0 14px 30px rgba(3, 8, 15, 0.2);
+  padding: 14px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.control-tower-palette-result:hover,
+.control-tower-palette-result:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(132, 179, 201, 0.34);
+  box-shadow: 0 18px 34px rgba(8, 12, 20, 0.26);
+  outline: none;
+}
+
+.control-tower-palette-result-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.control-tower-palette-result p,
+.control-tower-palette-result small {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.control-tower-palette-result small {
+  color: rgba(214, 221, 228, 0.62);
+}
+
+.control-tower-palette kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(8, 11, 18, 0.92);
+  font-size: 12px;
+  color: rgba(244, 247, 250, 0.88);
+}
+
+.control-tower-setup-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(15, 21, 30, 0.38);
+}
+
+.control-tower-setup-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(214, 221, 228, 0.68);
+}
+
+.control-tower-setup-help {
+  margin: 0;
+  color: rgba(214, 221, 228, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.control-tower-setup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.control-tower-form-span-2 {
+  grid-column: 1 / -1;
+}
+
+.control-tower-attach-card code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: rgba(223, 227, 235, 0.84);
+}
+
+@media (max-width: 1100px) {
+  .control-tower-grid,
+  .control-tower-palette-grid,
+  .control-tower-palette-grid-jump {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .control-tower-room-meta-grid,
+  .control-tower-board-grid,
+  .control-tower-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-tower-setup-row {
+    grid-template-columns: 1fr;
+  }
+
+  .control-tower-palette-backdrop,
+  .control-tower-drawer-backdrop {
+    padding: 12px;
+  }
+
+  .control-tower-palette,
+  .control-tower-drawer {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    padding: 16px;
+  }
+}

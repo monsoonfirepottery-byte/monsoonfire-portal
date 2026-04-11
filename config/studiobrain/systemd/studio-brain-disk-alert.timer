@@ -1,0 +1,10 @@
+[Unit]
+Description=Run disk usage check every 15 minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=15m
+Unit=studio-brain-disk-alert.service
+
+[Install]
+WantedBy=timers.target

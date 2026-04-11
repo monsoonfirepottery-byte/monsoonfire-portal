@@ -63,6 +63,7 @@ type EventChargeDoc = {
   lineItems?: Array<{ title?: string | null; priceCents?: number | null; quantity?: number | null }>;
   paymentStatus?: string | null;
   stripeCheckoutSessionId?: string | null;
+  receiptUrl?: string | null;
 };
 
 type ApiV1Envelope<TData> = {
@@ -90,6 +91,7 @@ type MaterialsOrderDoc = {
   createdAt?: FirestoreTimestamp | null;
   pickupNotes?: string | null;
   checkoutUrl?: string | null;
+  receiptUrl?: string | null;
   items?: Array<{ name?: string | null; quantity?: number | null; unitPrice?: number | null }>;
 };
 
@@ -375,7 +377,10 @@ export default function BillingView({ user }: Props) {
   }, [missingEventIds]);
 
   const pendingMaterialsCount = useMemo(() => {
-    return materials.filter((order) => (order.status || "").toLowerCase() !== "paid").length;
+    return materials.filter((order) => {
+      const status = (order.status || "").toLowerCase();
+      return status !== "paid" && status !== "picked_up";
+    }).length;
   }, [materials]);
 
   const actionableBillingTasks = useMemo(() => {
@@ -400,7 +405,7 @@ export default function BillingView({ user }: Props) {
         totalCents: charge.totalCents ?? 0,
         createdAt: toDate(charge.createdAt),
         status: "paid",
-        link: charge.stripeCheckoutSessionId ? `https://stripe.com/checkout/${charge.stripeCheckoutSessionId}` : null,
+        link: charge.receiptUrl ?? null,
       }));
 
     const storeReceipts = materials
@@ -419,7 +424,7 @@ export default function BillingView({ user }: Props) {
         totalCents: order.totalCents ?? 0,
         createdAt: toDate(order.createdAt),
         status: order.status ?? "paid",
-        link: order.checkoutUrl ?? null,
+        link: order.receiptUrl ?? null,
       }));
 
     return [...eventReceipts, ...storeReceipts].sort((a, b) => {
@@ -464,6 +469,11 @@ export default function BillingView({ user }: Props) {
         {
           eventId: signup.eventId,
           signupId: signup.id,
+        },
+        {
+          headers: {
+            "Idempotency-Key": `billing-event:${signup.eventId}:${signup.id}`,
+          },
         }
       );
       if (resp.checkoutUrl) {
@@ -491,9 +501,17 @@ export default function BillingView({ user }: Props) {
     setCommissionPayBusyId(entry.requestId);
     setStatusMessage("");
     try {
-      const resp = await client.postJson<AgentCheckoutResponse>("createAgentCheckoutSession", {
-        orderId: entry.commissionOrderId,
-      });
+      const resp = await client.postJson<AgentCheckoutResponse>(
+        "createAgentCheckoutSession",
+        {
+          orderId: entry.commissionOrderId,
+        },
+        {
+          headers: {
+            "Idempotency-Key": `commission:${entry.commissionOrderId}:${entry.requestId}`,
+          },
+        }
+      );
       if (!resp.ok) {
         setStatusMessage(resp.message ?? "Unable to create commission checkout session.");
         return;
@@ -663,16 +681,23 @@ export default function BillingView({ user }: Props) {
                       ) : null}
                     </div>
                     <div>
-                      {order.checkoutUrl ? (
+                      {(() => {
+                        const normalizedStatus = (order.status || "").toLowerCase();
+                        const isSettled =
+                          normalizedStatus === "paid" || normalizedStatus === "picked_up";
+                        const actionUrl = isSettled ? order.receiptUrl ?? null : order.checkoutUrl ?? null;
+                        const actionLabel = isSettled ? "Open receipt" : "Continue checkout";
+                        return actionUrl ? (
                         <a
                           className="btn btn-ghost"
-                          href={order.checkoutUrl}
+                          href={actionUrl}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Open receipt
+                          {actionLabel}
                         </a>
-                      ) : null}
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 ))}

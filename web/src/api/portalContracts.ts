@@ -1622,6 +1622,9 @@ export type ListMaterialsProductsResponse = PortalApiOkEnvelope & {
 export type CreateMaterialsCheckoutSessionResponse = PortalApiOkEnvelope & {
   orderId: string;
   checkoutUrl?: string | null;
+  receiptUrl?: string | null;
+  sessionId?: string | null;
+  mode?: "test" | "live" | string | null;
 };
 
 export type SeedMaterialsCatalogResponse = PortalApiOkEnvelope & {
@@ -1822,6 +1825,9 @@ export type CheckInEventResponse = PortalApiOkEnvelope & {
 
 export type CreateEventCheckoutSessionResponse = PortalApiOkEnvelope & {
   checkoutUrl?: string | null;
+  receiptUrl?: string | null;
+  sessionId?: string | null;
+  mode?: "test" | "live" | string | null;
 };
 
 export type ImportLibraryIsbnsResponse = PortalApiOkEnvelope & {
@@ -2110,6 +2116,7 @@ export type MaterialOrderSummary = {
   currency: string;
   pickupNotes?: string | null;
   checkoutUrl?: string | null;
+  receiptUrl?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
   items: MaterialOrderItemSummary[];
@@ -2124,6 +2131,7 @@ export type BillingReceipt = {
   currency: string;
   paidAt?: string | null;
   createdAt?: string | null;
+  receiptUrl?: string | null;
   metadata?: Record<string, unknown>;
 };
 

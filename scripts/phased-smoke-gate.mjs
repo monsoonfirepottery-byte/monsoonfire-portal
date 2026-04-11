@@ -3,8 +3,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { runResolved } from "./lib/command-runner.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PHASE_SMOKE_PROFILES = createPhaseProfiles();
@@ -177,10 +177,21 @@ function addFinding(status, phase, id, message, target = "") {
 }
 
 function executeCommand(command) {
-  const result = spawnSync(command, {
+  const invocation = parseCommandString(command);
+  if (!invocation) {
+    return {
+      ok: false,
+      message: `Unable to parse command: ${command}`,
+      output: "",
+      nested: null,
+      nestedStatus: "fail",
+      nestedSeverity: "error",
+      artifact: null,
+    };
+  }
+  const result = runResolved(invocation.command, invocation.args, {
     cwd: ROOT,
     encoding: "utf8",
-    shell: true,
     stdio: "pipe",
     env: process.env,
   });
@@ -211,6 +222,70 @@ function executeCommand(command) {
     nestedStatus: nestedStatus || "fail",
     nestedSeverity: nestedSeverity || "error",
     artifact,
+  };
+}
+
+function parseCommandString(command) {
+  const input = String(command || "").trim();
+  if (!input) return null;
+
+  const tokens = [];
+  let current = "";
+  let quote = "";
+  let escaped = false;
+
+  for (const char of input) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        quote = "";
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "\"" || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (escaped) {
+    current += "\\";
+  }
+  if (quote) {
+    return null;
+  }
+  if (current) {
+    tokens.push(current);
+  }
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  return {
+    command: tokens[0],
+    args: tokens.slice(1),
   };
 }
 

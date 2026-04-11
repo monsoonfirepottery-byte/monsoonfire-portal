@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isStudioBrainHostAllowed, resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 import { existsSync } from "node:fs";
+import { runResolved } from "./lib/command-runner.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,6 +12,9 @@ const repoRoot = resolve(__dirname, "..");
 
 const parsedArgs = parseArgs(process.argv.slice(2));
 const includeSmoke = parsedArgs.smoke;
+const studioBrainNetworkProfile = resolveStudioBrainNetworkProfile({ env: process.env });
+const usesRemoteStudioBrainHost =
+  studioBrainNetworkProfile.profile === "lan-static" || studioBrainNetworkProfile.profile === "lan-dhcp";
 
 const REQUIRED_NODE_ENTRYPOINTS = [
   "scripts/start-emulators.mjs",
@@ -151,18 +155,10 @@ const steps = [
     required: true,
   },
   {
-    name: "studio-brain preflight",
-    kind: "command",
-    command: "npm",
-    args: ["--prefix", "studio-brain", "run", "preflight"],
-    remediation: "Start required services (Postgres/Redis/MinIO) and retry.",
-    required: true,
-  },
-  {
     name: "studio-brain status gate",
     kind: "command",
-    command: "npm",
-    args: ["run", "studio:check:safe", "--", "--json", "--no-evidence", "--no-host-scan"],
+    command: "node",
+    args: ["./scripts/studiobrain-status.mjs", "--require-safe", "--json", "--no-evidence", "--no-host-scan"],
     remediation: "Start studio-brain, run env fixes, and rerun this gate.",
     required: true,
   },
@@ -183,6 +179,17 @@ const steps = [
     required: false,
   },
 ];
+
+if (!usesRemoteStudioBrainHost) {
+  steps.splice(10, 0, {
+    name: "studio-brain preflight",
+    kind: "command",
+    command: "npm",
+    args: ["--prefix", "studio-brain", "run", "preflight"],
+    remediation: "Start required services (Postgres/Redis/MinIO) and retry.",
+    required: true,
+  });
+}
 
 if (includeSmoke) {
   steps.push(
@@ -236,14 +243,12 @@ for (const step of steps) {
   const result = executeStep(step);
   summary.steps.push(result);
 
-  if (!result.ok) {
+  if (!result.ok && step.required) {
     summary.status = "fail";
     summary.failedStep = step.name;
-    if (step.required) {
-      process.stderr.write(`FAILED: ${step.name}\n`);
-      process.stderr.write(`REMEDIATION: ${step.remediation}\n`);
-      break;
-    }
+    process.stderr.write(`FAILED: ${step.name}\n`);
+    process.stderr.write(`REMEDIATION: ${step.remediation}\n`);
+    break;
   }
 }
 
@@ -288,7 +293,7 @@ function executeStep(step) {
     return common;
   }
 
-  const result = spawnSync(step.command, step.args, {
+  const result = runResolved(step.command, step.args, {
     cwd: repoRoot,
     stdio: "pipe",
     encoding: "utf8",

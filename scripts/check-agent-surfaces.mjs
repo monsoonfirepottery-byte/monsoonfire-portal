@@ -450,8 +450,14 @@ function countStartHereLinks(content) {
 }
 
 function isInsideRoot(candidatePath, rootPath) {
-  const normalizedRoot = `${rootPath}${rootPath.endsWith("/") ? "" : "/"}`;
-  return candidatePath === rootPath || candidatePath.startsWith(normalizedRoot);
+  const normalizedCandidate = normalizeFsPath(candidatePath);
+  const normalizedRoot = normalizeFsPath(rootPath);
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
+}
+
+function normalizeFsPath(value) {
+  const normalized = String(value || "").replace(/\\/g, "/").replace(/\/+$/, "");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function readFile(path) {

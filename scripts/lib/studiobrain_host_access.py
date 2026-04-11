@@ -206,12 +206,34 @@ Set-Acl -LiteralPath $key -AclObject $acl
             text=True,
             check=False,
         )
-        if result.returncode != 0:
+        if result.returncode == 0:
+            return {
+                "platform": "windows",
+                "ok": True,
+                "method": "powershell-acl",
+                "path": str(key_path),
+            }
+
+        icacls = shutil.which("icacls") or shutil.which("icacls.exe")
+        if not icacls:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "failed to harden Studio Brain SSH key permissions")
+
+        current_user = f"{os.environ.get('COMPUTERNAME', '').strip()}\\{os.environ.get('USERNAME', '').strip()}".strip("\\")
+        grants = [identity for identity in (current_user, "NT AUTHORITY\\SYSTEM", "BUILTIN\\Administrators") if identity]
+        commands = [
+            [icacls, str(key_path), "/inheritance:r"],
+            [icacls, str(key_path), "/grant:r", *[f"{identity}:F" for identity in grants]],
+        ]
+        last_error = result.stderr.strip() or result.stdout.strip() or "failed to harden Studio Brain SSH key permissions"
+        for command in commands:
+            acl_result = subprocess.run(command, capture_output=True, text=True, check=False)
+            if acl_result.returncode != 0:
+                last_error = acl_result.stderr.strip() or acl_result.stdout.strip() or last_error
+                raise RuntimeError(last_error)
         return {
             "platform": "windows",
             "ok": True,
-            "method": "powershell-acl",
+            "method": "icacls-fallback",
             "path": str(key_path),
         }
 

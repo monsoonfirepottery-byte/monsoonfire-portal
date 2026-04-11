@@ -8005,12 +8005,16 @@ export function createMemoryService(options: MemoryServiceOptions) {
       if (runId && row.runId !== runId) return false;
       return true;
     };
-    const coreRows = synthesizeCoreRowsFromBrief(briefArtifact, tenantResolution.tenantId, new Date().toISOString()).filter((row) =>
-      isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist),
-    );
-
     const knownRows = new Map<string, MemoryRecord>();
     const threadBuckets = new Map<string, MemoryRecord[]>();
+    const allowCoreRows =
+      (agentId === null && runId === null) || tenantFallbackUsedForEmptyScope;
+    const coreRows = allowCoreRows
+      ? synthesizeCoreRowsFromBrief(briefArtifact, tenantResolution.tenantId, new Date().toISOString()).filter((row) =>
+          isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist),
+        )
+      : [];
+
     for (const row of [...coreRows, ...effectiveRows]) {
       knownRows.set(row.id, row);
       const threadKey = threadKeyFromMetadata(normalizeMetadata(row.metadata));

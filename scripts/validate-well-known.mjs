@@ -2,8 +2,9 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const args = parseArgs(process.argv.slice(2));
 const artifactPath = resolve(ROOT, args.artifact);

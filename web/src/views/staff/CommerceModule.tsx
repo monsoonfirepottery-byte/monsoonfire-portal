@@ -10,6 +10,7 @@ type CommerceOrderRecord = {
   updatedAt: string;
   createdAt: string;
   checkoutUrl: string | null;
+  receiptUrl: string | null;
   pickupNotes: string | null;
   itemCount: number;
 };
@@ -34,6 +35,7 @@ type ReceiptRecord = {
   currency: string;
   createdAt: string | null;
   paidAt: string | null;
+  receiptUrl: string | null;
 };
 
 type CommerceKpis = {
@@ -183,16 +185,23 @@ export default function CommerceModule({
                       <td>{o.itemCount}</td>
                       <td>{o.updatedAt}</td>
                       <td>
-                        {o.checkoutUrl ? (
+                        {(() => {
+                          const normalizedStatus = o.status.toLowerCase();
+                          const isSettled =
+                            normalizedStatus === "paid" || normalizedStatus === "picked_up";
+                          const link = isSettled ? o.receiptUrl : o.checkoutUrl;
+                          const label = isSettled ? "Copy receipt link" : "Copy checkout link";
+                          return link ? (
                           <button
                             className="btn btn-ghost btn-small"
-                            onClick={() => void copy(o.checkoutUrl ?? "")}
+                            onClick={() => void copy(link)}
                           >
-                            Copy checkout link
+                            {label}
                           </button>
-                        ) : (
+                          ) : (
                           <span className="staff-mini">-</span>
-                        )}
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))

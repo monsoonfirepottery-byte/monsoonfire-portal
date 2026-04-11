@@ -2747,7 +2747,7 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 });
 
 export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
-export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
+export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog } from "./materials";
 export {
   importLibraryIsbns,
   refreshLibraryIsbnMetadata,
@@ -2790,7 +2790,6 @@ export {
   claimEventOffer,
   checkInEvent,
   createEventCheckoutSession,
-  eventStripeWebhook,
   sweepIndustryEvents,
   sweepEventOffers,
 } from "./events";

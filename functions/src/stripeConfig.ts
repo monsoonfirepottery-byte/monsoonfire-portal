@@ -22,31 +22,23 @@ import { assertActorAuthorized, logAuditEvent } from "./authz";
 import {
   STRIPE_SECRET_PARAMS,
   type StripeMode,
-  getStripeSecretKey,
   getStripeWebhookSecret,
 } from "./stripeSecrets";
-import { getAgentOpsConfig } from "./agentCommerce";
+import { parseMaterialProductDoc, parseMaterialsOrderDoc } from "./firestoreConverters";
+import {
+  getStripeClient,
+  getWebhookEndpointUrl,
+  normalizeStripeConfig,
+  resolveStripeReceiptUrl,
+  STRIPE_CONFIG_DOC_PATH as CONFIG_DOC_PATH,
+  stripeConfigSchema,
+  type StripeConfigInput,
+  validateStripeConfigForPersist as validateStripeConfigForPersistImpl,
+  validateUrlField,
+} from "./stripeRuntime";
 
 const REGION = "us-central1";
-const CONFIG_DOC_PATH = "config/stripe";
 const AUDIT_SUBCOLLECTION = "stripe_audit";
-
-const stripeConfigSchema = z.object({
-  mode: z.enum(["test", "live"]).default("test"),
-  publishableKeys: z.object({
-    test: z.string().trim().default(""),
-    live: z.string().trim().default(""),
-  }).default({ test: "", live: "" }),
-  priceIds: z.record(z.string(), z.string().trim()).default({}),
-  productIds: z.record(z.string(), z.string().trim()).default({}),
-  enabledFeatures: z.object({
-    checkout: z.boolean().default(true),
-    customerPortal: z.boolean().default(false),
-    invoices: z.boolean().default(false),
-  }).default({ checkout: true, customerPortal: false, invoices: false }),
-  successUrl: z.string().trim().default(""),
-  cancelUrl: z.string().trim().default(""),
-});
 
 const checkoutSchema = z.object({
   priceId: z.string().trim().optional(),
@@ -57,8 +49,6 @@ const checkoutSchema = z.object({
 const agentCheckoutSchema = z.object({
   orderId: z.string().trim().min(1),
 });
-
-type StripeConfigInput = z.infer<typeof stripeConfigSchema>;
 
 type StripeAuditRow = {
   id: string;
@@ -97,16 +87,20 @@ type PaymentUpdate = {
   paymentId: string;
   status: PaymentStatus;
   uid: string | null;
+  source: "portal" | "agent" | "materials" | "events";
   sessionId: string | null;
   paymentIntentId: string | null;
   invoiceId: string | null;
   orderId: string | null;
+  chargeId: string | null;
+  signupId: string | null;
   reservationId: string | null;
   amountTotal: number | null;
   currency: string | null;
   sourceEventType: string;
   disputeStatus: string | null;
   disputeLifecycle: "opened" | "closed" | null;
+  receiptUrl: string | null;
 };
 
 type StripeWebhookModeSource = "env_override" | "config_doc" | "default_test";
@@ -263,28 +257,6 @@ StripeWebhookEventContract
   },
 };
 
-const STRIPE_CLIENTS: Partial<Record<StripeMode, Stripe>> = {};
-
-function getStripeClient(mode: StripeMode): Stripe {
-  const cached = STRIPE_CLIENTS[mode];
-  if (cached) return cached;
-  const client = new Stripe(getStripeSecretKey(mode));
-  STRIPE_CLIENTS[mode] = client;
-  return client;
-}
-
-function parseStringMap(input: unknown): Record<string, string> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    const k = key.trim();
-    const v = safeString(value).trim();
-    if (!k || !v) continue;
-    out[k] = v;
-  }
-  return out;
-}
-
 function maybeIso(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof Timestamp) return value.toDate().toISOString();
@@ -298,62 +270,7 @@ function maybeIso(value: unknown): string | null {
   }
   return null;
 }
-
-function getWebhookEndpointUrl(): string {
-  const configured = safeString(process.env.STRIPE_WEBHOOK_PUBLIC_URL).trim();
-  if (configured) return configured;
-  const projectId = safeString(process.env.GCLOUD_PROJECT).trim();
-  if (!projectId) return `/${REGION}/stripePortalWebhook`;
-  return `https://${REGION}-${projectId}.cloudfunctions.net/stripePortalWebhook`;
-}
-
-function normalizeStripeConfig(data: Record<string, unknown> | null | undefined): StripeConfigInput {
-  return stripeConfigSchema.parse({
-    mode: safeString(data?.mode, "test"),
-    publishableKeys: {
-      test: safeString((data?.publishableKeys as Record<string, unknown> | undefined)?.test),
-      live: safeString((data?.publishableKeys as Record<string, unknown> | undefined)?.live),
-    },
-    priceIds: parseStringMap(data?.priceIds),
-    productIds: parseStringMap(data?.productIds),
-    enabledFeatures: {
-      checkout: (data?.enabledFeatures as Record<string, unknown> | undefined)?.checkout === true,
-      customerPortal: (data?.enabledFeatures as Record<string, unknown> | undefined)?.customerPortal === true,
-      invoices: (data?.enabledFeatures as Record<string, unknown> | undefined)?.invoices === true,
-    },
-    successUrl: safeString(data?.successUrl),
-    cancelUrl: safeString(data?.cancelUrl),
-  });
-}
-
-function validatePublishableKeys(config: StripeConfigInput) {
-  if (config.publishableKeys.test && !config.publishableKeys.test.startsWith("pk_test_")) {
-    throw new Error("publishableKeys.test must start with pk_test_");
-  }
-  if (config.publishableKeys.live && !config.publishableKeys.live.startsWith("pk_live_")) {
-    throw new Error("publishableKeys.live must start with pk_live_");
-  }
-}
-
-function validateUrlField(label: string, value: string) {
-  if (!value) throw new Error(`${label} is required`);
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      throw new Error("invalid protocol");
-    }
-  } catch {
-    throw new Error(`${label} must be a valid URL`);
-  }
-}
-
-export function validateStripeConfigForPersist(input: unknown): StripeConfigInput {
-  const parsed = stripeConfigSchema.parse(input);
-  validatePublishableKeys(parsed);
-  validateUrlField("successUrl", parsed.successUrl);
-  validateUrlField("cancelUrl", parsed.cancelUrl);
-  return parsed;
-}
+export const validateStripeConfigForPersist = validateStripeConfigForPersistImpl;
 
 function toPublicConfigResponse(raw: Record<string, unknown>): StripeConfigResponse {
   const cfg = normalizeStripeConfig(raw);
@@ -475,15 +392,33 @@ export function buildStripePaymentAuditDetails(params: {
   };
 }
 
+function parsePaymentSource(value: unknown): PaymentUpdate["source"] {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (normalized === "agent") return "agent";
+  if (normalized === "materials") return "materials";
+  if (normalized === "events") return "events";
+  return "portal";
+}
+
 function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentUpdate {
   const amountTotal = typeof session.amount_total === "number" ? session.amount_total : null;
   const currency = typeof session.currency === "string" ? session.currency : null;
   const sessionId = typeof session.id === "string" ? session.id : null;
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
   const uid = safeString(session.metadata?.uid) || safeString(session.client_reference_id) || null;
+  const source = parsePaymentSource(session.metadata?.source);
   const orderId =
     safeString(session.metadata?.orderId) ||
     safeString(session.metadata?.agentOrderId) ||
+    safeString(session.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(session.metadata?.chargeId) ||
+    safeString(session.metadata?.eventChargeId) ||
+    null;
+  const signupId =
+    safeString(session.metadata?.signupId) ||
+    safeString(session.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(session.metadata?.reservationId) ||
@@ -493,16 +428,20 @@ function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentU
     paymentId: sessionId || paymentIntentId || `checkout_${Date.now()}`,
     status: "checkout_completed",
     uid,
+    source,
     sessionId,
     paymentIntentId,
     invoiceId: null,
     orderId,
+    chargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType: "checkout.session.completed",
     disputeStatus: null,
     disputeLifecycle: null,
+    receiptUrl: null,
   };
 }
 
@@ -510,28 +449,56 @@ function parsePaymentIntentPayload(intent: Stripe.PaymentIntent): PaymentUpdate 
   const amountTotal = typeof intent.amount_received === "number" ? intent.amount_received : null;
   const currency = typeof intent.currency === "string" ? intent.currency : null;
   const uid = safeString(intent.metadata?.uid) || null;
+  const source = parsePaymentSource(intent.metadata?.source);
   const orderId =
     safeString(intent.metadata?.orderId) ||
     safeString(intent.metadata?.agentOrderId) ||
+    safeString(intent.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(intent.metadata?.chargeId) ||
+    safeString(intent.metadata?.eventChargeId) ||
+    null;
+  const signupId =
+    safeString(intent.metadata?.signupId) ||
+    safeString(intent.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(intent.metadata?.reservationId) ||
     safeString(intent.metadata?.agentReservationId) ||
     null;
+  const latestChargeId =
+    typeof intent.latest_charge === "string"
+      ? intent.latest_charge
+      : typeof intent.latest_charge === "object" &&
+          intent.latest_charge &&
+          typeof intent.latest_charge.id === "string"
+        ? intent.latest_charge.id
+        : null;
+  const receiptUrl =
+    typeof intent.latest_charge === "object" &&
+    intent.latest_charge &&
+    typeof intent.latest_charge.receipt_url === "string"
+      ? intent.latest_charge.receipt_url
+      : null;
   return {
     paymentId: intent.id,
     status: "payment_succeeded",
     uid,
+    source,
     sessionId: safeString(intent.metadata?.checkoutSessionId) || null,
     paymentIntentId: intent.id,
     invoiceId: null,
     orderId,
+    chargeId: chargeId || latestChargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType: "payment_intent.succeeded",
     disputeStatus: null,
     disputeLifecycle: null,
+    receiptUrl,
   };
 }
 
@@ -539,9 +506,19 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
   const amountTotal = typeof invoice.amount_paid === "number" ? invoice.amount_paid : null;
   const currency = typeof invoice.currency === "string" ? invoice.currency : null;
   const uid = safeString(invoice.metadata?.uid) || null;
+  const source = parsePaymentSource(invoice.metadata?.source);
   const orderId =
     safeString(invoice.metadata?.orderId) ||
     safeString(invoice.metadata?.agentOrderId) ||
+    safeString(invoice.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(invoice.metadata?.chargeId) ||
+    safeString(invoice.metadata?.eventChargeId) ||
+    null;
+  const signupId =
+    safeString(invoice.metadata?.signupId) ||
+    safeString(invoice.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(invoice.metadata?.reservationId) ||
@@ -551,6 +528,7 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
     paymentId: invoice.id,
     status: "invoice_paid",
     uid,
+    source,
     sessionId: safeString(invoice.metadata?.checkoutSessionId) || null,
     paymentIntentId:
       typeof (invoice as unknown as { payment_intent?: unknown }).payment_intent === "string"
@@ -558,12 +536,18 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
         : null,
     invoiceId: invoice.id,
     orderId,
+    chargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType: "invoice.paid",
     disputeStatus: null,
     disputeLifecycle: null,
+    receiptUrl:
+      safeString((invoice as unknown as { hosted_invoice_url?: unknown }).hosted_invoice_url) ||
+      safeString((invoice as unknown as { invoice_pdf?: unknown }).invoice_pdf) ||
+      null,
   };
 }
 
@@ -571,9 +555,19 @@ function parsePaymentIntentFailedPayload(intent: Stripe.PaymentIntent): PaymentU
   const amountTotal = typeof intent.amount === "number" ? intent.amount : null;
   const currency = typeof intent.currency === "string" ? intent.currency : null;
   const uid = safeString(intent.metadata?.uid) || null;
+  const source = parsePaymentSource(intent.metadata?.source);
   const orderId =
     safeString(intent.metadata?.orderId) ||
     safeString(intent.metadata?.agentOrderId) ||
+    safeString(intent.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(intent.metadata?.chargeId) ||
+    safeString(intent.metadata?.eventChargeId) ||
+    null;
+  const signupId =
+    safeString(intent.metadata?.signupId) ||
+    safeString(intent.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(intent.metadata?.reservationId) ||
@@ -583,16 +577,20 @@ function parsePaymentIntentFailedPayload(intent: Stripe.PaymentIntent): PaymentU
     paymentId: intent.id,
     status: "payment_failed",
     uid,
+    source,
     sessionId: safeString(intent.metadata?.checkoutSessionId) || null,
     paymentIntentId: intent.id,
     invoiceId: null,
     orderId,
+    chargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType: "payment_intent.payment_failed",
     disputeStatus: null,
     disputeLifecycle: null,
+    receiptUrl: null,
   };
 }
 
@@ -600,9 +598,19 @@ function parseInvoiceFailedPayload(invoice: Stripe.Invoice): PaymentUpdate {
   const amountTotal = typeof invoice.amount_due === "number" ? invoice.amount_due : null;
   const currency = typeof invoice.currency === "string" ? invoice.currency : null;
   const uid = safeString(invoice.metadata?.uid) || null;
+  const source = parsePaymentSource(invoice.metadata?.source);
   const orderId =
     safeString(invoice.metadata?.orderId) ||
     safeString(invoice.metadata?.agentOrderId) ||
+    safeString(invoice.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(invoice.metadata?.chargeId) ||
+    safeString(invoice.metadata?.eventChargeId) ||
+    null;
+  const signupId =
+    safeString(invoice.metadata?.signupId) ||
+    safeString(invoice.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(invoice.metadata?.reservationId) ||
@@ -612,6 +620,7 @@ function parseInvoiceFailedPayload(invoice: Stripe.Invoice): PaymentUpdate {
     paymentId: invoice.id,
     status: "invoice_payment_failed",
     uid,
+    source,
     sessionId: safeString(invoice.metadata?.checkoutSessionId) || null,
     paymentIntentId:
       typeof (invoice as unknown as { payment_intent?: unknown }).payment_intent === "string"
@@ -619,12 +628,15 @@ function parseInvoiceFailedPayload(invoice: Stripe.Invoice): PaymentUpdate {
         : null,
     invoiceId: invoice.id,
     orderId,
+    chargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType: "invoice.payment_failed",
     disputeStatus: null,
     disputeLifecycle: null,
+    receiptUrl: null,
   };
 }
 
@@ -637,9 +649,20 @@ function parseChargeRefundedPayload(charge: Stripe.Charge): PaymentUpdate {
         : null;
   const currency = typeof charge.currency === "string" ? charge.currency : null;
   const uid = safeString(charge.metadata?.uid) || null;
+  const source = parsePaymentSource(charge.metadata?.source);
   const orderId =
     safeString(charge.metadata?.orderId) ||
     safeString(charge.metadata?.agentOrderId) ||
+    safeString(charge.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(charge.metadata?.chargeId) ||
+    safeString(charge.metadata?.eventChargeId) ||
+    charge.id ||
+    null;
+  const signupId =
+    safeString(charge.metadata?.signupId) ||
+    safeString(charge.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(charge.metadata?.reservationId) ||
@@ -655,16 +678,20 @@ function parseChargeRefundedPayload(charge: Stripe.Charge): PaymentUpdate {
     paymentId: charge.id,
     status: "charge_refunded",
     uid,
+    source,
     sessionId: safeString(charge.metadata?.checkoutSessionId) || null,
     paymentIntentId,
     invoiceId: null,
     orderId,
+    chargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType: "charge.refunded",
     disputeStatus: null,
     disputeLifecycle: null,
+    receiptUrl: safeString(charge.receipt_url) || null,
   };
 }
 
@@ -675,9 +702,20 @@ function parseChargeDisputePayload(
   const amountTotal = typeof dispute.amount === "number" ? dispute.amount : null;
   const currency = typeof dispute.currency === "string" ? dispute.currency : null;
   const uid = safeString(dispute.metadata?.uid) || null;
+  const source = parsePaymentSource(dispute.metadata?.source);
   const orderId =
     safeString(dispute.metadata?.orderId) ||
     safeString(dispute.metadata?.agentOrderId) ||
+    safeString(dispute.metadata?.materialsOrderId) ||
+    null;
+  const chargeId =
+    safeString(dispute.metadata?.chargeId) ||
+    safeString(dispute.metadata?.eventChargeId) ||
+    safeString(dispute.charge) ||
+    null;
+  const signupId =
+    safeString(dispute.metadata?.signupId) ||
+    safeString(dispute.metadata?.eventSignupId) ||
     null;
   const reservationId =
     safeString(dispute.metadata?.reservationId) ||
@@ -693,16 +731,20 @@ function parseChargeDisputePayload(
     paymentId: dispute.id || safeString(dispute.charge) || `dispute_${Date.now()}`,
     status: "charge_disputed",
     uid,
+    source,
     sessionId: safeString(dispute.metadata?.checkoutSessionId) || null,
     paymentIntentId,
     invoiceId: null,
     orderId,
+    chargeId,
+    signupId,
     reservationId,
     amountTotal,
     currency,
     sourceEventType,
     disputeStatus,
     disputeLifecycle,
+    receiptUrl: null,
   };
 }
 
@@ -1150,12 +1192,6 @@ export const staffValidateStripeConfig = onRequest(
     }
 
     try {
-      const opsConfig = await getAgentOpsConfig();
-      if (!opsConfig.enabled || !opsConfig.allowPayments) {
-        res.status(503).json({ ok: false, message: "Agent payments are disabled by staff" });
-        return;
-      }
-
       const configSnap = await db.doc(CONFIG_DOC_PATH).get();
       const configData = (configSnap.data() ?? {}) as Record<string, unknown>;
       const config = validateStripeConfigForPersist(normalizeStripeConfig(configData));
@@ -1285,6 +1321,14 @@ export const createCheckoutSession = onRequest(
             mode,
             source: "portal",
             priceKey: priceKey || "direct",
+          },
+          payment_intent_data: {
+            metadata: {
+              uid: auth.uid,
+              mode,
+              source: "portal",
+              priceKey: priceKey || "direct",
+            },
           },
         },
         idempotencyKey ? { idempotencyKey } : undefined
@@ -1494,6 +1538,18 @@ export const createAgentCheckoutSession = onRequest(
             agentReservationId: safeString(order.reservationId) || "",
             agentQuoteId: safeString(order.quoteId) || "",
           },
+          payment_intent_data: {
+            metadata: {
+              uid: orderUid,
+              mode,
+              source: "agent",
+              orderId,
+              agentOrderId: orderId,
+              reservationId: safeString(order.reservationId) || "",
+              agentReservationId: safeString(order.reservationId) || "",
+              agentQuoteId: safeString(order.quoteId) || "",
+            },
+          },
         },
         { idempotencyKey }
       );
@@ -1598,6 +1654,37 @@ export const createAgentCheckoutSession = onRequest(
   }
 );
 
+function deriveMaterialsOrderStatus(
+  currentStatus: unknown,
+  paymentStatus: StripeWebhookEventContract["orderStatus"]
+): string {
+  const current = safeString(currentStatus).trim().toLowerCase();
+  if (paymentStatus === "paid") {
+    return current === "picked_up" ? "picked_up" : "paid";
+  }
+  if (paymentStatus === "payment_failed") return "payment_failed";
+  if (paymentStatus === "disputed") return "disputed";
+  if (paymentStatus === "refunded") return "refunded";
+  return current || "checkout_pending";
+}
+
+function deriveEventPaymentStatus(
+  paymentStatus: StripeWebhookEventContract["orderStatus"]
+): string {
+  if (paymentStatus === "payment_pending") return "checkout_pending";
+  return paymentStatus;
+}
+
+async function collectDocIdsByField(
+  collectionName: string,
+  field: string,
+  value: string
+): Promise<string[]> {
+  if (!value) return [];
+  const snap = await db.collection(collectionName).where(field, "==", value).limit(10).get();
+  return snap.docs.map((docSnap) => docSnap.id);
+}
+
 async function applyPaymentUpdate(params: {
   update: PaymentUpdate;
   mode: StripeMode;
@@ -1619,9 +1706,23 @@ async function applyPaymentUpdate(params: {
       `Stripe event source mismatch (${eventType} expected update source ${update.sourceEventType})`
     );
   }
-  const paymentRef = db.collection("payments").doc(update.paymentId);
-  const now = nowTs();
 
+  const now = nowTs();
+  const checkoutSessionId = safeString(update.sessionId).trim();
+  const paymentIntentId = safeString(update.paymentIntentId).trim();
+  const invoiceId = safeString(update.invoiceId).trim();
+  const hintedOrderId = safeString(update.orderId).trim();
+  const hintedChargeId = safeString(update.chargeId).trim();
+  const hintedSignupId = safeString(update.signupId).trim();
+  const resolvedReceiptUrl = await resolveStripeReceiptUrl({
+    mode,
+    paymentIntentId: paymentIntentId || null,
+    chargeId: hintedChargeId || null,
+    invoiceId: invoiceId || null,
+    receiptUrl: update.receiptUrl,
+  });
+
+  const paymentRef = db.collection("payments").doc(update.paymentId);
   await db.runTransaction(async (tx) => {
     const paymentSnap = await tx.get(paymentRef);
     const current = paymentSnap.exists ? (paymentSnap.data() as Record<string, unknown>) : null;
@@ -1631,12 +1732,24 @@ async function applyPaymentUpdate(params: {
       mode,
       status: mergedStatus,
       source: "stripe_webhook",
-      checkoutSessionId: (update.sessionId ?? safeString(current?.checkoutSessionId)) || null,
+      paymentDomain: update.source,
+      checkoutSessionId:
+        (checkoutSessionId || safeString(current?.checkoutSessionId)) || null,
       stripePaymentIntentId:
-        (update.paymentIntentId ?? safeString(current?.stripePaymentIntentId)) || null,
-      stripeInvoiceId: (update.invoiceId ?? safeString(current?.stripeInvoiceId)) || null,
-      amountTotal: typeof update.amountTotal === "number" ? update.amountTotal : (typeof current?.amountTotal === "number" ? current.amountTotal : null),
+        (paymentIntentId || safeString(current?.stripePaymentIntentId)) || null,
+      stripeInvoiceId: (invoiceId || safeString(current?.stripeInvoiceId)) || null,
+      orderId: (hintedOrderId || safeString(current?.orderId)) || null,
+      chargeId: (hintedChargeId || safeString(current?.chargeId)) || null,
+      signupId: (hintedSignupId || safeString(current?.signupId)) || null,
+      reservationId: (update.reservationId ?? safeString(current?.reservationId)) || null,
+      amountTotal:
+        typeof update.amountTotal === "number"
+          ? update.amountTotal
+          : typeof current?.amountTotal === "number"
+            ? current.amountTotal
+            : null,
       currency: (update.currency ?? safeString(current?.currency)) || null,
+      receiptUrl: (resolvedReceiptUrl || safeString(current?.receiptUrl)) || null,
       stripeDisputeStatus:
         (update.disputeStatus ?? safeString(current?.stripeDisputeStatus)) || null,
       stripeDisputeLifecycle:
@@ -1658,15 +1771,25 @@ async function applyPaymentUpdate(params: {
 
     const effectiveUid = safeString(nextPayload.uid);
     if (effectiveUid) {
-      const userPaymentRef = db.collection("users").doc(effectiveUid).collection("payments").doc(update.paymentId);
+      const userPaymentRef = db
+        .collection("users")
+        .doc(effectiveUid)
+        .collection("payments")
+        .doc(update.paymentId);
       const userPayload: Record<string, unknown> = {
         status: mergedStatus,
         mode,
+        paymentDomain: update.source,
         checkoutSessionId: nextPayload.checkoutSessionId ?? null,
         stripePaymentIntentId: nextPayload.stripePaymentIntentId ?? null,
         stripeInvoiceId: nextPayload.stripeInvoiceId ?? null,
+        orderId: nextPayload.orderId ?? null,
+        chargeId: nextPayload.chargeId ?? null,
+        signupId: nextPayload.signupId ?? null,
+        reservationId: nextPayload.reservationId ?? null,
         amountTotal: nextPayload.amountTotal ?? null,
         currency: nextPayload.currency ?? null,
+        receiptUrl: nextPayload.receiptUrl ?? null,
         stripeDisputeStatus: nextPayload.stripeDisputeStatus ?? null,
         stripeDisputeLifecycle: nextPayload.stripeDisputeLifecycle ?? null,
         source: "stripe_webhook",
@@ -1679,88 +1802,21 @@ async function applyPaymentUpdate(params: {
     }
   });
 
-  const checkoutSessionId = safeString(update.sessionId).trim();
-  const paymentIntentId = safeString(update.paymentIntentId).trim();
-  const hintedOrderId = safeString(update.orderId).trim();
-
-  const candidateOrderIds = new Set<string>();
-  if (hintedOrderId) candidateOrderIds.add(hintedOrderId);
-
-  if (checkoutSessionId) {
-    const bySessionSnap = await db
-      .collection("agentOrders")
-      .where("stripeCheckoutSessionId", "==", checkoutSessionId)
-      .limit(10)
-      .get();
-    for (const docSnap of bySessionSnap.docs) candidateOrderIds.add(docSnap.id);
+  const agentOrderIds = new Set<string>();
+  if (hintedOrderId && update.source === "agent") agentOrderIds.add(hintedOrderId);
+  for (const id of await collectDocIdsByField("agentOrders", "stripeCheckoutSessionId", checkoutSessionId)) {
+    agentOrderIds.add(id);
   }
-
-  if (paymentIntentId) {
-    const byIntentSnap = await db
-      .collection("agentOrders")
-      .where("stripePaymentIntentId", "==", paymentIntentId)
-      .limit(10)
-      .get();
-    for (const docSnap of byIntentSnap.docs) candidateOrderIds.add(docSnap.id);
+  for (const id of await collectDocIdsByField("agentOrders", "stripePaymentIntentId", paymentIntentId)) {
+    agentOrderIds.add(id);
   }
-
-  if (!candidateOrderIds.size) return;
 
   const orderStatus = transition.orderStatus;
   const fulfillmentStatus = transition.fulfillmentStatus;
   const lifecycleStatus = deriveOrderLifecycleStatusFromWebhookTransition(orderStatus);
-  const batch = db.batch();
-  for (const orderId of candidateOrderIds) {
-    const paymentAuditDetails = buildStripePaymentAuditDetails({
-      orderId,
-      paymentStatus: orderStatus,
-      sourceEventType: eventType,
-      eventId,
-      disputeStatus: update.disputeStatus,
-      disputeLifecycle: update.disputeLifecycle,
-    });
-    const orderRef = db.collection("agentOrders").doc(orderId);
-    batch.set(
-      orderRef,
-      {
-        paymentStatus: orderStatus,
-        status: lifecycleStatus,
-        fulfillmentStatus,
-        stripeCheckoutSessionId: checkoutSessionId || null,
-        stripePaymentIntentId: paymentIntentId || null,
-        stripeDisputeStatus: paymentAuditDetails.disputeStatus,
-        stripeDisputeLifecycle: paymentAuditDetails.disputeLifecycle,
-        updatedAt: now,
-        lastEventId: eventId,
-        lastEventType: eventType,
-      },
-      { merge: true }
-    );
-    batch.set(db.collection("agentAuditLogs").doc(), {
-      actorUid: null,
-      actorMode: "system",
-      action: "agent_order_payment_updated",
-      orderId,
-      paymentId: update.paymentId,
-      status: orderStatus,
-      sourceEventType: paymentAuditDetails.sourceEventType,
-      eventId: paymentAuditDetails.eventId,
-      disputeStatus: paymentAuditDetails.disputeStatus,
-      disputeLifecycle: paymentAuditDetails.disputeLifecycle,
-      createdAt: now,
-    });
-  }
-  await batch.commit();
-
-  for (const orderId of candidateOrderIds) {
-    const linkedRequests = await db
-      .collection("agentRequests")
-      .where("commissionOrderId", "==", orderId)
-      .limit(20)
-      .get();
-    if (linkedRequests.empty) continue;
-    const requestBatch = db.batch();
-    for (const reqDoc of linkedRequests.docs) {
+  if (agentOrderIds.size > 0) {
+    const batch = db.batch();
+    for (const orderId of agentOrderIds) {
       const paymentAuditDetails = buildStripePaymentAuditDetails({
         orderId,
         paymentStatus: orderStatus,
@@ -1769,25 +1825,203 @@ async function applyPaymentUpdate(params: {
         disputeStatus: update.disputeStatus,
         disputeLifecycle: update.disputeLifecycle,
       });
-      const nextRequestStatus = transition.requestStatus;
-      requestBatch.set(
-        reqDoc.ref,
+      const orderRef = db.collection("agentOrders").doc(orderId);
+      batch.set(
+        orderRef,
         {
-          commissionPaymentStatus: orderStatus,
+          paymentStatus: orderStatus,
+          status: lifecycleStatus,
+          fulfillmentStatus,
+          stripeCheckoutSessionId: checkoutSessionId || null,
+          stripePaymentIntentId: paymentIntentId || null,
+          stripeDisputeStatus: paymentAuditDetails.disputeStatus,
+          stripeDisputeLifecycle: paymentAuditDetails.disputeLifecycle,
+          receiptUrl: resolvedReceiptUrl || null,
           updatedAt: now,
-          status: nextRequestStatus,
+          lastEventId: eventId,
+          lastEventType: eventType,
+          ...(orderStatus === "payment_pending" ? {} : { checkoutUrl: null }),
         },
         { merge: true }
       );
-      requestBatch.set(reqDoc.ref.collection("audit").doc(), {
-        at: now,
-        type: "commission_payment_status_updated",
+      batch.set(db.collection("agentAuditLogs").doc(), {
         actorUid: null,
         actorMode: "system",
-        details: paymentAuditDetails,
+        action: "agent_order_payment_updated",
+        orderId,
+        paymentId: update.paymentId,
+        status: orderStatus,
+        sourceEventType: paymentAuditDetails.sourceEventType,
+        eventId: paymentAuditDetails.eventId,
+        disputeStatus: paymentAuditDetails.disputeStatus,
+        disputeLifecycle: paymentAuditDetails.disputeLifecycle,
+        createdAt: now,
       });
     }
-    await requestBatch.commit();
+    await batch.commit();
+
+    for (const orderId of agentOrderIds) {
+      const linkedRequests = await db
+        .collection("agentRequests")
+        .where("commissionOrderId", "==", orderId)
+        .limit(20)
+        .get();
+      if (linkedRequests.empty) continue;
+      const requestBatch = db.batch();
+      for (const reqDoc of linkedRequests.docs) {
+        const paymentAuditDetails = buildStripePaymentAuditDetails({
+          orderId,
+          paymentStatus: orderStatus,
+          sourceEventType: eventType,
+          eventId,
+          disputeStatus: update.disputeStatus,
+          disputeLifecycle: update.disputeLifecycle,
+        });
+        requestBatch.set(
+          reqDoc.ref,
+          {
+            commissionPaymentStatus: orderStatus,
+            updatedAt: now,
+            status: transition.requestStatus,
+          },
+          { merge: true }
+        );
+        requestBatch.set(reqDoc.ref.collection("audit").doc(), {
+          at: now,
+          type: "commission_payment_status_updated",
+          actorUid: null,
+          actorMode: "system",
+          details: paymentAuditDetails,
+        });
+      }
+      await requestBatch.commit();
+    }
+  }
+
+  const materialsOrderIds = new Set<string>();
+  if (hintedOrderId && update.source === "materials") materialsOrderIds.add(hintedOrderId);
+  for (const id of await collectDocIdsByField("materialsOrders", "stripeSessionId", checkoutSessionId)) {
+    materialsOrderIds.add(id);
+  }
+  for (const id of await collectDocIdsByField("materialsOrders", "stripeCheckoutSessionId", checkoutSessionId)) {
+    materialsOrderIds.add(id);
+  }
+  for (const id of await collectDocIdsByField("materialsOrders", "stripePaymentIntentId", paymentIntentId)) {
+    materialsOrderIds.add(id);
+  }
+  for (const orderId of materialsOrderIds) {
+    const orderRef = db.collection("materialsOrders").doc(orderId);
+    await db.runTransaction(async (tx) => {
+      const orderSnap = await tx.get(orderRef);
+      if (!orderSnap.exists) return;
+      const current = (orderSnap.data() as Record<string, unknown>) ?? {};
+      const nextStatus = deriveMaterialsOrderStatus(current.status, orderStatus);
+      const shouldMarkPaid = orderStatus === "paid" && safeString(current.status).trim().toLowerCase() !== "paid" && safeString(current.status).trim().toLowerCase() !== "picked_up";
+      if (shouldMarkPaid) {
+        const parsedOrder = parseMaterialsOrderDoc(current);
+        for (const item of parsedOrder.items) {
+          const productId = safeString(item.productId).trim();
+          const quantity = Math.max(asInt(item.quantity, 0), 0);
+          if (!productId || quantity <= 0 || item.trackInventory !== true) continue;
+          const productRef = db.collection("materialsProducts").doc(productId);
+          const productSnap = await tx.get(productRef);
+          if (!productSnap.exists) continue;
+          const product = parseMaterialProductDoc(productSnap.data());
+          const onHand = asInt(product.inventoryOnHand, 0);
+          tx.set(
+            productRef,
+            {
+              inventoryOnHand: Math.max(onHand - quantity, 0),
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+        }
+      }
+      tx.set(
+        orderRef,
+        {
+          status: nextStatus,
+          paymentStatus: orderStatus,
+          stripeSessionId: checkoutSessionId || safeString(current.stripeSessionId) || null,
+          stripeCheckoutSessionId:
+            checkoutSessionId || safeString(current.stripeCheckoutSessionId) || null,
+          stripePaymentIntentId:
+            paymentIntentId || safeString(current.stripePaymentIntentId) || null,
+          stripeDisputeStatus:
+            (update.disputeStatus ?? safeString(current.stripeDisputeStatus)) || null,
+          stripeDisputeLifecycle:
+            update.disputeLifecycle ??
+            (safeString(current.stripeDisputeLifecycle) === "opened" ||
+            safeString(current.stripeDisputeLifecycle) === "closed"
+              ? (safeString(current.stripeDisputeLifecycle) as "opened" | "closed")
+              : null),
+          receiptUrl: resolvedReceiptUrl || safeString(current.receiptUrl) || null,
+          checkoutUrl: orderStatus === "payment_pending" ? safeString(current.checkoutUrl) || null : null,
+          updatedAt: now,
+          lastEventId: eventId,
+          lastEventType: eventType,
+          ...(orderStatus === "paid" ? { paidAt: current.paidAt ?? now } : {}),
+        },
+        { merge: true }
+      );
+    });
+  }
+
+  const eventChargeIds = new Set<string>();
+  if (hintedChargeId && update.source === "events") eventChargeIds.add(hintedChargeId);
+  for (const id of await collectDocIdsByField("eventCharges", "stripeCheckoutSessionId", checkoutSessionId)) {
+    eventChargeIds.add(id);
+  }
+  for (const id of await collectDocIdsByField("eventCharges", "stripePaymentIntentId", paymentIntentId)) {
+    eventChargeIds.add(id);
+  }
+  for (const chargeId of eventChargeIds) {
+    const chargeRef = db.collection("eventCharges").doc(chargeId);
+    await db.runTransaction(async (tx) => {
+      const chargeSnap = await tx.get(chargeRef);
+      if (!chargeSnap.exists) return;
+      const current = (chargeSnap.data() as Record<string, unknown>) ?? {};
+      const nextPaymentStatus = deriveEventPaymentStatus(orderStatus);
+      const effectiveSignupId = hintedSignupId || safeString(current.signupId);
+      tx.set(
+        chargeRef,
+        {
+          paymentStatus: nextPaymentStatus,
+          stripeCheckoutSessionId:
+            checkoutSessionId || safeString(current.stripeCheckoutSessionId) || null,
+          stripePaymentIntentId:
+            paymentIntentId || safeString(current.stripePaymentIntentId) || null,
+          stripeDisputeStatus:
+            (update.disputeStatus ?? safeString(current.stripeDisputeStatus)) || null,
+          stripeDisputeLifecycle:
+            update.disputeLifecycle ??
+            (safeString(current.stripeDisputeLifecycle) === "opened" ||
+            safeString(current.stripeDisputeLifecycle) === "closed"
+              ? (safeString(current.stripeDisputeLifecycle) as "opened" | "closed")
+              : null),
+          receiptUrl: resolvedReceiptUrl || safeString(current.receiptUrl) || null,
+          updatedAt: now,
+          lastEventId: eventId,
+          lastEventType: eventType,
+          ...(orderStatus === "paid" ? { paidAt: current.paidAt ?? now } : {}),
+        },
+        { merge: true }
+      );
+
+      if (effectiveSignupId) {
+        tx.set(
+          db.collection("eventSignups").doc(effectiveSignupId),
+          {
+            paymentStatus: nextPaymentStatus,
+            updatedAt: now,
+            lastEventId: eventId,
+            lastEventType: eventType,
+          },
+          { merge: true }
+        );
+      }
+    });
   }
 }
 

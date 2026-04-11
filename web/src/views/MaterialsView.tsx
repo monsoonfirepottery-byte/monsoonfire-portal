@@ -434,6 +434,15 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
         {
           items,
           pickupNotes: pickupNotes.trim() || null,
+        },
+        {
+          headers: {
+            "Idempotency-Key": `materials:${items
+              .slice()
+              .sort((left, right) => left.productId.localeCompare(right.productId))
+              .map((entry) => `${entry.productId}:${entry.quantity}`)
+              .join("|")}:${pickupNotes.trim() || "-"}`,
+          },
         }
       );
 

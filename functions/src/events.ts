@@ -11,6 +11,7 @@ import {
   applyCors,
   asInt,
   db,
+  makeIdempotencyId,
   nowTs,
   requireAdmin,
   requireAuthUid,
@@ -22,6 +23,8 @@ import {
 } from "./shared";
 import { z } from "zod";
 import { evaluateCommunityContentRisk, getCommunitySafetyConfig } from "./communitySafety";
+import { STRIPE_SECRET_PARAMS } from "./stripeSecrets";
+import { createConfiguredCheckoutSession, readStripeIdempotencyKey } from "./stripeRuntime";
 import {
   INDUSTRY_EVENT_RETIRE_PAST_MS,
   INDUSTRY_EVENT_REVIEW_STALE_MS,
@@ -61,8 +64,6 @@ const WORKSHOP_SIGNAL_DOC_ID_PATTERN = /^[a-zA-Z0-9_-]{6,120}$/;
 
 const DEFAULT_OFFER_HOURS = 12;
 const DEFAULT_CANCEL_HOURS = 3;
-
-let stripeClient: Stripe | null = null;
 
 const listEventsSchema = z.object({
   includeDrafts: z.boolean().optional(),
@@ -1043,15 +1044,6 @@ const checkoutSchema = z.object({
   signupId: z.string().min(1),
   addOnIds: z.array(z.string()).optional(),
 });
-
-function getStripe(): Stripe {
-  const key = (process.env.STRIPE_SECRET_KEY ?? "").trim();
-  if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
-  if (!stripeClient) {
-    stripeClient = new Stripe(key);
-  }
-  return stripeClient;
-}
 
 function getPortalBaseUrl(req: any): string {
   const configured = (process.env.PORTAL_BASE_URL ?? "").trim();
@@ -3239,7 +3231,7 @@ export const checkInEvent = onRequest(
   }
 );
 export const createEventCheckoutSession = onRequest(
-  { region: REGION, timeoutSeconds: 60 },
+  { region: REGION, timeoutSeconds: 60, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (applyCors(req, res)) return;
 
@@ -3391,44 +3383,135 @@ export const createEventCheckoutSession = onRequest(
         return;
       }
 
-      const stripe = getStripe();
-      const chargeRef = db.collection(CHARGES_COL).doc();
-      const chargeId = chargeRef.id;
+      const addOnFingerprint = selectedAddOns
+        .map((entry) => entry.id)
+        .sort((left, right) => left.localeCompare(right))
+        .join(",");
+      const requestDedupKey = readStripeIdempotencyKey(
+        req.headers as Record<string, unknown> | undefined,
+        makeIdempotencyId(
+          "event-charge-request",
+          auth.uid,
+          `${eventId}:${signupId}:${addOnFingerprint || "ticket"}`
+        )
+      );
+      const chargeId = makeIdempotencyId("event-charge", auth.uid, requestDedupKey);
+      const chargeRef = db.collection(CHARGES_COL).doc(chargeId);
+      const existingSnap = await chargeRef.get();
+      if (existingSnap.exists) {
+        const existing = (existingSnap.data() as Record<string, unknown>) ?? {};
+        res.status(200).json({
+          ok: true,
+          checkoutUrl: safeString(existing.checkoutUrl) || null,
+          receiptUrl: safeString(existing.receiptUrl) || null,
+          sessionId: safeString(existing.stripeCheckoutSessionId) || null,
+        });
+        return;
+      }
 
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        line_items: lineItems,
-        success_url: `${baseUrl}/events?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/events?status=cancel`,
-        customer_email: signup.email ?? undefined,
-        phone_number_collection: { enabled: true },
-        billing_address_collection: "auto",
-        automatic_tax: { enabled: true },
-        client_reference_id: signupId,
-        metadata: {
-          chargeId,
-          signupId,
-          eventId,
-          uid: auth.uid,
+      const checkoutIdempotencyKey = makeIdempotencyId(
+        "event-checkout",
+        auth.uid,
+        requestDedupKey
+      );
+      const { mode, session } = await createConfiguredCheckoutSession({
+        headers: req.headers as Record<string, unknown> | undefined,
+        fallbackIdempotencyKey: checkoutIdempotencyKey,
+        session: {
+          mode: "payment",
+          line_items: lineItems,
+          success_url: `${baseUrl}/events?status=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${baseUrl}/events?status=cancel`,
+          customer_email: signup.email ?? undefined,
+          phone_number_collection: { enabled: true },
+          billing_address_collection: "auto",
+          automatic_tax: { enabled: true },
+          client_reference_id: chargeId,
+          metadata: {
+            chargeId,
+            eventChargeId: chargeId,
+            signupId,
+            eventSignupId: signupId,
+            eventId,
+            uid: auth.uid,
+            source: "events",
+          },
         },
       });
 
       const t = nowTs();
-      await chargeRef.set({
-        eventId,
-        signupId,
+      const paymentIntentId =
+        typeof session.payment_intent === "string" ? session.payment_intent : null;
+      const paymentBase = {
         uid: auth.uid,
-        lineItems: receiptItems,
-        totalCents,
-        currency,
-        paymentStatus: "checkout_pending",
-        stripeCheckoutSessionId: session.id ?? null,
-        stripePaymentIntentId: null,
-        createdAt: t,
+        mode,
+        status: "checkout_created",
+        paymentDomain: "events",
+        source: "event_checkout",
+        chargeId,
+        signupId,
+        checkoutSessionId: session.id,
+        stripePaymentIntentId: paymentIntentId,
+        amountTotal: typeof session.amount_total === "number" ? session.amount_total : totalCents,
+        currency: typeof session.currency === "string" ? session.currency : currency.toLowerCase(),
+        receiptUrl: null,
         updatedAt: t,
-      });
+      };
+      await Promise.all([
+        chargeRef.set(
+          {
+            eventId,
+            signupId,
+            uid: auth.uid,
+            lineItems: receiptItems,
+            totalCents,
+            currency,
+            paymentStatus: "checkout_pending",
+            stripeCheckoutSessionId: session.id ?? null,
+            stripePaymentIntentId: paymentIntentId,
+            checkoutUrl: session.url ?? null,
+            receiptUrl: null,
+            createdAt: t,
+            updatedAt: t,
+            mode,
+            idempotencyKey: requestDedupKey,
+          },
+          { merge: true }
+        ),
+        signupRef.set(
+          {
+            paymentStatus: "checkout_pending",
+            updatedAt: t,
+          },
+          { merge: true }
+        ),
+        db.collection("payments").doc(session.id).set(
+          {
+            ...paymentBase,
+            createdAt: t,
+          },
+          { merge: true }
+        ),
+        db
+          .collection("users")
+          .doc(auth.uid)
+          .collection("payments")
+          .doc(session.id)
+          .set(
+            {
+              ...paymentBase,
+              createdAt: t,
+            },
+            { merge: true }
+          ),
+      ]);
 
-      res.status(200).json({ ok: true, checkoutUrl: session.url });
+      res.status(200).json({
+        ok: true,
+        checkoutUrl: session.url ?? null,
+        sessionId: session.id,
+        mode,
+      });
     } catch (err: any) {
       logger.error("createEventCheckoutSession failed", err);
       res.status(500).json({
@@ -3438,84 +3521,6 @@ export const createEventCheckoutSession = onRequest(
     }
   }
 );
-export const eventStripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
-  const signature = req.headers["stripe-signature"];
-  if (!signature || typeof signature !== "string") {
-    res.status(400).send("Missing Stripe signature");
-    return;
-  }
-
-  const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET ?? "").trim();
-  if (!webhookSecret) {
-    res.status(500).send("STRIPE_WEBHOOK_SECRET not configured");
-    return;
-  }
-
-  let event: Stripe.Event;
-  try {
-    const stripe = getStripe();
-    event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
-  } catch (err: any) {
-    logger.error("eventStripeWebhook signature verification failed", err);
-    res.status(400).send(`Webhook Error: ${err?.message ?? "Invalid signature"}`);
-    return;
-  }
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const chargeId = session.metadata?.chargeId;
-    const signupId = session.metadata?.signupId;
-
-    if (!chargeId) {
-      logger.warn("eventStripeWebhook missing chargeId", { sessionId: session.id });
-      res.status(200).json({ ok: true });
-      return;
-    }
-
-    const chargeRef = db.collection(CHARGES_COL).doc(chargeId);
-
-    try {
-      await db.runTransaction(async (tx) => {
-        const chargeSnap = await tx.get(chargeRef);
-        if (!chargeSnap.exists) {
-          logger.warn("eventStripeWebhook charge not found", { chargeId });
-          return;
-        }
-
-        const charge = chargeSnap.data() as Record<string, any>;
-        if (charge.paymentStatus === "paid") return;
-
-        const t = nowTs();
-        tx.set(
-          chargeRef,
-          {
-            paymentStatus: "paid",
-            updatedAt: t,
-            paidAt: t,
-            stripePaymentIntentId: session.payment_intent ?? null,
-          },
-          { merge: true }
-        );
-
-        if (signupId) {
-          const signupRef = db.collection(SIGNUPS_COL).doc(signupId);
-          tx.set(
-            signupRef,
-            {
-              paymentStatus: "paid",
-              updatedAt: t,
-            },
-            { merge: true }
-          );
-        }
-      });
-    } catch (err) {
-      logger.error("eventStripeWebhook processing failed", err);
-    }
-  }
-
-  res.status(200).json({ ok: true });
-});
 
 export const runIndustryEventsFreshnessNow = onRequest(
   { region: REGION, timeoutSeconds: 120 },

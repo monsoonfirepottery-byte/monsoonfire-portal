@@ -10,12 +10,30 @@ const REPO_ROOT = resolve(__dirname, "..");
 const DEFAULT_COMPOSE_PATH = resolve(REPO_ROOT, "studio-brain/docker-compose.yml");
 const DEFAULT_VOLUME_LIMIT_MB = Number(process.env.STABILITY_GUARDRAILS_VOLUME_LIMIT_MB || "3072");
 const DEFAULT_VOLUME_LIMITS = {
-  postgres_data: parseMegabytes(process.env.STABILITY_GUARDRAILS_VOLUME_LIMIT_MB_POSTGRES) || DEFAULT_VOLUME_LIMIT_MB,
-  minio_data: parseMegabytes(process.env.STABILITY_GUARDRAILS_VOLUME_LIMIT_MB_MINIO) || DEFAULT_VOLUME_LIMIT_MB,
+  postgres_data: {
+    limitMb: parseMegabytes(process.env.STABILITY_GUARDRAILS_VOLUME_LIMIT_MB_POSTGRES) || DEFAULT_VOLUME_LIMIT_MB,
+    containerName: "studiobrain_postgres",
+    destination: "/var/lib/postgresql/data",
+  },
+  minio_data: {
+    limitMb: parseMegabytes(process.env.STABILITY_GUARDRAILS_VOLUME_LIMIT_MB_MINIO) || DEFAULT_VOLUME_LIMIT_MB,
+    containerName: "studiobrain_minio",
+    destination: "/data",
+  },
 };
 const DEFAULT_LOG_LIMIT_MB = parseMegabytes(process.env.STABILITY_GUARDRAILS_CONTAINER_LOG_LIMIT_MB) || 64;
 const DEFAULT_OUTPUT_LIMIT_MB = parseMegabytes(process.env.STABILITY_GUARDRAILS_OUTPUT_LIMIT_MB) || 512;
 const DEFAULT_CLEANUP_DAYS = Number(process.env.STABILITY_GUARDRAILS_CLEANUP_DAYS || "14");
+const DEFAULT_CLEANUP_TARGETS = [
+  "stability",
+  "playwright",
+  "cutover-gate",
+  "pr-gate",
+  "overnight",
+  "memory",
+  "intent",
+  "incidents",
+];
 
 if (isDirectExecution()) {
   const args = parseArgs(process.argv.slice(2));
@@ -148,8 +166,8 @@ function checkDockerVolumes() {
     };
   }
 
-  const volumes = Object.entries(DEFAULT_VOLUME_LIMITS).map(([name, limitMb]) => {
-    const record = checkVolumeUsage(name, limitMb);
+  const volumes = Object.entries(DEFAULT_VOLUME_LIMITS).map(([name, config]) => {
+    const record = checkVolumeUsage(name, config);
     return {
       name,
       ...record,
@@ -184,15 +202,18 @@ function checkDockerVolumes() {
   };
 }
 
-function checkVolumeUsage(volumeName, limitMb) {
-  const command = runCommand(["volume", "inspect", volumeName]);
+function checkVolumeUsage(volumeName, config) {
+  const limitMb = Number(config?.limitMb || DEFAULT_VOLUME_LIMIT_MB);
+  const resolvedVolumeName =
+    resolveMountedVolumeName(volumeName, config?.containerName, config?.destination) || volumeName;
+  const command = runCommand(["volume", "inspect", resolvedVolumeName]);
   if (!command.ok) {
     return {
-      volume: volumeName,
+      volume: resolvedVolumeName,
       ok: true,
       status: "warn",
       statusLabel: "missing",
-      reason: `volume "${volumeName}" not present or inaccessible`,
+      reason: `volume "${resolvedVolumeName}" not present or inaccessible`,
       limitMb,
     };
   }
@@ -203,7 +224,7 @@ function checkVolumeUsage(volumeName, limitMb) {
     mountPoint = parsed?.[0]?.Mountpoint;
   } catch {
     return {
-      volume: volumeName,
+      volume: resolvedVolumeName,
       ok: true,
       status: "warn",
       statusLabel: "parse-error",
@@ -214,7 +235,7 @@ function checkVolumeUsage(volumeName, limitMb) {
 
   if (!mountPoint || !existsSync(mountPoint)) {
     return {
-      volume: volumeName,
+      volume: resolvedVolumeName,
       ok: true,
       status: "warn",
       statusLabel: "missing-mountpoint",
@@ -229,7 +250,7 @@ function checkVolumeUsage(volumeName, limitMb) {
   const ok = usedBytes <= limitBytes;
 
   return {
-    volume: volumeName,
+    volume: resolvedVolumeName,
     ok,
     status: ok ? "pass" : "fail",
     statusLabel: ok ? "within-limit" : "over-limit",
@@ -238,6 +259,36 @@ function checkVolumeUsage(volumeName, limitMb) {
     limitMb,
     reason: ok ? null : `used=${usageMb} MB > limit=${limitMb} MB`,
   };
+}
+
+function resolveMountedVolumeName(expectedVolumeName, containerName, destination) {
+  if (!containerName) {
+    return expectedVolumeName;
+  }
+
+  const command = runCommand(["inspect", containerName, "--format", "{{json .Mounts}}"]);
+  if (!command.ok) {
+    return expectedVolumeName;
+  }
+
+  try {
+    const mounts = JSON.parse(command.stdout || "[]");
+    if (!Array.isArray(mounts)) {
+      return expectedVolumeName;
+    }
+    const match = mounts.find((entry) => {
+      if (!entry || entry.Type !== "volume") {
+        return false;
+      }
+      if (entry.Name === expectedVolumeName) {
+        return true;
+      }
+      return Boolean(destination) && entry.Destination === destination;
+    });
+    return match?.Name || expectedVolumeName;
+  } catch {
+    return expectedVolumeName;
+  }
 }
 
 function checkDockerLogSize() {
@@ -384,13 +435,15 @@ function cleanupArtifacts(outputRoot, maxAgeDays) {
     return { removedFiles: 0, removedBytes: 0, removedPaths: [] };
   }
 
+  if (process.platform !== "win32") {
+    return cleanupArtifactsPosix(outputRoot, maxAgeDays);
+  }
+
   const cutoff = Date.now() - Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
   let removedFiles = 0;
   let removedBytes = 0;
   const removedPaths = [];
-  const targets = ["stability", "playwright", "cutover-gate", "pr-gate"];
-
-  for (const target of targets) {
+  for (const target of DEFAULT_CLEANUP_TARGETS) {
     const resolved = resolve(outputRoot, target);
     if (!existsSync(resolved)) {
       continue;
@@ -400,6 +453,74 @@ function cleanupArtifacts(outputRoot, maxAgeDays) {
       removedBytes += bytes;
       removedPaths.push(path);
     });
+  }
+
+  return { removedFiles, removedBytes, removedPaths };
+}
+
+function cleanupArtifactsPosix(outputRoot, maxAgeDays) {
+  let removedFiles = 0;
+  let removedBytes = 0;
+  const removedPaths = [];
+  const minAgeDays = String(Math.max(1, Math.trunc(Number(maxAgeDays) || DEFAULT_CLEANUP_DAYS)));
+
+  for (const target of DEFAULT_CLEANUP_TARGETS) {
+    const resolved = resolve(outputRoot, target);
+    if (!existsSync(resolved)) {
+      continue;
+    }
+
+    const removal = spawnSync(
+      "find",
+      [
+        resolved,
+        "-type",
+        "f",
+        "-mtime",
+        `+${minAgeDays}`,
+        "!",
+        "-name",
+        "README.md",
+        "!",
+        "-name",
+        ".gitkeep",
+        "-printf",
+        "%s\t%p\n",
+        "-delete",
+      ],
+      {
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    if (removal.error || removal.status !== 0) {
+      continue;
+    }
+
+    for (const line of String(removal.stdout || "").split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const [sizeText, ...pathParts] = trimmed.split("\t");
+      const size = Number(sizeText);
+      const filePath = pathParts.join("\t");
+      removedFiles += 1;
+      removedBytes += Number.isFinite(size) ? size : 0;
+      removedPaths.push(filePath);
+    }
+
+    spawnSync(
+      "find",
+      [resolved, "-depth", "-type", "d", "-empty", "-mtime", `+${minAgeDays}`, "-delete"],
+      {
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
   }
 
   return { removedFiles, removedBytes, removedPaths };

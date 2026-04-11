@@ -306,25 +306,36 @@ class CapabilityRuntime {
         if (!this.connectorRegistry)
             return null;
         const mapping = {
-            "hubitat.devices.read": "hubitat",
-            "roborock.devices.read": "roborock",
+            "hubitat.devices.read": { connectorId: "hubitat", intent: "read", action: "devices.read" },
+            "roborock.devices.read": { connectorId: "roborock", intent: "read", action: "devices.read" },
+            "roborock.clean.start_full": { connectorId: "roborock", intent: "write", action: "clean.start_full" },
+            "roborock.clean.start_rooms": { connectorId: "roborock", intent: "write", action: "clean.start_rooms" },
         };
-        const connectorId = mapping[capabilityId];
-        if (!connectorId)
+        const mapped = mapping[capabilityId];
+        if (!mapped)
             return null;
-        const connector = this.connectorRegistry.get(connectorId);
+        const connector = this.connectorRegistry.get(mapped.connectorId);
         if (!connector)
             return null;
-        const result = await connector.readStatus({
-            requestId: `cap-${Date.now().toString(36)}`,
-        }, input);
+        const result = mapped.intent === "read"
+            ? await connector.readStatus({
+                requestId: `cap-${Date.now().toString(36)}`,
+            }, input)
+            : await connector.execute({
+                requestId: `cap-${Date.now().toString(36)}`,
+            }, {
+                intent: "write",
+                action: mapped.action,
+                input,
+            });
         return {
-            connectorId,
+            connectorId: mapped.connectorId,
             requestId: result.requestId,
             devices: result.devices,
             rawCount: result.rawCount,
             inputHash: result.inputHash,
             outputHash: result.outputHash,
+            action: mapped.action,
         };
     }
 }
@@ -485,10 +496,28 @@ exports.defaultCapabilities = [
     {
         id: "roborock.devices.read",
         target: "roborock",
-        description: "Read Roborock device status and battery telemetry.",
+        description: "Read Roborock device status, vital telemetry, and maintenance alerts.",
         readOnly: true,
         requiresApproval: false,
         maxCallsPerHour: 120,
         risk: "low",
+    },
+    {
+        id: "roborock.clean.start_full",
+        target: "roborock",
+        description: "Start whole-floor Roborock cleaning run.",
+        readOnly: false,
+        requiresApproval: true,
+        maxCallsPerHour: 12,
+        risk: "medium",
+    },
+    {
+        id: "roborock.clean.start_rooms",
+        target: "roborock",
+        description: "Start room-targeted Roborock cleaning run.",
+        readOnly: false,
+        requiresApproval: true,
+        maxCallsPerHour: 20,
+        risk: "medium",
     },
 ];

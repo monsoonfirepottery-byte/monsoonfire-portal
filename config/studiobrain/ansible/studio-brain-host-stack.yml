@@ -1,0 +1,97 @@
+---
+- name: Provision the Studio Brain host access stack
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    studio_brain_host_user: "{{ lookup('env', 'STUDIO_BRAIN_DEPLOY_USER') | default('wuff', true) }}"
+    studio_brain_host_home: "/home/{{ studio_brain_host_user }}"
+    studio_brain_remote_parent: "{{ lookup('env', 'STUDIO_BRAIN_REMOTE_PARENT') | default(studio_brain_host_home ~ '/monsoonfire-portal', true) }}"
+    studio_brain_tmux_session_name: "{{ lookup('env', 'STUDIO_BRAIN_TMUX_SESSION_NAME') | default('studiobrain', true) }}"
+    studio_brain_mosh_udp_range: "{{ lookup('env', 'STUDIO_BRAIN_MOSH_UDP_RANGE') | default('60000:61000', true) }}"
+
+  tasks:
+    - name: Install baseline host access packages
+      ansible.builtin.apt:
+        update_cache: true
+        name:
+          - ansible
+          - ca-certificates
+          - curl
+          - gnupg
+          - mosh
+          - tmux
+        state: present
+
+    - name: Check UFW state
+      ansible.builtin.command: ufw status
+      register: studio_brain_ufw_status
+      changed_when: false
+      failed_when: false
+
+    - name: Open mosh UDP range when UFW is active
+      ansible.builtin.command: "ufw allow {{ studio_brain_mosh_udp_range }}/udp"
+      register: studio_brain_ufw_mosh
+      changed_when: "'Skipping adding existing rule' not in studio_brain_ufw_mosh.stdout"
+      when: "'Status: active' in studio_brain_ufw_status.stdout"
+
+    - name: Retire the legacy Tailscale UDP rule when UFW is active
+      ansible.builtin.command: "ufw --force delete allow 41641/udp"
+      register: studio_brain_ufw_tailscale_retire
+      changed_when: studio_brain_ufw_tailscale_retire.rc == 0
+      failed_when: false
+      when: "'Status: active' in studio_brain_ufw_status.stdout"
+
+    - name: Stop retired host-access services when present
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop:
+        - tailscaled
+        - teleport
+      failed_when: false
+
+    - name: Purge retired host-access packages
+      ansible.builtin.apt:
+        name:
+          - tailscale
+          - tailscale-archive-keyring
+          - teleport
+        state: absent
+        purge: true
+        autoremove: true
+
+    - name: Remove retired host-access files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/default/tailscaled
+        - /etc/teleport
+        - /etc/teleport.yaml
+        - /var/lib/tailscale
+        - /var/lib/teleport
+
+    - name: Install Studio Brain tmux config
+      ansible.builtin.copy:
+        src: "{{ studio_brain_remote_parent }}/config/studiobrain/tmux/tmux.conf"
+        dest: "{{ studio_brain_host_home }}/.tmux.conf"
+        owner: "{{ studio_brain_host_user }}"
+        group: "{{ studio_brain_host_user }}"
+        mode: "0644"
+        remote_src: true
+
+    - name: Ensure the Studio Brain tmux session exists
+      ansible.builtin.command:
+        argv:
+          - bash
+          - "{{ studio_brain_remote_parent }}/scripts/studiobrain-tmux-session.sh"
+          - ensure
+      become: true
+      become_user: "{{ studio_brain_host_user }}"
+      environment:
+        STUDIO_BRAIN_REPO_ROOT: "{{ studio_brain_remote_parent }}"
+        STUDIO_BRAIN_TMUX_SESSION_NAME: "{{ studio_brain_tmux_session_name }}"
+      register: studio_brain_tmux_bootstrap
+      changed_when: "'created:' in studio_brain_tmux_bootstrap.stdout"

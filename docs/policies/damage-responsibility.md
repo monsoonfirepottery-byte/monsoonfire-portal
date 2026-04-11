@@ -2,12 +2,12 @@
 slug: "damage-responsibility"
 title: "Damage & responsibility"
 status: "active"
-version: "2026-02-17"
-effectiveDate: "2026-02-17"
-reviewDate: "2026-08-01"
+version: "2026-04-02"
+effectiveDate: "2026-04-02"
+reviewDate: "2026-10-02"
 owner: "Studio Operations"
 sourceUrl: "/policies/damage-responsibility/"
-summary: "Firing carries process variation. Damage from service or handling is reviewed case-by-case."
+summary: "Firing carries process variation. Damage reports are acknowledged with a documented review path, and any remedy is decided only after human review."
 tags:
   - "policies"
   - "kiln"
@@ -15,11 +15,20 @@ tags:
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "Damage intake, evidence collection, and incident review status."
+  decisionDomain: "Damage intake, evidence collection, acknowledgment, and human-reviewed outcome routing."
   defaultActions:
     - "collect timeline, batch id, and photos"
     - "determine if handling/material deviation was present"
     - "log incident under correct case type and severity"
+    - "document the review owner and next follow-up step before closing the intake"
+  allowedLowRiskActions:
+    - "acknowledge reports and collect batch evidence"
+    - "summarize case-review steps, ownership, and timelines"
+    - "log the claimed issue type and severity"
+  blockedActions:
+    - "promise compensation, refund, or remake outcomes"
+    - "assign blame before case review"
+    - "close damage claims without human review"
   requiredSignals:
     - "batch id or piece reference"
     - "time of event and symptom details"
@@ -28,7 +37,8 @@ agent:
     - "high-value batch involved"
     - "multiple connected incidents"
     - "user requests reversal beyond policy scope"
-  replyTemplate: "Acknowledge report, document evidence received, and state expected case review path."
+    - "staff is considering refund, credit, remake, replacement, or other remedy"
+  replyTemplate: "Acknowledge the report, document evidence received, identify the next review step, and note that remedies are only decided after human review."
 ---
 
 ## Purpose
@@ -45,6 +55,8 @@ All pieces handled in the studio workflow from intake to pickup.
 - Damage related to unapproved materials, packaging, or non-compliance is generally outside studio
   coverage.
 - If damage is found to be due to handling or kiln/service error, the team reviews case-by-case.
+- Customer-facing damage reports should receive acknowledgment and a documented next review step once the incident is logged.
+- No refund, remake, credit, replacement, or other remedy is guaranteed before human review closes with evidence and workflow context.
 - Customers should package for return or pickup transport with sufficient protection.
 
 ## Implementation in portal
@@ -55,7 +67,7 @@ All pieces handled in the studio workflow from intake to pickup.
 
 ## Enforcement
 
-Disputes are managed case-by-case and documented with the action taken and timeline status.
+Disputes are managed case-by-case and documented with the action taken, review owner, and timeline status. Any remedy decision requires human review.
 
 ## Support language
 
@@ -64,5 +76,6 @@ Use structured triage:
 - describe issue and symptoms
 - provide package/handling history
 - include photos and batch reference
-- request an incident review.
+- request an incident review
+- avoid promising compensation, remake, or blame assignment before review closes.
 

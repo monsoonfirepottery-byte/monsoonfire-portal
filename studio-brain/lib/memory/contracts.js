@@ -1,17 +1,19 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.memoryLoopAutomationTickRequestSchema = exports.memoryLoopActionPlanRequestSchema = exports.memoryLoopOwnerQueuesRequestSchema = exports.memoryLoopFeedbackStatsRequestSchema = exports.memoryLoopIncidentActionBatchRequestSchema = exports.memoryLoopIncidentActionRequestSchema = exports.memoryLoopsRequestSchema = exports.memoryThreadMetadataScrubRequestSchema = exports.memorySignalIndexBackfillRequestSchema = exports.memoryEmailThreadBackfillRequestSchema = exports.memoryImportRequestSchema = exports.memoryContextRequestSchema = exports.memoryStatsRequestSchema = exports.memoryRecentRequestSchema = exports.memorySearchRequestSchema = exports.memoryCaptureRequestSchema = exports.memoryLoopSortSchema = exports.memoryLoopActionPrioritySchema = exports.memoryLoopIncidentActionTypeSchema = exports.memoryLoopLaneSchema = exports.memoryLoopStateSchema = exports.memoryTypeSchema = exports.memoryStatusSchema = exports.memoryQueryLaneSchema = exports.retrievalModeSchema = exports.embeddingSchema = exports.MAX_MEMORY_IMPORT_ITEMS = exports.MAX_MEMORY_LIMIT = exports.MAX_MEMORY_CONTENT_CHARS = void 0;
+exports.memoryLoopAutomationTickRequestSchema = exports.memoryLoopActionPlanRequestSchema = exports.memoryLoopOwnerQueuesRequestSchema = exports.memoryLoopFeedbackStatsRequestSchema = exports.memoryLoopIncidentActionBatchRequestSchema = exports.memoryLoopIncidentActionRequestSchema = exports.memoryLoopsRequestSchema = exports.memoryThreadMetadataScrubRequestSchema = exports.memorySignalIndexBackfillRequestSchema = exports.memoryEmailThreadBackfillRequestSchema = exports.memoryImportRequestSchema = exports.memoryContextRequestSchema = exports.memoryStatsRequestSchema = exports.memoryRecentRequestSchema = exports.memorySearchRequestSchema = exports.memoryCaptureRequestSchema = exports.memoryLoopSortSchema = exports.memoryLoopActionPrioritySchema = exports.memoryLoopIncidentActionTypeSchema = exports.memoryLoopLaneSchema = exports.memoryLoopStateSchema = exports.memoryLayerSchema = exports.memoryTypeSchema = exports.memoryStatusSchema = exports.memoryQueryLaneSchema = exports.retrievalModeSchema = exports.embeddingSchema = exports.MAX_MEMORY_IMPORT_ITEMS = exports.MAX_MEMORY_LIMIT = exports.MAX_MEMORY_CONTENT_CHARS = void 0;
 const zod_1 = require("zod");
 exports.MAX_MEMORY_CONTENT_CHARS = 65_536;
 exports.MAX_MEMORY_LIMIT = 100;
 exports.MAX_MEMORY_IMPORT_ITEMS = 500;
 const embeddingValue = zod_1.z.number().finite();
 const stringList = zod_1.z.array(zod_1.z.string().trim().min(1).max(128)).max(64);
+const memoryLayerListSchema = zod_1.z.array(zod_1.z.enum(["core", "working", "episodic", "canonical"])).max(4);
 exports.embeddingSchema = zod_1.z.array(embeddingValue).min(1).max(4096);
 exports.retrievalModeSchema = zod_1.z.enum(["hybrid", "semantic", "lexical"]);
 exports.memoryQueryLaneSchema = zod_1.z.enum(["interactive", "ops", "bulk"]);
 exports.memoryStatusSchema = zod_1.z.enum(["proposed", "accepted", "quarantined", "archived"]);
 exports.memoryTypeSchema = zod_1.z.enum(["working", "episodic", "semantic", "procedural"]);
+exports.memoryLayerSchema = zod_1.z.enum(["core", "working", "episodic", "canonical"]);
 exports.memoryLoopStateSchema = zod_1.z.enum(["open-loop", "resolved", "reopened", "superseded"]);
 exports.memoryLoopLaneSchema = zod_1.z.enum(["critical", "high", "watch", "stable"]);
 exports.memoryLoopIncidentActionTypeSchema = zod_1.z.enum([
@@ -47,6 +49,7 @@ exports.memoryCaptureRequestSchema = zod_1.z.object({
     occurredAt: zod_1.z.string().datetime().optional(),
     status: exports.memoryStatusSchema.optional(),
     memoryType: exports.memoryTypeSchema.optional(),
+    memoryLayer: exports.memoryLayerSchema.optional(),
     sourceConfidence: zod_1.z.number().min(0).max(1).optional(),
     importance: zod_1.z.number().min(0).max(1).optional(),
 });
@@ -57,6 +60,8 @@ exports.memorySearchRequestSchema = zod_1.z.object({
     runId: zod_1.z.string().trim().min(1).max(128).optional(),
     sourceAllowlist: stringList.default([]),
     sourceDenylist: stringList.default([]),
+    layerAllowlist: memoryLayerListSchema.default([]),
+    layerDenylist: memoryLayerListSchema.default([]),
     retrievalMode: exports.retrievalModeSchema.default("hybrid"),
     queryLane: exports.memoryQueryLaneSchema.optional(),
     bulk: zod_1.z.boolean().optional(),
@@ -67,10 +72,14 @@ exports.memorySearchRequestSchema = zod_1.z.object({
 });
 exports.memoryRecentRequestSchema = zod_1.z.object({
     tenantId: zod_1.z.string().trim().min(1).max(128).nullable().optional(),
+    layerAllowlist: memoryLayerListSchema.default([]),
+    layerDenylist: memoryLayerListSchema.default([]),
     limit: zod_1.z.number().int().min(1).max(200).default(20),
 });
 exports.memoryStatsRequestSchema = zod_1.z.object({
     tenantId: zod_1.z.string().trim().min(1).max(128).nullable().optional(),
+    layerAllowlist: memoryLayerListSchema.default([]),
+    layerDenylist: memoryLayerListSchema.default([]),
 });
 exports.memoryContextRequestSchema = zod_1.z.object({
     tenantId: zod_1.z.string().trim().min(1).max(128).nullable().optional(),
@@ -80,6 +89,8 @@ exports.memoryContextRequestSchema = zod_1.z.object({
     seedMemoryId: zod_1.z.string().trim().min(1).max(128).optional(),
     sourceAllowlist: stringList.default([]),
     sourceDenylist: stringList.default([]),
+    layerAllowlist: memoryLayerListSchema.default([]),
+    layerDenylist: memoryLayerListSchema.default([]),
     retrievalMode: exports.retrievalModeSchema.default("hybrid"),
     queryLane: exports.memoryQueryLaneSchema.optional(),
     bulk: zod_1.z.boolean().optional(),

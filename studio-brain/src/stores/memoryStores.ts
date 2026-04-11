@@ -1,10 +1,19 @@
-import type { AuditEvent, EventStore, JobRunRecord, StateStore, StudioStateDiff, StudioStateSnapshot } from "./interfaces";
+import type {
+  AuditEvent,
+  EventStore,
+  JobRunRecord,
+  OverseerRunRecord,
+  StateStore,
+  StudioStateDiff,
+  StudioStateSnapshot,
+} from "./interfaces";
 import crypto from "node:crypto";
 
 export class MemoryStateStore implements StateStore {
   private snapshots: StudioStateSnapshot[] = [];
   private jobRuns = new Map<string, JobRunRecord>();
   private diffs: StudioStateDiff[] = [];
+  private overseerRuns: OverseerRunRecord[] = [];
 
   async saveStudioState(snapshot: StudioStateSnapshot): Promise<void> {
     const existing = this.snapshots.findIndex((s) => s.snapshotDate === snapshot.snapshotDate);
@@ -29,6 +38,24 @@ export class MemoryStateStore implements StateStore {
 
   async saveStudioStateDiff(diff: StudioStateDiff): Promise<void> {
     this.diffs.push(diff);
+  }
+
+  async saveOverseerRun(run: OverseerRunRecord): Promise<void> {
+    const existing = this.overseerRuns.findIndex((row) => row.runId === run.runId);
+    if (existing >= 0) {
+      this.overseerRuns[existing] = run;
+    } else {
+      this.overseerRuns.push(run);
+    }
+    this.overseerRuns.sort((a, b) => b.computedAt.localeCompare(a.computedAt));
+  }
+
+  async getLatestOverseerRun(): Promise<OverseerRunRecord | null> {
+    return this.overseerRuns[0] ?? null;
+  }
+
+  async listRecentOverseerRuns(limit: number): Promise<OverseerRunRecord[]> {
+    return this.overseerRuns.slice(0, Math.max(1, limit));
   }
 
   async listRecentJobRuns(limit: number): Promise<JobRunRecord[]> {

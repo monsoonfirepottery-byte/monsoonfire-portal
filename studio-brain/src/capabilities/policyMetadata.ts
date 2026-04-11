@@ -36,4 +36,16 @@ export const capabilityPolicyMetadata: Record<string, CapabilityPolicyMetadata> 
     rollbackPlan: "Disable connector in registry and use direct vendor app telemetry.",
     escalationPath: "Route connector policy exception to platform-primary.",
   },
+  "roborock.clean.start_full": {
+    owner: "Integrations",
+    approvalMode: "required",
+    rollbackPlan: "Issue stop command in vendor app and reschedule cleaning window.",
+    escalationPath: "Route automation failures to platform-primary + ops-primary with request payload evidence.",
+  },
+  "roborock.clean.start_rooms": {
+    owner: "Integrations",
+    approvalMode: "required",
+    rollbackPlan: "Issue stop command in vendor app and relaunch targeted room batch.",
+    escalationPath: "Route room-clean policy exceptions to platform-primary + ops-primary.",
+  },
 };

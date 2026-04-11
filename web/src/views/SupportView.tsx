@@ -12,12 +12,22 @@ export type SupportRequestCategory =
   | "Studio"
   | "Other";
 
+export type PolicySourceType = "canonical_summary" | "announcement_summary" | "operational_faq";
+
+export type PolicyResolutionInput = {
+  resolvedPolicySlug?: string | null;
+  resolvedPolicyVersion?: string | null;
+  discrepancyFlag?: boolean | null;
+  escalationReason?: string | null;
+};
+
 type SupportCategory = "All" | SupportRequestCategory;
 
 export type SupportRequestInput = {
   subject: string;
   body: string;
   category: SupportRequestCategory;
+  policyResolution?: PolicyResolutionInput | null;
 };
 
 type FaqEntry = {
@@ -27,6 +37,9 @@ type FaqEntry = {
   category: SupportRequestCategory;
   tags: string[];
   rank: number;
+  policySlug?: string | null;
+  policyVersion?: string | null;
+  sourceType?: PolicySourceType | null;
 };
 
 type Props = {
@@ -66,19 +79,25 @@ const FALLBACK_FAQ_ENTRIES: FaqEntry[] = [
     id: "fallback-pickup",
     question: "How do pickup and drop-off work?",
     answer:
-      "Use your portal timeline for status updates. When your pieces are marked ready, you can pick up during normal studio hours.",
+      "Use your portal timeline for status updates. When your pieces are marked ready, watch for pickup guidance there. Same-day pickup is not guaranteed even if a load finishes early.",
     category: "Pieces",
     tags: ["pickup", "dropoff", "timeline", "ready"],
     rank: 1,
+    policySlug: "firing-scheduling",
+    policyVersion: "2026-04-02",
+    sourceType: "operational_faq",
   },
   {
     id: "fallback-kiln",
     question: "How can I check kiln timing?",
     answer:
-      "Open Kiln Schedule and your piece timeline in the portal for the latest estimate. Timing can shift based on queue and load changes.",
+      "Open Kiln Schedule and your piece timeline in the portal for the latest estimate band. Timing can shift based on queue and load changes, and deadline requests need staff confirmation.",
     category: "Kiln",
     tags: ["kiln", "schedule", "timeline", "queue"],
     rank: 2,
+    policySlug: "firing-scheduling",
+    policyVersion: "2026-04-02",
+    sourceType: "operational_faq",
   },
   {
     id: "fallback-membership",
@@ -88,6 +107,9 @@ const FALLBACK_FAQ_ENTRIES: FaqEntry[] = [
     category: "Membership",
     tags: ["membership", "plan", "tier", "change"],
     rank: 3,
+    policySlug: "payments-refunds",
+    policyVersion: "2026-04-02",
+    sourceType: "operational_faq",
   },
   {
     id: "fallback-billing",
@@ -97,15 +119,21 @@ const FALLBACK_FAQ_ENTRIES: FaqEntry[] = [
     category: "Billing",
     tags: ["billing", "receipt", "invoice", "payment"],
     rank: 4,
+    policySlug: "payments-refunds",
+    policyVersion: "2026-04-02",
+    sourceType: "operational_faq",
   },
   {
     id: "fallback-support",
     question: "When should I submit a support request?",
     answer:
-      "Use support requests for non-urgent studio questions. For urgent issues, email support directly so we can respond faster.",
+      "Use support requests for non-urgent studio and appointment-planning questions. For urgent issues, email support directly so we can respond faster.",
     category: "Studio",
     tags: ["support", "urgent", "email", "help"],
     rank: 5,
+    policySlug: "studio-access",
+    policyVersion: "2026-04-02",
+    sourceType: "operational_faq",
   },
   {
     id: "fallback-continuity",
@@ -177,6 +205,28 @@ function normalizeTags(value: unknown): string[] {
     .map((tag) => tag.toLowerCase());
 }
 
+function normalizePolicySlug(value: unknown): string | null {
+  const slug = typeof value === "string" ? value.trim() : "";
+  if (!slug) return null;
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : null;
+}
+
+function normalizePolicyVersion(value: unknown): string | null {
+  const version = typeof value === "string" ? value.trim() : "";
+  return version || null;
+}
+
+function normalizeSourceType(value: unknown): PolicySourceType | null {
+  if (
+    value === "canonical_summary" ||
+    value === "announcement_summary" ||
+    value === "operational_faq"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function normalizeFaqEntry(id: string, data: Record<string, unknown>): FaqEntry | null {
   if (data.isActive === false) return null;
 
@@ -194,6 +244,9 @@ function normalizeFaqEntry(id: string, data: Record<string, unknown>): FaqEntry 
     category: normalizeCategory(data.category),
     tags,
     rank,
+    policySlug: normalizePolicySlug(data.policySlug),
+    policyVersion: normalizePolicyVersion(data.policyVersion),
+    sourceType: normalizeSourceType(data.sourceType),
   };
 }
 

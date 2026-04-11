@@ -6,6 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = __importDefault(require("node:test"));
 const strict_1 = __importDefault(require("node:assert/strict"));
 const node_crypto_1 = __importDefault(require("node:crypto"));
+const node_fs_1 = require("node:fs");
+const node_os_1 = require("node:os");
+const node_path_1 = require("node:path");
 const server_1 = require("./server");
 const memoryStores_1 = require("../stores/memoryStores");
 const runtime_1 = require("../capabilities/runtime");
@@ -77,6 +80,318 @@ async function withServer(options, run) {
         });
     }
 }
+function buildSampleOverseerRun(overrides = {}) {
+    return {
+        runId: "ovr_test_1",
+        computedAt: "2026-03-30T10:00:00.000Z",
+        overallStatus: "warning",
+        runtimePosture: {
+            hostHealth: { status: "ok", summary: "healthy", checkedAt: "2026-03-30T10:00:00.000Z", evidence: [] },
+            schedulerHealth: { status: "ok", summary: "healthy", checkedAt: "2026-03-30T10:00:00.000Z", evidence: [] },
+            backupFreshness: { status: "warning", summary: "stale", checkedAt: "2026-03-30T10:00:00.000Z", evidence: [] },
+            heartbeatFreshness: { status: "ok", summary: "fresh", checkedAt: "2026-03-30T10:00:00.000Z", evidence: [] },
+            authMintHealth: { status: "ok", summary: "fresh", checkedAt: "2026-03-30T10:00:00.000Z", evidence: [] },
+            connectorCoverage: { status: "warning", summary: "2/2 healthy", checkedAt: "2026-03-30T10:00:00.000Z", evidence: [] },
+        },
+        signalGaps: [],
+        productOpportunities: [],
+        coordinationActions: [],
+        createdProposalIds: [],
+        delivery: {
+            dedupeKey: "dedupe-1",
+            changed: true,
+            matchedRunId: null,
+            discord: {
+                enabled: true,
+                shouldNotify: true,
+                summary: "Overseer warning",
+                lines: ["status=warning"],
+                detailPath: "output/overseer/discord/latest.json",
+                target: {
+                    guildId: "guild-1",
+                    channelId: "channel-1",
+                    applicationId: "app-1",
+                    configured: true,
+                },
+                mcp: {
+                    serverName: "discord",
+                    pluginId: "discord-studiobrain@micah-local",
+                    setupDocPath: "docs/STUDIO_BRAIN_DISCORD_MODEL.md",
+                },
+                sourceOfTruth: {
+                    model: "openclaw-discord",
+                    primaryDocPath: "docs/STUDIO_BRAIN_DISCORD_MODEL.md",
+                    upstreamDocsUrl: "https://docs.openclaw.ai/channels/discord",
+                    inspirationSources: [
+                        "https://github.com/barryyip0625/mcp-discord",
+                        "https://github.com/wrathagom/ai-discord-bot",
+                        "https://github.com/timoconnellaus/claude-code-discord-bot",
+                    ],
+                },
+                ingest: {
+                    enabled: true,
+                    source: "discord",
+                    endpointPath: "/api/memory/ingest",
+                    guildId: "guild-1",
+                    channelId: "channel-1",
+                    clientRequestIdTemplate: "overseer-ovr_test_1-{discordMessageId}",
+                },
+                routing: {
+                    dmScope: "main",
+                    guildSessions: "per_channel",
+                    threadSessions: "per_thread",
+                    sessionKeyTemplates: {
+                        dm: "agent:studio-brain:main",
+                        guildChannel: "agent:studio-brain:discord:channel:{channelId}",
+                        thread: "agent:studio-brain:discord:thread:{threadId}",
+                    },
+                    groupPolicy: "allowlist",
+                    requireMention: true,
+                    allowBots: "never",
+                    responsePrefix: null,
+                    allowlistedGuildIds: ["guild-1"],
+                    allowlistedChannelIds: ["channel-1"],
+                },
+                threadBindings: {
+                    enabled: true,
+                    idleHours: 24,
+                    maxAgeHours: 0,
+                    replyChainFallback: true,
+                },
+                execApprovals: {
+                    enabled: true,
+                    mode: "external_writes_only",
+                },
+                commandContracts: {
+                    bot: [{ command: "/overseer latest", description: "Show latest summary." }],
+                    mcp: [{ command: "read_channel_messages", description: "Read channel context." }],
+                },
+                executionQueue: [],
+                messageDraft: {
+                    title: "Studio Brain Overseer warning",
+                    body: "Body",
+                },
+            },
+            cli: {
+                summary: "Overseer warning",
+                detailPath: "output/overseer/latest.json",
+                hints: ["GET /api/overseer/latest"],
+            },
+        },
+        ...overrides,
+    };
+}
+function createControlTowerFixture() {
+    const root = (0, node_fs_1.mkdtempSync)((0, node_path_1.join)((0, node_os_1.tmpdir)(), "studio-brain-control-tower-"));
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "agents"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "agent-status"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "stability"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "overseer", "discord"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-brief"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-consolidation"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "qa"), { recursive: true });
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "agents", "sb-room.json"), `${JSON.stringify({
+        sessionName: "sb-room",
+        cwd: "/home/wuff/monsoonfire-portal",
+        tool: "codex",
+        group: "portal",
+        room: "portal",
+        summary: "Portal lane",
+        objective: "Investigate portal issue and report the next safe move.",
+    }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "stability", "heartbeat-summary.json"), `${JSON.stringify({ status: "pass", checkedAt: "2026-03-30T10:00:00.000Z" }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-brief", "latest.json"), `${JSON.stringify({
+        schema: "studio-brain.memory-brief.v1",
+        generatedAt: "2026-03-30T10:00:00.000Z",
+        continuityState: "ready",
+        summary: "Portal continuity is loaded and ready for the next safe move.",
+        goal: "Investigate portal issue and report the next safe move.",
+        blockers: ["Operator review is still pending."],
+        recentDecisions: ["Portal room stayed attached to the operator board."],
+        recommendedNextActions: ["Inspect portal lane"],
+        fallbackSources: ["output/ops-cockpit/operator-state.json"],
+        sourcePath: "output/studio-brain/memory-brief/latest.json",
+        layers: {
+            coreBlocks: ["Investigate portal issue and report the next safe move."],
+            workingMemory: ["Portal room waiting for a nudge."],
+            episodicMemory: ["Portal room stayed attached to the operator board."],
+            canonicalMemory: ["accepted corpus artifacts", "promoted JSONL", "SQLite materialization"],
+        },
+        consolidation: {
+            mode: "scheduled",
+            summary: "Offline consolidation is queued to dedupe overlap and strengthen memory links during the next quiet window.",
+            lastRunAt: "2026-03-30T03:00:00.000Z",
+            nextRunAt: "2026-03-31T03:00:00.000Z",
+            focusAreas: ["Portal continuity", "Recent operator handoffs"],
+            maintenanceActions: ["Dedupe overlap", "Refresh incident-to-artifact links"],
+            outputs: [
+                "output/studio-brain/memory-brief/latest.json",
+                "output/memory/<overnight-run>/overnight-status.json",
+            ],
+            actionabilityStatus: "repair",
+            actionableInsightCount: 0,
+            suppressedConnectionNoteCount: 0,
+            suppressedPseudoDecisionCount: 0,
+            topActions: ["Inspect portal lane"],
+        },
+    }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-consolidation", "latest.json"), `${JSON.stringify({
+        schema: "studio-brain.memory-consolidation.v1",
+        mode: "overnight",
+        status: "success",
+        summary: "Dream rescue pass succeeded for the portal continuity lane.",
+        finishedAt: "2026-03-30T04:00:00.000Z",
+        nextRunAt: "2026-03-31T04:00:00.000Z",
+        promotionCount: 1,
+        quarantineCount: 1,
+        repairedEdgeCount: 6,
+        actionabilityStatus: "passed",
+        actionableInsightCount: 2,
+        suppressedConnectionNoteCount: 3,
+        suppressedPseudoDecisionCount: 2,
+        topActions: [
+            "Reuse the promoted approval summary memory as the canonical startup thread.",
+            "Review and split the unknown mail-thread cluster before the next dream pass.",
+        ],
+        focusAreas: ["Portal continuity", "Approval summary before action"],
+        outputs: [
+            "output/studio-brain/memory-brief/latest.json",
+            "output/studio-brain/memory-consolidation/latest.json",
+        ],
+    }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "qa", "codex-startup-scorecard.json"), `${JSON.stringify({
+        schema: "codex-startup-scorecard.v1",
+        generatedAtIso: "2026-03-30T10:05:00.000Z",
+        latest: {
+            sample: {
+                status: "pass",
+                reasonCode: "ok",
+                continuityState: "ready",
+                latencyMs: 420,
+            },
+        },
+        metrics: {
+            readyRate: 0.98,
+            groundingReadyRate: 0.97,
+            blockedContinuityRate: 0.01,
+            p95LatencyMs: 950,
+        },
+        supportingSignals: {
+            toolcalls: {
+                startupEntries: 7,
+                startupFailures: 0,
+                startupFailureRate: 0,
+                groundingObservedEntries: 6,
+                groundingLineComplianceRate: 1,
+                preStartupRepoReadObservedEntries: 6,
+                averagePreStartupRepoReads: 0,
+                preStartupRepoReadFreeRate: 1,
+                telemetryCoverageRate: 0.86,
+                repeatFailureBursts: 0,
+            },
+        },
+        coverage: {
+            gaps: ["Startup transcript telemetry is only partially captured; 86% of startup entries carried both Grounding and repo-read signals."],
+        },
+        rubric: {
+            overallScore: 98,
+            grade: "A",
+        },
+        recommendations: ["Startup quality is within the current thresholds; keep collecting history so future regressions are easier to spot."],
+    }, null, 2)}\n`, "utf8");
+    return {
+        root,
+        cleanup() {
+            (0, node_fs_1.rmSync)(root, { recursive: true, force: true });
+        },
+    };
+}
+function createControlTowerRunner() {
+    const sessions = new Map([
+        ["studiobrain", { cwd: "/home/wuff/monsoonfire-portal", command: "bash", sessionActivity: "1711792800", paneId: "%100", attached: true }],
+        ["sb-room", { cwd: "/home/wuff/monsoonfire-portal", command: "codex", room: "portal", sessionActivity: "1711796400", paneId: "%101" }],
+    ]);
+    const sentTexts = [];
+    const serviceActions = [];
+    const runner = (command, args = []) => {
+        if (command === "tmux" && args[0] === "list-panes" && args.includes("-a")) {
+            const format = Array.from(sessions.entries()).flatMap(([sessionName, session]) => {
+                const isRoot = sessionName === "studiobrain";
+                const windowName = isRoot ? "control" : "work";
+                return [
+                    [
+                        sessionName,
+                        windowName,
+                        "0",
+                        "1",
+                        "0",
+                        "1",
+                        session.command,
+                        session.cwd,
+                        windowName,
+                        "0",
+                        session.paneId,
+                        session.attached ? "1" : "0",
+                        session.sessionActivity,
+                        `@${sessionName}`,
+                    ].join("\u001f"),
+                ];
+            });
+            return { ok: true, rc: 0, stdout: format.join("\n"), stderr: "", command: "tmux list-panes" };
+        }
+        if (command === "tmux" && args[0] === "has-session") {
+            const sessionName = String(args[2] || "");
+            const exists = sessions.has(sessionName);
+            return { ok: exists, rc: exists ? 0 : 1, stdout: "", stderr: exists ? "" : "missing", command: "tmux has-session" };
+        }
+        if (command === "tmux" && args[0] === "new-session") {
+            const sessionName = String(args[3] || "");
+            const cwd = String(args[5] || "/home/wuff/monsoonfire-portal");
+            const sessionCommand = String(args[6] || "bash");
+            sessions.set(sessionName, {
+                cwd,
+                command: sessionCommand,
+                sessionActivity: "1711798200",
+                paneId: `%${sessions.size + 101}`,
+            });
+            return { ok: true, rc: 0, stdout: "", stderr: "", command: "tmux new-session" };
+        }
+        if (command === "tmux" && args[0] === "list-panes" && args[1] === "-t") {
+            const sessionName = String(args[2] || "");
+            const session = sessions.get(sessionName);
+            if (!session)
+                return { ok: false, rc: 1, stdout: "", stderr: "missing", command: "tmux list-panes -t" };
+            return { ok: true, rc: 0, stdout: session.paneId, stderr: "", command: "tmux list-panes -t" };
+        }
+        if (command === "tmux" && args[0] === "send-keys") {
+            const paneId = String(args[2] || "");
+            const session = Array.from(sessions.entries()).find(([, entry]) => entry.paneId === paneId)?.[0] ?? "unknown";
+            if (args.includes("-l")) {
+                const text = String(args[4] || "");
+                sentTexts.push({ session, text });
+            }
+            return { ok: true, rc: 0, stdout: "", stderr: "", command: "tmux send-keys" };
+        }
+        if (command === "systemctl" && args[0] === "show") {
+            const service = String(args[1] || "");
+            const activeState = service === "studio-brain-discord-relay" ? "inactive" : "active";
+            const subState = service === "studio-brain-discord-relay" ? "dead" : "running";
+            return {
+                ok: true,
+                rc: 0,
+                stdout: `ActiveState=${activeState}\nSubState=${subState}\nUnitFileState=enabled`,
+                stderr: "",
+                command: "systemctl show",
+            };
+        }
+        if (command === "systemctl") {
+            serviceActions.push({ action: String(args[0] || ""), service: String(args[1] || "") });
+            return { ok: true, rc: 0, stdout: "", stderr: "", command: "systemctl action" };
+        }
+        return { ok: false, rc: 1, stdout: "", stderr: "unsupported", command: `${command} ${args.join(" ")}` };
+    };
+    return { runner, sentTexts, serviceActions };
+}
 (0, node_test_1.default)("health endpoint returns ok", async () => {
     await withServer({}, async (baseUrl) => {
         const response = await fetch(`${baseUrl}/healthz`);
@@ -133,6 +448,76 @@ async function withServer(options, run) {
         strict_1.default.equal(payload.ok, true);
         strict_1.default.ok(payload.metrics.process.pid > 0);
         strict_1.default.ok(payload.metrics.process.uptimeSec >= 0);
+    });
+});
+(0, node_test_1.default)("overseer endpoints return latest run payload and bounded history", async () => {
+    const stateStore = new memoryStores_1.MemoryStateStore();
+    await stateStore.saveOverseerRun(buildSampleOverseerRun());
+    await stateStore.saveOverseerRun(buildSampleOverseerRun({
+        runId: "ovr_test_2",
+        computedAt: "2026-03-30T11:00:00.000Z",
+        overallStatus: "critical",
+        delivery: {
+            dedupeKey: "dedupe-2",
+            changed: false,
+            matchedRunId: "ovr_test_1",
+            discord: {
+                enabled: true,
+                shouldNotify: false,
+                summary: "Overseer critical",
+                lines: ["status=critical"],
+            },
+            cli: {
+                summary: "Overseer critical",
+                detailPath: "output/overseer/latest.json",
+                hints: ["GET /api/overseer/latest"],
+            },
+        },
+    }));
+    await withServer({ stateStore }, async (baseUrl) => {
+        const latest = await fetch(`${baseUrl}/api/overseer/latest`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(latest.status, 200);
+        const latestPayload = (await latest.json());
+        strict_1.default.equal(latestPayload.ok, true);
+        strict_1.default.equal(latestPayload.overseer.runId, "ovr_test_2");
+        strict_1.default.equal(latestPayload.overseer.overallStatus, "critical");
+        const runs = await fetch(`${baseUrl}/api/overseer/runs?limit=1`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(runs.status, 200);
+        const runsPayload = (await runs.json());
+        strict_1.default.equal(runsPayload.ok, true);
+        strict_1.default.equal(runsPayload.rows.length, 1);
+        strict_1.default.equal(runsPayload.rows[0].runId, "ovr_test_2");
+    });
+});
+(0, node_test_1.default)("overseer endpoints require staff auth", async () => {
+    const stateStore = new memoryStores_1.MemoryStateStore();
+    await stateStore.saveOverseerRun(buildSampleOverseerRun());
+    await withServer({ stateStore }, async (baseUrl) => {
+        const unauth = await fetch(`${baseUrl}/api/overseer/latest`);
+        strict_1.default.equal(unauth.status, 401);
+        const nonStaff = await fetch(`${baseUrl}/api/overseer/runs?limit=5`, {
+            headers: { authorization: "Bearer test-member" },
+        });
+        strict_1.default.equal(nonStaff.status, 401);
+    });
+});
+(0, node_test_1.default)("overseer discord endpoint returns latest delivery payload", async () => {
+    const stateStore = new memoryStores_1.MemoryStateStore();
+    await stateStore.saveOverseerRun(buildSampleOverseerRun());
+    await withServer({ stateStore }, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/overseer/discord/latest`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(response.status, 200);
+        const payload = (await response.json());
+        strict_1.default.equal(payload.ok, true);
+        strict_1.default.equal(payload.discord.runId, "ovr_test_1");
+        strict_1.default.equal(payload.discord.delivery.mcp?.serverName, "discord");
+        strict_1.default.equal(payload.discord.delivery.target?.channelId, "channel-1");
     });
 });
 (0, node_test_1.default)("memory endpoints capture, search, recent, stats, and import", async () => {
@@ -1786,4 +2171,252 @@ async function withServer(options, run) {
         strict_1.default.equal(rollbackCalls[0].reason, "Rollback requested after duplicate operator note.");
         strict_1.default.equal(rollbackCalls[0].actorUid, "staff-test-uid");
     });
+});
+(0, node_test_1.default)("read-only memory endpoints allow staff auth without admin token when configured", async () => {
+    await withServer({ adminToken: "secret-token" }, async (baseUrl) => {
+        const captured = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                authorization: "Bearer test-staff",
+                "x-studio-brain-admin-token": "secret-token",
+            },
+            body: JSON.stringify({
+                content: "Handoff: keep startup continuity resilient.",
+                source: "codex-handoff",
+                metadata: { owner: "codex" },
+            }),
+        });
+        strict_1.default.equal(captured.status, 201);
+        const search = await fetch(`${baseUrl}/api/memory/search`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({ query: "startup continuity", limit: 5 }),
+        });
+        strict_1.default.equal(search.status, 200);
+        const context = await fetch(`${baseUrl}/api/memory/context`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({ query: "startup continuity", maxItems: 3, maxChars: 512 }),
+        });
+        strict_1.default.equal(context.status, 200);
+        const recent = await fetch(`${baseUrl}/api/memory/recent?limit=5`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(recent.status, 200);
+        const stats = await fetch(`${baseUrl}/api/memory/stats`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(stats.status, 200);
+        const captureBlocked = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                content: "Decision: this write should stay admin-token gated.",
+                source: "manual",
+            }),
+        });
+        strict_1.default.equal(captureBlocked.status, 401);
+    });
+});
+(0, node_test_1.default)("control tower state routes derive browser-friendly room and service data", async () => {
+    const fixture = createControlTowerFixture();
+    const { runner } = createControlTowerRunner();
+    const stateStore = new memoryStores_1.MemoryStateStore();
+    await stateStore.saveOverseerRun(buildSampleOverseerRun());
+    try {
+        await withServer({
+            stateStore,
+            controlTowerRepoRoot: fixture.root,
+            controlTowerRunner: runner,
+        }, async (baseUrl) => {
+            const response = await fetch(`${baseUrl}/api/control-tower/state`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            strict_1.default.equal(response.status, 200);
+            const payload = (await response.json());
+            strict_1.default.equal(payload.ok, true);
+            strict_1.default.equal(payload.state.overview.activeRooms[0]?.id, "portal");
+            strict_1.default.ok(payload.state.overview.needsAttention.length >= 1);
+            strict_1.default.ok(payload.state.pinnedItems.some((entry) => entry.title === "Discord Relay is down"));
+            strict_1.default.ok(payload.state.services.some((entry) => entry.id === "studio-brain-discord-relay" && entry.health === "error"));
+            strict_1.default.equal(payload.state.board[0]?.owner, "Memory maintenance");
+            strict_1.default.equal(payload.state.board[1]?.owner, "Codex");
+            strict_1.default.match(payload.state.board[1]?.task ?? "", /Investigate portal issue/i);
+            strict_1.default.equal(payload.state.memoryBrief.continuityState, "ready");
+            strict_1.default.equal(payload.state.memoryBrief.consolidation.mode, "scheduled");
+            strict_1.default.ok(payload.state.memoryBrief.consolidation.focusAreas.includes("Portal continuity"));
+            strict_1.default.equal(payload.state.memoryBrief.consolidation.actionabilityStatus, "passed");
+            strict_1.default.equal(payload.state.memoryBrief.consolidation.actionableInsightCount, 2);
+            strict_1.default.deepEqual(payload.state.memoryBrief.consolidation.topActions?.slice(0, 2), [
+                "Reuse the promoted approval summary memory as the canonical startup thread.",
+                "Review and split the unknown mail-thread cluster before the next dream pass.",
+            ]);
+            strict_1.default.equal(payload.state.startupScorecard?.rubric.grade, "A");
+            strict_1.default.equal(payload.state.startupScorecard?.rubric.overallScore, 98);
+            strict_1.default.equal(payload.state.startupScorecard?.metrics.readyRate, 0.98);
+            strict_1.default.equal(payload.state.startupScorecard?.metrics.groundingReadyRate, 0.97);
+            strict_1.default.equal(payload.state.startupScorecard?.metrics.blockedContinuityRate, 0.01);
+            strict_1.default.equal(payload.state.startupScorecard?.metrics.p95LatencyMs, 950);
+            strict_1.default.equal(payload.state.startupScorecard?.supportingSignals.toolcalls.telemetryCoverageRate, 0.86);
+            strict_1.default.equal(payload.state.startupScorecard?.coverage.gaps.length, 1);
+            strict_1.default.equal(payload.state.overview.goodNextMoves.some((entry) => /promoted approval summary memory/i.test(entry.title)), false);
+            strict_1.default.ok(payload.state.recentChanges.some((entry) => entry.type === "memory.promoted"));
+            strict_1.default.ok(payload.state.recentChanges.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));
+            const roomResponse = await fetch(`${baseUrl}/api/control-tower/rooms/portal`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            strict_1.default.equal(roomResponse.status, 200);
+            const roomPayload = (await roomResponse.json());
+            strict_1.default.equal(roomPayload.ok, true);
+            strict_1.default.equal(roomPayload.room.id, "portal");
+            strict_1.default.equal(roomPayload.room.attach?.sessionName, "sb-room");
+            strict_1.default.match(roomPayload.room.attach?.sshCommand ?? "", /ssh -t studiobrain/);
+        });
+    }
+    finally {
+        fixture.cleanup();
+    }
+});
+(0, node_test_1.default)("control tower promotes memory next moves only when startup quality is degraded", async () => {
+    const fixture = createControlTowerFixture();
+    const { runner } = createControlTowerRunner();
+    const stateStore = new memoryStores_1.MemoryStateStore();
+    await stateStore.saveOverseerRun(buildSampleOverseerRun());
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(fixture.root, "output", "qa", "codex-startup-scorecard.json"), `${JSON.stringify({
+        schema: "codex-startup-scorecard.v1",
+        generatedAtIso: "2026-03-30T10:05:00.000Z",
+        latest: {
+            sample: {
+                status: "fail",
+                reasonCode: "missing_token",
+                continuityState: "blocked",
+                latencyMs: 3200,
+            },
+        },
+        metrics: {
+            readyRate: 0.42,
+            groundingReadyRate: 0.4,
+            blockedContinuityRate: 0.25,
+            p95LatencyMs: 3200,
+        },
+        supportingSignals: {
+            toolcalls: {
+                startupEntries: 4,
+                startupFailures: 2,
+                startupFailureRate: 0.5,
+                groundingObservedEntries: 4,
+                groundingLineComplianceRate: 0.5,
+                preStartupRepoReadObservedEntries: 4,
+                averagePreStartupRepoReads: 2,
+                preStartupRepoReadFreeRate: 0.25,
+                telemetryCoverageRate: 1,
+                repeatFailureBursts: 1,
+            },
+        },
+        coverage: {
+            gaps: [],
+        },
+        rubric: {
+            overallScore: 61,
+            grade: "F",
+        },
+        recommendations: ["Restore startup continuity before repo exploration."],
+    }, null, 2)}\n`, "utf8");
+    try {
+        await withServer({
+            stateStore,
+            controlTowerRepoRoot: fixture.root,
+            controlTowerRunner: runner,
+        }, async (baseUrl) => {
+            const response = await fetch(`${baseUrl}/api/control-tower/state`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            strict_1.default.equal(response.status, 200);
+            const payload = (await response.json());
+            strict_1.default.equal(payload.ok, true);
+            strict_1.default.equal(payload.state.startupScorecard?.rubric.grade, "F");
+            strict_1.default.equal(payload.state.overview.goodNextMoves.some((entry) => /promoted approval summary memory/i.test(entry.title)), true);
+            strict_1.default.equal(payload.state.overview.goodNextMoves.some((entry) => entry.actionLabel === "Review memory"), true);
+        });
+    }
+    finally {
+        fixture.cleanup();
+    }
+});
+(0, node_test_1.default)("control tower actions send room instructions, persist room escalation, and run service actions", async () => {
+    const fixture = createControlTowerFixture();
+    const { runner, sentTexts, serviceActions } = createControlTowerRunner();
+    const stateStore = new memoryStores_1.MemoryStateStore();
+    await stateStore.saveOverseerRun(buildSampleOverseerRun());
+    try {
+        await withServer({
+            stateStore,
+            controlTowerRepoRoot: fixture.root,
+            controlTowerRunner: runner,
+        }, async (baseUrl) => {
+            const authHeaders = {
+                authorization: "Bearer test-staff",
+                "content-type": "application/json",
+            };
+            const sendResponse = await fetch(`${baseUrl}/api/control-tower/rooms/portal/send`, {
+                method: "POST",
+                headers: authHeaders,
+                body: JSON.stringify({ text: "status?" }),
+            });
+            strict_1.default.equal(sendResponse.status, 200);
+            strict_1.default.equal(sentTexts[0]?.session, "sb-room");
+            strict_1.default.equal(sentTexts[0]?.text, "status?");
+            const pinResponse = await fetch(`${baseUrl}/api/control-tower/rooms/portal/pin`, {
+                method: "POST",
+                headers: authHeaders,
+                body: JSON.stringify({ rationale: "Needs operator review." }),
+            });
+            strict_1.default.equal(pinResponse.status, 200);
+            const stateResponse = await fetch(`${baseUrl}/api/control-tower/state`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            const statePayload = (await stateResponse.json());
+            strict_1.default.equal(statePayload.state.rooms.find((entry) => entry.id === "portal")?.isEscalated, true);
+            const serviceResponse = await fetch(`${baseUrl}/api/control-tower/services/studio-brain-discord-relay/actions`, {
+                method: "POST",
+                headers: authHeaders,
+                body: JSON.stringify({ action: "restart" }),
+            });
+            strict_1.default.equal(serviceResponse.status, 200);
+            strict_1.default.deepEqual(serviceActions[0], { service: "studio-brain-discord-relay", action: "restart" });
+            const ackResponse = await fetch(`${baseUrl}/api/control-tower/overseer/ack`, {
+                method: "POST",
+                headers: authHeaders,
+                body: JSON.stringify({ note: "Reviewed and queued." }),
+            });
+            strict_1.default.equal(ackResponse.status, 200);
+            const eventsResponse = await fetch(`${baseUrl}/api/control-tower/events`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            strict_1.default.equal(eventsResponse.status, 200);
+            const eventsPayload = (await eventsResponse.json());
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "studio_ops.control_tower.session_instruction_sent"));
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "studio_ops.control_tower.room_pinned"));
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "studio_ops.control_tower.service_action"));
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "studio_ops.control_tower.overseer_ack"));
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "control_tower.memory_brief" && entry.type === "memory.promoted"));
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "control_tower.memory_consolidation" &&
+                entry.type === "memory.promoted" &&
+                entry.payload?.mode === "scheduled"));
+            const sseResponse = await fetch(`${baseUrl}/api/control-tower/events?stream=1&once=1`, {
+                headers: {
+                    authorization: "Bearer test-staff",
+                    accept: "text/event-stream",
+                },
+            });
+            strict_1.default.equal(sseResponse.status, 200);
+            const sseText = await sseResponse.text();
+            strict_1.default.match(sseText, /event:\s+memory\.promoted/);
+            strict_1.default.match(sseText, /control_tower\.memory_consolidation/);
+        });
+    }
+    finally {
+        fixture.cleanup();
+    }
 });

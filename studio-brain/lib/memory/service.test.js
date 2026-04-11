@@ -9,6 +9,7 @@ const node_fs_1 = require("node:fs");
 const node_path_1 = require("node:path");
 const service_1 = require("./service");
 const inMemoryAdapter_1 = require("./inMemoryAdapter");
+const memoryConsolidationArtifactPath = () => (0, node_path_1.resolve)(__dirname, "..", "..", "..", "output", "studio-brain", "memory-consolidation", "latest.json");
 (0, node_test_1.default)("memory service capture/search pipeline works with in-memory adapter", async () => {
     const service = (0, service_1.createMemoryService)({
         store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
@@ -118,7 +119,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
         defaultAgentId: "agent:codex",
         defaultRunId: "run-consolidation",
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         const episodic = await service.capture({
@@ -214,7 +215,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
         defaultAgentId: "agent:codex",
         defaultRunId: "run-wide-dream",
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({
@@ -309,7 +310,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
             },
         },
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({
@@ -388,7 +389,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
         defaultAgentId: "agent:codex",
         defaultRunId: "run-source-balance",
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         for (let index = 0; index < 10; index += 1) {
@@ -532,7 +533,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
             },
         },
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({
@@ -674,7 +675,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
         defaultAgentId: "agent:codex",
         defaultRunId: "run-pseudo-filter",
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({
@@ -758,7 +759,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
             },
         },
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({
@@ -851,7 +852,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
             },
         },
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({
@@ -913,7 +914,7 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
         defaultRunId: "run-association-unavailable",
         associationScout: null,
     });
-    const artifactPath = (0, node_path_1.join)(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+    const artifactPath = memoryConsolidationArtifactPath();
     (0, node_fs_1.rmSync)(artifactPath, { force: true });
     try {
         await service.capture({

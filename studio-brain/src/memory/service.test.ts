@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { createMemoryService } from "./service";
 import { createInMemoryMemoryStoreAdapter } from "./inMemoryAdapter";
+
+const memoryConsolidationArtifactPath = () =>
+  resolve(__dirname, "..", "..", "..", "output", "studio-brain", "memory-consolidation", "latest.json");
 
 test("memory service capture/search pipeline works with in-memory adapter", async () => {
   const service = createMemoryService({
@@ -129,7 +132,7 @@ test("memory consolidation writes explainable artifacts and relationship repairs
     defaultAgentId: "agent:codex",
     defaultRunId: "run-consolidation",
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -262,7 +265,7 @@ test("memory consolidation widens beyond the freshest rows to recover older rela
     defaultAgentId: "agent:codex",
     defaultRunId: "run-wide-dream",
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -376,7 +379,7 @@ test("memory consolidation uses association intents for themed bundles", { concu
       },
     },
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -484,7 +487,7 @@ test("memory consolidation source balancing caps raw compaction share when other
     defaultAgentId: "agent:codex",
     defaultRunId: "run-source-balance",
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -634,7 +637,7 @@ test("memory consolidation confirms associative promotion candidates on the seco
       },
     },
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -798,7 +801,7 @@ test("memory consolidation suppresses pseudo decision traces from candidate sele
     defaultAgentId: "agent:codex",
     defaultRunId: "run-pseudo-filter",
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -889,7 +892,7 @@ test("memory consolidation quarantines contradictory mail-thread merges and supp
       },
     },
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -990,7 +993,7 @@ test("memory consolidation suppresses unchanged connection notes on rerun", { co
       },
     },
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {
@@ -1055,7 +1058,7 @@ test("memory consolidation surfaces unavailable association scout status in the 
     defaultRunId: "run-association-unavailable",
     associationScout: null,
   });
-  const artifactPath = join(process.cwd(), "output", "studio-brain", "memory-consolidation", "latest.json");
+  const artifactPath = memoryConsolidationArtifactPath();
   rmSync(artifactPath, { force: true });
 
   try {

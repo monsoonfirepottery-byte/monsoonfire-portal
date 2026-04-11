@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -24,16 +24,18 @@ const DEFAULT_VOLUME_LIMITS = {
 const DEFAULT_LOG_LIMIT_MB = parseMegabytes(process.env.STABILITY_GUARDRAILS_CONTAINER_LOG_LIMIT_MB) || 64;
 const DEFAULT_OUTPUT_LIMIT_MB = parseMegabytes(process.env.STABILITY_GUARDRAILS_OUTPUT_LIMIT_MB) || 512;
 const DEFAULT_CLEANUP_DAYS = Number(process.env.STABILITY_GUARDRAILS_CLEANUP_DAYS || "14");
-const DEFAULT_CLEANUP_TARGETS = [
-  "stability",
-  "playwright",
-  "cutover-gate",
-  "pr-gate",
-  "overnight",
-  "memory",
-  "intent",
-  "incidents",
+const DEFAULT_CLEANUP_TARGETS = ["stability", "playwright", "cutover-gate", "pr-gate", "overnight", "intent", "incidents"];
+const MEMORY_CLEANUP_TARGET = "memory";
+const MEMORY_SOURCE_RETENTION_PATTERNS = [
+  /^all-mail-usability-/,
+  /^outlook-mail-focused-wave-/,
+  /^overnight-iterate-/,
+  /^production-wave-/,
+  /^twitter-datastore-canary-/,
+  /^twitter-production-run-/,
+  /^zip-/,
 ];
+const MEMORY_PST_RETENTION_PATTERNS = [/^pst-signal-quality-run-/, /^pst-hardening-realrun-/, /^identity-eval-/];
 
 if (isDirectExecution()) {
   const args = parseArgs(process.argv.slice(2));
@@ -455,13 +457,87 @@ function cleanupArtifacts(outputRoot, maxAgeDays) {
     });
   }
 
+  const memoryRoot = resolve(outputRoot, "memory");
+  if (existsSync(memoryRoot)) {
+    cleanupMemoryArtifacts(memoryRoot, cutoff, (path, bytes) => {
+      removedFiles += 1;
+      removedBytes += bytes;
+      removedPaths.push(path);
+    });
+  }
+
   return { removedFiles, removedBytes, removedPaths };
+}
+
+function cleanupMemoryArtifacts(memoryRoot, cutoff, onRemove) {
+  const entries = readdirSync(memoryRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const runPath = resolve(memoryRoot, entry.name);
+    const stat = lstatSync(runPath);
+    if (stat.mtimeMs > cutoff) {
+      continue;
+    }
+    for (const targetPath of listMemoryPruneTargets(runPath, entry.name)) {
+      removePathRecursive(targetPath, onRemove);
+    }
+  }
+}
+
+function listMemoryPruneTargets(runPath, runName) {
+  const targets = new Set();
+  if (MEMORY_PST_RETENTION_PATTERNS.some((pattern) => pattern.test(runName))) {
+    for (const relativePath of [
+      ["canonical-corpus", "source-units.jsonl"],
+      ["canonical-corpus", "raw-sidecars"],
+      ["canonical-corpus", "source-index"],
+      ["canonical-corpus", "corpus.sqlite"],
+      ["canonical-corpus", "fact-events.jsonl"],
+      ["canonical-corpus", "hypotheses.jsonl"],
+      ["canonical-corpus", "dossiers.jsonl"],
+      ["canonical-corpus", "dossiers"],
+      ["fresh-analysis", "mailbox-analysis-memory.jsonl"],
+      ["fresh-analysis", "mailbox-promoted-memory.jsonl"],
+      ["fresh-analysis", "dead-letter.jsonl"],
+      ["fresh-analysis", "promote-dead-letter.jsonl"],
+    ]) {
+      targets.add(join(runPath, ...relativePath));
+    }
+  }
+  if (MEMORY_SOURCE_RETENTION_PATTERNS.some((pattern) => pattern.test(runName))) {
+    for (const relativePath of [["sources"], ["micah"]]) {
+      targets.add(join(runPath, ...relativePath));
+    }
+  }
+  if (/^overnight-iterate-/.test(runName) && existsSync(runPath)) {
+    for (const entry of readdirSync(runPath, { withFileTypes: true })) {
+      if (entry.isDirectory() && /^iteration-\d+/.test(entry.name)) {
+        targets.add(join(runPath, entry.name));
+      }
+    }
+  }
+  if (/^twitter-(datastore-canary|production-run)-/.test(runName)) {
+    targets.add(join(runPath, "canonical-corpus"));
+  }
+  return [...targets].filter((candidate) => existsSync(candidate));
+}
+
+function removePathRecursive(path, onRemove) {
+  if (!existsSync(path)) {
+    return;
+  }
+  const bytes = directorySizeBytes(path);
+  rmSync(path, { recursive: true, force: true });
+  onRemove(path, bytes);
 }
 
 function cleanupArtifactsPosix(outputRoot, maxAgeDays) {
   let removedFiles = 0;
   let removedBytes = 0;
   const removedPaths = [];
+  const cutoff = Date.now() - Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
   const minAgeDays = String(Math.max(1, Math.trunc(Number(maxAgeDays) || DEFAULT_CLEANUP_DAYS)));
 
   for (const target of DEFAULT_CLEANUP_TARGETS) {
@@ -521,6 +597,15 @@ function cleanupArtifactsPosix(outputRoot, maxAgeDays) {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+  }
+
+  const memoryRoot = resolve(outputRoot, MEMORY_CLEANUP_TARGET);
+  if (existsSync(memoryRoot)) {
+    cleanupMemoryArtifacts(memoryRoot, cutoff, (path, bytes) => {
+      removedFiles += 1;
+      removedBytes += bytes;
+      removedPaths.push(path);
+    });
   }
 
   return { removedFiles, removedBytes, removedPaths };

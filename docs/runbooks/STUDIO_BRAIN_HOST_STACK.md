@@ -33,7 +33,9 @@ From the repo root on Windows:
 ```powershell
 npm run studio:ops:browser:url
 npm run studio:ops:sync
+npm run studio:ops:deploy
 npm run studio:ops:install
+npm run studio:ops:reconcile
 npm run studio:ops:status
 npm run studio:ops:tmux:ensure
 npm run studio:ops:tmux:attach:cmd
@@ -51,7 +53,9 @@ From the `scripts/` directory on Linux:
 
 ```bash
 bash ./studiobrain-ops.sh sync-support --json
+bash ./studiobrain-ops.sh deploy-runtime --json
 bash ./studiobrain-ops.sh install-stack --json
+bash ./studiobrain-ops.sh reconcile --json
 bash ./studiobrain-ops.sh status --json
 bash ./studiobrain-ops.sh cockpit-state --json
 bash ./studiobrain-ops.sh session-list --json
@@ -73,8 +77,11 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
 ## Notes
 
 - The wrapper syncs only the tracked ops support files into the live host checkout, which avoids stomping unrelated dirty work on the host.
+- `deploy-runtime` calls [`scripts/deploy-studio-brain-host.py`](./STUDIO_BRAIN_HOST_DEPLOY.md) from the current checkout, which is the repo-backed way to clear live runtime and integrity drift on the host.
 - `install-stack` uses the existing SSH key path, escalates with the stored sudo password, and then runs the tracked Ansible playbook locally on the Ubuntu host.
-- `install-stack` now also refreshes the tracked monitoring stack and the periodic backup/disk/healthcheck timers, so `studio:ops:install` is the repo-backed way to reconcile those host resources.
+- `install-stack` refreshes the tracked monitoring stack and the periodic backup/disk/healthcheck timers, so `studio:ops:install` is the repo-backed way to reconcile those host resources after the runtime is current.
+- `reconcile` is the normal merge/deploy sync cycle: full runtime deploy first, then stack install, then a fresh status snapshot.
+- `status` now reports the remote checkout branch, head commit, and tracked dirty-file count under `workspace` so stale host branches are visible before they become integrity noise.
 - `scripts/install-studiobrain-healthcheck.sh` now installs the backup, disk-alert, healthcheck, and reboot-watch timers as one tracked bundle. The reboot watcher checks `/var/run/reboot-required` every 15 minutes and sends at most one Discord update per UTC day, only when the reboot-required state has changed, which is safer for the encrypted Studio Brain host than unattended auto-reboots.
 - Monitoring runtime state stays host-local in `/home/wuff/monitoring`:
   - `.env` controls only `MONITORING_BIND_HOST`

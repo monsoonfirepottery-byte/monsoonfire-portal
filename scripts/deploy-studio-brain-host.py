@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 import argparse
 import json
@@ -229,6 +230,8 @@ def create_archive() -> Path:
     with tarfile.open(archive_path, "w:gz") as tar:
         archive_roots = [LOCAL_STUDIO_BRAIN, *load_integrity_support_paths()]
         for root_path in archive_roots:
+            if not root_path.exists():
+                continue
             if root_path.is_dir():
                 seen: set[str] = set()
                 paths = []
@@ -247,6 +250,12 @@ def create_archive() -> Path:
                 if "node_modules" in parts or "output" in parts or ".git" in parts:
                     continue
                 if path.name in LOCAL_EXCLUDES:
+                    continue
+                if path.suffix == ".sh":
+                    normalized = path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
+                    tar_info = tar.gettarinfo(str(path), arcname=rel.as_posix())
+                    tar_info.size = len(normalized)
+                    tar.addfile(tar_info, BytesIO(normalized))
                     continue
                 tar.add(path, arcname=rel.as_posix())
     return archive_path
@@ -519,6 +528,17 @@ PY
 
 
 def install_remote_discord_relay(ssh: "paramiko.SSHClient") -> dict[str, object]:
+    local_installer = REPO_ROOT / "scripts" / "install-studiobrain-discord-relay.sh"
+    if not local_installer.exists():
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "source_missing",
+            "message": "Current checkout does not include scripts/install-studiobrain-discord-relay.sh; leaving any existing host relay install unchanged.",
+            "stdout": [],
+            "stderr": [],
+            "timerState": [],
+        }
     command = f"cd {REMOTE_PARENT} && bash ./scripts/install-studiobrain-discord-relay.sh"
     out, err, code = ssh_exec(ssh, command, timeout=180)
     timer_state, _, _ = ssh_exec(

@@ -18,6 +18,7 @@ const runtime_1 = require("./capabilities/runtime");
 const postgresStores_1 = require("./capabilities/postgresStores");
 const hubitatConnector_1 = require("./connectors/hubitatConnector");
 const roborockConnector_1 = require("./connectors/roborockConnector");
+const roborockTransport_1 = require("./connectors/roborockTransport");
 const registry_1 = require("./connectors/registry");
 const pilotWriteExecutor_1 = require("./capabilities/pilotWriteExecutor");
 const orchestrator_1 = require("./swarm/orchestrator");
@@ -195,11 +196,7 @@ async function main() {
                 return { ok: true };
             return { devices: [] };
         }),
-        new roborockConnector_1.RoborockConnector(async (path) => {
-            if (path === "/health")
-                return { ok: true };
-            return { devices: [] };
-        }),
+        new roborockConnector_1.RoborockConnector((0, roborockTransport_1.createRoborockTransportFromEnv)(logger)),
     ], logger);
     const capabilityRuntime = new runtime_1.CapabilityRuntime(runtime_1.defaultCapabilities, eventStore, new postgresStores_1.PostgresProposalStore(), new postgresStores_1.PostgresQuotaStore(), new postgresStores_1.PostgresPolicyStore(), connectorRegistry);
     const runner = new runner_1.JobRunner({

@@ -3,6 +3,7 @@ import type {
   MemoryRecord,
   MemorySearchResult,
   MemoryStats,
+  MemoryLayer,
   MemoryStatus,
   MemoryType,
   RetrievalMode,
@@ -22,6 +23,7 @@ export type MemoryUpsertInput = {
   clientRequestId: string | null;
   status: MemoryStatus;
   memoryType: MemoryType;
+  memoryLayer: MemoryLayer;
   sourceConfidence: number;
   importance: number;
   contextualizedContent: string;
@@ -37,6 +39,8 @@ export type MemorySearchInput = {
   runId?: string;
   sourceAllowlist?: string[];
   sourceDenylist?: string[];
+  layerAllowlist?: MemoryLayer[];
+  layerDenylist?: MemoryLayer[];
   retrievalMode?: RetrievalMode;
   minScore?: number;
   explain?: boolean;
@@ -51,6 +55,8 @@ export type MemoryRecentInput = {
   runId?: string;
   sourceAllowlist?: string[];
   sourceDenylist?: string[];
+  layerAllowlist?: MemoryLayer[];
+  layerDenylist?: MemoryLayer[];
   excludeStatuses?: MemoryStatus[];
 };
 
@@ -61,6 +67,8 @@ export type MemoryGetByIdsInput = {
 
 export type MemoryStatsInput = {
   tenantId: string | null | undefined;
+  layerAllowlist?: MemoryLayer[];
+  layerDenylist?: MemoryLayer[];
 };
 
 export type MemoryEdgeUpsertInput = {

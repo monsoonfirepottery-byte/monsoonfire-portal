@@ -1,0 +1,467 @@
+{
+  "schemaVersion": "customer-service-policy-program.config.v1",
+  "reviewOrder": [
+    "payments-refunds",
+    "firing-scheduling",
+    "storage-abandoned-work",
+    "studio-access",
+    "damage-responsibility",
+    "clay-materials",
+    "safety-kiln-rules",
+    "community-conduct",
+    "accessibility",
+    "media-accessibility"
+  ],
+  "authority": {
+    "allowed": [
+      "answer policy questions",
+      "collect missing signals",
+      "classify the case",
+      "calculate deterministic policy outputs",
+      "draft or send bounded low-risk replies",
+      "attach policy metadata to support workflows"
+    ],
+    "blocked": [
+      "refunds",
+      "fee waivers",
+      "reservation overrides",
+      "fairness overrides",
+      "reclamation exceptions",
+      "access suspensions",
+      "exceptions not explicitly marked policy-safe"
+    ],
+    "conflictHandling": "When practice and policy diverge, surface the discrepancy and use the last human-approved reconciled rule. If no reconciled rule exists, escalate instead of improvising."
+  },
+  "artifactSurfaces": [
+    {
+      "id": "docs-policy-index",
+      "kind": "derived-summary",
+      "title": "Docs policy index",
+      "sourcePath": "docs/policies/policies-index.json",
+      "sourceType": "canonical_summary",
+      "policySlugs": ["*"],
+      "summary": "Generated index of canonical policy documents and their machine-readable agent metadata."
+    },
+    {
+      "id": "website-policy-summaries",
+      "kind": "derived-summary",
+      "title": "Website policy summaries",
+      "sourcePath": "website/data/policies.json",
+      "sourceType": "canonical_summary",
+      "policySlugs": ["*"],
+      "summary": "Public website policy-summary feed generated from the canonical docs set."
+    },
+    {
+      "id": "portal-faq-live-schema",
+      "kind": "derived-summary",
+      "title": "Portal live FAQ schema",
+      "sourcePath": "functions/src/supportFaq.ts",
+      "sourceType": "operational_faq",
+      "policySlugs": [
+        "studio-access",
+        "firing-scheduling",
+        "storage-abandoned-work",
+        "payments-refunds"
+      ],
+      "summary": "Live faqItems collection schema and normalization logic used by the portal support view."
+    },
+    {
+      "id": "portal-faq-seed-doc",
+      "kind": "derived-summary",
+      "title": "Portal FAQ seed recommendations",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": [
+        "studio-access",
+        "firing-scheduling",
+        "storage-abandoned-work",
+        "payments-refunds"
+      ],
+      "summary": "Recommended faqItems seed data and supportRequests schema documentation."
+    },
+    {
+      "id": "portal-support-fallback",
+      "kind": "derived-summary",
+      "title": "Portal support fallback answers",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": [
+        "studio-access",
+        "firing-scheduling",
+        "storage-abandoned-work",
+        "payments-refunds"
+      ],
+      "summary": "Fallback support answers used when live faqItems cannot be loaded."
+    },
+    {
+      "id": "portal-support-submit-flow",
+      "kind": "derived-summary",
+      "title": "Portal support submission workflow",
+      "sourcePath": "web/src/App.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": ["*"],
+      "summary": "Portal support form write path used for non-urgent support requests."
+    },
+    {
+      "id": "api-support-submit-route",
+      "kind": "derived-summary",
+      "title": "API support submission workflow",
+      "sourcePath": "functions/src/apiV1.ts",
+      "sourceType": "operational_faq",
+      "policySlugs": ["*"],
+      "summary": "API v1 support request route used by agent or structured support workflows."
+    }
+  ],
+  "policyAliases": [
+    {
+      "policySlug": "payments-refunds",
+      "terms": [
+        "refund",
+        "refunded",
+        "charge review",
+        "billing help",
+        "receipt",
+        "invoice",
+        "charged twice",
+        "mistaken membership charge",
+        "cancellation"
+      ]
+    },
+    {
+      "policySlug": "firing-scheduling",
+      "terms": [
+        "firing request",
+        "kiln schedule",
+        "pickup window",
+        "ready for pickup",
+        "turnaround",
+        "queue position",
+        "delay",
+        "schedule change",
+        "same-day firing",
+        "deadline request",
+        "guaranteed date",
+        "staff confirmation",
+        "same-day pickup",
+        "best effort"
+      ]
+    },
+    {
+      "policySlug": "storage-abandoned-work",
+      "terms": [
+        "storage",
+        "shelf space",
+        "pickup reminder",
+        "abandoned work",
+        "reclamation",
+        "storage fee",
+        "held for pickup",
+        "extended hold",
+        "prepaid storage",
+        "pickup-ready timeline"
+      ]
+    },
+    {
+      "policySlug": "studio-access",
+      "terms": [
+        "appointment only",
+        "appointment-only",
+        "walk-in",
+        "drop-in",
+        "day pass",
+        "gate code",
+        "address",
+        "studio visit",
+        "reservation required",
+        "access details"
+      ]
+    },
+    {
+      "policySlug": "damage-responsibility",
+      "terms": [
+        "firing issue",
+        "damage claim",
+        "broken piece",
+        "cracked piece",
+        "chip",
+        "kiln damage",
+        "incident report",
+        "piece issue",
+        "remake",
+        "replacement"
+      ]
+    },
+    {
+      "policySlug": "clay-materials",
+      "terms": [
+        "approved clay",
+        "clay body",
+        "glaze",
+        "new glaze",
+        "glaze approval",
+        "new material",
+        "material compatibility",
+        "slip approval",
+        "underglaze approval"
+      ]
+    },
+    {
+      "policySlug": "safety-kiln-rules",
+      "terms": [
+        "ppe",
+        "dust control",
+        "labeling",
+        "kiln safety",
+        "dry sanding",
+        "unsafe instruction",
+        "burn",
+        "alarm"
+      ]
+    },
+    {
+      "policySlug": "community-conduct",
+      "terms": [
+        "conduct",
+        "harassment",
+        "discrimination",
+        "shared space",
+        "warning",
+        "unsafe behavior",
+        "respect"
+      ]
+    },
+    {
+      "policySlug": "accessibility",
+      "terms": [
+        "accommodation",
+        "accessible",
+        "accessibility request",
+        "preferred format",
+        "mobility",
+        "communication preference"
+      ]
+    },
+    {
+      "policySlug": "media-accessibility",
+      "terms": [
+        "captions",
+        "transcript",
+        "alt text",
+        "video accessibility",
+        "audio accessibility",
+        "media accessibility"
+      ]
+    }
+  ],
+  "portalFaqFallbackLinks": [
+    {
+      "id": "fallback-pickup",
+      "kind": "derived-summary",
+      "title": "How do pickup and drop-off work?",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": ["firing-scheduling"],
+      "summary": "Use your portal timeline for status updates. When your pieces are marked ready, you can pick up during normal studio hours.",
+      "routingTerms": ["pickup", "drop-off", "timeline", "marked ready", "studio hours"]
+    },
+    {
+      "id": "fallback-kiln",
+      "kind": "derived-summary",
+      "title": "How can I check kiln timing?",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": ["firing-scheduling"],
+      "summary": "Open Kiln Schedule and your piece timeline in the portal for the latest estimate. Timing can shift based on queue and load changes.",
+      "routingTerms": ["kiln timing", "latest estimate", "queue changes", "load changes"]
+    },
+    {
+      "id": "fallback-membership",
+      "kind": "derived-summary",
+      "title": "Can I change my membership plan?",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": ["payments-refunds"],
+      "summary": "Open Membership in the portal to review your current tier and available options, then submit a change request.",
+      "routingTerms": ["membership plan", "current tier", "change request"]
+    },
+    {
+      "id": "fallback-billing",
+      "kind": "derived-summary",
+      "title": "Where can I find billing receipts?",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": ["payments-refunds"],
+      "summary": "Go to Billing in the portal for recent charges and invoice details. If you need a specific receipt, submit a support request.",
+      "routingTerms": ["billing receipts", "recent charges", "invoice details"]
+    },
+    {
+      "id": "fallback-support",
+      "kind": "derived-summary",
+      "title": "When should I submit a support request?",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": ["studio-access"],
+      "summary": "Use support requests for non-urgent studio questions and appointment-planning questions. For urgent issues, email support directly so we can respond faster.",
+      "routingTerms": ["support request", "non-urgent", "urgent issues", "email support", "appointment planning"]
+    },
+    {
+      "id": "fallback-continuity",
+      "kind": "derived-summary",
+      "title": "How do I keep a copy of my reservation history?",
+      "sourcePath": "web/src/views/SupportView.tsx",
+      "sourceType": "operational_faq",
+      "policySlugs": [],
+      "summary": "Open Support and request a continuity export if you need a full JSON or CSV archive.",
+      "routingTerms": ["reservation history", "continuity export", "json", "csv"]
+    }
+  ],
+  "portalFaqSeedLinks": [
+    {
+      "id": "faq-ready-pickup",
+      "kind": "derived-summary",
+      "title": "When will my pieces be ready for pickup?",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": ["firing-scheduling"],
+      "summary": "We post updates as each firing completes. Check My Pieces for the latest status and timeline.",
+      "routingTerms": ["ready for pickup", "latest status", "timeline", "deadline"]
+    },
+    {
+      "id": "faq-kiln-schedule",
+      "kind": "derived-summary",
+      "title": "How do kiln firings get scheduled?",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": ["firing-scheduling"],
+      "summary": "Firings are batched by clay body and kiln availability. Timing can shift.",
+      "routingTerms": ["kiln firings", "batched", "kiln availability", "timing can shift"]
+    },
+    {
+      "id": "faq-billing-receipt",
+      "kind": "derived-summary",
+      "title": "I need billing help or a receipt. What should I do?",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": ["payments-refunds"],
+      "summary": "Submit a support request with the date, amount, and what you need.",
+      "routingTerms": ["billing help", "receipt", "refund question", "charge review"]
+    },
+    {
+      "id": "faq-membership",
+      "kind": "derived-summary",
+      "title": "How do I change, pause, or cancel my membership?",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": ["payments-refunds"],
+      "summary": "Send a request with your current plan and the change you want, and we will handle it.",
+      "routingTerms": ["change membership", "pause membership", "cancel membership", "current plan"]
+    },
+    {
+      "id": "faq-kiln-reservations",
+      "kind": "derived-summary",
+      "title": "Can I reserve kiln time from the portal?",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": ["firing-scheduling"],
+      "summary": "Use the form to request a booking or change, and include your clay body, size, and preferred window.",
+      "routingTerms": ["reserve kiln time", "preferred window", "booking change", "clay body"]
+    },
+    {
+      "id": "faq-storage",
+      "kind": "derived-summary",
+      "title": "What is the shelf-space and storage policy?",
+      "sourcePath": "docs/SCHEMA_SUPPORT.md",
+      "sourceType": "operational_faq",
+      "policySlugs": ["storage-abandoned-work"],
+      "summary": "Finished work enters a pickup-ready timeline as soon as it is marked ready. Coordinate prepaid storage before billed storage begins.",
+      "routingTerms": ["shelf space", "storage policy", "finished work", "extended hold", "prepaid storage"]
+    }
+  ],
+  "announcementLinks": [
+    {
+      "id": "announcement-public-updates-live",
+      "kind": "announcement",
+      "announcementId": "public-updates-live",
+      "sourcePath": "marketing/announcements/public-updates-live.json",
+      "sourceType": "announcement_summary",
+      "policySlugs": [],
+      "routingTerms": ["public studio updates", "member-only logistics", "pickup windows", "queue details"]
+    },
+    {
+      "id": "announcement-appointment-only-reminder",
+      "kind": "announcement",
+      "announcementId": "appointment-only-reminder",
+      "sourcePath": "marketing/announcements/appointment-only-reminder.json",
+      "sourceType": "announcement_summary",
+      "policySlugs": ["studio-access"],
+      "routingTerms": ["appointment only", "walk-in hours", "drop-in hours", "contact before heading over"]
+    },
+    {
+      "id": "announcement-support-response-window",
+      "kind": "announcement",
+      "announcementId": "support-response-window",
+      "sourcePath": "marketing/announcements/support-response-window.json",
+      "sourceType": "announcement_summary",
+      "policySlugs": ["firing-scheduling", "studio-access"],
+      "routingTerms": ["support response window", "support form", "support email", "firing target", "studio access fit"]
+    }
+  ],
+  "practiceEvidence": [
+    {
+      "id": "kilnfire-membership-charge-refund",
+      "kind": "practice-evidence",
+      "title": "Mistaken membership charge followed by refund",
+      "sourcePath": "studio-brain://mail/kilnfire-membership-charge-refund",
+      "sourceType": "customer-facing-support",
+      "priority": "customer-facing",
+      "policySlugs": ["payments-refunds"],
+      "summary": "Customer-facing support verified a mistaken membership charge and confirmed a refund after review.",
+      "routingTerms": ["mistaken membership charge", "charged twice", "refund", "billing mismatch", "payment succeeded"],
+      "observedPractice": "Support corrected the mistaken membership charge and issued a refund after verifying the error.",
+      "canonicalConcern": "Policy now explicitly covers full refunds for paid mistaken charges, no-penalty unpaid cancellations, and prorated review after work starts.",
+      "discrepancyStatus": "clear"
+    },
+    {
+      "id": "kilnfire-firing-issue-notice",
+      "kind": "practice-evidence",
+      "title": "Firing-damage notice and follow-up",
+      "sourcePath": "studio-brain://mail/kilnfire-firing-issue-notice",
+      "sourceType": "customer-facing-support",
+      "priority": "customer-facing",
+      "policySlugs": ["damage-responsibility"],
+      "summary": "Kiln Fire customer notices acknowledge firing issues, document the affected piece, and follow up with next steps.",
+      "routingTerms": ["firing issue", "piece firing issue", "damage notice", "follow-up", "affected piece"],
+      "observedPractice": "The customer-facing path acknowledges the incident quickly and follows up after staff review.",
+      "canonicalConcern": "The policy now requires documented acknowledgment and a review path for customer-facing damage reports while keeping remedies human-reviewed and non-promissory.",
+      "discrepancyStatus": "clear"
+    },
+    {
+      "id": "kilnfire-reservation-cleanup-reschedule",
+      "kind": "practice-evidence",
+      "title": "Reservation cleanup and reschedule behavior",
+      "sourcePath": "studio-brain://mail/kilnfire-reservation-cleanup-reschedule",
+      "sourceType": "customer-facing-support",
+      "priority": "customer-facing",
+      "policySlugs": ["firing-scheduling"],
+      "summary": "Customer conversations show manual cleanup and reschedule coordination when reservation plans change.",
+      "routingTerms": ["reservation cleanup", "reschedule", "preferred dates", "booking change", "coordination"],
+      "observedPractice": "Support coordinates revised dates and cleanup behavior manually instead of promising automatic schedule changes.",
+      "canonicalConcern": "Policy now states that pre-load changes are no-penalty, staged or loaded changes are best-effort only, and deadline requests require staff confirmation.",
+      "discrepancyStatus": "clear"
+    },
+    {
+      "id": "kilnfire-pickup-storage-reminders",
+      "kind": "practice-evidence",
+      "title": "Pickup and storage timing reminders",
+      "sourcePath": "studio-brain://mail/kilnfire-pickup-storage-reminders",
+      "sourceType": "customer-facing-support",
+      "priority": "customer-facing",
+      "policySlugs": ["storage-abandoned-work"],
+      "summary": "Reminder sequences and pickup coordination are already part of customer-facing Kiln Fire communication.",
+      "routingTerms": ["pickup reminder", "storage timing", "extended hold", "pickup coordination", "shelf space"],
+      "observedPractice": "Support sends reminder-style communication before storage deadlines and coordinates pickup timing.",
+      "canonicalConcern": "Current storage policy broadly aligns with the reminder behavior and fee timeline.",
+      "discrepancyStatus": "clear"
+    }
+  ]
+}

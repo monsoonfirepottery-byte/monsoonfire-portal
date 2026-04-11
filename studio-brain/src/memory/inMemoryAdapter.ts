@@ -19,7 +19,8 @@ import type {
   MemoryStoreAdapter,
   MemoryUpsertInput,
 } from "./adapters";
-import type { MemoryLoopState, MemoryRecord, MemorySearchResult, MemoryStats, MemoryType } from "./contracts";
+import type { MemoryLayer, MemoryLoopState, MemoryRecord, MemorySearchResult, MemoryStats, MemoryType } from "./contracts";
+import { isAllowedMemoryLayer, normalizeMemoryLayer, normalizeMemoryLayerList } from "./layers";
 
 function clamp01(value: unknown, fallback = 0.5): number {
   const numeric = Number(value);
@@ -260,6 +261,26 @@ function halfLifeDays(memoryType: MemoryType): number {
   return 365;
 }
 
+function layerBreakdown(rows: MemoryRecord[]): Array<{ layer: MemoryLayer; count: number }> {
+  const counts = new Map<MemoryLayer, number>();
+  for (const row of rows) {
+    counts.set(row.memoryLayer, (counts.get(row.memoryLayer) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([layer, count]) => ({ layer, count }))
+    .sort((left, right) => right.count - left.count || left.layer.localeCompare(right.layer));
+}
+
+function statusBreakdown(rows: MemoryRecord[]): Array<{ status: MemoryRecord["status"]; count: number }> {
+  const counts = new Map<MemoryRecord["status"], number>();
+  for (const row of rows) {
+    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([status, count]) => ({ status, count }))
+    .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status));
+}
+
 function recencyScore(occurredAt: string | null, createdAt: string, memoryType: MemoryType): number {
   const timestamp = Date.parse(occurredAt || createdAt);
   if (!Number.isFinite(timestamp)) return 0.5;
@@ -283,6 +304,7 @@ function normalizeRecord(input: MemoryUpsertInput): MemoryRecord {
     occurredAt: input.occurredAt ?? null,
     status: input.status,
     memoryType: input.memoryType,
+    memoryLayer: normalizeMemoryLayer(input.memoryLayer, "episodic"),
     sourceConfidence: clamp01(input.sourceConfidence),
     importance: clamp01(input.importance),
   };
@@ -356,6 +378,8 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       bySource: Array.from(bySourceMap.entries())
         .map(([source, count]) => ({ source, count }))
         .sort((left, right) => right.count - left.count),
+      byLayer: layerBreakdown(rows),
+      byStatus: statusBreakdown(rows),
     };
   };
 
@@ -378,6 +402,8 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
     async search(input): Promise<MemorySearchResult[]> {
       const normalizedAllow = new Set((input.sourceAllowlist ?? []).map((value) => value.trim()).filter(Boolean));
       const normalizedDeny = new Set((input.sourceDenylist ?? []).map((value) => value.trim()).filter(Boolean));
+      const layerAllowlist = normalizeMemoryLayerList(input.layerAllowlist);
+      const layerDenylist = normalizeMemoryLayerList(input.layerDenylist);
       const scored = toArray()
         .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
         .filter((row) => (input.agentId ? row.agentId === input.agentId : true))
@@ -385,6 +411,7 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
         .filter((row) => row.status !== "quarantined")
         .filter((row) => (normalizedAllow.size > 0 ? normalizedAllow.has(row.source) : true))
         .filter((row) => (normalizedDeny.size > 0 ? !normalizedDeny.has(row.source) : true))
+        .filter((row) => isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist))
         .map((row) => scoreRecord(row, input.query, { runId: input.runId, agentId: input.agentId, explain: input.explain, minScore: input.minScore }))
         .filter((row) => (input.minScore === undefined ? true : row.score >= input.minScore))
         .sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt))
@@ -413,12 +440,15 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       const normalizedAllow = new Set((input.sourceAllowlist ?? []).map((value) => value.trim()).filter(Boolean));
       const normalizedDeny = new Set((input.sourceDenylist ?? []).map((value) => value.trim()).filter(Boolean));
       const excludedStatuses = new Set((input.excludeStatuses ?? []).map((value) => String(value ?? "").trim()).filter(Boolean));
+      const layerAllowlist = normalizeMemoryLayerList(input.layerAllowlist);
+      const layerDenylist = normalizeMemoryLayerList(input.layerDenylist);
       return toArray()
         .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
         .filter((row) => (input.agentId ? row.agentId === input.agentId : true))
         .filter((row) => (input.runId ? row.runId === input.runId : true))
         .filter((row) => (normalizedAllow.size > 0 ? normalizedAllow.has(row.source) : true))
         .filter((row) => (normalizedDeny.size > 0 ? !normalizedDeny.has(row.source) : true))
+        .filter((row) => isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist))
         .filter((row) => (excludedStatuses.size > 0 ? !excludedStatuses.has(row.status) : true))
         .slice(0, Math.max(1, input.limit));
     },
@@ -427,12 +457,15 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       const normalizedAllow = new Set((input.sourceAllowlist ?? []).map((value) => value.trim()).filter(Boolean));
       const normalizedDeny = new Set((input.sourceDenylist ?? []).map((value) => value.trim()).filter(Boolean));
       const excludedStatuses = new Set((input.excludeStatuses ?? []).map((value) => String(value ?? "").trim()).filter(Boolean));
+      const layerAllowlist = normalizeMemoryLayerList(input.layerAllowlist);
+      const layerDenylist = normalizeMemoryLayerList(input.layerDenylist);
       return toArray()
         .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
         .filter((row) => (input.agentId ? row.agentId === input.agentId : true))
         .filter((row) => (input.runId ? row.runId === input.runId : true))
         .filter((row) => (normalizedAllow.size > 0 ? normalizedAllow.has(row.source) : true))
         .filter((row) => (normalizedDeny.size > 0 ? !normalizedDeny.has(row.source) : true))
+        .filter((row) => isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist))
         .filter((row) => (excludedStatuses.size > 0 ? !excludedStatuses.has(row.status) : true))
         .sort((left, right) => {
           const rightCreated = Date.parse(right.createdAt || "") || 0;
@@ -443,7 +476,22 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
     },
 
     async stats(input): Promise<MemoryStats> {
-      return stats(input.tenantId);
+      const rows = toArray()
+        .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
+        .filter((row) => isAllowedMemoryLayer(row.memoryLayer, normalizeMemoryLayerList(input.layerAllowlist), normalizeMemoryLayerList(input.layerDenylist)));
+      const bySourceMap = new Map<string, number>();
+      for (const row of rows) {
+        bySourceMap.set(row.source, (bySourceMap.get(row.source) ?? 0) + 1);
+      }
+      return {
+        total: rows.length,
+        lastCapturedAt: rows.length ? rows[0].createdAt : null,
+        bySource: Array.from(bySourceMap.entries())
+          .map(([source, count]) => ({ source, count }))
+          .sort((left, right) => right.count - left.count),
+        byLayer: layerBreakdown(rows),
+        byStatus: statusBreakdown(rows),
+      };
     },
 
     async indexSignals(input) {

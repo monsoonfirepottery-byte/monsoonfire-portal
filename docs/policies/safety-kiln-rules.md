@@ -2,12 +2,12 @@
 slug: "safety-kiln-rules"
 title: "Safety & kiln rules"
 status: "active"
-version: "2026-02-17"
-effectiveDate: "2026-02-17"
-reviewDate: "2026-08-01"
+version: "2026-04-02"
+effectiveDate: "2026-04-02"
+reviewDate: "2026-10-02"
 owner: "Studio Operations"
 sourceUrl: "/policies/safety-kiln-rules/"
-summary: "Follow posted kiln safety guidance at all times. Keep dust controlled, use required PPE, and label all kiln-bound work."
+summary: "Follow posted kiln safety guidance at all times. Use wet cleanup or approved dust controls, required PPE, and fully label all kiln-bound work."
 tags:
   - "kiln"
   - "safety"
@@ -15,11 +15,19 @@ tags:
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "PPE, dust control, kiln access, and handling constraints."
+  decisionDomain: "PPE, dust control, kiln access, and kiln-intake labeling constraints."
   defaultActions:
     - "confirm required PPE and dust-control behavior"
     - "confirm required piece labeling fields before kiln intake"
     - "recommend safe alternatives if unsafe instruction is requested"
+  allowedLowRiskActions:
+    - "state safety requirements and labeling rules"
+    - "collect missing intake safety details"
+    - "refuse unsafe instructions and route to staff"
+  blockedActions:
+    - "approve unsafe handling or PPE exceptions"
+    - "authorize kiln-area access during active hazard conditions"
+    - "waive labeling or dust-control requirements"
   requiredSignals:
     - "intake item details"
     - "material/size/shape notes"
@@ -50,7 +58,7 @@ fueled or electric firings, glazing prep, and piece handling.
   controllers, lids, or alarm panels.
 - Heat safety: all shelves and posts are treated as hot unless staff confirms cool-down
   completion.
-- Every piece entering the kiln must be clearly labeled with owner name and firing type.
+- Every piece entering the kiln must be clearly labeled with owner name, clay body or material context, and firing type.
 
 ## Implementation in portal
 
@@ -68,6 +76,6 @@ the session involved.
 Support responses should clarify:
 
 - what cleanup and PPE requirements apply that day
-- whether a workpiece must be re-tagged
+- whether a workpiece must be re-tagged or fully relabeled
 - when kiln-related delays are expected for safety sequencing
 

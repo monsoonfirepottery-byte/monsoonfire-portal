@@ -20,6 +20,8 @@ The system is designed as a gyroscope, not a leash:
   - Example intent contracts for common operating modes.
 - `config/`
   - Supervisor thresholds, intervention ladder settings, and authority mapping.
+- `customer-service-policies/`
+  - Generated policy inventory, governance bundle, and resolution contract for customer-service routing.
 - `audit/`
   - Append-only audit chain location for local runs.
 

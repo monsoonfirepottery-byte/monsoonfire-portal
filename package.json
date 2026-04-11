@@ -124,6 +124,30 @@
     "guardrails:check:strict": "node ./scripts/stability-guardrails.mjs --strict --json",
     "studio:status": "node ./scripts/studiobrain-status.mjs",
     "studio:status:authoritative": "node ./scripts/studiobrain-status.mjs --mode live_host_authoritative --approved-remote-runner --json --require-safe",
+    "studio:host:access:check": "python ./scripts/studiobrain-host-access.py --json check",
+    "studio:host:access:bootstrap": "python ./scripts/studiobrain-host-access.py --json bootstrap-access",
+    "studio:host:deploy": "python ./scripts/deploy-studio-brain-host.py --json",
+    "studio:host:fail2ban:install": "python ./scripts/studiobrain-host-access.py --json install-fail2ban",
+    "studio:host:relay:status": "python ./scripts/studiobrain-host-access.py --json relay-status",
+    "studio:host:run": "python ./scripts/studiobrain-host-access.py run",
+    "studio:host:sudo:run": "python ./scripts/studiobrain-host-access.py sudo-run",
+    "studio:ops:sync": "python ./scripts/studiobrain-ops.py --json sync-support",
+    "studio:ops:deploy": "python ./scripts/studiobrain-ops.py --json deploy-runtime",
+    "studio:ops:install": "python ./scripts/studiobrain-ops.py --json install-stack",
+    "studio:ops:reconcile": "python ./scripts/studiobrain-ops.py --json reconcile",
+    "studio:ops:status": "python ./scripts/studiobrain-ops.py --json status",
+    "studio:ops:browser:url": "python ./scripts/studiobrain-ops.py browser-url",
+    "studio:ops:tmux:ensure": "python ./scripts/studiobrain-ops.py --json tmux-ensure",
+    "studio:ops:tmux:attach:cmd": "python ./scripts/studiobrain-ops.py attach-command",
+    "studio:ops:cockpit:state": "python ./scripts/studiobrain-ops.py --json cockpit-state",
+    "studio:ops:session:list": "python ./scripts/studiobrain-ops.py --json session-list",
+    "studio:ops:session:attach:cmd": "python ./scripts/studiobrain-ops.py session-attach-command",
+    "studio:ops:session:spawn": "python ./scripts/studiobrain-ops.py --json session-spawn",
+    "studio:ops:session:send": "python ./scripts/studiobrain-ops.py --json session-send",
+    "studio:ops:overseer:ack": "python ./scripts/studiobrain-ops.py --json overseer-ack",
+    "studio:ops:service:action": "python ./scripts/studiobrain-ops.py --json service-action",
+    "studio:ops:portal-bridge:install": "python ./scripts/studiobrain-ops.py --json portal-bridge-install",
+    "studio:ops:portal-bridge:status": "python ./scripts/studiobrain-ops.py --json portal-bridge-status",
     "studio:check": "node ./scripts/studiobrain-status.mjs --gate",
     "studio:check:safe": "node ./scripts/studiobrain-status.mjs --require-safe",
     "studiobrain:network:check": "node ./scripts/studiobrain-network-check.mjs",
@@ -420,14 +444,14 @@
     "node": "22"
   },
   "dependencies": {
-    "firebase": "^12.11.0",
-    "firebase-functions": "^7.2.2"
+    "firebase": "^12.12.0",
+    "firebase-functions": "^7.2.5"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
     "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.59.1",
-    "firebase-tools": "15.12.0",
+    "firebase-tools": "15.14.0",
     "playwright": "^1.58.2"
   },
   "overrides": {

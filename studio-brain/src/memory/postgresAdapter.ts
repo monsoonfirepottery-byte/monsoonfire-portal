@@ -24,7 +24,8 @@ import type {
   MemoryStoreAdapter,
   MemoryUpsertInput,
 } from "./adapters";
-import type { MemoryLoopState, MemoryRecord, MemorySearchResult, MemoryStats, MemoryStatus } from "./contracts";
+import type { MemoryLayer, MemoryLoopState, MemoryRecord, MemorySearchResult, MemoryStats, MemoryStatus } from "./contracts";
+import { isAllowedMemoryLayer, normalizeMemoryLayer, normalizeMemoryLayerList } from "./layers";
 
 type AdapterParams = {
   vectorStore: VectorStore;
@@ -78,6 +79,10 @@ function sanitizeStatusList(values: MemoryStatus[] | undefined, maxItems = 8): M
     }
   }
   return Array.from(out);
+}
+
+function sanitizeLayerList(values: MemoryLayer[] | undefined, maxItems = 4): MemoryLayer[] {
+  return normalizeMemoryLayerList(values, maxItems);
 }
 
 function parseDate(value: unknown): string {
@@ -295,9 +300,28 @@ function parseMemoryType(value: unknown): MemoryRecord["memoryType"] {
   return "episodic";
 }
 
+function parseMemoryLayer(metadata: Record<string, unknown>, memoryType: unknown): MemoryLayer {
+  return normalizeMemoryLayer(metadata.memoryLayer, normalizeMemoryLayer(memoryType, "episodic"));
+}
+
+function memoryLayerSql(): string {
+  return `
+    COALESCE(
+      NULLIF(LOWER(metadata->>'memoryLayer'), ''),
+      CASE
+        WHEN LOWER(memory_type) = 'working' THEN 'working'
+        WHEN LOWER(memory_type) = 'episodic' THEN 'episodic'
+        WHEN LOWER(memory_type) IN ('semantic', 'procedural') THEN 'canonical'
+        ELSE 'episodic'
+      END
+    )
+  `;
+}
+
 function mapRowToRecord(row: QueryResultRow): MemoryRecord {
   const metadata = asRecord(row.metadata);
   const source = parseSource(metadata, "manual");
+  const memoryType = parseMemoryType(row.memory_type);
   return {
     id: String(row.memory_id),
     tenantId: row.tenant_id === null ? null : String(row.tenant_id),
@@ -310,7 +334,8 @@ function mapRowToRecord(row: QueryResultRow): MemoryRecord {
     createdAt: parseDate(row.created_at),
     occurredAt: parseNullableDate(row.occurred_at),
     status: parseStatus(row.status),
-    memoryType: parseMemoryType(row.memory_type),
+    memoryType,
+    memoryLayer: parseMemoryLayer(metadata, memoryType),
     sourceConfidence: clamp01(row.source_confidence),
     importance: clamp01(row.importance),
   };
@@ -329,6 +354,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         tags: input.tags,
         occurredAt: input.occurredAt,
         clientRequestId: input.clientRequestId,
+        memoryLayer: input.memoryLayer,
       };
 
       await vectorStore.upsertMemory({
@@ -375,6 +401,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
             input.clientRequestId ?? null,
             JSON.stringify({
               memoryType: input.memoryType,
+              memoryLayer: input.memoryLayer,
               sourceConfidence: input.sourceConfidence,
               importance: input.importance,
               embeddingModel: input.embeddingModel,
@@ -424,6 +451,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         occurredAt: input.occurredAt,
         status: input.status,
         memoryType: input.memoryType,
+        memoryLayer: input.memoryLayer,
         sourceConfidence: clamp01(input.sourceConfidence),
         importance: clamp01(input.importance),
       };
@@ -431,6 +459,8 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
 
     async search(input): Promise<MemorySearchResult[]> {
       const startedAtMs = Date.now();
+      const layerAllowlist = sanitizeLayerList(input.layerAllowlist);
+      const layerDenylist = sanitizeLayerList(input.layerDenylist);
       const rows = await vectorStore.searchMemory({
         query: input.query,
         embedding: input.embedding,
@@ -446,6 +476,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       });
       const mapped = rows.map((row) => {
         const metadata = asRecord(row.metadata);
+        const memoryType = parseMemoryType(row.memoryType);
         return {
           id: row.id,
           score: row.score,
@@ -459,13 +490,14 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
           createdAt: parseDate(row.createdAt),
           occurredAt: parseNullableDate(row.occurredAt),
           status: parseStatus(row.status),
-          memoryType: parseMemoryType(row.memoryType),
+          memoryType,
+          memoryLayer: parseMemoryLayer(metadata, memoryType),
           sourceConfidence: clamp01(row.sourceConfidence),
           importance: clamp01(row.importance),
           scoreBreakdown: row.scoreBreakdown,
           matchedBy: row.matchedBy,
         };
-      });
+      }).filter((row) => isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist));
       const matchedByCounts = mapped.reduce<Record<string, number>>((acc, row) => {
         for (const key of row.matchedBy) {
           const normalized = String(key || "").trim().toLowerCase();
@@ -522,6 +554,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
     async recent(input): Promise<MemoryRecord[]> {
       const values: unknown[] = [];
       const predicates: string[] = [];
+      const memoryLayerExpr = memoryLayerSql();
       if (input.tenantId !== undefined) {
         values.push(input.tenantId);
         predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
@@ -550,6 +583,16 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       if (excludedStatuses.length > 0) {
         values.push(excludedStatuses);
         predicates.push(`status <> ALL($${values.length}::text[])`);
+      }
+      const allowLayers = sanitizeLayerList(input.layerAllowlist);
+      if (allowLayers.length > 0) {
+        values.push(allowLayers);
+        predicates.push(`${memoryLayerExpr} = ANY($${values.length}::text[])`);
+      }
+      const denyLayers = sanitizeLayerList(input.layerDenylist);
+      if (denyLayers.length > 0) {
+        values.push(denyLayers);
+        predicates.push(`${memoryLayerExpr} <> ALL($${values.length}::text[])`);
       }
       values.push(input.limit);
       const query = `
@@ -578,6 +621,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
     async recentCreated(input): Promise<MemoryRecord[]> {
       const values: unknown[] = [];
       const predicates: string[] = [];
+      const memoryLayerExpr = memoryLayerSql();
       if (input.tenantId !== undefined) {
         values.push(input.tenantId);
         predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
@@ -606,6 +650,16 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       if (excludedStatuses.length > 0) {
         values.push(excludedStatuses);
         predicates.push(`status <> ALL($${values.length}::text[])`);
+      }
+      const allowLayers = sanitizeLayerList(input.layerAllowlist);
+      if (allowLayers.length > 0) {
+        values.push(allowLayers);
+        predicates.push(`${memoryLayerExpr} = ANY($${values.length}::text[])`);
+      }
+      const denyLayers = sanitizeLayerList(input.layerDenylist);
+      if (denyLayers.length > 0) {
+        values.push(denyLayers);
+        predicates.push(`${memoryLayerExpr} <> ALL($${values.length}::text[])`);
       }
       values.push(input.limit);
       const query = `
@@ -667,9 +721,20 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
     async stats(input): Promise<MemoryStats> {
       const values: unknown[] = [];
       const predicates: string[] = [];
+      const memoryLayerExpr = memoryLayerSql();
       if (input.tenantId !== undefined) {
         values.push(input.tenantId);
         predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
+      }
+      const allowLayers = sanitizeLayerList(input.layerAllowlist);
+      if (allowLayers.length > 0) {
+        values.push(allowLayers);
+        predicates.push(`${memoryLayerExpr} = ANY($${values.length}::text[])`);
+      }
+      const denyLayers = sanitizeLayerList(input.layerDenylist);
+      if (denyLayers.length > 0) {
+        values.push(denyLayers);
+        predicates.push(`${memoryLayerExpr} <> ALL($${values.length}::text[])`);
       }
       const whereClause = predicates.length ? `WHERE ${predicates.join(" AND ")}` : "";
 
@@ -694,6 +759,30 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
+      const byLayer = await pool.query(
+        `
+          SELECT ${memoryLayerExpr} AS layer,
+                 COUNT(*)::int AS count
+            FROM ${tableName}
+           ${whereClause}
+        GROUP BY 1
+        ORDER BY count DESC, layer ASC
+           LIMIT 8
+        `,
+        values
+      );
+      const byStatus = await pool.query(
+        `
+          SELECT status,
+                 COUNT(*)::int AS count
+            FROM ${tableName}
+           ${whereClause}
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `,
+        values
+      );
 
       const total = Number(totals.rows[0]?.total ?? 0);
       const lastRaw = totals.rows[0]?.last_captured_at;
@@ -702,6 +791,14 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         lastCapturedAt: lastRaw ? new Date(String(lastRaw)).toISOString() : null,
         bySource: bySource.rows.map((row) => ({
           source: String(row.source ?? "manual"),
+          count: Number(row.count ?? 0),
+        })),
+        byLayer: byLayer.rows.map((row) => ({
+          layer: normalizeMemoryLayer(row.layer, "episodic"),
+          count: Number(row.count ?? 0),
+        })),
+        byStatus: byStatus.rows.map((row) => ({
+          status: parseStatus(row.status),
           count: Number(row.count ?? 0),
         })),
       };

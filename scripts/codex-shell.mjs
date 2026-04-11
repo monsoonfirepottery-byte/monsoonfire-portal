@@ -5,10 +5,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAutomationStartupMemoryContext } from "./codex/open-memory-automation.mjs";
+import { rememberCodexLifecycleEvent } from "./lib/codex-lifecycle-memory.mjs";
 import {
   buildStartupFailureLine,
   startupRecoveryStep,
 } from "./lib/codex-startup-reliability.mjs";
+import {
+  inspectStartupTranscriptTelemetry,
+  logStartupTelemetryToolcall,
+} from "./lib/codex-startup-telemetry.mjs";
 import { resolveCodexCliCandidates } from "./lib/codex-cli-utils.mjs";
 import { prepareCodexWorktree } from "./lib/codex-worktree-utils.mjs";
 import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
@@ -63,6 +68,18 @@ function loadShellEnv() {
 
 function clean(value) {
   return String(value || "").trim();
+}
+
+async function captureLifecycleMemorySafe(payload) {
+  try {
+    return await rememberCodexLifecycleEvent(payload);
+  } catch (error) {
+    return {
+      attempted: false,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function isEnabled(value, defaultValue = true) {
@@ -458,6 +475,8 @@ async function main() {
   let startupRecovery = "";
   let startupFailureLine = "";
   let startupLatency = null;
+  let startupContextOk = false;
+  let startupContinuityState = "";
   if (options.bootstrap) {
     const query = bootstrapQuery;
     const startupMemoryContext = await loadAutomationStartupMemoryContext({
@@ -474,6 +493,8 @@ async function main() {
     startupReasonCode = clean(startupMemoryContext?.reasonCode || "");
     startupRecovery = startupReasonCode ? startupRecoveryStep(startupReasonCode) : "";
     startupLatency = startupMemoryContext?.startupLatency || null;
+    startupContextOk = Boolean(startupMemoryContext?.ok && hasContextSummary);
+    startupContinuityState = clean(startupMemoryContext?.continuityState || "");
     const contextError =
       startupMemoryContext?.ok && hasContextSummary
         ? null
@@ -551,6 +572,47 @@ async function main() {
     shellStatePath: statePath,
   });
 
+  await captureLifecycleMemorySafe({
+    tool: "codex-shell",
+    event: "task-start",
+    status: "running",
+    runId,
+    kind: "progress",
+    summary: options.bootstrap ? "Codex shell launched with startup memory bootstrap." : "Codex shell launched without startup bootstrap.",
+    nextAction: options.bootstrap ? "Use the startup context to orient before broad repo reads." : "Begin interactive Codex work.",
+    metrics: {
+      bootstrap: options.bootstrap,
+      startupLatencyMs: startupLatency == null ? undefined : Math.round(Number(startupLatency)),
+      usingCleanWorktree: workspace.usingCleanWorktree,
+      branchPrefixValid: workspace.branchPrefixValid,
+    },
+    touchedPaths: [statePath, clean(localContextEnvelope.contextPath)].filter(Boolean),
+    ownershipHints: [
+      {
+        owner: "codex-shell",
+        area: "shell-session-state",
+        paths: [statePath, clean(localContextEnvelope.contextPath)].filter(Boolean),
+      },
+    ],
+    artifactPointers: {
+      shellStatePath: statePath,
+      localContextPath: clean(localContextEnvelope.contextPath),
+      repoRoot: workspace.repoRoot,
+      launchCwd: workspace.workspacePath,
+    },
+    metadata: {
+      query: bootstrapQuery,
+      querySource,
+      startupReasonCode: startupReasonCode || null,
+      startupRecovery: startupRecovery || null,
+      startupFailureLine: startupFailureLine || null,
+      model: shellModel || null,
+      worktreeState: workspace.launcherState,
+      worktreeBranch: workspace.branch || null,
+    },
+    cwd: workspace.workspacePath,
+  });
+
   let result;
   try {
     result = spawnSync(codexCli.preferred.path, codexArgs, {
@@ -560,6 +622,11 @@ async function main() {
       shell: false,
     });
   } finally {
+    const transcriptTelemetry = inspectStartupTranscriptTelemetry({
+      env: process.env,
+      cwd: workspace.workspacePath,
+    });
+
     writeShellSessionState(statePath, {
       runId,
       lastRunId: runId,
@@ -576,6 +643,16 @@ async function main() {
       startupFailureLine: startupFailureLine || null,
       startupRecovery: startupRecovery || null,
       startupLatency,
+      startupContinuityState: startupContinuityState || null,
+      groundingLineEmitted: transcriptTelemetry.groundingLineEmitted,
+      groundingLineObserved: transcriptTelemetry.groundingLineObserved,
+      repoReadsBeforeStartupContext: transcriptTelemetry.repoReadsBeforeStartupContext,
+      repoReadTelemetryObserved: transcriptTelemetry.repoReadTelemetryObserved,
+      startupToolObservedInTranscript: transcriptTelemetry.startupToolObserved,
+      startupToolCalledBeforeFirstAssistantMessage: transcriptTelemetry.startupToolCalledBeforeFirstAssistantMessage,
+      startupTelemetrySource: transcriptTelemetry.source,
+      startupThreadId: transcriptTelemetry.threadId || null,
+      startupRolloutPath: transcriptTelemetry.rolloutPath || null,
       model: shellModel || null,
       repoRoot: workspace.repoRoot,
       launchCwd: workspace.workspacePath,
@@ -585,6 +662,100 @@ async function main() {
       worktreeBranchPrefixValid: workspace.branchPrefixValid,
       shellArgs: options.shellArgs,
       shellStatePath: statePath,
+    });
+
+    logStartupTelemetryToolcall({
+      tool: "codex-shell",
+      action: "startup-bootstrap",
+      ok: options.bootstrap ? startupContextOk : true,
+      durationMs: startupLatency == null ? null : Math.round(Number(startupLatency)),
+      errorType: options.bootstrap && !startupContextOk ? "startup-bootstrap" : null,
+      errorMessage: options.bootstrap && !startupContextOk ? startupFailureLine || "Startup continuity was unavailable." : null,
+      context: {
+        startup: {
+          toolName: "studio_brain_startup_context",
+          startupToolStatus: options.bootstrap ? "called" : "skipped",
+          reasonCode: startupReasonCode || null,
+          continuityState: startupContinuityState || null,
+          latencyMs: startupLatency == null ? null : Math.round(Number(startupLatency)),
+          recoveryStep: startupRecovery || null,
+          groundingLineEmitted: transcriptTelemetry.groundingLineEmitted,
+          groundingLineObserved: transcriptTelemetry.groundingLineObserved,
+          repoReadsBeforeStartupContext: transcriptTelemetry.repoReadsBeforeStartupContext,
+          repoReadTelemetryObserved: transcriptTelemetry.repoReadTelemetryObserved,
+          startupToolObservedInTranscript: transcriptTelemetry.startupToolObserved,
+          startupToolCalledBeforeFirstAssistantMessage: transcriptTelemetry.startupToolCalledBeforeFirstAssistantMessage,
+          telemetryCoverage: {
+            groundingLine: transcriptTelemetry.groundingLineObserved,
+            preStartupRepoReads: transcriptTelemetry.repoReadTelemetryObserved,
+            fullyObserved:
+              transcriptTelemetry.groundingLineObserved === true &&
+              transcriptTelemetry.repoReadTelemetryObserved === true,
+          },
+          transcriptSource: transcriptTelemetry.source,
+          threadId: transcriptTelemetry.threadId || null,
+          rolloutPath: transcriptTelemetry.rolloutPath || null,
+        },
+        worktree: {
+          usingCleanWorktree: workspace.usingCleanWorktree,
+          state: workspace.launcherState,
+          branch: workspace.branch || null,
+        },
+      },
+      env: process.env,
+      cwd: workspace.repoRoot,
+    });
+
+    await captureLifecycleMemorySafe({
+      tool: "codex-shell",
+      event: "task-stop",
+      status: result?.status === undefined ? "launch-failed" : `exit-${result.status}`,
+      runId,
+      kind: typeof result?.status === "number" && result.status === 0 ? "checkpoint" : "blocker",
+      summary:
+        typeof result?.status === "number"
+          ? `Codex shell exited with status ${result.status}.`
+          : "Codex shell failed before an exit status was available.",
+      nextAction:
+        typeof result?.status === "number" && result.status === 0
+          ? "Resume through startup continuity or the next handoff when the next shell opens."
+          : "Inspect shell state and rollout output before retrying the task.",
+      blockers:
+        typeof result?.status === "number" && result.status === 0
+          ? []
+          : [startupFailureLine || "Codex shell exited unsuccessfully."],
+      metrics: {
+        exitStatus: result?.status ?? undefined,
+        bootstrap: options.bootstrap,
+        startupLatencyMs: startupLatency == null ? undefined : Math.round(Number(startupLatency)),
+      },
+      touchedPaths: [statePath, clean(localContextEnvelope.contextPath)].filter(Boolean),
+      ownershipHints: [
+        {
+          owner: "codex-shell",
+          area: "shell-session-state",
+          paths: [statePath, clean(localContextEnvelope.contextPath)].filter(Boolean),
+        },
+      ],
+      artifactPointers: {
+        shellStatePath: statePath,
+        localContextPath: clean(localContextEnvelope.contextPath),
+        repoRoot: workspace.repoRoot,
+        launchCwd: workspace.workspacePath,
+      },
+      metadata: {
+        query: bootstrapQuery,
+        querySource,
+        startupReasonCode: startupReasonCode || null,
+        startupRecovery: startupRecovery || null,
+        startupFailureLine: startupFailureLine || null,
+        startupContinuityState: startupContinuityState || null,
+        groundingLineEmitted: transcriptTelemetry.groundingLineEmitted,
+        repoReadsBeforeStartupContext: transcriptTelemetry.repoReadsBeforeStartupContext,
+        startupToolObservedInTranscript: transcriptTelemetry.startupToolObserved,
+        model: shellModel || null,
+      },
+      cwd: workspace.workspacePath,
     });
   }
 

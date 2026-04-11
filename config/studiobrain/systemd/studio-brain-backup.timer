@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Studio Brain backup
+
+[Timer]
+OnCalendar=*-*-* 03:45:00
+Persistent=true
+Unit=studio-brain-backup.service
+
+[Install]
+WantedBy=timers.target

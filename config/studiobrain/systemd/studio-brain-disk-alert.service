@@ -1,0 +1,6 @@
+[Unit]
+Description=Studio Brain disk usage check
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/local/bin/studio-brain-disk-alert.sh

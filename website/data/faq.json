@@ -27,7 +27,10 @@
   },
   {
     "question": "How do I get the address and gate code?",
-    "answer": "<p>We share the exact address and access details through the portal once your account is set up. <a href=\"https://monsoonfire.kilnfire.com/new-user\" target=\"_blank\" rel=\"noopener\">Create a free portal account here</a>.</p>",
+    "answer": "<p>We share the exact address and access details through the portal once your account is verified and you have a confirmed reservation, day pass, or approved visit context. <a href=\"https://monsoonfire.kilnfire.com/new-user\" target=\"_blank\" rel=\"noopener\">Create a free portal account here</a>.</p>",
+    "policySlug": "studio-access",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": [
       "portal",
       "logistics"
@@ -35,7 +38,10 @@
   },
   {
     "question": "How do I submit a firing request?",
-    "answer": "<p>Submit a firing request through the portal with your clay body, glaze notes, and firing type. You will see the current scheduling window there too.</p>",
+    "answer": "<p>Submit a firing request through the portal with your clay body, glaze notes, firing type, and any deadline you need reviewed. You will see the current scheduling estimate band there too.</p>",
+    "policySlug": "firing-scheduling",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": [
       "kiln",
       "portal",
@@ -61,7 +67,10 @@
   },
   {
     "question": "How often do you fire?",
-    "answer": "<p>We fire at least once per week and add extra loads when demand is high. Most weeks include both bisque and mid-fire glaze firings.</p>",
+    "answer": "<p>We generally fire at least once per week and add extra loads when demand is high, but posted firing windows are estimate bands rather than guarantees. Most weeks include both bisque and mid-fire glaze firings.</p>",
+    "policySlug": "firing-scheduling",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": [
       "kiln",
       "scheduling"
@@ -85,7 +94,10 @@
   },
   {
     "question": "What is a day pass?",
-    "answer": "<p>Day passes are $40 and include access to studio equipment and work areas by reservation. Book through the portal so we can keep the floor calm and workable.</p>",
+    "answer": "<p>Day passes are $40 and include appointment-only access to studio equipment and work areas by reservation. Book through the portal so we can confirm your visit window before sharing access details.</p>",
+    "policySlug": "studio-access",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": [
       "studio",
       "pricing",
@@ -103,6 +115,9 @@
   {
     "question": "How do payments work?",
     "answer": "<p>We process online payments through Stripe. If you need to pay in person, we have a POS for tap card payments. If you need another arrangement, just reach out.</p>",
+    "policySlug": "payments-refunds",
+    "policyVersion": "2026-04-02",
+    "sourceType": "operational_faq",
     "tags": [
       "payments",
       "portal"

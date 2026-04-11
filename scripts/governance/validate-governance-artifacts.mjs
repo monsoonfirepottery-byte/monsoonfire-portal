@@ -2,8 +2,9 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function parseArgs(argv) {
   const parsed = {
@@ -156,7 +157,10 @@ function main() {
     "schemas/run-ledger.v1.schema.json",
     "schemas/agent-capability-manifest.v1.schema.json",
     "config/supervisor-thresholds.json",
-    "config/authority-map.json"
+    "config/authority-map.json",
+    "customer-service-policies/policy-program.json",
+    "customer-service-policies/policy-inventory.json",
+    "customer-service-policies/policy-resolution-contract.json"
   ];
 
   for (const relativePath of requiredPaths) {
@@ -188,6 +192,42 @@ function main() {
 
   if (intentFiles.length === 0) {
     pushFinding(findings, "error", "missing-intents", "intents/", "At least one governance intent is required.");
+  }
+
+  const customerServiceProgramPath = resolve(
+    governanceRoot,
+    "customer-service-policies",
+    "policy-program.json"
+  );
+  if (existsSync(customerServiceProgramPath)) {
+    const program = readJson(customerServiceProgramPath);
+    if (!Array.isArray(program?.policies) || program.policies.length === 0) {
+      pushFinding(
+        findings,
+        "error",
+        "shape",
+        "customer-service-policies/policy-program.json",
+        "policies must be a non-empty array."
+      );
+    }
+  }
+
+  const customerServiceResolutionPath = resolve(
+    governanceRoot,
+    "customer-service-policies",
+    "policy-resolution-contract.json"
+  );
+  if (existsSync(customerServiceResolutionPath)) {
+    const resolution = readJson(customerServiceResolutionPath);
+    if (!Array.isArray(resolution?.intents) || resolution.intents.length === 0) {
+      pushFinding(
+        findings,
+        "error",
+        "shape",
+        "customer-service-policies/policy-resolution-contract.json",
+        "intents must be a non-empty array."
+      );
+    }
   }
 
   for (const fileName of intentFiles) {

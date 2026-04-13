@@ -191,6 +191,7 @@ export function runtimePathsForThread(threadId) {
     continuityEnvelopePath: resolve(runtimeDir, "continuity-envelope.json"),
     startupBlockerPath: resolve(runtimeDir, "startup-blocker.json"),
     handoffPath: resolve(runtimeDir, "handoff.json"),
+    startupContextCachePath: resolve(runtimeDir, "startup-context-cache.json"),
     writesJsonlPath: resolve(runtimeDir, "writes.jsonl"),
     compactionWatermarkPath: resolve(runtimeDir, "compaction-watermark.json"),
     pendingDir: resolve(runtimeDir, "pending"),
@@ -271,6 +272,7 @@ export function normalizeContinuityState(value, fallback = "missing") {
   const normalized = clean(value).toLowerCase();
   if (normalized === "ready") return "ready";
   if (normalized === "blocked") return "blocked";
+  if (normalized === "continuity_degraded") return "continuity_degraded";
   if (normalized === "missing") return "missing";
   return fallback;
 }
@@ -417,15 +419,45 @@ export function resolveBootstrapContinuityState({
   startupBlocker = null,
   continuityEnvelope = null,
   handoff = null,
+  bootstrapContext = null,
   query = "",
   nowMs = Date.now(),
 } = {}) {
   const blocker = normalizeStartupBlocker(startupBlocker);
   const envelope = normalizeContinuityEnvelope(continuityEnvelope);
   const handoffArtifact = normalizeHandoffArtifact(handoff);
+  const bootstrap = toRecord(bootstrapContext);
+  const bootstrapDiagnostics = toRecord(bootstrap.diagnostics);
   const supplementalHandoffSummary = clean(
     envelope.lastHandoffSummary || handoffArtifact.summary || handoffArtifact.workCompleted || handoffArtifact.activeGoal
   );
+  const validatedLocalHandoff = Boolean(
+    clean(handoffArtifact.summary || handoffArtifact.workCompleted || handoffArtifact.activeGoal)
+  );
+  const envelopeContinuityState = normalizeContinuityState(envelope.continuityState || envelope.startup?.continuityState);
+  const bootstrapContinuityState = normalizeContinuityState(
+    bootstrap.continuityState || bootstrapDiagnostics.continuityState,
+    "missing"
+  );
+  const envelopeFallbackOnly =
+    envelope.fallbackOnly === true ||
+    envelope.startup?.fallbackOnly === true;
+  const bootstrapFallbackOnly =
+    bootstrap.fallbackOnly === true ||
+    bootstrapDiagnostics.fallbackOnly === true;
+  const envelopeSourceQuality = clean(
+    envelope.startupSourceQuality || envelope.laneSourceQuality || envelope.startup?.startupSourceQuality
+  ).toLowerCase();
+  const bootstrapSourceQuality = clean(
+    bootstrap.startupSourceQuality || bootstrapDiagnostics.startupSourceQuality || bootstrapDiagnostics.laneSourceQuality
+  ).toLowerCase();
+  const degradedLocalContext =
+    envelopeContinuityState === "continuity_degraded" ||
+    bootstrapContinuityState === "continuity_degraded" ||
+    envelopeFallbackOnly ||
+    bootstrapFallbackOnly ||
+    envelopeSourceQuality === "compaction-promoted-dominant" ||
+    bootstrapSourceQuality === "compaction-promoted-dominant";
   const matchingBlocker =
     blocker.status === "blocked"
     && blocker.queryFingerprint
@@ -448,13 +480,24 @@ export function resolveBootstrapContinuityState({
     };
   }
   const priorReady =
-    normalizeContinuityState(envelope.continuityState || envelope.startup?.continuityState) === "ready"
-    || Boolean(supplementalHandoffSummary);
+    validatedLocalHandoff ||
+    (
+      envelopeContinuityState === "ready" &&
+      degradedLocalContext !== true
+    );
   if (priorReady) {
     return {
       continuityState: "ready",
       blockerActive: false,
       source: "validated-local-continuity",
+      supplementalHandoffSummary,
+    };
+  }
+  if (degradedLocalContext) {
+    return {
+      continuityState: "continuity_degraded",
+      blockerActive: false,
+      source: "local-fallback-continuity",
       supplementalHandoffSummary,
     };
   }
@@ -571,6 +614,15 @@ export function readThreadHistoryLines(threadId, { limit = 5, historyPath = code
     .filter(Boolean);
 }
 
+function clipBootstrapQuerySeed(value, maxChars = 140) {
+  const normalized = clean(value)
+    .replace(/\s+/g, " ")
+    .replace(/^you are in a new app window and new codex session\.?\s*/i, "");
+  if (!normalized) return "";
+  const firstSentence = normalized.match(/^(.{1,180}?[.!?])(?:\s|$)/)?.[1] || normalized;
+  return firstSentence.slice(0, maxChars).trim();
+}
+
 export function buildThreadBootstrapQuery({ threadInfo = null, threadName = "", historyLines = [] } = {}) {
   const normalizedCwd = normalizeThreadCwd(threadInfo?.cwd || process.cwd());
   const cwdBase = basename(normalizedCwd) || "workspace";
@@ -586,16 +638,16 @@ export function buildThreadBootstrapQuery({ threadInfo = null, threadName = "", 
   const laneSeed =
     inferredLane && !["unknown", "general-dev", "personal"].includes(inferredLane) ? inferredLane : "";
   const queryParts = dedupeStrings([
-    clean(threadName),
-    clean(threadInfo?.title),
-    clean(threadInfo?.firstUserMessage),
+    clipBootstrapQuerySeed(threadName),
+    clipBootstrapQuerySeed(threadInfo?.title),
+    clipBootstrapQuerySeed(threadInfo?.firstUserMessage),
     clean(threadInfo?.threadId),
     laneSeed,
     laneSeed.includes("-") ? laneSeed.replace(/-/g, " ") : "",
     includeCwdSeed ? cwdBase : "",
-    ...historyLines,
+    ...historyLines.map((line) => clipBootstrapQuerySeed(line, 96)).filter(Boolean),
   ]);
-  return queryParts.join(" ").slice(0, 4096);
+  return queryParts.join(" ").slice(0, 512);
 }
 
 function isBoilerplateText(text) {
@@ -1080,10 +1132,14 @@ export function extractCompactionMemoryProducts({
 }
 
 function buildLocalBootstrapItem(threadInfo, row, index) {
+  const explicitScore = Number(row?.metadata?.bootstrapRankScore ?? row?.score);
   return {
     id: row.clientRequestId || `local-bootstrap-${stableHash(`${threadInfo?.threadId}|${index}|${row.content}`, 16)}`,
     source: row.source,
-    score: 0.65 + Math.max(0, (Number(row.importance ?? 0.7) - 0.5) * 0.2),
+    score:
+      Number.isFinite(explicitScore)
+        ? explicitScore
+        : 0.65 + Math.max(0, (Number(row.importance ?? 0.7) - 0.5) * 0.2),
     content: row.content,
     tags: row.tags,
     metadata: {
@@ -1097,6 +1153,170 @@ function buildLocalBootstrapItem(threadInfo, row, index) {
   };
 }
 
+function resolveLocalArtifactProjectLane(threadInfo, artifact = {}) {
+  return normalizeSource(
+    inferProjectLane({
+      path: normalizeThreadCwd(artifact?.cwd || threadInfo?.cwd),
+      title: clean(artifact?.threadTitle || threadInfo?.title),
+      text: clean(
+        artifact?.firstUserMessage ||
+          artifact?.currentGoal ||
+          artifact?.activeGoal ||
+          artifact?.summary ||
+          artifact?.lastHandoffSummary ||
+          threadInfo?.firstUserMessage
+      ),
+    })
+  );
+}
+
+function firstBlockerSummary(blockers = []) {
+  const normalized = normalizeBlockers(blockers);
+  return clean(normalized[0]?.summary || normalized[0]?.detail || normalized[0]?.label);
+}
+
+function firstResumeHintSummary(resumeHints = []) {
+  const normalized = normalizeResumeHints(resumeHints);
+  const firstHint = normalized[0];
+  return clean(firstHint?.summary || firstHint?.nextStep || firstHint?.path);
+}
+
+function buildLocalArtifactRows({
+  threadInfo,
+  continuityEnvelope = null,
+  handoff = null,
+  startupBlocker = null,
+} = {}) {
+  const rows = [];
+  const normalizedEnvelope = normalizeContinuityEnvelope(continuityEnvelope, {
+    threadId: threadInfo?.threadId,
+    cwd: threadInfo?.cwd,
+  });
+  const normalizedHandoff = normalizeHandoffArtifact(handoff, {
+    threadId: threadInfo?.threadId,
+  });
+  const normalizedBlocker = normalizeStartupBlocker(startupBlocker, {
+    threadId: threadInfo?.threadId,
+    cwd: threadInfo?.cwd,
+  });
+  const envelopeBlocker = firstBlockerSummary(normalizedEnvelope.blockers);
+  const handoffBlocker = firstBlockerSummary(normalizedHandoff.blockers);
+  const blockerSummary = firstBlockerSummary(normalizedBlocker.blockers) || clean(normalizedBlocker.firstSignal);
+  const lane =
+    resolveLocalArtifactProjectLane(threadInfo, normalizedEnvelope) ||
+    resolveLocalArtifactProjectLane(threadInfo, normalizedHandoff) ||
+    resolveLocalArtifactProjectLane(threadInfo, normalizedBlocker);
+  const commonMetadata = {
+    threadId: clean(threadInfo?.threadId || normalizedEnvelope.threadId || normalizedHandoff.threadId || normalizedBlocker.threadId),
+    cwd: normalizeThreadCwd(threadInfo?.cwd || normalizedEnvelope.cwd || normalizedBlocker.cwd),
+    projectLane: lane,
+    startupEligible: true,
+    rememberForStartup: true,
+    scopeClass: "thread",
+  };
+
+  const envelopeContent = dedupeStrings(
+    [
+      clean(normalizedEnvelope.currentGoal) ? `Current goal: ${clean(normalizedEnvelope.currentGoal)}` : "",
+      clean(normalizedEnvelope.lastHandoffSummary)
+        ? `Trusted handoff: ${clean(normalizedEnvelope.lastHandoffSummary)}`
+        : clean(normalizedEnvelope.bootstrapSummary)
+          ? `Bootstrap summary: ${clean(normalizedEnvelope.bootstrapSummary)}`
+          : "",
+      envelopeBlocker ? `Top blocker: ${envelopeBlocker}` : "",
+      clean(normalizedEnvelope.nextRecommendedAction)
+        ? `Next action: ${clean(normalizedEnvelope.nextRecommendedAction)}`
+        : "",
+    ],
+    8
+  ).join(" ");
+  if (envelopeContent) {
+    rows.push({
+      content: safeClipByBytes(envelopeContent, 18_000),
+      source: "codex-continuity-envelope",
+      tags: ["codex", "bootstrap", "continuity-envelope", lane].filter(Boolean),
+      metadata: {
+        ...commonMetadata,
+        continuityState: clean(normalizedEnvelope.continuityState),
+        currentGoal: clean(normalizedEnvelope.currentGoal),
+        lastHandoffSummary: clean(normalizedEnvelope.lastHandoffSummary),
+        nextRecommendedAction: clean(normalizedEnvelope.nextRecommendedAction),
+        blockers: normalizeBlockers(normalizedEnvelope.blockers),
+        bootstrapSummary: clean(normalizedEnvelope.bootstrapSummary),
+      },
+      clientRequestId: `local-envelope-${stableHash(`${commonMetadata.threadId}|${normalizedEnvelope.updatedAt}|${envelopeContent}`, 20)}`,
+      occurredAt: normalizeIsoTimestamp(normalizedEnvelope.updatedAt || normalizedEnvelope.createdAt),
+      importance: clean(normalizedEnvelope.continuityState) === "ready" ? 0.92 : 0.84,
+    });
+  }
+
+  const firstResumeHint = firstResumeHintSummary(normalizedHandoff.resumeHints);
+  const handoffContent = dedupeStrings(
+    [
+      clean(normalizedHandoff.activeGoal) ? `Current goal: ${clean(normalizedHandoff.activeGoal)}` : "",
+      clean(normalizedHandoff.summary) ? `Handoff: ${clean(normalizedHandoff.summary)}` : "",
+      clean(normalizedHandoff.workCompleted) &&
+      clean(normalizedHandoff.workCompleted) !== clean(normalizedHandoff.summary)
+        ? `Work completed: ${clean(normalizedHandoff.workCompleted)}`
+        : "",
+      handoffBlocker ? `Top blocker: ${handoffBlocker}` : "",
+      clean(normalizedHandoff.nextRecommendedAction)
+        ? `Next action: ${clean(normalizedHandoff.nextRecommendedAction)}`
+        : "",
+      firstResumeHint ? `Resume hint: ${firstResumeHint}` : "",
+    ],
+    10
+  ).join(" ");
+  if (handoffContent) {
+    rows.push({
+      content: safeClipByBytes(handoffContent, 18_000),
+      source: "codex-handoff",
+      tags: ["codex", "bootstrap", "handoff", lane].filter(Boolean),
+      metadata: {
+        ...commonMetadata,
+        activeGoal: clean(normalizedHandoff.activeGoal),
+        summary: clean(normalizedHandoff.summary),
+        workCompleted: clean(normalizedHandoff.workCompleted),
+        nextRecommendedAction: clean(normalizedHandoff.nextRecommendedAction),
+        blockers: normalizeBlockers(normalizedHandoff.blockers),
+        resumeHints: normalizeResumeHints(normalizedHandoff.resumeHints),
+      },
+      clientRequestId: `local-handoff-${stableHash(`${commonMetadata.threadId}|${normalizedHandoff.createdAt}|${handoffContent}`, 20)}`,
+      occurredAt: normalizeIsoTimestamp(normalizedHandoff.createdAt),
+      importance: 0.96,
+    });
+  }
+
+  if (clean(normalizedBlocker.status) === "blocked" && (blockerSummary || clean(normalizedBlocker.unblockStep))) {
+    const blockerContent = dedupeStrings(
+      [
+        blockerSummary ? `Startup blocked: ${blockerSummary}` : "",
+        clean(normalizedBlocker.failureClass) ? `Failure class: ${clean(normalizedBlocker.failureClass)}` : "",
+        clean(normalizedBlocker.unblockStep) ? `Unblock step: ${clean(normalizedBlocker.unblockStep)}` : "",
+      ],
+      6
+    ).join(" ");
+    rows.push({
+      content: safeClipByBytes(blockerContent, 18_000),
+      source: "codex-startup-blocker",
+      tags: ["codex", "bootstrap", "startup-blocker", lane].filter(Boolean),
+      metadata: {
+        ...commonMetadata,
+        status: clean(normalizedBlocker.status),
+        failureClass: clean(normalizedBlocker.failureClass),
+        firstSignal: clean(normalizedBlocker.firstSignal),
+        unblockStep: clean(normalizedBlocker.unblockStep),
+        blockers: normalizeBlockers(normalizedBlocker.blockers),
+      },
+      clientRequestId: `local-blocker-${stableHash(`${commonMetadata.threadId}|${normalizedBlocker.createdAt}|${blockerContent}`, 20)}`,
+      occurredAt: normalizeIsoTimestamp(normalizedBlocker.createdAt),
+      importance: 0.9,
+    });
+  }
+
+  return rows;
+}
+
 export function buildLocalBootstrapContext({
   threadInfo,
   threadName = "",
@@ -1105,6 +1325,9 @@ export function buildLocalBootstrapContext({
   maxItems = 10,
   maxChars = 8000,
   strictStartupAllowlist = true,
+  continuityEnvelope = null,
+  handoff = null,
+  startupBlocker = null,
 } = {}) {
   const normalizedEntries = (rolloutEntries || [])
     .map((entry) => normalizeRolloutRecord(entry, threadInfo))
@@ -1113,6 +1336,14 @@ export function buildLocalBootstrapContext({
   const cwdBase = basename(normalizeThreadCwd(threadInfo?.cwd)) || "workspace";
   const title = clean(threadName) || clean(threadInfo?.title) || clean(threadInfo?.firstUserMessage) || "Codex thread";
   const fallbackRows = [];
+  const artifactRows = buildLocalArtifactRows({
+    threadInfo,
+    continuityEnvelope,
+    handoff,
+    startupBlocker,
+  });
+
+  fallbackRows.push(...artifactRows);
 
   for (const historyLine of historyLines.slice(-5)) {
     const normalized = normalizeRolloutText(historyLine);
@@ -1163,9 +1394,20 @@ export function buildLocalBootstrapContext({
     });
   }
 
-  const items = fallbackRows.slice(-Math.max(1, maxItems)).map((row, index) => buildLocalBootstrapItem(threadInfo, row, index));
+  const rankedRows = rankBootstrapRows(fallbackRows, threadInfo, {
+    preserveOriginalScore: true,
+    profile: "startup-strict",
+  });
+  const items = rankedRows.slice(0, Math.max(1, maxItems)).map((row, index) => buildLocalBootstrapItem(threadInfo, row, index));
   const summaryLines = [
     `Local fallback context for "${title}" in ${cwdBase}.`,
+    artifactRows.length > 0
+      ? `Trusted startup artifacts: ${artifactRows
+          .slice(0, 3)
+          .map((row) => normalizeHybridText(row.content).slice(0, 140))
+          .filter(Boolean)
+          .join(" | ")}`
+      : "",
     clean(threadInfo?.firstUserMessage) ? `First user message: ${clean(threadInfo.firstUserMessage)}` : "",
     historyLines.length > 0 ? `Recent user lines: ${historyLines.slice(-3).join(" | ")}` : "",
     items.length > 0
@@ -1186,11 +1428,12 @@ export function buildLocalBootstrapContext({
     summary,
     items,
     diagnostics: {
-      startupSourceBias: "local-fallback",
+      startupSourceBias: artifactRows.length > 0 ? "local-continuity-first" : "local-fallback",
       strictStartupAllowlist,
       fallbackUsed: true,
-      fallbackStrategy: "rollout-history",
+      fallbackStrategy: artifactRows.length > 0 ? "local-bootstrap-artifacts" : "rollout-history",
       itemCount: items.length,
+      startupArtifactCount: artifactRows.length,
     },
   };
 }
@@ -1216,6 +1459,120 @@ export function writeBootstrapArtifacts({ threadId, contextPayload, metadata } =
   writeFileSync(paths.bootstrapContextMarkdownPath, `${markdown}\n`, "utf8");
   writeJson(paths.bootstrapMetadataPath, metadata || {});
   return paths;
+}
+
+export function refreshLocalBootstrapArtifacts({
+  threadId,
+  cwd = "",
+  threadTitle = "",
+  firstUserMessage = "",
+  updatedAt = new Date().toISOString(),
+  historyLines = [],
+  rolloutEntries = [],
+  strictStartupAllowlist = true,
+  metadata = {},
+} = {}) {
+  const stableThreadId = clean(threadId);
+  if (!stableThreadId) return null;
+  const artifacts = loadBootstrapArtifacts(stableThreadId);
+  const paths = runtimePathsForThread(stableThreadId);
+  const normalizedUpdatedAt = normalizeIsoTimestamp(
+    updatedAt || artifacts?.continuityEnvelope?.updatedAt || artifacts?.handoff?.createdAt,
+    new Date().toISOString()
+  );
+  const threadInfo = {
+    threadId: stableThreadId,
+    cwd: clean(cwd || metadata?.cwd || artifacts?.continuityEnvelope?.cwd || process.cwd()),
+    title: clean(threadTitle || metadata?.threadTitle || artifacts?.continuityEnvelope?.threadTitle),
+    firstUserMessage: clean(
+      firstUserMessage || metadata?.firstUserMessage || artifacts?.continuityEnvelope?.firstUserMessage
+    ),
+    updatedAt: normalizedUpdatedAt,
+  };
+  const contextPayload = buildLocalBootstrapContext({
+    threadInfo,
+    threadName: threadInfo.title,
+    historyLines: Array.isArray(historyLines) ? historyLines : [],
+    rolloutEntries: Array.isArray(rolloutEntries) ? rolloutEntries : [],
+    strictStartupAllowlist,
+    continuityEnvelope: artifacts?.continuityEnvelope,
+    handoff: artifacts?.handoff,
+    startupBlocker: artifacts?.startupBlocker,
+  });
+  const existingMetadata = artifacts?.metadata && typeof artifacts.metadata === "object" ? artifacts.metadata : {};
+  const presentationProjectLane = clean(
+    metadata?.presentationProjectLane ||
+      artifacts?.continuityEnvelope?.presentationProjectLane ||
+      inferProjectLane({
+        text: `${threadInfo.firstUserMessage}\n${threadInfo.title}`,
+        title: threadInfo.title,
+        path: threadInfo.cwd,
+      })
+  );
+  const refreshedMetadata = {
+    ...existingMetadata,
+    ...(metadata && typeof metadata === "object" ? metadata : {}),
+    threadId: stableThreadId,
+    cwd: threadInfo.cwd,
+    threadTitle: threadInfo.title,
+    firstUserMessage: threadInfo.firstUserMessage,
+    updatedAt: normalizedUpdatedAt,
+    startupGateSatisfiedBy: clean(
+      metadata?.startupGateSatisfiedBy ||
+        artifacts?.continuityEnvelope?.startupSatisfiedBy ||
+        artifacts?.continuityEnvelope?.startup?.satisfiedBy ||
+        existingMetadata.startupGateSatisfiedBy ||
+        "validated-local-continuity"
+    ),
+    continuityState: clean(
+      metadata?.continuityState ||
+        artifacts?.continuityEnvelope?.continuityState ||
+        contextPayload?.diagnostics?.continuityState ||
+        "ready"
+    ),
+    itemCount: Array.isArray(contextPayload?.items) ? contextPayload.items.length : 0,
+    threadScopedItemCount: Math.max(
+      0,
+      Math.round(
+        Number(
+          metadata?.threadScopedItemCount ||
+            artifacts?.continuityEnvelope?.threadScopedItemCount ||
+            artifacts?.continuityEnvelope?.startup?.threadScopedItemCount ||
+            contextPayload?.diagnostics?.threadScopedItemCount ||
+            0
+        )
+      )
+    ),
+    presentationProjectLane,
+    startupSourceQuality: clean(
+      metadata?.startupSourceQuality ||
+        artifacts?.continuityEnvelope?.startupSourceQuality ||
+        artifacts?.continuityEnvelope?.laneSourceQuality ||
+        contextPayload?.diagnostics?.startupSourceQuality ||
+        contextPayload?.diagnostics?.laneSourceQuality ||
+        "thread-scoped-dominant"
+    ),
+    artifactPointers: {
+      ...normalizeArtifactPointers(existingMetadata.artifactPointers),
+      ...normalizeArtifactPointers(metadata?.artifactPointers),
+      continuityEnvelopePath: paths.continuityEnvelopePath,
+      bootstrapContextPath: paths.bootstrapContextJsonPath,
+      bootstrapMetadataPath: paths.bootstrapMetadataPath,
+      handoffPath: paths.handoffPath,
+      startupContextCachePath: paths.startupContextCachePath,
+      writesJsonlPath: paths.writesJsonlPath,
+    },
+  };
+  writeBootstrapArtifacts({
+    threadId: stableThreadId,
+    contextPayload,
+    metadata: refreshedMetadata,
+  });
+  return {
+    paths,
+    contextPayload,
+    metadata: refreshedMetadata,
+  };
 }
 
 export function writeContinuityEnvelope(threadId, envelope = {}) {
@@ -1302,6 +1659,46 @@ function threadProjectLane(threadInfo) {
   );
 }
 
+function rowHasGenericCoreStartupShape(row) {
+  const metadata = rowMetadata(row);
+  const source = normalizeSource(row?.source || metadata.source || "");
+  const tags = [
+    ...(Array.isArray(row?.tags) ? row.tags : []),
+    ...(Array.isArray(row?.matchedBy) ? row.matchedBy : []),
+    ...(Array.isArray(metadata.tags) ? metadata.tags : []),
+  ]
+    .map((value) => normalizeSource(value))
+    .filter(Boolean);
+  const memoryLayer = normalizeSource(row?.memoryLayer || metadata.memoryLayer || "");
+  const memoryType = normalizeSource(row?.memoryType || metadata.memoryType || "");
+  return (
+    source === "startup-context" ||
+    tags.includes("core-block") ||
+    (memoryLayer === "core" && memoryType === "procedural")
+  );
+}
+
+function rowContinuityRichness(row) {
+  const metadata = rowMetadata(row);
+  let richness = 0;
+  if (clean(metadata.activeGoal || metadata.currentGoal)) richness += 1;
+  if (clean(metadata.nextRecommendedAction || metadata.unblockStep)) richness += 1;
+  if (clean(metadata.lastHandoffSummary || metadata.summary || metadata.workCompleted || metadata.bootstrapSummary)) {
+    richness += 1;
+  }
+  if (normalizeBlockers(metadata.blockers).length > 0) richness += 1;
+  if (normalizeResumeHints(metadata.resumeHints).length > 0) richness += 1;
+  return richness;
+}
+
+function rowHasStructuredContinuityPayload(row) {
+  const source = normalizeSource(row?.source || row?.metadata?.source || "");
+  if (["codex-continuity-envelope", "codex-handoff", "codex-startup-blocker"].includes(source)) {
+    return rowContinuityRichness(row) > 0;
+  }
+  const metadata = rowMetadata(row);
+  return metadata.startupEligible === true && rowContinuityRichness(row) >= 2;
+}
 function rowSourcePenalty(row, threadInfo, profile = "startup-strict") {
   const normalizedProfile = normalizeContinuityProfile(profile);
   const metadata = rowMetadata(row);
@@ -1326,10 +1723,10 @@ function rowSourcePenalty(row, threadInfo, profile = "startup-strict") {
     if (source === "repo-markdown") return 0.2;
     return 0.08 + Math.min(0.28, preferredStartupSourcePriority(source, normalizedProfile) / 100);
   }
-  if (source === "codex-continuity-envelope") return 0.01;
-  if (source === "codex-compaction-promoted") return 0;
-  if (source === "codex-handoff") return 0.015;
-  if (source === "codex-startup-blocker") return 0.02;
+  if (source === "codex-continuity-envelope") return 0;
+  if (source === "codex-handoff") return 0.005;
+  if (source === "codex-startup-blocker") return 0.012;
+  if (source === "codex-compaction-promoted") return rowScopeMatchesThread(row, threadInfo) ? 0.055 : 0.08;
   if (source === "codex-friction-feedback-loop") return 0.025;
   if (source === "manual") return startupEligible || personalProfile ? 0.03 : 0.06;
   if (source === "codex") return startupEligible ? 0.035 : 0.06;
@@ -1350,6 +1747,8 @@ export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = tr
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const normalizedProfile = normalizeContinuityProfile(profile);
   const currentProjectLane = threadProjectLane(threadInfo);
+  const hasCompetingThreadScopedRow = rows.some((row) => rowScopeMatchesThread(row, threadInfo));
+  const hasCompetingUsableLane = rows.some((row) => rowProjectLane(row));
   return rows
     .map((row, index) => {
       const metadata = rowMetadata(row);
@@ -1381,10 +1780,23 @@ export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = tr
             ? 0.01
             : 0.16
           : 0;
+      const genericCorePenalty =
+        !rowLane &&
+        !exactScopeMatch &&
+        rowHasGenericCoreStartupShape(row) &&
+        (hasCompetingThreadScopedRow || hasCompetingUsableLane)
+          ? normalizedProfile === "task-broad"
+            ? 0.03
+            : 0.28
+          : 0;
       const profileBoost =
         normalizedProfile === "profile-fast-lane" &&
         clean(metadata.scopeClass).toLowerCase() === "personal"
           ? 0.12
+          : 0;
+      const continuityBoost =
+        normalizedProfile !== "task-broad" && rowHasStructuredContinuityPayload(row)
+          ? Math.min(0.12, rowContinuityRichness(row) * 0.025)
           : 0;
       const startupBoost =
         normalizedProfile !== "task-broad" && metadata.startupEligible === true ? 0.06 : 0;
@@ -1393,7 +1805,16 @@ export function rankBootstrapRows(rows, threadInfo, { preserveOriginalScore = tr
           ? 0
           : Math.max(0, 0.1 - preferredStartupSourcePriority(row?.source, normalizedProfile) * 0.01);
       const rankScore =
-        normalizedBaseScore + scopeBoost + laneBoost + profileBoost + startupBoost + priorityBoost - penalty - lanePenalty;
+        normalizedBaseScore +
+        scopeBoost +
+        laneBoost +
+        profileBoost +
+        continuityBoost +
+        startupBoost +
+        priorityBoost -
+        penalty -
+        lanePenalty -
+        genericCorePenalty;
       return {
         row,
         index,
@@ -1444,6 +1865,162 @@ export function loadBootstrapArtifacts(threadId) {
     continuityEnvelope,
     startupBlocker,
     handoff,
+  };
+}
+
+function startupRepairRowSource(row) {
+  const metadata = rowMetadata(row);
+  return clean(row?.source || metadata.source);
+}
+
+function startupRepairRowText(row) {
+  return clean(row?.content || row?.summary || row?.text);
+}
+
+export function hasUsableLocalStartupArtifacts(artifacts = {}) {
+  const handoff = artifacts?.handoff && typeof artifacts.handoff === "object" ? artifacts.handoff : {};
+  const envelope =
+    artifacts?.continuityEnvelope && typeof artifacts.continuityEnvelope === "object"
+      ? artifacts.continuityEnvelope
+      : {};
+  const handoffSummary = clean(handoff.summary || handoff.workCompleted || handoff.activeGoal);
+  if (handoffSummary) return true;
+  const envelopeSummary = clean(envelope.lastHandoffSummary || envelope.currentGoal || envelope.nextRecommendedAction);
+  const threadScopedItemCount = Math.max(
+    0,
+    Number(envelope.threadScopedItemCount || envelope.startup?.threadScopedItemCount || 0)
+  );
+  const sourceQuality = clean(
+    envelope.startupSourceQuality || envelope.laneSourceQuality || envelope.startup?.startupSourceQuality
+  ).toLowerCase();
+  return Boolean(envelopeSummary) && (threadScopedItemCount > 0 || sourceQuality === "thread-scoped-dominant");
+}
+
+function rowCanRepairStartupArtifacts(row, threadInfo = null) {
+  if (!rowScopeMatchesThread(row, threadInfo)) return false;
+  const metadata = rowMetadata(row);
+  const source = normalizeSource(startupRepairRowSource(row));
+  if (source === "codex-startup-blocker") return false;
+  const checkpointKind = clean(metadata.checkpointKind).toLowerCase();
+  const startupEligible =
+    source === "codex-handoff" ||
+    metadata.startupEligible === true ||
+    checkpointKind === "handoff" ||
+    checkpointKind === "checkpoint";
+  if (!startupEligible) return false;
+  const summary = clean(metadata.summary || metadata.workCompleted || startupRepairRowText(row));
+  const activeGoal = clean(metadata.activeGoal || metadata.currentGoal || metadata.goal);
+  const nextRecommendedAction = clean(metadata.nextRecommendedAction || metadata.unblockStep);
+  const blockers = normalizeBlockers(metadata.blockers);
+  return Boolean(summary || activeGoal || nextRecommendedAction || blockers.length > 0);
+}
+
+export function selectStartupArtifactRepairCandidate(rows, { threadInfo = null } = {}) {
+  const rankedRows = rankBootstrapRows(filterExpiredRows(rows), threadInfo, {
+    preserveOriginalScore: true,
+    profile: "startup-strict",
+  });
+  return rankedRows.find((row) => rowCanRepairStartupArtifacts(row, threadInfo)) || null;
+}
+
+export function buildStartupArtifactRepair(candidate, {
+  threadInfo = null,
+  threadScopedItemCount = 0,
+} = {}) {
+  if (!candidate) return null;
+  const metadata = rowMetadata(candidate);
+  const threadId = clean(metadata.threadId || threadInfo?.threadId);
+  if (!threadId) return null;
+  const summary = clean(metadata.summary || metadata.workCompleted || startupRepairRowText(candidate));
+  const activeGoal = clean(
+    metadata.activeGoal || metadata.currentGoal || threadInfo?.firstUserMessage || threadInfo?.title || summary
+  );
+  const nextRecommendedAction = clean(metadata.nextRecommendedAction || metadata.unblockStep);
+  const blockers = normalizeBlockers(metadata.blockers);
+  const completionStatus =
+    clean(
+      metadata.completionStatus ||
+        metadata.status ||
+        metadata.checkpointStatus ||
+        (blockers.length > 0 ? "degraded" : "pass")
+    ) || "pass";
+  const workCompleted = clean(metadata.workCompleted || summary);
+  const presentationProjectLane = rowProjectLane(candidate) || threadProjectLane(threadInfo);
+  return {
+    handoff: {
+      threadId,
+      createdAt: clean(candidate?.createdAt || candidate?.occurredAt || metadata.createdAt),
+      runId: clean(candidate?.runId || metadata.runId),
+      agentId: clean(candidate?.agentId || metadata.agentId),
+      summary,
+      activeGoal,
+      workCompleted: workCompleted || summary,
+      nextRecommendedAction,
+      blockers,
+      completionStatus,
+      startupProvenance: {
+        repairedFromSource: clean(startupRepairRowSource(candidate)),
+        repairedFromCapturedFrom: clean(metadata.capturedFrom),
+        repairedFromMemoryId: clean(candidate?.id),
+      },
+    },
+    continuityEnvelope: {
+      threadId,
+      cwd: clean(metadata.cwd || threadInfo?.cwd),
+      continuityState: "ready",
+      currentGoal: activeGoal,
+      lastHandoffSummary: summary || workCompleted,
+      nextRecommendedAction,
+      blockers,
+      fallbackOnly: false,
+      startupSourceQuality: "thread-scoped-dominant",
+      laneSourceQuality: "thread-scoped-dominant",
+      presentationProjectLane,
+      threadScopedItemCount: Math.max(1, Math.round(Number(threadScopedItemCount || 0))),
+    },
+  };
+}
+
+export function repairLocalStartupArtifactsFromRows(rows, {
+  threadInfo = null,
+  existingArtifacts = null,
+} = {}) {
+  const threadId = clean(threadInfo?.threadId);
+  if (!threadId || !Array.isArray(rows) || rows.length === 0) {
+    return {
+      repaired: false,
+      reason: "missing-thread-or-rows",
+    };
+  }
+  const artifacts = existingArtifacts || loadBootstrapArtifacts(threadId);
+  if (hasUsableLocalStartupArtifacts(artifacts)) {
+    return {
+      repaired: false,
+      reason: "existing-local-artifacts",
+    };
+  }
+  const candidate = selectStartupArtifactRepairCandidate(rows, { threadInfo });
+  if (!candidate) {
+    return {
+      repaired: false,
+      reason: "no-repair-candidate",
+    };
+  }
+  const threadScopedItemCount = rows.filter((row) => rowScopeMatchesThread(row, threadInfo)).length;
+  const repair = buildStartupArtifactRepair(candidate, { threadInfo, threadScopedItemCount });
+  if (!repair) {
+    return {
+      repaired: false,
+      reason: "candidate-not-repairable",
+    };
+  }
+  writeHandoffArtifact(threadId, repair.handoff);
+  writeContinuityEnvelope(threadId, repair.continuityEnvelope);
+  return {
+    repaired: true,
+    reason: "repaired-from-remote-startup-row",
+    source: clean(startupRepairRowSource(candidate)),
+    capturedFrom: clean(rowMetadata(candidate).capturedFrom),
   };
 }
 

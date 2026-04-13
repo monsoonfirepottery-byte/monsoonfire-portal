@@ -1,6 +1,6 @@
 # P2 — Portal Firebase ops toolbox and Firestore query inspector
 
-Status: Active
+Status: Completed
 Date: 2026-04-12
 Priority: P2
 Owner: Platform / Portal
@@ -41,6 +41,6 @@ Firestore index, rules, log, and schema-query failures are currently detected pi
 1. Added `scripts/portal-firebase-ops-toolbox.mjs` and `npm run portal:firebase:ops` to bundle credential health, Firestore index guard, Firestore rules drift, and optional deploy preflight into one report.
 2. Added exact error-text triage for common index-required, rules/auth, and Firestore-undefined-write failures.
 3. Added focused tests for the new triage classifier.
-
-## Remaining Slice
-The next step is a deeper query or schema inspector mode that can analyze file-backed query shapes before runtime, not only classify exact failure text after the fact.
+4. Added `scripts/firestore-query-shape-inspector.mjs` so operators can scan file-backed query shapes before runtime and compare inferred composite indexes against `firestore.indexes.json`.
+5. Updated `portal:firebase:ops` to include repo-static query inspection plus separate repo-static, local/operator, and cloud/production report sections.
+6. Added `npm run portal:firebase:inspect` as a direct Firestore query-shape inspection entry point.

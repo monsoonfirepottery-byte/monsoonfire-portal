@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "scripts": {
+    "portal-authenticated-canary": {
+      "title": "Authenticated portal canary",
+      "description": "High-value authenticated portal surfaces that should stay visually stable.",
+      "frames": [
+        {
+          "key": "home",
+          "screenshot": "canary-01-home.png",
+          "label": "home",
+          "surface": "signed-out landing",
+          "route": "/",
+          "priority": "high"
+        },
+        {
+          "key": "authenticated-dashboard",
+          "screenshot": "canary-02-authenticated-dashboard.png",
+          "label": "authenticated dashboard",
+          "surface": "authenticated dashboard shell",
+          "route": "/dashboard",
+          "priority": "high"
+        },
+        {
+          "key": "staff-home",
+          "screenshot": "canary-02c-staff-home.png",
+          "label": "staff home",
+          "surface": "staff workspace landing",
+          "route": "/staff",
+          "priority": "high"
+        },
+        {
+          "key": "staff-cockpit",
+          "screenshot": "canary-02d-staff-cockpit.png",
+          "label": "staff cockpit",
+          "surface": "staff cockpit workspace",
+          "route": "/staff/cockpit",
+          "priority": "high"
+        },
+        {
+          "key": "staff-workshops",
+          "screenshot": "canary-02e-staff-workshops.png",
+          "label": "staff workshops",
+          "surface": "staff workshops workspace",
+          "route": "/staff/cockpit/operations",
+          "priority": "medium"
+        },
+        {
+          "key": "staff-system",
+          "screenshot": "canary-02f-staff-system.png",
+          "label": "staff system",
+          "surface": "staff system workspace",
+          "route": "/staff/cockpit/platform",
+          "priority": "medium"
+        },
+        {
+          "key": "staff-recovery",
+          "screenshot": "canary-02g-staff-recovery.png",
+          "label": "staff recovery",
+          "surface": "staff fallback route recovery",
+          "route": "/staff/does-not-exist",
+          "priority": "medium"
+        },
+        {
+          "key": "my-pieces-detail",
+          "screenshot": "canary-03-my-pieces-detail.png",
+          "label": "my pieces detail",
+          "surface": "piece detail drill-in",
+          "route": "/dashboard/my-pieces",
+          "priority": "high"
+        },
+        {
+          "key": "ware-check-in",
+          "screenshot": "canary-06-ware-checkin.png",
+          "label": "ware check-in",
+          "surface": "ware check-in page",
+          "route": "/staff/ware-check-in",
+          "priority": "high"
+        },
+        {
+          "key": "ware-check-in-optional",
+          "screenshot": "canary-06b-ware-checkin-optional-sections.png",
+          "label": "ware check-in optional sections",
+          "surface": "optional sections and value preservation",
+          "route": "/staff/ware-check-in",
+          "priority": "high"
+        },
+        {
+          "key": "advanced-diagnostics",
+          "screenshot": "canary-07-advanced-diagnostics.png",
+          "label": "advanced diagnostics",
+          "surface": "runtime diagnostics panel",
+          "route": "/dashboard",
+          "priority": "medium"
+        }
+      ]
+    },
+    "portal-community-layout-canary": {
+      "title": "Community layout canary",
+      "description": "Community layout surfaces that should remain stable across refreshes.",
+      "frames": [
+        {
+          "key": "landing",
+          "screenshot": "community-layout-01-landing.png",
+          "label": "landing",
+          "surface": "community landing",
+          "route": "/",
+          "priority": "high"
+        },
+        {
+          "key": "initial",
+          "screenshot": "community-layout-02-initial.png",
+          "label": "community overview",
+          "surface": "community overview after auth",
+          "route": "/community",
+          "priority": "high"
+        },
+        {
+          "key": "post-refresh",
+          "screenshot": "community-layout-03-post-refresh.png",
+          "label": "community post-refresh",
+          "surface": "community overview after async refresh",
+          "route": "/community",
+          "priority": "high"
+        }
+      ]
+    },
+    "portal-playwright-smoke": {
+      "title": "Portal Playwright smoke",
+      "description": "Portal smoke coverage for theme-sensitive dashboard and navigation surfaces.",
+      "frames": [
+        {
+          "key": "dashboard-light",
+          "screenshot": "portal-02a-dashboard-light-theme.png",
+          "label": "dashboard light theme",
+          "surface": "dashboard shell",
+          "theme": "light",
+          "priority": "high"
+        },
+        {
+          "key": "dashboard-dark",
+          "screenshot": "portal-02b-dashboard-dark-theme.png",
+          "label": "dashboard dark theme",
+          "surface": "dashboard shell",
+          "theme": "dark",
+          "priority": "high"
+        },
+        {
+          "key": "dashboard-mono",
+          "screenshot": "portal-02c-dashboard-mono-theme.png",
+          "label": "dashboard mono theme",
+          "surface": "dashboard shell",
+          "theme": "mono",
+          "priority": "high"
+        },
+        {
+          "key": "dock-left",
+          "screenshot": "portal-02d-dashboard-dock-left.png",
+          "label": "dashboard nav dock left",
+          "surface": "dashboard nav docking",
+          "dock": "left",
+          "priority": "medium"
+        },
+        {
+          "key": "dock-top",
+          "screenshot": "portal-02e-dashboard-dock-top.png",
+          "label": "dashboard nav dock top",
+          "surface": "dashboard nav docking",
+          "dock": "top",
+          "priority": "medium"
+        },
+        {
+          "key": "dock-right",
+          "screenshot": "portal-02f-dashboard-dock-right.png",
+          "label": "dashboard nav dock right",
+          "surface": "dashboard nav docking",
+          "dock": "right",
+          "priority": "medium"
+        },
+        {
+          "key": "dock-bottom",
+          "screenshot": "portal-02g-dashboard-dock-bottom.png",
+          "label": "dashboard nav dock bottom",
+          "surface": "dashboard nav docking",
+          "dock": "bottom",
+          "priority": "medium"
+        },
+        {
+          "key": "flyout-top",
+          "screenshot": "portal-02h-dashboard-nav-flyout-top.png",
+          "label": "dashboard nav flyout top",
+          "surface": "dashboard nav flyout",
+          "dock": "top",
+          "priority": "medium"
+        },
+        {
+          "key": "flyout-bottom",
+          "screenshot": "portal-02i-dashboard-nav-flyout-bottom.png",
+          "label": "dashboard nav flyout bottom",
+          "surface": "dashboard nav flyout",
+          "dock": "bottom",
+          "priority": "medium"
+        },
+        {
+          "key": "my-pieces-desktop",
+          "screenshot": "portal-06b-my-pieces-desktop.png",
+          "label": "desktop my pieces",
+          "surface": "desktop my pieces",
+          "priority": "high"
+        }
+      ]
+    }
+  }
+}

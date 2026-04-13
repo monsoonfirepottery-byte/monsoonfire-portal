@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process";
 import { chromium } from "playwright";
 import { printValidationReport, validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
 import { runIntegrityCheck } from "./integrity-check.mjs";
+import { applyPortalVisualDiff } from "./lib/portal-visual-diff.mjs";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -881,6 +882,10 @@ const parseOptions = (argv) => {
     feedbackPath: String(process.env.PORTAL_SMOKE_FEEDBACK_PATH || "").trim(),
     runMobile: normalizeBoolean(process.env.PORTAL_SMOKE_MOBILE, true),
     headless: normalizeBoolean(process.env.PORTAL_SMOKE_HEADLESS, true),
+    visualDiffMode: String(process.env.PORTAL_VISUAL_DIFF_MODE || "off").trim().toLowerCase(),
+    visualDiffBaselineRoot: String(process.env.PORTAL_VISUAL_DIFF_BASELINE_ROOT || "").trim(),
+    visualDiffOutputRoot: String(process.env.PORTAL_VISUAL_DIFF_OUTPUT_ROOT || "").trim(),
+    visualDiffPlanPath: String(process.env.PORTAL_VISUAL_DIFF_PLAN || "").trim(),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -985,6 +990,43 @@ const parseOptions = (argv) => {
 
     if (arg === "--show") {
       options.headless = false;
+      continue;
+    }
+
+    if (arg === "--visual-diff") {
+      options.visualDiffMode = "compare";
+      continue;
+    }
+
+    if (arg === "--visual-diff-mode") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-mode");
+      options.visualDiffMode = String(next).trim().toLowerCase();
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--visual-diff-output-root") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-output-root");
+      options.visualDiffOutputRoot = resolve(process.cwd(), next);
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--visual-diff-baseline-root") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-baseline-root");
+      options.visualDiffBaselineRoot = resolve(process.cwd(), next);
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--visual-diff-plan") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-plan");
+      options.visualDiffPlanPath = resolve(process.cwd(), next);
+      i += 1;
       continue;
     }
   }
@@ -2304,6 +2346,18 @@ const run = async () => {
     throw error;
   } finally {
     summary.finishedAt = new Date().toISOString();
+    summary.visualDiff = await applyPortalVisualDiff({
+      scriptKey: "portal-playwright-smoke",
+      summary,
+      mode: options.visualDiffMode,
+      baselineRoot: options.visualDiffBaselineRoot || undefined,
+      outputRoot: options.visualDiffOutputRoot || undefined,
+      planPath: options.visualDiffPlanPath || undefined,
+      runId: summary.startedAt,
+    });
+    if (summary.visualDiff?.status === "failed") {
+      summary.status = "failed";
+    }
     summary.network.consoleWarnings = summary.network.consoleWarnings.filter((entry) => !isAllowedConsoleIssue(entry.text || ""));
     summary.network.consoleErrors = summary.network.consoleErrors.filter((entry) => !isAllowedConsoleIssue(entry.text || ""));
     if (summary.notes.length === 0) {

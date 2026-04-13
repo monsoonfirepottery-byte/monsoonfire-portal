@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 
 import { runCodexDoctor } from "./codex-doctor.mjs";
 
-function makeScriptRunner({ openMemoryHealthy, layoutReady }) {
+function makeScriptRunner({ openMemoryHealthy, layoutReady, startupPreflightPayload = null }) {
   return (relativePath) => {
     if (relativePath === "scripts/codex-docs-drift-check.mjs") {
       return {
@@ -55,13 +55,21 @@ function makeScriptRunner({ openMemoryHealthy, layoutReady }) {
     if (relativePath === "scripts/codex-startup-preflight.mjs") {
       return {
         ok: true,
-        json: {
+        json: startupPreflightPayload || {
           status: "pass",
           checks: {
             tokenFreshness: { state: "fresh" },
             startupContext: {
               reasonCode: "ok",
               latency: { state: "healthy" },
+              continuityState: "ready",
+              groundingAuthority: "validated-local",
+              publishTrustedGrounding: true,
+              startupContextStage: "local-validated-short-circuit",
+              startupCache: {
+                cacheHit: false,
+                shortCircuitLocal: true,
+              },
             },
             mcpBridge: { ok: true },
           },
@@ -105,7 +113,7 @@ function makeScriptRunner({ openMemoryHealthy, layoutReady }) {
   };
 }
 
-async function runDoctorScenario({ openMemoryHealthy, layoutReady }) {
+async function runDoctorScenario({ openMemoryHealthy, layoutReady, startupPreflightPayload = null }) {
   const repoRoot = mkdtempSync(join(tmpdir(), "codex-doctor-"));
   const codexConfigPath = join(repoRoot, "config.toml");
 
@@ -142,7 +150,7 @@ async function runDoctorScenario({ openMemoryHealthy, layoutReady }) {
         packageJsonPath: join(repoRoot, "package.json"),
         packageLockPath: join(repoRoot, "package-lock.json"),
       },
-      runNodeScriptImpl: makeScriptRunner({ openMemoryHealthy, layoutReady }),
+      runNodeScriptImpl: makeScriptRunner({ openMemoryHealthy, layoutReady, startupPreflightPayload }),
       loadCodexAutomationEnvFn: () => [],
       hydrateStudioBrainAuthFromPortalFn: async ({ env: authEnv }) => {
         if (openMemoryHealthy) {
@@ -180,4 +188,61 @@ test("runCodexDoctor reports initialized local fallback cleanly when remote Open
   assert.equal(memoryCheck?.severity, "info");
   assert.equal(memoryCheck?.ok, true);
   assert.match(memoryCheck?.message || "", /initialized/i);
+});
+
+test("runCodexDoctor surfaces the validated-local fast path and trusted grounding alignment", async () => {
+  const report = await runDoctorScenario({ openMemoryHealthy: true, layoutReady: true });
+  const fastPathCheck = report.checks.find((check) => check.id === "codex-startup-fast-path");
+  const trustCheck = report.checks.find((check) => check.id === "codex-startup-grounding-trust");
+
+  assert.equal(fastPathCheck?.severity, "info");
+  assert.equal(fastPathCheck?.ok, true);
+  assert.match(fastPathCheck?.message || "", /validated-local fast path/i);
+  assert.equal(trustCheck?.severity, "info");
+  assert.equal(trustCheck?.ok, true);
+  assert.match(trustCheck?.message || "", /aligned/i);
+  assert.equal(report.startupContract?.startupContextStage, "local-validated-short-circuit");
+  assert.equal(report.startupContract?.groundingAuthority, "validated-local");
+});
+
+test("runCodexDoctor warns when startup publishes untrusted or advisory-only grounding", async () => {
+  const report = await runDoctorScenario({
+    openMemoryHealthy: true,
+    layoutReady: true,
+    startupPreflightPayload: {
+      status: "degraded",
+      checks: {
+        tokenFreshness: { state: "fresh" },
+        startupContext: {
+          reasonCode: "ok",
+          latency: { state: "healthy" },
+          continuityState: "ready",
+          groundingAuthority: "cross-thread-fallback",
+          publishTrustedGrounding: false,
+          dominantGoal: "Resume an unrelated startup thread.",
+          topBlocker: "Dream consolidation artifact is missing.",
+          startupContextStage: "search-fallback",
+          startupCache: {
+            cacheHit: false,
+            shortCircuitLocal: false,
+          },
+          trustMismatchDetected: true,
+          advisory: {
+            dominantGoal: "Resume an unrelated startup thread.",
+            topBlocker: "Dream consolidation artifact is missing.",
+          },
+        },
+        mcpBridge: { ok: true },
+      },
+    },
+  });
+  const fastPathCheck = report.checks.find((check) => check.id === "codex-startup-fast-path");
+  const trustCheck = report.checks.find((check) => check.id === "codex-startup-grounding-trust");
+
+  assert.equal(fastPathCheck?.severity, "warning");
+  assert.equal(fastPathCheck?.ok, false);
+  assert.match(fastPathCheck?.message || "", /search-fallback/i);
+  assert.equal(trustCheck?.severity, "warning");
+  assert.equal(trustCheck?.ok, false);
+  assert.match(trustCheck?.message || "", /untrusted grounding authority|advisory-only/i);
 });

@@ -1,22 +1,32 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   STARTUP_REASON_CODES,
   classifyStartupReason,
+  deriveStartupGroundingAuthority,
   evaluateStartupLatency,
   inspectTokenFreshness,
+  isTrustedStartupGroundingAuthority,
 } from "../lib/codex-startup-reliability.mjs";
 import {
   buildLocalBootstrapContext,
   loadBootstrapArtifacts,
+  normalizeThreadCwd,
   parseRolloutEntries,
+  preferredStartupSourcePriority,
+  rankBootstrapRows,
   readThreadHistoryLines,
   readThreadName,
   resolveBootstrapContinuityState,
   resolveCodexThreadContext,
+  runtimePathsForThread,
+  writeContinuityEnvelope,
+  writeHandoffArtifact,
 } from "../lib/codex-session-memory-utils.mjs";
+import { inferProjectLane } from "../lib/hybrid-memory-utils.mjs";
+import { stableHash } from "../lib/pst-memory-utils.mjs";
 import { hydrateStudioBrainAuthFromPortal } from "../lib/studio-brain-startup-auth.mjs";
 import { resolveStudioBrainBaseUrlFromEnv } from "../studio-brain-url-resolution.mjs";
 import { notifyAutomationOutcome } from "./phone-notify.mjs";
@@ -30,6 +40,10 @@ const OPEN_MEMORY_CLI_SCRIPT = resolve(REPO_ROOT, "scripts/open-memory.mjs");
 const MEMORY_BRIEF_ARTIFACT_PATH = resolve(REPO_ROOT, "output", "studio-brain", "memory-brief", "latest.json");
 const MEMORY_CONSOLIDATION_ARTIFACT_PATH = resolve(REPO_ROOT, "output", "studio-brain", "memory-consolidation", "latest.json");
 const MEMORY_CONSOLIDATION_STALE_MS = 36 * 60 * 60 * 1000;
+const DEFAULT_STARTUP_CONTEXT_CACHE_TTL_MS = 20_000;
+const DEFAULT_STARTUP_CONTEXT_SINGLE_FLIGHT_TIMEOUT_MS = 8_000;
+const DEFAULT_STARTUP_CONTEXT_SINGLE_FLIGHT_POLL_MS = 40;
+const STARTUP_CONTEXT_INFLIGHT = new Map();
 
 function clean(value) {
   return String(value || "").trim();
@@ -98,6 +112,18 @@ function normalizeSource(raw) {
 function parseIsoMs(value) {
   const parsed = Date.parse(clean(value));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeCwdValue(value) {
+  return clean(value)
+    .replace(/^\\\\\?\\/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+}
+
+function usableProjectLane(value) {
+  const lane = normalizeSource(value);
+  return lane && !["unknown", "general-dev", "personal"].includes(lane) ? lane : "";
 }
 
 function looksLikeStartupPlaceholder(value) {
@@ -418,23 +444,6 @@ function isPreferredStartupSource(source) {
   return false;
 }
 
-function preferredStartupSourcePriority(source) {
-  const normalized = normalizeSource(source || "");
-  if (normalized === "codex-compaction-promoted") return 0;
-  if (normalized === "codex-handoff") return 0;
-  if (normalized === "codex-resumable-session") return 1;
-  if (normalized === "codex-friction-feedback-loop") return 2;
-  if (normalized === "codex") return 3;
-  if (normalized === "manual") return 4;
-  if (normalized === "context-slice:automation") return 5;
-  if (normalized.startsWith("context-slice:")) return 6;
-  if (normalized === "codex-compaction-window") return 7;
-  if (normalized === "codex-compaction-raw") return 8;
-  if (normalized.startsWith("codex-")) return 9;
-  if (normalized === "mcp") return 10;
-  return 99;
-}
-
 function readRowSource(row) {
   return row?.source || row?.metadata?.source || "";
 }
@@ -523,9 +532,9 @@ function rowHasStartupSignal(row) {
   return true;
 }
 
-function filterStartupRows(rows, { preferredOnly = false } = {}) {
+export function selectStartupRows(rows, { preferredOnly = false, threadInfo = null } = {}) {
   if (!Array.isArray(rows)) return [];
-  return rows
+  const filtered = rows
     .map((row, index) => ({
       row,
       index,
@@ -533,24 +542,53 @@ function filterStartupRows(rows, { preferredOnly = false } = {}) {
       score: readRowScore(row),
     }))
     .filter((entry) => rowHasStartupSignal(entry.row))
-    .filter((entry) => !preferredOnly || isPreferredStartupSource(entry.source))
-    .sort((left, right) => {
-      const leftPriority = isPreferredStartupSource(left.source) ? preferredStartupSourcePriority(left.source) : 50;
-      const rightPriority = isPreferredStartupSource(right.source) ? preferredStartupSourcePriority(right.source) : 50;
-      const priorityDelta = leftPriority - rightPriority;
-      if (priorityDelta !== 0) return priorityDelta;
-      if (right.score !== left.score) return right.score - left.score;
-      return left.index - right.index;
-    })
-    .map((entry) => entry.row);
+    .filter((entry) => !preferredOnly || isPreferredStartupSource(entry.source));
+  const ranked = rankBootstrapRows(
+    filtered.map((entry) => ({
+      ...entry.row,
+      metadata: {
+        ...(entry.row?.metadata && typeof entry.row.metadata === "object" ? entry.row.metadata : {}),
+        startupQueryOriginalIndex: entry.index,
+      },
+    })),
+    threadInfo,
+    {
+      preserveOriginalScore: true,
+      profile: "startup-strict",
+    }
+  );
+  return ranked.sort((left, right) => {
+    const leftRank = Number(left?.metadata?.bootstrapRankScore);
+    const rightRank = Number(right?.metadata?.bootstrapRankScore);
+    if (Number.isFinite(leftRank) && Number.isFinite(rightRank) && rightRank !== leftRank) {
+      return rightRank - leftRank;
+    }
+    const leftPriority = isPreferredStartupSource(readRowSource(left))
+      ? preferredStartupSourcePriority(readRowSource(left), "startup-strict")
+      : 50;
+    const rightPriority = isPreferredStartupSource(readRowSource(right))
+      ? preferredStartupSourcePriority(readRowSource(right), "startup-strict")
+      : 50;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    const leftScore = Number(readRowScore(left));
+    const rightScore = Number(readRowScore(right));
+    if (Number.isFinite(leftScore) && Number.isFinite(rightScore) && rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+    return Number(left?.metadata?.startupQueryOriginalIndex || 0) - Number(right?.metadata?.startupQueryOriginalIndex || 0);
+  });
 }
 
-function filterPreferredRows(rows) {
-  return filterStartupRows(rows, { preferredOnly: true });
+function filterStartupRows(rows, options = {}) {
+  return selectStartupRows(rows, options);
 }
 
-function summarizeStartupRows(rows, maxChars = 400) {
-  const startupRows = filterStartupRows(rows);
+function filterPreferredRows(rows, options = {}) {
+  return selectStartupRows(rows, { ...options, preferredOnly: true });
+}
+
+function summarizeStartupRows(rows, maxChars = 400, threadInfo = null) {
+  const startupRows = filterStartupRows(rows, { threadInfo });
   if (startupRows.length === 0) return "";
   const lines = [];
   const seen = new Set();
@@ -570,16 +608,349 @@ function summarizeStartupRows(rows, maxChars = 400) {
   return summarizeBriefLines(lines, "", maxChars);
 }
 
-function resolveSelectedStartupSummary(summary, items, maxChars = 400) {
+function resolveSelectedStartupSummary(summary, items, maxChars = 400, threadInfo = null) {
   const summaryLines = sanitizeBriefLines(summary, 8);
   if (summaryLines.length > 0) {
     return summarizeBriefLines(summaryLines, "", maxChars);
   }
-  return summarizeStartupRows(items, maxChars);
+  return summarizeStartupRows(items, maxChars, threadInfo);
 }
 
 function readRowMemoryLayer(row) {
   return clean(row?.memoryLayer || row?.metadata?.memoryLayer || "").toLowerCase();
+}
+
+function readRowProjectLane(row) {
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const sourceMetadata = metadata.sourceMetadata && typeof metadata.sourceMetadata === "object"
+    ? metadata.sourceMetadata
+    : {};
+  return usableProjectLane(
+    sourceMetadata.projectLane || metadata.projectLane || row?.projectLane || metadata.lane || metadata.signalLane
+  );
+}
+
+function rowMatchesThread(row, threadInfo) {
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const rowThreadId = clean(metadata.threadId || row?.threadId);
+  const rowCwd = normalizeCwdValue(metadata.cwd || row?.cwd);
+  const threadId = clean(threadInfo?.threadId);
+  const cwd = normalizeCwdValue(threadInfo?.cwd);
+  return Boolean((threadId && rowThreadId === threadId) || (cwd && rowCwd === cwd));
+}
+
+function hasUsableLocalStartupArtifacts(artifacts = {}) {
+  const handoff = artifacts?.handoff && typeof artifacts.handoff === "object" ? artifacts.handoff : {};
+  const envelope = artifacts?.continuityEnvelope && typeof artifacts.continuityEnvelope === "object"
+    ? artifacts.continuityEnvelope
+    : {};
+  const handoffSummary = clean(handoff.summary || handoff.workCompleted || handoff.activeGoal);
+  if (handoffSummary) return true;
+  const envelopeSummary = clean(envelope.lastHandoffSummary || envelope.currentGoal || envelope.nextRecommendedAction);
+  const sourceQuality = clean(
+    envelope.startupSourceQuality || envelope.laneSourceQuality || envelope.startup?.startupSourceQuality
+  ).toLowerCase();
+  return Boolean(envelopeSummary) && sourceQuality === "thread-scoped-dominant";
+}
+
+function rowCanRepairStartupArtifacts(row, threadInfo = null) {
+  if (!rowMatchesThread(row, threadInfo)) return false;
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const source = normalizeSource(readRowSource(row));
+  if (source === "codex-startup-blocker") return false;
+  const checkpointKind = clean(metadata.checkpointKind).toLowerCase();
+  const startupEligible =
+    source === "codex-handoff" ||
+    metadata.startupEligible === true ||
+    checkpointKind === "handoff" ||
+    checkpointKind === "checkpoint";
+  if (!startupEligible) return false;
+  const summary = clean(metadata.summary || metadata.workCompleted || readRowText(row));
+  const activeGoal = clean(metadata.activeGoal || metadata.currentGoal || metadata.goal);
+  const nextRecommendedAction = clean(metadata.nextRecommendedAction || metadata.unblockStep);
+  const blockers = Array.isArray(metadata.blockers) ? metadata.blockers : [];
+  return Boolean(summary || activeGoal || nextRecommendedAction || blockers.length > 0);
+}
+
+export function selectStartupArtifactRepairCandidate(rows, { threadInfo = null } = {}) {
+  const startupRows = selectStartupRows(rows, { threadInfo });
+  return startupRows.find((row) => rowCanRepairStartupArtifacts(row, threadInfo)) || null;
+}
+
+export function buildStartupArtifactRepair(candidate, {
+  threadInfo = null,
+  threadScopedItemCount = 0,
+} = {}) {
+  if (!candidate) return null;
+  const metadata = candidate?.metadata && typeof candidate.metadata === "object" ? candidate.metadata : {};
+  const threadId = clean(metadata.threadId || threadInfo?.threadId);
+  if (!threadId) return null;
+  const summary = clean(metadata.summary || metadata.workCompleted || readRowText(candidate));
+  const activeGoal = clean(metadata.activeGoal || metadata.currentGoal || threadInfo?.firstUserMessage || threadInfo?.title || summary);
+  const nextRecommendedAction = clean(metadata.nextRecommendedAction || metadata.unblockStep);
+  const blockers = Array.isArray(metadata.blockers) ? metadata.blockers : [];
+  const completionStatus = clean(
+    metadata.completionStatus || metadata.status || metadata.checkpointStatus || (blockers.length > 0 ? "degraded" : "pass")
+  ) || "pass";
+  const workCompleted = clean(metadata.workCompleted || summary);
+  const presentationProjectLane = readRowProjectLane(candidate) || resolveThreadProjectLane(threadInfo);
+  return {
+    handoff: {
+      threadId,
+      createdAt: clean(candidate?.createdAt || candidate?.occurredAt),
+      runId: clean(candidate?.runId || metadata.runId),
+      agentId: clean(candidate?.agentId || metadata.agentId),
+      summary,
+      activeGoal,
+      workCompleted: workCompleted || summary,
+      nextRecommendedAction,
+      blockers,
+      completionStatus,
+      startupProvenance: {
+        repairedFromSource: clean(readRowSource(candidate)),
+        repairedFromCapturedFrom: clean(metadata.capturedFrom),
+        repairedFromMemoryId: clean(candidate?.id),
+      },
+    },
+    continuityEnvelope: {
+      threadId,
+      cwd: clean(metadata.cwd || threadInfo?.cwd),
+      continuityState: "ready",
+      currentGoal: activeGoal,
+      lastHandoffSummary: summary || workCompleted,
+      nextRecommendedAction,
+      blockers,
+      fallbackOnly: false,
+      startupSourceQuality: "thread-scoped-dominant",
+      laneSourceQuality: "thread-scoped-dominant",
+      presentationProjectLane,
+      threadScopedItemCount: Math.max(1, Math.round(Number(threadScopedItemCount || 0))),
+    },
+  };
+}
+
+function repairLocalStartupArtifactsFromRows(rows, {
+  threadInfo = null,
+  existingArtifacts = null,
+} = {}) {
+  const threadId = clean(threadInfo?.threadId);
+  if (!threadId || !Array.isArray(rows) || rows.length === 0) {
+    return {
+      repaired: false,
+      reason: "missing-thread-or-rows",
+    };
+  }
+  const artifacts = existingArtifacts || loadBootstrapArtifacts(threadId);
+  if (hasUsableLocalStartupArtifacts(artifacts)) {
+    return {
+      repaired: false,
+      reason: "existing-local-artifacts",
+    };
+  }
+  const candidate = selectStartupArtifactRepairCandidate(rows, { threadInfo });
+  if (!candidate) {
+    return {
+      repaired: false,
+      reason: "no-repair-candidate",
+    };
+  }
+  const threadScopedItemCount = rows.filter((row) => rowMatchesThread(row, threadInfo)).length;
+  const repair = buildStartupArtifactRepair(candidate, { threadInfo, threadScopedItemCount });
+  if (!repair) {
+    return {
+      repaired: false,
+      reason: "candidate-not-repairable",
+    };
+  }
+  writeHandoffArtifact(threadId, repair.handoff);
+  writeContinuityEnvelope(threadId, repair.continuityEnvelope);
+  return {
+    repaired: true,
+    reason: "repaired-from-remote-startup-row",
+    source: clean(readRowSource(candidate)),
+    capturedFrom: clean(candidate?.metadata?.capturedFrom),
+  };
+}
+
+function resolveThreadCwdLane(threadInfo) {
+  return usableProjectLane(
+    inferProjectLane({
+      path: normalizeThreadCwd(threadInfo?.cwd),
+    })
+  );
+}
+
+function resolveThreadProjectLane(threadInfo, cwdLane = resolveThreadCwdLane(threadInfo)) {
+  if (cwdLane) return cwdLane;
+  return usableProjectLane(
+    inferProjectLane({
+      path: normalizeThreadCwd(threadInfo?.cwd),
+      title: clean(threadInfo?.title),
+      text: clean(threadInfo?.firstUserMessage),
+    })
+  );
+}
+
+function computeGroundingQuality({
+  rows = [],
+  continuityState = "missing",
+  presentationProjectLane = "",
+  threadScopedItemCount = 0,
+  manualOnly = false,
+} = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return clean(continuityState).toLowerCase() === "blocked" ? "blocked" : "missing";
+  }
+  if (manualOnly) return "manual-only";
+  if (threadScopedItemCount > 0 && presentationProjectLane) {
+    return rows.length >= 2 ? "thread-scoped-rich" : "thread-scoped";
+  }
+  if (threadScopedItemCount > 0) return "thread-scoped";
+  if (presentationProjectLane) return rows.length >= 2 ? "lane-resolved-rich" : "lane-resolved";
+  return "thin";
+}
+
+function continuityArtifactSignalCount(row) {
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  let signals = 0;
+  if (clean(metadata.activeGoal || metadata.currentGoal)) signals += 1;
+  if (clean(metadata.nextRecommendedAction || metadata.unblockStep)) signals += 1;
+  if (clean(metadata.summary || metadata.lastHandoffSummary || metadata.workCompleted || metadata.bootstrapSummary)) {
+    signals += 1;
+  }
+  if (Array.isArray(metadata.blockers) && metadata.blockers.length > 0) signals += 1;
+  if (clean(metadata.firstSignal)) signals += 1;
+  if (Array.isArray(metadata.resumeHints) && metadata.resumeHints.length > 0) signals += 1;
+  return signals;
+}
+
+function isTrustedStartupArtifactRow(row) {
+  const source = normalizeSource(readRowSource(row));
+  if (!["codex-handoff", "codex-continuity-envelope", "codex-startup-blocker"].includes(source)) {
+    return false;
+  }
+  const signals = continuityArtifactSignalCount(row);
+  return source === "codex-startup-blocker" ? signals >= 1 : signals >= 2;
+}
+
+function computeStartupSourceQuality(rows = [], threadScopedItemCount = 0, threadInfo = null) {
+  const startupRows = Array.isArray(rows) ? rows : [];
+  if (startupRows.length === 0) {
+    return {
+      startupSourceQuality: "missing",
+      compactionDominated: false,
+      sourceCounts: {},
+    };
+  }
+  const sourceCounts = {};
+  let compactionRows = 0;
+  let trustedThreadScopedArtifactRows = 0;
+  for (const row of startupRows) {
+    const source = normalizeSource(readRowSource(row)) || "unknown";
+    sourceCounts[source] = Number(sourceCounts[source] || 0) + 1;
+    if (source.startsWith("codex-compaction-")) {
+      compactionRows += 1;
+    }
+    if (isTrustedStartupArtifactRow(row) && rowMatchesThread(row, threadInfo)) {
+      trustedThreadScopedArtifactRows += 1;
+    }
+  }
+  const compactionDominated =
+    trustedThreadScopedArtifactRows === 0 &&
+    compactionRows / startupRows.length >= 0.5;
+  const startupSourceQuality = trustedThreadScopedArtifactRows > 0
+    ? "thread-scoped-dominant"
+    : compactionDominated
+    ? "compaction-promoted-dominant"
+    : threadScopedItemCount > 0
+      ? "thread-scoped-dominant"
+      : "cross-thread-fallback";
+  return {
+    startupSourceQuality,
+    compactionDominated,
+    sourceCounts,
+  };
+}
+
+export function deriveStartupGroundingDiagnostics({
+  rows = [],
+  diagnostics = {},
+  threadInfo = null,
+  continuityState = "",
+} = {}) {
+  const startupRows = Array.isArray(rows) ? rows : [];
+  const baseDiagnostics = diagnostics && typeof diagnostics === "object" ? diagnostics : {};
+  const threadScopedItemCount = startupRows.length > 0
+    ? startupRows.filter((row) => rowMatchesThread(row, threadInfo)).length
+    : Math.max(0, Math.round(Number(baseDiagnostics.threadScopedItemCount || 0)));
+  const manualOnly = startupRows.length > 0
+    ? startupRows.every((row) => normalizeSource(readRowSource(row)) === "manual")
+    : baseDiagnostics.manualOnly === true;
+  const rankedLaneRow = startupRows.find((row) => readRowProjectLane(row));
+  const rankedRowMatchesThread = Boolean(rankedLaneRow) && rowMatchesThread(rankedLaneRow, threadInfo);
+  const diagnosticsLane = usableProjectLane(
+    baseDiagnostics.presentationProjectLane || baseDiagnostics.projectLane || baseDiagnostics.dominantProjectLane
+  );
+  const cwdLane = resolveThreadCwdLane(threadInfo);
+  const inferredLane = resolveThreadProjectLane(threadInfo, cwdLane);
+  const rankedLane = rankedLaneRow ? readRowProjectLane(rankedLaneRow) : "";
+  const shouldOverrideThreadScopedLane =
+    Boolean(rankedLaneRow) &&
+    Boolean(inferredLane) &&
+    rankedRowMatchesThread &&
+    Boolean(rankedLane) &&
+    rankedLane !== inferredLane;
+  const shouldPreferRepoLaneOverCrossLane =
+    Boolean(rankedLaneRow) &&
+    Boolean(cwdLane) &&
+    !rankedRowMatchesThread &&
+    Boolean(rankedLane) &&
+    rankedLane !== inferredLane;
+  const presentationProjectLane = rankedLaneRow
+    ? shouldOverrideThreadScopedLane || shouldPreferRepoLaneOverCrossLane
+      ? inferredLane
+      : rankedLane
+    : inferredLane || diagnosticsLane;
+  const laneResolutionSource = rankedLaneRow
+    ? shouldOverrideThreadScopedLane
+      ? "thread-inference-override"
+      : shouldPreferRepoLaneOverCrossLane
+        ? "thread-inference"
+      : rankedRowMatchesThread
+      ? "thread-scoped-ranked-row"
+      : "ranked-row"
+    : inferredLane
+      ? "thread-inference"
+      : diagnosticsLane
+        ? "diagnostics"
+        : "unresolved";
+  const normalizedContinuityState = clean(continuityState || baseDiagnostics.continuityState || "missing").toLowerCase();
+  const sourceQuality = computeStartupSourceQuality(startupRows, threadScopedItemCount, threadInfo);
+  const laneSourceQuality =
+    sourceQuality.compactionDominated === true
+      ? "compaction-promoted-dominant"
+      : clean(baseDiagnostics.laneSourceQuality || baseDiagnostics.groundingQuality || "");
+  return {
+    ...baseDiagnostics,
+    projectLane: presentationProjectLane || usableProjectLane(baseDiagnostics.projectLane),
+    dominantProjectLane:
+      presentationProjectLane || usableProjectLane(baseDiagnostics.dominantProjectLane || baseDiagnostics.projectLane),
+    presentationProjectLane,
+    laneResolutionSource,
+    threadScopedItemCount,
+    manualOnly,
+    groundingQuality: computeGroundingQuality({
+      rows: startupRows,
+      continuityState: normalizedContinuityState,
+      presentationProjectLane,
+      threadScopedItemCount,
+      manualOnly,
+    }),
+    laneSourceQuality: laneSourceQuality || sourceQuality.startupSourceQuality,
+    startupSourceQuality: sourceQuality.startupSourceQuality,
+    compactionDominated: sourceQuality.compactionDominated,
+    rowSourceCounts: sourceQuality.sourceCounts,
+  };
 }
 
 function hasNonCoreRows(rows) {
@@ -624,6 +995,7 @@ async function fallbackSearchContext({
   sourceDenylist,
   retrievalMode,
   strictStartupAllowlist,
+  threadInfo = null,
 }) {
   const attempts = [];
   const queryText = clean(query);
@@ -667,8 +1039,8 @@ async function fallbackSearchContext({
       : Array.isArray(response.payload?.results)
         ? response.payload.results
         : [];
-    const preferredRows = filterPreferredRows(rows);
-    const startupRows = filterStartupRows(rows);
+    const preferredRows = filterPreferredRows(rows, { threadInfo });
+    const startupRows = filterStartupRows(rows, { threadInfo });
     const selectedRows =
       strictStartupAllowlist
         ? preferredRows
@@ -696,6 +1068,7 @@ async function requestStartupContextStage({
   payload,
   strictStartupAllowlist = true,
   startupStage = "scoped",
+  threadInfo = null,
 } = {}) {
   const response = await requestJson(client, "/api/memory/context", payload);
   if (!response.ok) {
@@ -714,15 +1087,21 @@ async function requestStartupContextStage({
   }
 
   const { items, summary, diagnostics } = extractContextEnvelope(response.payload);
-  const preferredItems = filterPreferredRows(items);
-  const startupItems = filterStartupRows(items);
+  const preferredItems = filterPreferredRows(items, { threadInfo });
+  const startupItems = filterStartupRows(items, { threadInfo });
   const selectedItems =
     strictStartupAllowlist
       ? preferredItems
       : preferredItems.length > 0
         ? preferredItems
         : startupItems;
-  const selectedSummary = resolveSelectedStartupSummary(summary, selectedItems, 400);
+  const selectedSummary = resolveSelectedStartupSummary(summary, selectedItems, 400, threadInfo);
+  const selectedDiagnostics = deriveStartupGroundingDiagnostics({
+    rows: selectedItems,
+    diagnostics,
+    threadInfo,
+    continuityState: clean(diagnostics?.continuityState),
+  });
   return {
     ok: true,
     response,
@@ -732,6 +1111,8 @@ async function requestStartupContextStage({
     summary,
     selectedSummary,
     diagnostics,
+    selectedDiagnostics,
+    compactionDominated: selectedDiagnostics.compactionDominated === true,
     hasSelectedItems: selectedItems.length > 0,
     hasNonCoreSelected: hasNonCoreRows(selectedItems),
   };
@@ -773,6 +1154,275 @@ function readJsonFile(path) {
   }
 }
 
+function delayMs(durationMs) {
+  const millis = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (millis <= 0) return Promise.resolve();
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, millis));
+}
+
+function resolveStartupContextCacheTtlMs(env = process.env) {
+  const raw = Number(env.CODEX_STARTUP_CONTEXT_CACHE_TTL_MS || env.CODEX_OPEN_MEMORY_STARTUP_CACHE_TTL_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_STARTUP_CONTEXT_CACHE_TTL_MS;
+  return Math.max(1000, Math.trunc(raw));
+}
+
+function resolveStartupContextSingleFlightTimeoutMs(env = process.env) {
+  const raw = Number(env.CODEX_STARTUP_CONTEXT_SINGLE_FLIGHT_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_STARTUP_CONTEXT_SINGLE_FLIGHT_TIMEOUT_MS;
+  return Math.max(1000, Math.trunc(raw));
+}
+
+function resolveStartupContextSingleFlightPollMs(env = process.env) {
+  const raw = Number(env.CODEX_STARTUP_CONTEXT_SINGLE_FLIGHT_POLL_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_STARTUP_CONTEXT_SINGLE_FLIGHT_POLL_MS;
+  return Math.max(10, Math.trunc(raw));
+}
+
+function startupContextCacheEnabled(env = process.env) {
+  return isEnabled(env.CODEX_STARTUP_CONTEXT_CACHE_ENABLED, true);
+}
+
+function buildStartupContextCacheKey({ threadInfo = null, payload = {}, strictStartupAllowlist = true } = {}) {
+  return stableHash(
+    JSON.stringify({
+      threadId: clean(threadInfo?.threadId),
+      rolloutPath: clean(threadInfo?.rolloutPath),
+      cwd: clean(threadInfo?.cwd),
+      query: clean(payload?.query),
+      tenantId: clean(payload?.tenantId),
+      sourceAllowlist: Array.isArray(payload?.sourceAllowlist) ? payload.sourceAllowlist.map((value) => clean(value)) : [],
+      sourceDenylist: Array.isArray(payload?.sourceDenylist) ? payload.sourceDenylist.map((value) => clean(value)) : [],
+      retrievalMode: clean(payload?.retrievalMode),
+      expandRelationships: payload?.expandRelationships !== false,
+      maxHops: Number(payload?.maxHops || 0),
+      strictStartupAllowlist: strictStartupAllowlist === true,
+    }),
+    24
+  );
+}
+
+function buildStartupContextCacheState({ threadId = "", cacheKey = "" } = {}) {
+  const paths = runtimePathsForThread(threadId);
+  return {
+    threadId: clean(threadId),
+    cacheKey: clean(cacheKey),
+    cachePath: paths.startupContextCachePath,
+    lockPath: `${paths.startupContextCachePath}.${clean(cacheKey) || "startup"}.lock`,
+  };
+}
+
+function cloneStartupContextResult(result = {}) {
+  try {
+    return JSON.parse(JSON.stringify(result));
+  } catch {
+    return { ...(result && typeof result === "object" ? result : {}) };
+  }
+}
+
+function readFreshStartupContextCache(cacheState, { env = process.env, nowMs = Date.now() } = {}) {
+  if (!startupContextCacheEnabled(env) || !cacheState?.cachePath) return null;
+  const entry = readJsonFile(cacheState.cachePath);
+  if (!entry || entry.schema !== "codex-startup-context-cache.v1") return null;
+  if (clean(entry.threadId) !== clean(cacheState.threadId)) return null;
+  if (clean(entry.cacheKey) !== clean(cacheState.cacheKey)) return null;
+  const expiresAtMs = Date.parse(clean(entry.expiresAt));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) return null;
+  const savedAtMs = Date.parse(clean(entry.savedAt));
+  return {
+    entry,
+    ageMs: Number.isFinite(savedAtMs) ? Math.max(0, nowMs - savedAtMs) : 0,
+  };
+}
+
+function applyStartupContextCacheMetadata(
+  result,
+  {
+    cacheState = null,
+    cacheHit = false,
+    hitType = "",
+    ageMs = 0,
+    waitMs = 0,
+    shortCircuit = false,
+  } = {},
+  {
+    startedAt = Date.now(),
+    recomputeLatency = false,
+    env = process.env,
+  } = {},
+) {
+  const next = cloneStartupContextResult(result);
+  const baseLatencyBreakdown =
+    next.latencyBreakdown && typeof next.latencyBreakdown === "object"
+      ? next.latencyBreakdown
+      : next.diagnostics?.startupLatencyBreakdown && typeof next.diagnostics.startupLatencyBreakdown === "object"
+        ? next.diagnostics.startupLatencyBreakdown
+        : {};
+  const resolvedLatencyMs = recomputeLatency ? Math.max(0, Date.now() - Number(startedAt || Date.now())) : next.latencyMs;
+  if (recomputeLatency) {
+    next.latencyMs = resolvedLatencyMs;
+    next.startupLatency = evaluateStartupLatency(resolvedLatencyMs);
+  }
+  const startupCache = {
+    enabled: startupContextCacheEnabled(env),
+    cacheHit,
+    hitType: clean(hitType),
+    cacheKey: clean(cacheState?.cacheKey),
+    cachePath: clean(cacheState?.cachePath),
+    cacheAgeMs: Math.max(0, Math.round(Number(ageMs) || 0)),
+    cacheWaitMs: Math.max(0, Math.round(Number(waitMs) || 0)),
+    shortCircuitLocal: shortCircuit === true,
+  };
+  const latencyBreakdown = sanitizeMetrics({
+    ...baseLatencyBreakdown,
+    totalMs: resolvedLatencyMs,
+    cacheAgeMs: startupCache.cacheAgeMs,
+    cacheWaitMs: startupCache.cacheWaitMs,
+    cacheHit: startupCache.cacheHit,
+    shortCircuitLocal: startupCache.shortCircuitLocal,
+  });
+  next.latencyBreakdown = latencyBreakdown;
+  next.diagnostics = {
+    ...(next.diagnostics && typeof next.diagnostics === "object" ? next.diagnostics : {}),
+    startupCache,
+    startupLatencyBreakdown: latencyBreakdown,
+  };
+  return next;
+}
+
+function writeStartupContextCache(cacheState, result, { env = process.env } = {}) {
+  if (!startupContextCacheEnabled(env) || !cacheState?.cachePath) return false;
+  mkdirSync(dirname(cacheState.cachePath), { recursive: true });
+  const now = Date.now();
+  const ttlMs = resolveStartupContextCacheTtlMs(env);
+  const payload = {
+    schema: "codex-startup-context-cache.v1",
+    savedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + ttlMs).toISOString(),
+    threadId: clean(cacheState.threadId),
+    cacheKey: clean(cacheState.cacheKey),
+    result: cloneStartupContextResult(result),
+  };
+  writeFileSync(cacheState.cachePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  return true;
+}
+
+async function waitForStartupContextCache(cacheState, {
+  env = process.env,
+  timeoutMs = resolveStartupContextSingleFlightTimeoutMs(env),
+  pollMs = resolveStartupContextSingleFlightPollMs(env),
+} = {}) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const cached = readFreshStartupContextCache(cacheState, { env });
+    if (cached) {
+      return {
+        ...cached,
+        waitMs: Math.max(0, Date.now() - startedAt),
+      };
+    }
+    if (!existsSync(cacheState.lockPath)) break;
+    await delayMs(pollMs);
+  }
+  return null;
+}
+
+async function withStartupContextSingleFlight(
+  cacheState,
+  factory,
+  {
+    env = process.env,
+    startedAt = Date.now(),
+  } = {},
+) {
+  if (!cacheState?.threadId || !cacheState?.cacheKey || !startupContextCacheEnabled(env)) {
+    return factory();
+  }
+  const inFlightKey = `${cacheState.threadId}:${cacheState.cacheKey}`;
+  if (STARTUP_CONTEXT_INFLIGHT.has(inFlightKey)) {
+    return STARTUP_CONTEXT_INFLIGHT.get(inFlightKey);
+  }
+  const promise = (async () => {
+    const cached = readFreshStartupContextCache(cacheState, { env });
+    if (cached?.entry?.result) {
+      return applyStartupContextCacheMetadata(cached.entry.result, {
+        cacheState,
+        cacheHit: true,
+        hitType: "warm-cache",
+        ageMs: cached.ageMs,
+      }, {
+        startedAt,
+        recomputeLatency: true,
+        env,
+      });
+    }
+
+    mkdirSync(dirname(cacheState.lockPath), { recursive: true });
+    let lockFd = null;
+    try {
+      lockFd = openSync(cacheState.lockPath, "wx");
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+
+    if (lockFd == null) {
+      const waited = await waitForStartupContextCache(cacheState, { env });
+      if (waited?.entry?.result) {
+        return applyStartupContextCacheMetadata(waited.entry.result, {
+          cacheState,
+          cacheHit: true,
+          hitType: "lock-wait-cache",
+          ageMs: waited.ageMs,
+          waitMs: waited.waitMs,
+        }, {
+          startedAt,
+          recomputeLatency: true,
+          env,
+        });
+      }
+    }
+
+    try {
+      const recheck = readFreshStartupContextCache(cacheState, { env });
+      if (recheck?.entry?.result) {
+        return applyStartupContextCacheMetadata(recheck.entry.result, {
+          cacheState,
+          cacheHit: true,
+          hitType: "post-lock-cache",
+          ageMs: recheck.ageMs,
+        }, {
+          startedAt,
+          recomputeLatency: true,
+          env,
+        });
+      }
+      const resolved = await factory();
+      const annotated = applyStartupContextCacheMetadata(resolved, {
+        cacheState,
+        cacheHit: false,
+      }, {
+        startedAt,
+        env,
+      });
+      writeStartupContextCache(cacheState, annotated, { env });
+      return annotated;
+    } finally {
+      if (lockFd != null) {
+        closeSync(lockFd);
+        try {
+          unlinkSync(cacheState.lockPath);
+        } catch {}
+      }
+    }
+  })();
+  STARTUP_CONTEXT_INFLIGHT.set(inFlightKey, promise);
+  promise.finally(() => {
+    if (STARTUP_CONTEXT_INFLIGHT.get(inFlightKey) === promise) {
+      STARTUP_CONTEXT_INFLIGHT.delete(inFlightKey);
+    }
+  }).catch(() => {});
+  return promise;
+}
+
 async function safeNotifyAutomationOutcome(payload) {
   try {
     return await notifyAutomationOutcome(payload);
@@ -807,6 +1457,25 @@ function resolveStartupThreadHint(env = process.env) {
 
 function resolveStartupCwd(env = process.env) {
   return clean(env.CODEX_CWD || env.INIT_CWD || env.PWD || process.cwd()) || process.cwd();
+}
+
+function resolveStartupThreadInfo(env = process.env) {
+  const cwd = resolveStartupCwd(env);
+  const hintedThreadId = resolveStartupThreadHint(env);
+  const resolvedThreadInfo = resolveCodexThreadContext({
+    threadId: hintedThreadId,
+    cwd,
+  });
+  if (resolvedThreadInfo) return resolvedThreadInfo;
+  if (!hintedThreadId && !cwd) return null;
+  return {
+    threadId: clean(hintedThreadId),
+    rolloutPath: "",
+    cwd,
+    title: "",
+    firstUserMessage: "",
+    updatedAt: "",
+  };
 }
 
 function timeoutController(timeoutMs) {
@@ -905,17 +1574,12 @@ function loadLocalStartupContext({
   strictStartupAllowlist = true,
   env = process.env,
 } = {}) {
-  const cwd = resolveStartupCwd(env);
-  const hintedThreadId = resolveStartupThreadHint(env);
-  const resolvedThreadInfo = resolveCodexThreadContext({
-    threadId: hintedThreadId,
-    cwd,
-  });
-  const resolvedThreadId = clean(resolvedThreadInfo?.threadId || hintedThreadId);
+  const resolvedThreadInfo = resolveStartupThreadInfo(env);
+  const resolvedThreadId = clean(resolvedThreadInfo?.threadId);
   if (!resolvedThreadId && !resolvedThreadInfo) {
     return {
       ok: false,
-      attempted: Boolean(hintedThreadId || cwd),
+      attempted: Boolean(resolveStartupThreadHint(env) || resolveStartupCwd(env)),
       reason: "missing-local-thread",
     };
   }
@@ -953,6 +1617,7 @@ function loadLocalStartupContext({
     startupBlocker: artifacts?.startupBlocker,
     continuityEnvelope: artifacts?.continuityEnvelope,
     handoff: artifacts?.handoff,
+    bootstrapContext: artifacts?.context,
     query,
   });
   const localContext = buildLocalBootstrapContext({
@@ -975,18 +1640,33 @@ function loadLocalStartupContext({
       artifacts?.startupBlocker?.remoteError ||
       artifacts?.startupBlocker?.blockers?.[0]?.summary
   );
+  const derivedLocalDiagnostics = deriveStartupGroundingDiagnostics({
+    rows: localContext?.items || [],
+    diagnostics: localContext?.diagnostics,
+    threadInfo,
+    continuityState: continuityDecision.continuityState,
+  });
+  const hasValidatedLocalHandoff = Boolean(
+    clean(artifacts?.handoff?.summary || artifacts?.handoff?.workCompleted || artifacts?.handoff?.activeGoal)
+  );
+  const adjustedLocalContinuityState =
+    continuityDecision.continuityState === "ready" &&
+    !hasValidatedLocalHandoff &&
+    derivedLocalDiagnostics.compactionDominated === true
+      ? "continuity_degraded"
+      : continuityDecision.continuityState;
   const reasonCode =
-    continuityDecision.continuityState === "ready"
+    adjustedLocalContinuityState === "ready" || adjustedLocalContinuityState === "continuity_degraded"
       ? STARTUP_REASON_CODES.OK
-      : continuityDecision.continuityState === "blocked"
+      : adjustedLocalContinuityState === "blocked"
         ? STARTUP_REASON_CODES.STARTUP_UNAVAILABLE
         : STARTUP_REASON_CODES.EMPTY_CONTEXT;
 
   return {
     ok: itemCount > 0,
     attempted: true,
-    reason: continuityDecision.continuityState === "blocked" ? "local-startup-blocker" : "",
-    error: continuityDecision.continuityState === "blocked" ? blockerSummary : "",
+    reason: adjustedLocalContinuityState === "blocked" ? "local-startup-blocker" : "",
+    error: adjustedLocalContinuityState === "blocked" ? blockerSummary : "",
     status: 200,
     itemCount,
     contextSummary: clean(localContext?.summary).slice(0, 400),
@@ -994,16 +1674,19 @@ function loadLocalStartupContext({
     contextRows: localContext?.items || [],
     fallbackSources: listSourcesFromRows(localContext?.items || []),
     diagnostics: {
-      ...(localContext?.diagnostics && typeof localContext.diagnostics === "object" ? localContext.diagnostics : {}),
+      ...derivedLocalDiagnostics,
       startupSourceBias: "local-fallback",
       strictStartupAllowlist,
       fallbackUsed: true,
       fallbackStrategy: localFallbackStrategy,
       selectedRows: localContext?.items || [],
       localThreadId: clean(threadInfo.threadId),
-      localContinuityState: continuityDecision.continuityState,
-      localContinuitySource: continuityDecision.source,
-      localContinuityValidated: continuityDecision.continuityState === "ready",
+      localContinuityState: adjustedLocalContinuityState,
+      localContinuitySource:
+        adjustedLocalContinuityState !== continuityDecision.continuityState
+          ? "local-artifact-quality"
+          : continuityDecision.source,
+      localContinuityValidated: adjustedLocalContinuityState === "ready",
       localContinuityBlocked: continuityDecision.blockerActive,
       localContinuitySummary: clean(continuityDecision.supplementalHandoffSummary),
       bootstrapArtifactPaths: {
@@ -1013,6 +1696,27 @@ function loadLocalStartupContext({
       },
     },
   };
+}
+
+function hasTrustedLocalStartupContext(localFallback, localFallbackDiagnostics) {
+  if (!localFallback?.ok) return false;
+  const mergedDiagnostics = {
+    ...(localFallback.diagnostics && typeof localFallback.diagnostics === "object" ? localFallback.diagnostics : {}),
+    ...(localFallbackDiagnostics && typeof localFallbackDiagnostics === "object" ? localFallbackDiagnostics : {}),
+  };
+  const continuityState = clean(
+    mergedDiagnostics.localContinuityState || mergedDiagnostics.continuityState || ""
+  ).toLowerCase();
+  const groundingAuthority = deriveStartupGroundingAuthority({
+    diagnostics: mergedDiagnostics,
+    continuityState: continuityState || "ready",
+  });
+  return (
+    continuityState === "ready" &&
+    isTrustedStartupGroundingAuthority(groundingAuthority) &&
+    Math.max(0, Number(mergedDiagnostics.threadScopedItemCount || 0)) > 0 &&
+    mergedDiagnostics.compactionDominated !== true
+  );
 }
 
 function captureViaCli({ payload, env = process.env } = {}) {
@@ -1125,6 +1829,65 @@ function listSourcesFromRows(rows, maxItems = 8) {
     if (output.length >= maxItems) break;
   }
   return output;
+}
+
+function isGenericAdvisoryOnlyBlocker(value) {
+  const normalized = clean(value).toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.startsWith("using fallback strategy:") ||
+    normalized.startsWith("startup continuity loaded via fallback retrieval") ||
+    normalized === "dream consolidation artifact is missing." ||
+    normalized.startsWith("dreamactionability=")
+  );
+}
+
+function pickTrustedTopBlocker(blockers = []) {
+  const normalizedBlockers = Array.isArray(blockers) ? blockers.map((value) => clean(value)).filter(Boolean) : [];
+  return normalizedBlockers.find((value) => !isGenericAdvisoryOnlyBlocker(value)) || "";
+}
+
+export function buildStartupContextPack({
+  brief = {},
+  diagnostics = {},
+  continuityState = "missing",
+  reasonCode = STARTUP_REASON_CODES.STARTUP_UNAVAILABLE,
+  groundingAuthority = "",
+} = {}) {
+  const authority = groundingAuthority || deriveStartupGroundingAuthority({ diagnostics, continuityState });
+  const publishTrustedGrounding =
+    clean(continuityState).toLowerCase() === "ready" &&
+    isTrustedStartupGroundingAuthority(authority);
+  const advisoryGoal = clean(brief?.goal);
+  const advisoryBlocker = clean(brief?.blockers?.[0]);
+  const advisoryNextRecommendedAction = clean(brief?.recommendedNextActions?.[0]);
+  const trustedTopBlocker = pickTrustedTopBlocker(brief?.blockers);
+
+  return {
+    dominantGoal: publishTrustedGrounding ? advisoryGoal : "",
+    topBlocker: publishTrustedGrounding ? trustedTopBlocker : "",
+    nextRecommendedAction: publishTrustedGrounding ? advisoryNextRecommendedAction : "",
+    groundingAuthority: authority,
+    grounding: publishTrustedGrounding
+      ? {
+          dominantGoal: advisoryGoal,
+          topBlocker: trustedTopBlocker,
+          nextRecommendedAction: advisoryNextRecommendedAction,
+        }
+      : {},
+    advisory:
+      publishTrustedGrounding
+        ? {}
+        : {
+            dominantGoal: advisoryGoal,
+            topBlocker: advisoryBlocker,
+            nextRecommendedAction: advisoryNextRecommendedAction,
+          },
+    goalAuthority: publishTrustedGrounding && advisoryGoal ? authority : "",
+    blockerAuthority: publishTrustedGrounding && trustedTopBlocker ? authority : "",
+    publishTrustedGrounding,
+    fallbackOnly: clean(continuityState).toLowerCase() !== "ready" && reasonCode === STARTUP_REASON_CODES.OK,
+  };
 }
 
 export function buildMemoryBrief({
@@ -1299,14 +2062,21 @@ function finalizeStartupContextResult(
     contextRows = [],
     diagnostics = {},
     fallbackSources = [],
+    threadInfo = null,
+    latencyBreakdown = {},
   } = {},
 ) {
   const latencyMs = Math.max(0, Date.now() - Number(startedAt || Date.now()));
   const startupLatency = evaluateStartupLatency(latencyMs);
-  const mergedDiagnostics = {
-    ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
-    ...(result?.diagnostics && typeof result.diagnostics === "object" ? result.diagnostics : {}),
-  };
+  const mergedDiagnostics = deriveStartupGroundingDiagnostics({
+    rows: contextRows,
+    diagnostics: {
+      ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
+      ...(result?.diagnostics && typeof result.diagnostics === "object" ? result.diagnostics : {}),
+    },
+    threadInfo,
+    continuityState: result?.continuityState,
+  });
   const sourceFallbacks = Array.from(
     new Set(
       [...fallbackSources, ...listSourcesFromRows(contextRows), ...listSourcesFromRows(mergedDiagnostics?.selectedRows || [])].filter(Boolean),
@@ -1333,7 +2103,7 @@ function finalizeStartupContextResult(
   const localContinuityValidated = mergedDiagnostics?.localContinuityValidated === true;
   const localContinuityBlocked =
     mergedDiagnostics?.localContinuityBlocked === true || explicitContinuityState === "blocked";
-  const continuityState =
+  let continuityState =
     explicitContinuityState === "ready" && localContinuityValidated
       ? "ready"
       : reasonCode === STARTUP_REASON_CODES.OK
@@ -1345,6 +2115,17 @@ function finalizeStartupContextResult(
           : explicitContinuityState === "missing" || reasonCode === STARTUP_REASON_CODES.EMPTY_CONTEXT
             ? "missing"
             : "continuity_degraded";
+  let groundingAuthority = deriveStartupGroundingAuthority({
+    diagnostics: mergedDiagnostics,
+    continuityState,
+  });
+  if (continuityState === "ready" && !isTrustedStartupGroundingAuthority(groundingAuthority)) {
+    continuityState = "continuity_degraded";
+    groundingAuthority = deriveStartupGroundingAuthority({
+      diagnostics: mergedDiagnostics,
+      continuityState,
+    });
+  }
   const brief = buildMemoryBrief({
     generatedAt: new Date().toISOString(),
     continuityState,
@@ -1357,6 +2138,23 @@ function finalizeStartupContextResult(
     error: result?.error || result?.reason || "",
   });
   const memoryBriefPath = writeMemoryBriefArtifact(brief);
+  const startupContextPack = {
+    ...buildStartupContextPack({
+      brief,
+      diagnostics: mergedDiagnostics,
+      continuityState,
+      reasonCode,
+      groundingAuthority,
+    }),
+    laneSourceQuality: clean(
+      mergedDiagnostics?.laneSourceQuality || mergedDiagnostics?.startupSourceQuality || mergedDiagnostics?.groundingQuality
+    ),
+    threadScoped: Math.max(0, Math.round(Number(mergedDiagnostics?.threadScopedItemCount || 0))) > 0,
+  };
+  const detailedLatencyBreakdown = sanitizeMetrics({
+    ...(latencyBreakdown && typeof latencyBreakdown === "object" ? latencyBreakdown : {}),
+    totalMs: latencyMs,
+  });
 
   return {
     ...result,
@@ -1364,8 +2162,19 @@ function finalizeStartupContextResult(
     continuityState,
     latencyMs,
     startupLatency,
+    latencyBreakdown: detailedLatencyBreakdown,
     tokenFreshness,
     fallbackSources: sourceFallbacks,
+    dominantGoal: startupContextPack.dominantGoal,
+    topBlocker: startupContextPack.topBlocker,
+    nextRecommendedAction: startupContextPack.nextRecommendedAction,
+    groundingAuthority: startupContextPack.groundingAuthority,
+    grounding: startupContextPack.grounding,
+    advisory: startupContextPack.advisory,
+    goalAuthority: startupContextPack.goalAuthority,
+    blockerAuthority: startupContextPack.blockerAuthority,
+    laneSourceQuality: startupContextPack.laneSourceQuality,
+    fallbackOnly: startupContextPack.fallbackOnly,
     diagnostics: {
       ...mergedDiagnostics,
       continuityState,
@@ -1373,6 +2182,9 @@ function finalizeStartupContextResult(
       continuityReason: clean(result?.error || result?.reason || ""),
       memoryLayerModel: "core-blocks|working-memory|episodic-memory|canonical-memory",
       fallbackSources: sourceFallbacks,
+      startupLatencyBreakdown: detailedLatencyBreakdown,
+      ...startupContextPack,
+      contextPack: startupContextPack,
     },
     memoryBrief: brief,
     memoryBriefPath,
@@ -1391,7 +2203,14 @@ export async function loadAutomationStartupMemoryContext({
   env = process.env,
 } = {}) {
   const startedAt = Date.now();
+  const latencyBreakdown = {};
+  const recordStage = (key, stageStartedAt) => {
+    latencyBreakdown[key] = Math.max(0, Date.now() - Number(stageStartedAt || Date.now()));
+  };
+  const startupThreadInfo = resolveStartupThreadInfo(env);
+  const authStartedAt = Date.now();
   const authState = await ensureAutomationAuth(env);
+  recordStage("authMs", authStartedAt);
   const tokenFreshness = authState?.tokenFreshness || inspectTokenFreshness(resolveStudioBrainAuthToken(env));
   const strictStartupAllowlist = isEnabled(env.CODEX_OPEN_MEMORY_STRICT_STARTUP_ALLOWLIST, true);
   const payload = {
@@ -1425,102 +2244,56 @@ export async function loadAutomationStartupMemoryContext({
     layerAllowlist: [],
     layerDenylist: [],
   };
-  const localFallback = loadLocalStartupContext({
+  const cacheState = buildStartupContextCacheState({
+    threadId: clean(startupThreadInfo?.threadId),
+    cacheKey: buildStartupContextCacheKey({
+      threadInfo: startupThreadInfo,
+      payload,
+      strictStartupAllowlist,
+    }),
+  });
+  const finalizeResolvedStartup = (
+    result,
+    {
+      contextRows = [],
+      diagnostics = {},
+      fallbackSources = [],
+    } = {},
+  ) =>
+    finalizeStartupContextResult(result, {
+      startedAt,
+      tokenFreshness,
+      query: payload.query,
+      contextRows,
+      diagnostics: {
+        ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
+        startupLatencyBreakdown: sanitizeMetrics(latencyBreakdown),
+      },
+      fallbackSources,
+      threadInfo: startupThreadInfo,
+      latencyBreakdown,
+    });
+
+  const localFallbackStartedAt = Date.now();
+  let localFallback = loadLocalStartupContext({
     query: payload.query,
     maxItems: payload.maxItems,
     maxChars: payload.maxChars,
     strictStartupAllowlist,
     env,
   });
-
-  const client = buildClient({ env, capability: "context" });
-  if (!client.ready) {
-    if (localFallback.ok) {
-      return finalizeStartupContextResult({
-        attempted: true,
-        ok: true,
-        reason: localFallback.reason,
-        error: localFallback.error,
-        status: localFallback.status,
-        itemCount: localFallback.itemCount,
-        contextSummary: localFallback.contextSummary,
-        reasonCode: localFallback.reasonCode,
+  recordStage("localFallbackMs", localFallbackStartedAt);
+  let localFallbackDiagnostics = localFallback.ok
+    ? deriveStartupGroundingDiagnostics({
+        rows: localFallback.contextRows,
         diagnostics: localFallback.diagnostics,
-      }, {
-        startedAt,
-        tokenFreshness,
-        query: payload.query,
-        contextRows: localFallback.contextRows,
-        diagnostics: localFallback.diagnostics,
-        fallbackSources: localFallback.fallbackSources,
-      });
-    }
-    const allowCliFallback = isEnabled(env.CODEX_OPEN_MEMORY_CLI_FALLBACK, true);
-    if (client.reason === "missing-auth-token" && allowCliFallback) {
-      const cliResponse = loadContextViaCli({ payload, strictStartupAllowlist, env });
-      if (cliResponse.ok) {
-        const { items, summary, diagnostics } = extractContextEnvelope(cliResponse.payload);
-        return finalizeStartupContextResult({
-          attempted: true,
-          ok: true,
-          reason: "",
-          error: "",
-          status: 200,
-          itemCount: Array.isArray(items) ? items.length : 0,
-          contextSummary: clean(summary).slice(0, 400),
-          diagnostics: {
-            ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
-            startupSourceBias: "preferred-startup-sources",
-            strictStartupAllowlist,
-            fallbackUsed: true,
-            fallbackStrategy: "open-memory-cli",
-          },
-        }, {
-          startedAt,
-          tokenFreshness,
-          query: payload.query,
-          contextRows: items,
-          diagnostics,
-          fallbackSources: ["open-memory-cli"],
-        });
-      }
-      return finalizeStartupContextResult({
-        attempted: true,
-        ok: false,
-        reason: "context-cli-fallback-failed",
-        error: cliResponse.error || "open-memory CLI fallback failed",
-        status: 0,
-        itemCount: 0,
-        contextSummary: "",
-      }, {
-        startedAt,
-        tokenFreshness,
-        query: payload.query,
-        fallbackSources: ["open-memory-cli"],
-      });
-    }
-    return finalizeStartupContextResult({
-      attempted: false,
-      ok: false,
-      reason: client.reason,
-      itemCount: 0,
-      contextSummary: "",
-    }, {
-      startedAt,
-      tokenFreshness,
-      query: payload.query,
-    });
-  }
-
-  const initialStage = await requestStartupContextStage({
-    client,
-    payload,
-    strictStartupAllowlist,
-    startupStage: "scoped",
-  });
-  if (!initialStage.ok) {
-    if (localFallback.ok) {
-      return finalizeStartupContextResult({
+        threadInfo: startupThreadInfo,
+        continuityState: clean(localFallback.diagnostics?.continuityState),
+      })
+    : null;
+  if (hasTrustedLocalStartupContext(localFallback, localFallbackDiagnostics)) {
+    return applyStartupContextCacheMetadata(
+      finalizeResolvedStartup({
         attempted: true,
         ok: true,
         reason: localFallback.reason,
@@ -1531,124 +2304,365 @@ export async function loadAutomationStartupMemoryContext({
         reasonCode: localFallback.reasonCode,
         diagnostics: {
           ...localFallback.diagnostics,
-          remoteFailure: clean(initialStage.response.error),
-          remoteStatus: Number(initialStage.response.status || 0),
+          startupContextStage: "local-validated-short-circuit",
+          fallbackUsed: true,
+          fallbackStrategy: clean(localFallback.diagnostics?.fallbackStrategy || "local-bootstrap-artifacts"),
         },
       }, {
-        startedAt,
-        tokenFreshness,
-        query: payload.query,
         contextRows: localFallback.contextRows,
         diagnostics: localFallback.diagnostics,
         fallbackSources: localFallback.fallbackSources,
+      }),
+      {
+        cacheState,
+        cacheHit: false,
+        shortCircuit: true,
+      },
+      {
+        startedAt,
+        env,
+      }
+    );
+  }
+
+  return withStartupContextSingleFlight(cacheState, async () => {
+    const client = buildClient({ env, capability: "context" });
+    if (!client.ready) {
+      if (localFallback.ok) {
+        return finalizeResolvedStartup({
+          attempted: true,
+          ok: true,
+          reason: localFallback.reason,
+          error: localFallback.error,
+          status: localFallback.status,
+          itemCount: localFallback.itemCount,
+          contextSummary: localFallback.contextSummary,
+          reasonCode: localFallback.reasonCode,
+          diagnostics: {
+            ...localFallback.diagnostics,
+            startupContextStage: "local-continuity-fallback",
+            fallbackUsed: true,
+            fallbackStrategy: clean(localFallback.diagnostics?.fallbackStrategy || "local-bootstrap-artifacts"),
+          },
+        }, {
+          contextRows: localFallback.contextRows,
+          diagnostics: localFallback.diagnostics,
+          fallbackSources: localFallback.fallbackSources,
+        });
+      }
+      const allowCliFallback = isEnabled(env.CODEX_OPEN_MEMORY_CLI_FALLBACK, true);
+      if (client.reason === "missing-auth-token" && allowCliFallback) {
+        const cliFallbackStartedAt = Date.now();
+        const cliResponse = loadContextViaCli({ payload, strictStartupAllowlist, env });
+        recordStage("cliFallbackMs", cliFallbackStartedAt);
+        if (cliResponse.ok) {
+          const { items, summary, diagnostics } = extractContextEnvelope(cliResponse.payload);
+          return finalizeResolvedStartup({
+            attempted: true,
+            ok: true,
+            reason: "",
+            error: "",
+            status: 200,
+            itemCount: Array.isArray(items) ? items.length : 0,
+            contextSummary: clean(summary).slice(0, 400),
+            diagnostics: {
+              ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
+              startupSourceBias: "preferred-startup-sources",
+              strictStartupAllowlist,
+              fallbackUsed: true,
+              fallbackStrategy: "open-memory-cli",
+              startupContextStage: "cli-fallback",
+            },
+          }, {
+            contextRows: items,
+            diagnostics,
+            fallbackSources: ["open-memory-cli"],
+          });
+        }
+        return finalizeResolvedStartup({
+          attempted: true,
+          ok: false,
+          reason: "context-cli-fallback-failed",
+          error: cliResponse.error || "open-memory CLI fallback failed",
+          status: 0,
+          itemCount: 0,
+          contextSummary: "",
+        }, {
+          fallbackSources: ["open-memory-cli"],
+        });
+      }
+      return finalizeResolvedStartup({
+        attempted: false,
+        ok: false,
+        reason: client.reason,
+        itemCount: 0,
+        contextSummary: "",
       });
     }
-    return finalizeStartupContextResult({
-      attempted: true,
-      ok: false,
-      reason: "context-request-failed",
-      error: initialStage.response.error,
-      status: initialStage.response.status,
-      itemCount: 0,
-      contextSummary: "",
-    }, {
-      startedAt,
-      tokenFreshness,
-      query: payload.query,
-    });
-  }
 
-  let activeStage = initialStage;
-  const needsTenantContinuityStage =
-    !initialStage.hasSelectedItems || !initialStage.selectedSummary || !initialStage.hasNonCoreSelected;
-  if (needsTenantContinuityStage) {
-    const tenantContinuityStage = await requestStartupContextStage({
+    const scopedStageStartedAt = Date.now();
+    const initialStage = await requestStartupContextStage({
       client,
-      payload: {
-        ...payload,
-        agentId: undefined,
-        runId: undefined,
-        includeTenantFallback: true,
-        layerAllowlist: [],
-        layerDenylist: ["working"],
-      },
+      payload,
       strictStartupAllowlist,
-      startupStage: "tenant-continuity",
+      startupStage: "scoped",
+      threadInfo: startupThreadInfo,
     });
-    if (
-      tenantContinuityStage.ok &&
-      (
-        tenantContinuityStage.hasNonCoreSelected
-        || tenantContinuityStage.hasSelectedItems
-        || Boolean(tenantContinuityStage.selectedSummary)
-      )
-    ) {
-      activeStage = tenantContinuityStage;
+    recordStage("remoteScopedMs", scopedStageStartedAt);
+    if (!initialStage.ok) {
+      if (localFallback.ok) {
+        return finalizeResolvedStartup({
+          attempted: true,
+          ok: true,
+          reason: localFallback.reason,
+          error: localFallback.error,
+          status: localFallback.status,
+          itemCount: localFallback.itemCount,
+          contextSummary: localFallback.contextSummary,
+          reasonCode: localFallback.reasonCode,
+          diagnostics: {
+            ...localFallback.diagnostics,
+            remoteFailure: clean(initialStage.response.error),
+            remoteStatus: Number(initialStage.response.status || 0),
+            startupContextStage: "local-continuity-fallback",
+            fallbackUsed: true,
+            fallbackStrategy: clean(localFallback.diagnostics?.fallbackStrategy || "local-bootstrap-artifacts"),
+          },
+        }, {
+          contextRows: localFallback.contextRows,
+          diagnostics: localFallback.diagnostics,
+          fallbackSources: localFallback.fallbackSources,
+        });
+      }
+      return finalizeResolvedStartup({
+        attempted: true,
+        ok: false,
+        reason: "context-request-failed",
+        error: initialStage.response.error,
+        status: initialStage.response.status,
+        itemCount: 0,
+        contextSummary: "",
+      });
     }
-  }
 
-  const selectedItems = activeStage.selectedItems;
-  const selectedSummary = activeStage.selectedSummary;
-  let fallback = null;
-  if (selectedItems.length === 0 || !selectedSummary) {
-    fallback = await fallbackSearchContext({
-      client,
-      tenantId: payload.tenantId,
-      agentId: payload.agentId,
-      runId: payload.runId,
-      query: payload.query,
-      sourceAllowlist: payload.sourceAllowlist,
-      sourceDenylist: payload.sourceDenylist,
-      retrievalMode: payload.retrievalMode,
-      strictStartupAllowlist,
+    let activeStage = initialStage;
+    const needsTenantContinuityStage =
+      !initialStage.hasSelectedItems ||
+      !initialStage.selectedSummary ||
+      !initialStage.hasNonCoreSelected ||
+      initialStage.compactionDominated === true;
+    if (needsTenantContinuityStage) {
+      const tenantStageStartedAt = Date.now();
+      const tenantContinuityStage = await requestStartupContextStage({
+        client,
+        payload: {
+          ...payload,
+          agentId: undefined,
+          runId: undefined,
+          includeTenantFallback: true,
+          layerAllowlist: [],
+          layerDenylist: ["working"],
+        },
+        strictStartupAllowlist,
+        startupStage: "tenant-continuity",
+        threadInfo: startupThreadInfo,
+      });
+      recordStage("tenantContinuityMs", tenantStageStartedAt);
+      const tenantImprovesContinuity =
+        tenantContinuityStage.compactionDominated === false &&
+        (activeStage.compactionDominated === true || !activeStage.hasSelectedItems || !activeStage.selectedSummary);
+      if (
+        tenantContinuityStage.ok &&
+        (
+          tenantContinuityStage.hasNonCoreSelected ||
+          tenantContinuityStage.hasSelectedItems ||
+          Boolean(tenantContinuityStage.selectedSummary)
+        )
+      ) {
+        activeStage = tenantImprovesContinuity ? tenantContinuityStage : activeStage;
+        if (!tenantImprovesContinuity && (!activeStage.hasSelectedItems || !activeStage.selectedSummary)) {
+          activeStage = tenantContinuityStage;
+        }
+      }
+    }
+
+    const selectedItems = activeStage.selectedItems;
+    const selectedSummary = activeStage.selectedSummary;
+    const selectedDiagnostics = deriveStartupGroundingDiagnostics({
+      rows: selectedItems.length > 0 ? selectedItems : activeStage.items || [],
+      diagnostics: activeStage.diagnostics,
+      threadInfo: startupThreadInfo,
+      continuityState: clean(activeStage.diagnostics?.continuityState),
     });
-  }
-  const useLocalFallback =
-    !fallback?.ok &&
-    localFallback.ok &&
-    (selectedItems.length === 0 || !selectedSummary);
-  const finalRows = useLocalFallback
-    ? localFallback.contextRows
-    : selectedItems.length > 0
-      ? selectedItems
-      : fallback?.rows || [];
-  const finalSummary = useLocalFallback
-    ? localFallback.contextSummary
-    : selectedSummary || summarizeSearchRows(fallback?.rows || [], 400);
-  const finalItemCount = Array.isArray(finalRows) ? finalRows.length : 0;
-  return finalizeStartupContextResult({
-    attempted: true,
-    ok: true,
-    reason: "",
-    error: useLocalFallback ? localFallback.error : "",
-    status: activeStage.response.status,
-    itemCount: finalItemCount,
-    contextSummary: finalSummary.slice(0, 400),
-    reasonCode: useLocalFallback ? localFallback.reasonCode : "",
-    diagnostics: {
-      ...activeStage.diagnostics,
-      ...(useLocalFallback ? localFallback.diagnostics : {}),
-      startupSourceBias: "preferred-startup-sources",
-      strictStartupAllowlist,
-      startupContextStage: useLocalFallback
-        ? "local-continuity-fallback"
-        : fallback?.ok
-          ? "search-fallback"
-          : activeStage.startupStage,
-      fallbackUsed: Boolean(fallback?.ok || useLocalFallback),
-      fallbackStrategy: useLocalFallback ? localFallback.diagnostics?.fallbackStrategy : fallback?.strategy || null,
-    },
+    let fallback = null;
+    if (selectedItems.length === 0 || !selectedSummary || activeStage.compactionDominated === true) {
+      const fallbackStartedAt = Date.now();
+      fallback = await fallbackSearchContext({
+        client,
+        tenantId: payload.tenantId,
+        agentId: payload.agentId,
+        runId: payload.runId,
+        query: payload.query,
+        sourceAllowlist: payload.sourceAllowlist,
+        sourceDenylist: payload.sourceDenylist,
+        retrievalMode: payload.retrievalMode,
+        strictStartupAllowlist,
+        threadInfo: startupThreadInfo,
+      });
+      recordStage("fallbackSearchMs", fallbackStartedAt);
+    }
+    const repairStartedAt = Date.now();
+    const localArtifactRepair = !localFallback.ok || !localFallbackDiagnostics?.threadScopedItemCount
+      ? repairLocalStartupArtifactsFromRows(
+          selectedItems.length > 0 ? selectedItems : fallback?.rows || activeStage.items || [],
+          {
+            threadInfo: startupThreadInfo,
+          }
+        )
+      : { repaired: false, reason: "existing-local-fallback-ready" };
+    recordStage("localArtifactRepairMs", repairStartedAt);
+    if (localArtifactRepair.repaired) {
+      const localReloadStartedAt = Date.now();
+      localFallback = loadLocalStartupContext({
+        query: payload.query,
+        maxItems: payload.maxItems,
+        maxChars: payload.maxChars,
+        strictStartupAllowlist,
+        env,
+      });
+      recordStage("localReloadMs", localReloadStartedAt);
+      localFallbackDiagnostics = localFallback.ok
+        ? deriveStartupGroundingDiagnostics({
+            rows: localFallback.contextRows,
+            diagnostics: localFallback.diagnostics,
+            threadInfo: startupThreadInfo,
+            continuityState: clean(localFallback.diagnostics?.continuityState),
+          })
+        : null;
+      if (hasTrustedLocalStartupContext(localFallback, localFallbackDiagnostics)) {
+        return finalizeResolvedStartup({
+          attempted: true,
+          ok: true,
+          reason: localFallback.reason,
+          error: localFallback.error,
+          status: localFallback.status,
+          itemCount: localFallback.itemCount,
+          contextSummary: localFallback.contextSummary,
+          reasonCode: localFallback.reasonCode,
+          diagnostics: {
+            ...localFallback.diagnostics,
+            localArtifactRepair,
+            startupContextStage: "local-repair-short-circuit",
+            fallbackUsed: true,
+            fallbackStrategy: clean(localFallback.diagnostics?.fallbackStrategy || "local-bootstrap-artifacts"),
+          },
+        }, {
+          contextRows: localFallback.contextRows,
+          diagnostics: localFallback.diagnostics,
+          fallbackSources: localFallback.fallbackSources,
+        });
+      }
+    }
+    const fallbackDiagnostics = fallback?.ok
+      ? deriveStartupGroundingDiagnostics({
+          rows: fallback.rows,
+          threadInfo: startupThreadInfo,
+          continuityState: clean(activeStage.diagnostics?.continuityState),
+        })
+      : null;
+    const shouldUseSearchFallback =
+      fallback?.ok &&
+      (
+        selectedItems.length === 0 ||
+        !selectedSummary ||
+        (activeStage.compactionDominated === true && fallbackDiagnostics?.compactionDominated === false)
+      );
+    const localFallbackImprovesContinuity =
+      localFallback.ok &&
+      (
+        selectedItems.length === 0 ||
+        !selectedSummary ||
+        (
+          Math.max(0, Number(localFallbackDiagnostics?.threadScopedItemCount || 0)) >
+            Math.max(0, Number(selectedDiagnostics?.threadScopedItemCount || 0)) &&
+          localFallbackDiagnostics?.compactionDominated !== true
+        ) ||
+        (
+          clean(localFallbackDiagnostics?.startupSourceQuality) === "thread-scoped-dominant" &&
+          clean(selectedDiagnostics?.startupSourceQuality) !== "thread-scoped-dominant"
+        ) ||
+        (shouldUseSearchFallback && fallbackDiagnostics?.compactionDominated === true && localFallbackDiagnostics?.compactionDominated === false) ||
+        (
+          activeStage.compactionDominated === true &&
+          localFallbackDiagnostics?.compactionDominated === false &&
+          Math.max(0, Number(localFallbackDiagnostics?.threadScopedItemCount || 0)) > 0
+        )
+      );
+    const useLocalFallback =
+      localFallbackImprovesContinuity ||
+      (
+        !shouldUseSearchFallback &&
+        localFallback.ok &&
+        (selectedItems.length === 0 || !selectedSummary)
+      );
+    const finalRows = useLocalFallback
+      ? localFallback.contextRows
+      : shouldUseSearchFallback
+        ? fallback.rows
+        : selectedItems.length > 0
+          ? selectedItems
+          : fallback?.rows || [];
+    const finalSummary = useLocalFallback
+      ? localFallback.contextSummary
+      : shouldUseSearchFallback
+        ? summarizeSearchRows(fallback?.rows || [], 400)
+        : selectedSummary || summarizeSearchRows(fallback?.rows || [], 400);
+    const finalItemCount = Array.isArray(finalRows) ? finalRows.length : 0;
+    return finalizeResolvedStartup({
+      attempted: true,
+      ok: true,
+      reason: "",
+      error: useLocalFallback ? localFallback.error : "",
+      status: activeStage.response.status,
+      itemCount: finalItemCount,
+      contextSummary: finalSummary.slice(0, 400),
+      reasonCode: useLocalFallback ? localFallback.reasonCode : "",
+      diagnostics: {
+        ...activeStage.diagnostics,
+        ...(useLocalFallback ? localFallback.diagnostics : {}),
+        startupSourceBias: "preferred-startup-sources",
+        strictStartupAllowlist,
+        ...(localArtifactRepair.repaired
+          ? {
+              localArtifactRepair,
+            }
+          : {}),
+        startupContextStage: useLocalFallback
+          ? "local-continuity-fallback"
+          : shouldUseSearchFallback
+            ? selectedItems.length > 0
+              ? "search-continuity-upgrade"
+              : "search-fallback"
+            : activeStage.startupStage,
+        fallbackUsed: Boolean(shouldUseSearchFallback || useLocalFallback),
+        fallbackStrategy: useLocalFallback
+          ? localFallback.diagnostics?.fallbackStrategy
+          : shouldUseSearchFallback
+            ? fallback?.strategy || null
+            : null,
+      },
+    }, {
+      contextRows: finalRows,
+      diagnostics: activeStage.diagnostics,
+      fallbackSources: useLocalFallback
+        ? localFallback.fallbackSources
+        : shouldUseSearchFallback
+          ? listSourcesFromRows(fallback.rows)
+          : [],
+    });
   }, {
+    env,
     startedAt,
-    tokenFreshness,
-    query: payload.query,
-    contextRows: finalRows,
-    diagnostics: activeStage.diagnostics,
-    fallbackSources: useLocalFallback
-      ? localFallback.fallbackSources
-      : fallback?.ok
-        ? listSourcesFromRows(fallback.rows)
-        : [],
   });
 }
 

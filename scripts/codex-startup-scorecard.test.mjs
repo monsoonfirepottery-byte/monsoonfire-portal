@@ -154,6 +154,53 @@ test("computeStartupScorecardReport measures startup quality and highlights cove
   assert.equal(report.rubric.grade === "D" || report.rubric.grade === "F", true);
 });
 
+test("computeStartupScorecardReport preserves stored historical grounding and rich-context signals", () => {
+  const report = computeStartupScorecardReport({
+    generatedAtIso: "2026-04-12T18:00:00.000Z",
+    windowHours: 24,
+    latestSample: {
+      tsIso: "2026-04-12T18:00:00.000Z",
+      status: "pass",
+      reasonCode: "ok",
+      continuityState: "ready",
+      itemCount: 3,
+      contextSummary: "Current startup sample with trusted grounding.",
+      groundingReady: true,
+      richContext: true,
+      fallbackOnly: false,
+      tokenState: "fresh",
+      latencyMs: 700,
+      latencyState: "healthy",
+      mcpBridgeOk: true,
+    },
+    historySamples: [
+      {
+        sample: {
+          tsIso: "2026-04-12T10:00:00.000Z",
+          status: "pass",
+          reasonCode: "ok",
+          continuityState: "ready",
+          itemCount: 2,
+          contextSummary: "Older live startup row captured before lane metadata existed.",
+          groundingReady: false,
+          richContext: true,
+          fallbackOnly: false,
+          tokenState: "fresh",
+          latencyMs: 650,
+          latencyState: "healthy",
+          mcpBridgeOk: true,
+        },
+      },
+    ],
+    toolcallEntries: [],
+    interactionEntries: [],
+  });
+
+  assert.equal(report.window.current.sampleCount, 2);
+  assert.equal(report.metrics.groundingReadyRate, 0.5);
+  assert.equal(report.metrics.richContextRate, 1);
+});
+
 test("computeStartupScorecardReport scores Grounding compliance and pre-start repo-read telemetry from startup toolcalls", () => {
   const report = computeStartupScorecardReport({
     generatedAtIso: "2026-04-03T18:00:00.000Z",

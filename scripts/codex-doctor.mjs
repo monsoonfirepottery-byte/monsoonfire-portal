@@ -8,6 +8,12 @@ import { fileURLToPath } from "node:url";
 
 import { compareSemver, resolveCodexCliCandidates } from "./lib/codex-cli-utils.mjs";
 import { loadCodexAutomationEnv } from "./lib/codex-automation-env.mjs";
+import {
+  buildOperatorDragMetrics,
+  summarizeRetryGovernorSignals,
+  summarizeToolcallDrag,
+} from "./lib/codex-toolcall-governance.mjs";
+import { isTrustedStartupGroundingAuthority } from "./lib/codex-startup-reliability.mjs";
 import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -15,6 +21,11 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 
 const DEFAULT_ARTIFACT = "output/codex-doctor/latest.json";
+const DEFAULT_TOOLCALL_WINDOW_HOURS = 168;
+
+function clean(value) {
+  return String(value ?? "").trim();
+}
 
 function parseArgs(argv) {
   const parsed = {
@@ -130,6 +141,94 @@ function parseJsonOutput(raw) {
   }
 }
 
+function readJsonFile(path) {
+  if (!path || !existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readNdjson(path) {
+  if (!path || !existsSync(path)) return [];
+  return String(readFileSync(path, "utf8") || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function toMs(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  const millis = parsed.getTime();
+  return Number.isFinite(millis) ? millis : null;
+}
+
+function readCurrentToolcallWindow(repoRoot, windowHours = DEFAULT_TOOLCALL_WINDOW_HOURS) {
+  const toolcallPath = resolve(repoRoot, ".codex", "toolcalls.ndjson");
+  const cutoffMs = Date.now() - windowHours * 60 * 60 * 1000;
+  const entries = readNdjson(toolcallPath).filter((entry) => {
+    const tsMs = toMs(entry?.tsIso);
+    return tsMs != null && tsMs >= cutoffMs;
+  });
+  return {
+    toolcallPath,
+    entries,
+    windowHours,
+  };
+}
+
+function summarizeDoctorChanges(previousReport, currentReport) {
+  if (!previousReport || typeof previousReport !== "object") {
+    return ["No previous doctor artifact was available for comparison."];
+  }
+  const changes = [];
+  if (String(previousReport.status || "") !== String(currentReport.status || "")) {
+    changes.push(`Overall status changed from \`${previousReport.status || "unknown"}\` to \`${currentReport.status || "unknown"}\`.`);
+  }
+  if (Number(previousReport.summary?.warnings || 0) !== Number(currentReport.summary?.warnings || 0)) {
+    changes.push(
+      `Warning count changed from ${Number(previousReport.summary?.warnings || 0)} to ${Number(currentReport.summary?.warnings || 0)}.`
+    );
+  }
+  if (Number(previousReport.summary?.errors || 0) !== Number(currentReport.summary?.errors || 0)) {
+    changes.push(
+      `Error count changed from ${Number(previousReport.summary?.errors || 0)} to ${Number(currentReport.summary?.errors || 0)}.`
+    );
+  }
+  if (
+    Number(previousReport.drag?.operatorMetrics?.liveStartupEntries || 0) !==
+    Number(currentReport.drag?.operatorMetrics?.liveStartupEntries || 0)
+  ) {
+    changes.push(
+      `Live startup coverage changed from ${Number(previousReport.drag?.operatorMetrics?.liveStartupEntries || 0)} to ${Number(currentReport.drag?.operatorMetrics?.liveStartupEntries || 0)}.`
+    );
+  }
+  if (
+    Number(previousReport.drag?.operatorMetrics?.startupArtifactRepairEntries || 0) !==
+    Number(currentReport.drag?.operatorMetrics?.startupArtifactRepairEntries || 0)
+  ) {
+    changes.push(
+      `Startup artifact repairs changed from ${Number(previousReport.drag?.operatorMetrics?.startupArtifactRepairEntries || 0)} to ${Number(currentReport.drag?.operatorMetrics?.startupArtifactRepairEntries || 0)}.`
+    );
+  }
+  const previousTop = String(previousReport.drag?.topSources?.[0]?.signature || "").trim();
+  const currentTop = String(currentReport.drag?.topSources?.[0]?.signature || "").trim();
+  if (previousTop !== currentTop) {
+    changes.push(`Top drag source changed from \`${previousTop || "none"}\` to \`${currentTop || "none"}\`.`);
+  }
+  return changes.length > 0 ? changes.slice(0, 5) : ["No material doctor drift was detected since the last artifact."];
+}
+
 function runNodeScript(relativePath, extraArgs = [], { repoRoot = REPO_ROOT, env = process.env } = {}) {
   const absolutePath = resolve(repoRoot, relativePath);
   if (!existsSync(absolutePath)) {
@@ -230,6 +329,7 @@ export async function runCodexDoctor({
   hydrateStudioBrainAuthFromPortalFn = hydrateStudioBrainAuthFromPortal,
 } = {}) {
   const artifactPath = resolve(repoRoot, artifact);
+  const previousArtifact = readJsonFile(artifactPath);
 
   const checkCollector = createCheckCollector();
 
@@ -435,6 +535,30 @@ export async function runCodexDoctor({
     const startupLatencyState = startupPreflightPayload.checks?.startupContext?.latency?.state || "unknown";
     const tokenState = startupPreflightPayload.checks?.tokenFreshness?.state || "missing";
     const mcpBridgeOk = startupPreflightPayload.checks?.mcpBridge?.ok !== false;
+    const startupContext =
+      startupPreflightPayload.checks?.startupContext && typeof startupPreflightPayload.checks.startupContext === "object"
+        ? startupPreflightPayload.checks.startupContext
+        : {};
+    const startupStage = clean(startupContext.startupContextStage || startupContext.startupPacket?.startupContextStage);
+    const startupCache =
+      startupContext.startupCache && typeof startupContext.startupCache === "object"
+        ? startupContext.startupCache
+        : startupContext.startupPacket?.startupCache && typeof startupContext.startupPacket.startupCache === "object"
+          ? startupContext.startupPacket.startupCache
+          : {};
+    const trustMismatchDetected =
+      startupContext.trustMismatchDetected === true || startupContext.startupPacket?.trustMismatchDetected === true;
+    const groundingAuthority = clean(startupContext.groundingAuthority);
+    const advisory =
+      startupContext.advisory && typeof startupContext.advisory === "object" ? startupContext.advisory : {};
+    const advisoryLeakDetected =
+      startupContext.publishTrustedGrounding !== true &&
+      Boolean(
+        clean(startupContext.dominantGoal || startupContext.topBlocker || startupContext.nextRecommendedAction)
+      );
+    const readyWithoutTrustedGrounding =
+      clean(startupContext.continuityState).toLowerCase() === "ready" &&
+      !isTrustedStartupGroundingAuthority(groundingAuthority);
     const preflightHealthy =
       startupPreflightPayload.status === "pass" &&
       !["missing_token", "expired_token", "transport_unreachable", "timeout"].includes(startupReasonCode) &&
@@ -452,7 +576,135 @@ export async function runCodexDoctor({
         checks: startupPreflightPayload.checks,
       },
     );
+    const fastPathHealthy =
+      startupCache.shortCircuitLocal === true ||
+      startupCache.cacheHit === true ||
+      !/fallback/i.test(startupStage);
+    const fastPathMessage =
+      startupCache.shortCircuitLocal === true
+        ? "Startup is using the validated-local fast path."
+        : startupCache.cacheHit === true
+          ? `Startup reused a fresh startup cache entry (${clean(startupCache.hitType) || "cache-hit"}).`
+          : startupStage
+            ? `Startup resolved via ${startupStage}.`
+            : "Startup fast-path stage was not reported.";
+    checkCollector.push(
+      "codex-startup-fast-path",
+      fastPathHealthy ? "info" : "warning",
+      fastPathHealthy,
+      fastPathMessage,
+      {
+        startupContextStage: startupStage,
+        startupCache,
+        groundingAuthority,
+        continuityState: clean(startupContext.continuityState),
+      },
+    );
+    const groundingTrustHealthy = !trustMismatchDetected && !advisoryLeakDetected && !readyWithoutTrustedGrounding;
+    checkCollector.push(
+      "codex-startup-grounding-trust",
+      groundingTrustHealthy ? "info" : "warning",
+      groundingTrustHealthy,
+      groundingTrustHealthy
+        ? "Startup grounding trust is aligned with the published goal/blocker fields."
+        : readyWithoutTrustedGrounding
+          ? `Startup reported ready continuity with untrusted grounding authority (${groundingAuthority || "unknown"}).`
+          : advisoryLeakDetected
+            ? "Startup is publishing goal/blocker fields from advisory-only context."
+            : "Startup grounding trust signals are inconsistent.",
+      {
+        continuityState: clean(startupContext.continuityState),
+        groundingAuthority,
+        publishTrustedGrounding: startupContext.publishTrustedGrounding === true,
+        trustMismatchDetected,
+        advisoryLeakDetected,
+        advisory,
+      },
+    );
   }
+
+  const rememberHelperPath = resolve(repoRoot, "scripts", "lib", "studio-brain-memory-write.mjs");
+  const studioBrainMcpServerPath = resolve(repoRoot, "studio-brain-mcp", "server.mjs");
+  const rememberToolRegistered =
+    existsSync(rememberHelperPath) &&
+    existsSync(studioBrainMcpServerPath) &&
+    readFileSync(studioBrainMcpServerPath, "utf8").includes('"studio_brain_remember"');
+  checkCollector.push(
+    "codex-studio-brain-remember-surface",
+    rememberToolRegistered ? "info" : "warning",
+    rememberToolRegistered,
+    rememberToolRegistered
+      ? "Studio Brain remember write surface is registered in the MCP server."
+      : "Studio Brain remember write surface is not registered in the MCP server.",
+    {
+      mcpServerPath: studioBrainMcpServerPath,
+      rememberHelperPath,
+    },
+  );
+
+  const toolcallWindow = readCurrentToolcallWindow(repoRoot);
+  const retryGovernorSignals = summarizeRetryGovernorSignals(toolcallWindow.entries);
+  const operatorDragMetrics = buildOperatorDragMetrics(toolcallWindow.entries);
+  const topDragSources = summarizeToolcallDrag(toolcallWindow.entries, { limit: 3 });
+
+  checkCollector.push(
+    "codex-startup-live-coverage",
+    operatorDragMetrics.liveStartupEntries >= 5 ? "info" : "warning",
+    operatorDragMetrics.liveStartupEntries >= 1,
+    operatorDragMetrics.liveStartupEntries >= 5
+      ? `Deduped live startup coverage meets the minimum trust threshold (${operatorDragMetrics.liveStartupEntries} unique observation(s) from ${operatorDragMetrics.liveRawRows} raw row(s)).`
+      : operatorDragMetrics.liveStartupEntries > 0
+        ? `Deduped live startup coverage exists but is still thin (${operatorDragMetrics.liveStartupEntries}/5 unique observation(s) from ${operatorDragMetrics.liveRawRows} raw row(s)).`
+        : "No live launcher startup coverage is present yet.",
+    {
+      liveStartupEntries: operatorDragMetrics.liveStartupEntries,
+      syntheticStartupEntries: operatorDragMetrics.syntheticStartupEntries,
+      liveRawRows: operatorDragMetrics.liveRawRows,
+      syntheticRawRows: operatorDragMetrics.syntheticRawRows,
+      liveUniqueObservations: operatorDragMetrics.liveUniqueObservations,
+      syntheticUniqueObservations: operatorDragMetrics.syntheticUniqueObservations,
+      duplicateObservationCount: operatorDragMetrics.duplicateObservationCount,
+      windowHours: toolcallWindow.windowHours,
+      toolcallsPath: toolcallWindow.toolcallPath,
+    },
+  );
+
+  checkCollector.push(
+    "codex-startup-duplicate-observations",
+    operatorDragMetrics.duplicateObservationCount > 0 ? "warning" : "info",
+    operatorDragMetrics.duplicateObservationCount === 0,
+    operatorDragMetrics.duplicateObservationCount > 0
+      ? `Startup telemetry contains ${operatorDragMetrics.duplicateObservationCount} duplicate observation row(s); coverage is being deduped by observation identity.`
+      : "Startup telemetry shows no duplicate observation rows in the current window.",
+    {
+      duplicateObservationCount: operatorDragMetrics.duplicateObservationCount,
+      liveRawRows: operatorDragMetrics.liveRawRows,
+      liveUniqueObservations: operatorDragMetrics.liveUniqueObservations,
+      syntheticRawRows: operatorDragMetrics.syntheticRawRows,
+      syntheticUniqueObservations: operatorDragMetrics.syntheticUniqueObservations,
+      toolcallsPath: toolcallWindow.toolcallPath,
+    },
+  );
+
+  checkCollector.push(
+    "codex-retry-governor",
+    retryGovernorSignals.triggeredEntries > 0 ? "warning" : "info",
+    retryGovernorSignals.triggeredEntries === 0,
+    retryGovernorSignals.triggeredEntries > 0
+      ? `Retry governor triggered on ${retryGovernorSignals.triggeredEntries} call(s) across ${retryGovernorSignals.triggeredUniqueSignatures} signature(s).`
+      : "Retry governor shows no active bursts in the current window.",
+    retryGovernorSignals,
+  );
+
+  checkCollector.push(
+    "codex-command-shape-guard",
+    operatorDragMetrics.repeatedCommandShapeFailures > 0 ? "warning" : "info",
+    operatorDragMetrics.repeatedCommandShapeFailures === 0,
+    operatorDragMetrics.repeatedCommandShapeFailures > 0
+      ? `Command-shape failures are recurring (${operatorDragMetrics.repeatedCommandShapeFailures} in the current window).`
+      : "No recurring Windows command-shape failures were detected in the current window.",
+    operatorDragMetrics,
+  );
 
   const memoryRun = runNodeScriptImpl("scripts/codex-memory-pipeline.mjs", ["status", "--json"], { repoRoot, env });
   const memoryPayload = memoryRun.json;
@@ -550,27 +802,8 @@ export async function runCodexDoctor({
     });
   }
 
-  const rememberHelperPath = resolve(repoRoot, "scripts", "lib", "studio-brain-memory-write.mjs");
-  const studioBrainMcpServerPath = resolve(repoRoot, "studio-brain-mcp", "server.mjs");
-  const rememberToolRegistered =
-    existsSync(rememberHelperPath) &&
-    existsSync(studioBrainMcpServerPath) &&
-    readFileSync(studioBrainMcpServerPath, "utf8").includes('"studio_brain_remember"');
-  checkCollector.push(
-    "codex-studio-brain-remember-surface",
-    rememberToolRegistered ? "info" : "warning",
-    rememberToolRegistered,
-    rememberToolRegistered
-      ? "Studio Brain remember write surface is registered in the MCP server."
-      : "Studio Brain remember write surface is not registered in the MCP server.",
-    {
-      mcpServerPath: studioBrainMcpServerPath,
-      rememberHelperPath,
-    },
-  );
-
   const summary = checkCollector.summarize();
-  const report = {
+  let report = {
     schema: "codex-doctor-v1",
     generatedAt: new Date().toISOString(),
     strict,
@@ -580,6 +813,38 @@ export async function runCodexDoctor({
     package: packageMeta,
     summary,
     checks: checkCollector.checks,
+    startupContract:
+      startupPreflightPayload?.checks?.startupContext && typeof startupPreflightPayload.checks.startupContext === "object"
+        ? {
+            status: startupPreflightPayload.status,
+            reasonCode: startupPreflightPayload.checks.startupContext.reasonCode,
+            continuityState: startupPreflightPayload.checks.startupContext.continuityState,
+            recoveryStep: startupPreflightPayload.checks.startupContext.recoveryStep,
+            presentationProjectLane: startupPreflightPayload.checks.startupContext.presentationProjectLane,
+            threadScopedItemCount: startupPreflightPayload.checks.startupContext.threadScopedItemCount,
+            transcriptOrderingProven: startupPreflightPayload.checks.startupContext.transcriptOrderingProven === true,
+            degradationBuckets: startupPreflightPayload.checks.startupContext.degradationBuckets || [],
+            missingStartupIngredients: startupPreflightPayload.checks.startupContext.missingStartupIngredients || [],
+            dominantGoal: startupPreflightPayload.checks.startupContext.dominantGoal || "",
+            topBlocker: startupPreflightPayload.checks.startupContext.topBlocker || "",
+            nextRecommendedAction: startupPreflightPayload.checks.startupContext.nextRecommendedAction || "",
+            startupContextStage: startupPreflightPayload.checks.startupContext.startupContextStage || "",
+            startupCache:
+              startupPreflightPayload.checks.startupContext.startupCache && typeof startupPreflightPayload.checks.startupContext.startupCache === "object"
+                ? startupPreflightPayload.checks.startupContext.startupCache
+                : {},
+            groundingAuthority: startupPreflightPayload.checks.startupContext.groundingAuthority || "",
+            trustMismatchDetected: startupPreflightPayload.checks.startupContext.trustMismatchDetected === true,
+            localArtifactRepair: startupPreflightPayload.checks.startupContext.localArtifactRepair || null,
+          }
+        : null,
+    drag: {
+      windowHours: toolcallWindow.windowHours,
+      toolcallsPath: toolcallWindow.toolcallPath,
+      operatorMetrics: operatorDragMetrics,
+      retryGovernor: retryGovernorSignals,
+      topSources: topDragSources,
+    },
     remediation: {
       docsDrift: "npm run codex:docs:drift",
       mcpAudit: "npm run audit:codex-mcp",
@@ -587,8 +852,14 @@ export async function runCodexDoctor({
       startupPreflight: "node ./scripts/codex-startup-preflight.mjs --json",
       memoryFallbackInit: "npm run codex:memory:init",
       wrapperAudit: "node ./scripts/audit-cross-platform-wrappers.mjs",
+      commandShapeAudit: "node ./scripts/codex-command-shape-audit.mjs --command <command>",
       ephemeralGuard: "npm run guard:ephemeral:artifacts",
+      recoveryRunbook: "docs/runbooks/CODEX_RECOVERY.md",
     },
+  };
+  report = {
+    ...report,
+    changedSinceLastRun: summarizeDoctorChanges(previousArtifact, report),
   };
 
   mkdirSync(dirname(artifactPath), { recursive: true });

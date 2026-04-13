@@ -1,6 +1,6 @@
 # Epic: P1 — Codex tool surface and portal operator access
 
-Status: Active
+Status: Completed
 Date: 2026-04-12
 Priority: P1
 Owner: Platform / Portal
@@ -42,6 +42,8 @@ Surface the highest-leverage repo-native operator workflows as first-class Codex
 - 2026-04-12: added `portal:auth:helper` so operators can mint and inspect a redacted staff auth context without hunting through env files or printing raw bearer material.
 - 2026-04-12: added `portal:firebase:ops`, which consolidates credential health, Firestore index guard, rules drift, optional deploy preflight, and exact error-text triage into one report.
 - 2026-04-12: updated the portal automation matrix so the new auth/helper, Firebase ops, and live portal deploy commands are documented alongside the existing canary/deploy flows.
+- 2026-04-12: added `portal:firebase:inspect` and a deeper repo-static query-shape inspector so likely composite-index and undefined/nullability hazards are surfaced before runtime.
+- 2026-04-12: added `portal:visual:diff` plus explicit baseline capture/compare flow for authenticated canary, community layout, and portal Playwright smoke surfaces.
 
 ## Current Blocker
-The highest-value remaining gap is visual diff baseline management for headless portal regressions; current canaries save screenshots, but baseline approval and diff triage are still not first-class.
+None. The original visual-diff blocker is resolved by the new headless baseline-and-diff workflow.

@@ -1,6 +1,6 @@
 # P2 — Portal headless visual diff baselines and artifact triage
 
-Status: Active
+Status: Completed
 Date: 2026-04-12
 Priority: P2
 Owner: Portal / QA
@@ -33,3 +33,9 @@ Existing portal canaries catch functional regressions and save screenshots, but 
 - baseline capture mode writes deterministic artifact locations
 - compare mode fails on an intentional visual drift and links the diff images
 - workflow runs headlessly on the supported Windows or SSH path
+
+## Completed In This Pass
+1. Added `scripts/portal-visual-diff.mjs` as the headless baseline-and-diff entry point across authenticated canary, community layout canary, and portal Playwright smoke.
+2. Added `scripts/lib/portal-visual-diff.mjs` plus a deliberate plan and baseline root under `scripts/fixtures/portal-visual-diff/`.
+3. Wired visual-diff capture and compare support directly into the existing canary and smoke scripts so route/theme screenshots can be triaged without headed browser sessions.
+4. Added focused tests for PNG comparison, plan loading, and aggregate markdown/json summary generation.

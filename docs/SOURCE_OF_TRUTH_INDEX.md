@@ -107,6 +107,7 @@ For the current launch-readiness operator entrypoint, start with `docs/RELEASE_C
 - `docs/runbooks/PR_GATE.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
 - `docs/runbooks/STUDIO_BRAIN_FABRICATION_CELL_RUNBOOK.md`
+- `docs/runbooks/STUDIO_BRAIN_THERMAL_PRINTER_PRECHECK.md`
 - `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
 - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
 - `docs/runbooks/WEBSITE_KILN_BOARD_SYNC.md`

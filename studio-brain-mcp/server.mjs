@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { mintStaffIdTokenFromPortalEnv, normalizeBearer } from "../scripts/lib/firebase-auth-token.mjs";
 import { inferProjectLane } from "../scripts/lib/hybrid-memory-utils.mjs";
+import { rememberWithStudioBrain } from "../scripts/lib/studio-brain-memory-write.mjs";
 import {
   filterExpiredRows,
   loadBootstrapArtifacts,
@@ -66,6 +67,35 @@ function withOptionalStringArray() {
         : undefined
     );
 }
+
+function withOptionalMetadataRecord() {
+  return z.record(z.string(), z.unknown()).optional().transform((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    return value;
+  });
+}
+
+const rememberKindSchema = z.enum([
+  "fact",
+  "preference",
+  "decision",
+  "progress",
+  "blocker",
+  "handoff",
+  "checkpoint",
+]);
+
+const rememberItemSchema = z.object({
+  kind: rememberKindSchema.optional(),
+  content: withOptionalString(z.string()),
+  subjectKey: withOptionalString(z.string()),
+  scopeClass: withOptionalString(z.string()),
+  tags: withOptionalStringArray(),
+  metadata: withOptionalMetadataRecord(),
+  rememberForStartup: z.boolean().optional(),
+  importance: z.number().min(0).max(1).optional(),
+  occurredAt: withOptionalString(z.string()),
+});
 
 const bootstrapArtifacts = loadBootstrapArtifacts(clean(process.env.STUDIO_BRAIN_BOOTSTRAP_THREAD_ID || ""));
 const bootstrapThreadInfo = {
@@ -906,6 +936,85 @@ server.registerTool(
       timeoutMs,
       allowDefaultQuery: false,
     })
+);
+
+server.registerTool(
+  "studio_brain_remember",
+  {
+    title: "Studio Brain Remember",
+    description: "Save durable decisions, blockers, progress, and handoffs into Studio Brain memory.",
+    inputSchema: {
+      kind: rememberKindSchema.optional(),
+      content: withOptionalString(z.string()),
+      subjectKey: withOptionalString(z.string()),
+      scopeClass: withOptionalString(z.string()),
+      tags: withOptionalStringArray(),
+      metadata: withOptionalMetadataRecord(),
+      rememberForStartup: z.boolean().optional(),
+      importance: z.number().min(0).max(1).optional(),
+      occurredAt: withOptionalString(z.string()),
+      items: z.array(rememberItemSchema).optional(),
+      threadId: withOptionalString(z.string()),
+      cwd: withOptionalString(z.string()),
+      threadTitle: withOptionalString(z.string()),
+      firstUserMessage: withOptionalString(z.string()),
+      capturedFrom: withOptionalString(z.string()),
+      baseUrl: z.string().url().optional(),
+      timeoutMs: z.number().int().positive().max(60000).optional(),
+    },
+  },
+  async ({
+    kind,
+    content,
+    subjectKey,
+    scopeClass,
+    tags,
+    metadata,
+    rememberForStartup,
+    importance,
+    occurredAt,
+    items,
+    threadId,
+    cwd,
+    threadTitle,
+    firstUserMessage,
+    capturedFrom,
+    baseUrl,
+    timeoutMs,
+  }) => {
+    try {
+      const payload = await rememberWithStudioBrain(
+        {
+          kind,
+          content,
+          subjectKey,
+          scopeClass,
+          tags,
+          metadata,
+          rememberForStartup,
+          importance,
+          occurredAt,
+          items,
+        },
+        {
+          env: process.env,
+          threadId: clean(threadId || bootstrapThreadInfo.threadId),
+          cwd: clean(cwd || bootstrapThreadInfo.cwd || process.cwd()),
+          threadTitle: clean(threadTitle || bootstrapThreadInfo.title),
+          firstUserMessage: clean(firstUserMessage || bootstrapThreadInfo.firstUserMessage),
+          capturedFrom: clean(capturedFrom || "studio-brain-mcp"),
+          baseUrl,
+          timeoutMs,
+        }
+      );
+      return asToolResult({
+        ok: payload.verified,
+        ...payload,
+      });
+    } catch (error) {
+      return asToolError(error);
+    }
+  }
 );
 
 server.registerTool(

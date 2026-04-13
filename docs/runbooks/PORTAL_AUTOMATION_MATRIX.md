@@ -179,7 +179,10 @@ npm run functions:profile:coldstart:strict
 npm run qa:preflight:performance
 npm run portal:index:guard
 npm run rules:index:drift:blocker
+npm run portal:firebase:ops
+npm run portal:auth:helper
 npm run deploy:preflight
+npm run deploy:namecheap:portal:live
 npm run deploy:evidence:pack
 npm run branch:divergence:guard
 npm run secrets:health:check
@@ -201,6 +204,18 @@ npm run events:industry:canary
 - `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (expects `email` + `uid` + `refreshToken`)
 - `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `~/secrets/portal/portal-agent-staff.json`)
 - `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD` remain optional for explicit `--auth-mode password-ui` diagnostics
+
+`portal:auth:helper` prints a redacted staff auth bootstrap summary for operators:
+- prefers the shared refresh-token bundle by default
+- reports `email`, `uid`, token source, and token expiry without printing raw bearer material
+- keeps `x-admin-token` guidance separate from production bearer auth
+
+`portal:firebase:ops` consolidates the current Firebase operator checks:
+- credential health
+- Firestore index contract guard
+- Firestore rules drift check
+- optional deploy preflight status
+- exact error-text triage for common index, rules, and undefined-write failures
 
 ## Local secrets directory (gitignored)
 

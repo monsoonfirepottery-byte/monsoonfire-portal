@@ -110,6 +110,7 @@ type ProfileDoc = {
   notifyKiln?: boolean;
   notifyClasses?: boolean;
   notifyPieces?: boolean;
+  notifyReservations?: boolean;
   studioNotes?: string | null;
   uiTheme?: PortalThemeName | null;
   uiEnhancedMotion?: boolean | null;
@@ -127,6 +128,11 @@ type NotificationPrefsDoc = {
     kilnUnloaded: boolean;
     kilnUnloadedBisque: boolean;
     kilnUnloadedGlaze: boolean;
+    reservationStatus: boolean;
+    reservationEtaShift: boolean;
+    reservationPickupReady: boolean;
+    reservationDelayFollowUp: boolean;
+    reservationPickupReminder: boolean;
   };
   quietHours: {
     enabled: boolean;
@@ -152,6 +158,11 @@ const DEFAULT_NOTIFICATION_PREFS: NotificationPrefsDoc = {
     kilnUnloaded: true,
     kilnUnloadedBisque: true,
     kilnUnloadedGlaze: true,
+    reservationStatus: true,
+    reservationEtaShift: true,
+    reservationPickupReady: true,
+    reservationDelayFollowUp: true,
+    reservationPickupReminder: true,
   },
   quietHours: {
     enabled: false,
@@ -181,6 +192,19 @@ function mergeNotificationPrefs(data?: Partial<NotificationPrefsDoc> | null): No
         prefs.events?.kilnUnloadedBisque ?? DEFAULT_NOTIFICATION_PREFS.events.kilnUnloadedBisque,
       kilnUnloadedGlaze:
         prefs.events?.kilnUnloadedGlaze ?? DEFAULT_NOTIFICATION_PREFS.events.kilnUnloadedGlaze,
+      reservationStatus:
+        prefs.events?.reservationStatus ?? DEFAULT_NOTIFICATION_PREFS.events.reservationStatus,
+      reservationEtaShift:
+        prefs.events?.reservationEtaShift ?? DEFAULT_NOTIFICATION_PREFS.events.reservationEtaShift,
+      reservationPickupReady:
+        prefs.events?.reservationPickupReady ??
+        DEFAULT_NOTIFICATION_PREFS.events.reservationPickupReady,
+      reservationDelayFollowUp:
+        prefs.events?.reservationDelayFollowUp ??
+        DEFAULT_NOTIFICATION_PREFS.events.reservationDelayFollowUp,
+      reservationPickupReminder:
+        prefs.events?.reservationPickupReminder ??
+        DEFAULT_NOTIFICATION_PREFS.events.reservationPickupReminder,
     },
     quietHours: {
       enabled: prefs.quietHours?.enabled ?? DEFAULT_NOTIFICATION_PREFS.quietHours.enabled,
@@ -241,6 +265,7 @@ export default function ProfileView({
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefsDoc>(
     DEFAULT_NOTIFICATION_PREFS
   );
+  const [notifyReservationsEnabled, setNotifyReservationsEnabled] = useState(true);
   const [formStatus, setFormStatus] = useState("");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -275,6 +300,9 @@ export default function ProfileView({
         setProfileDoc(data);
         setDisplayNameInput(data?.displayName ?? user.displayName ?? "");
         setPreferredKilnsInput((data?.preferredKilns ?? []).join(", "));
+        setNotifyReservationsEnabled(
+          typeof data?.notifyReservations === "boolean" ? data.notifyReservations : true
+        );
         setPrefs((prev) => ({
           notifyKiln: typeof data?.notifyKiln === "boolean" ? data.notifyKiln : prev.notifyKiln,
           notifyClasses: typeof data?.notifyClasses === "boolean" ? data.notifyClasses : prev.notifyClasses,
@@ -512,24 +540,35 @@ export default function ProfileView({
     setNotificationSaving(true);
     try {
       const ref = doc(db, "users", user.uid, "prefs", "notifications");
-      await setDoc(
-        ref,
-        {
-          enabled: notificationPrefs.enabled,
-          channels: notificationPrefs.channels,
-          events: notificationPrefs.events,
-          quietHours: notificationPrefs.quietHours,
-          frequency: {
-            mode: notificationPrefs.frequency.mode,
-            digestHours:
-              notificationPrefs.frequency.mode === "digest"
-                ? notificationPrefs.frequency.digestHours ?? 6
-                : null,
+      const profileRef = doc(db, "profiles", user.uid);
+      await Promise.all([
+        setDoc(
+          ref,
+          {
+            enabled: notificationPrefs.enabled,
+            channels: notificationPrefs.channels,
+            events: notificationPrefs.events,
+            quietHours: notificationPrefs.quietHours,
+            frequency: {
+              mode: notificationPrefs.frequency.mode,
+              digestHours:
+                notificationPrefs.frequency.mode === "digest"
+                  ? notificationPrefs.frequency.digestHours ?? 6
+                  : null,
+            },
+            updatedAt: serverTimestamp(),
           },
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+          { merge: true }
+        ),
+        setDoc(
+          profileRef,
+          {
+            notifyReservations: notifyReservationsEnabled,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+      ]);
       setNotificationStatus("Notification settings saved.");
     } catch (error: unknown) {
       setNotificationError(getErrorMessage(error) || "Failed to save notifications.");
@@ -791,6 +830,95 @@ export default function ProfileView({
               <label className="toggle disabled">
                 <input type="checkbox" checked={notificationPrefs.channels.sms} disabled />
                 <span>SMS alerts (coming soon)</span>
+              </label>
+            </div>
+
+            <div className="notification-group">
+              <div className="summary-label">Reservations & pickup</div>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={notifyReservationsEnabled}
+                  onChange={() => setNotifyReservationsEnabled((prev) => !prev)}
+                />
+                <span>Reservation and pickup updates</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.events.reservationStatus}
+                  onChange={() =>
+                    setNotificationPrefs((prev) => ({
+                      ...prev,
+                      events: { ...prev.events, reservationStatus: !prev.events.reservationStatus },
+                    }))
+                  }
+                />
+                <span>Status changes</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.events.reservationEtaShift}
+                  onChange={() =>
+                    setNotificationPrefs((prev) => ({
+                      ...prev,
+                      events: {
+                        ...prev.events,
+                        reservationEtaShift: !prev.events.reservationEtaShift,
+                      },
+                    }))
+                  }
+                />
+                <span>ETA shifts</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.events.reservationPickupReady}
+                  onChange={() =>
+                    setNotificationPrefs((prev) => ({
+                      ...prev,
+                      events: {
+                        ...prev.events,
+                        reservationPickupReady: !prev.events.reservationPickupReady,
+                      },
+                    }))
+                  }
+                />
+                <span>Ready for pickup</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.events.reservationDelayFollowUp}
+                  onChange={() =>
+                    setNotificationPrefs((prev) => ({
+                      ...prev,
+                      events: {
+                        ...prev.events,
+                        reservationDelayFollowUp: !prev.events.reservationDelayFollowUp,
+                      },
+                    }))
+                  }
+                />
+                <span>Delay follow-ups</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.events.reservationPickupReminder}
+                  onChange={() =>
+                    setNotificationPrefs((prev) => ({
+                      ...prev,
+                      events: {
+                        ...prev.events,
+                        reservationPickupReminder: !prev.events.reservationPickupReminder,
+                      },
+                    }))
+                  }
+                />
+                <span>Pickup reminders</span>
               </label>
             </div>
 

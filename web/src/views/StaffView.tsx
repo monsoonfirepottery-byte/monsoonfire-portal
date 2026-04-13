@@ -46,6 +46,9 @@ import {
   type LibraryStaffDashboardRequestContract,
   type LibraryStaffDashboardResponse,
   type LibraryStaffDashboardTagSubmissionContract,
+  type ReservationNotificationPolicyContract,
+  type ReservationNotificationPolicyResponse,
+  type ReservationNotificationPolicySetRequest,
   type LibraryTagMergeRequest,
   type LibraryTagMergeResponse,
   type LibraryTagSubmissionApproveRequest,
@@ -58,6 +61,8 @@ import {
   V1_LIBRARY_ITEMS_LIST_FN,
   V1_LIBRARY_ITEMS_OVERRIDE_STATUS_FN,
   V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN,
+  V1_NOTIFICATIONS_RESERVATION_POLICY_GET_FN,
+  V1_NOTIFICATIONS_RESERVATION_POLICY_SET_FN,
   V1_LIBRARY_ROLLOUT_CONFIG_GET_FN,
   V1_LIBRARY_ROLLOUT_CONFIG_SET_FN,
   V1_LIBRARY_LOANS_ASSESS_REPLACEMENT_FEE_FN,
@@ -1080,6 +1085,90 @@ function num(value: unknown, fallback = 0): number {
 
 function bool(value: unknown): boolean {
   return value === true;
+}
+
+const DEFAULT_RESERVATION_NOTIFICATION_POLICY: ReservationNotificationPolicyContract = {
+  pickupReadyEnabled: true,
+  pickupReminderEnabled: true,
+  pickupReminderMode: "storage_window_ratio",
+  pickupReminderHours: [336, 420, 462],
+  pickupWindowPreExpiryEnabled: true,
+  pickupWindowPreExpiryHours: 24,
+  delayFollowUpEnabled: true,
+  delayFollowUpInitialHours: 12,
+  delayFollowUpRepeatHours: 24,
+  note: null,
+  updatedAtMs: 0,
+  updatedByUid: null,
+};
+
+function normalizePositiveHoursList(value: unknown, fallback: number[]): number[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const next = Array.from(
+    new Set(
+      value
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry) && entry > 0)
+        .map((entry) => Math.max(1, Math.round(entry)))
+    )
+  ).sort((a, b) => a - b);
+  return next.length ? next : [...fallback];
+}
+
+function normalizeReservationNotificationPolicy(
+  input: Partial<ReservationNotificationPolicyContract> | null | undefined
+): ReservationNotificationPolicyContract {
+  const data = input ?? {};
+  return {
+    pickupReadyEnabled:
+      typeof data.pickupReadyEnabled === "boolean"
+        ? data.pickupReadyEnabled
+        : DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReadyEnabled,
+    pickupReminderEnabled:
+      typeof data.pickupReminderEnabled === "boolean"
+        ? data.pickupReminderEnabled
+        : DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderEnabled,
+    pickupReminderMode:
+      data.pickupReminderMode === "fixed_hours" || data.pickupReminderMode === "storage_window_ratio"
+        ? data.pickupReminderMode
+        : DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderMode,
+    pickupReminderHours: normalizePositiveHoursList(
+      data.pickupReminderHours,
+      DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderHours
+    ),
+    pickupWindowPreExpiryEnabled:
+      typeof data.pickupWindowPreExpiryEnabled === "boolean"
+        ? data.pickupWindowPreExpiryEnabled
+        : DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupWindowPreExpiryEnabled,
+    pickupWindowPreExpiryHours: Math.max(
+      1,
+      num(
+        data.pickupWindowPreExpiryHours,
+        DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupWindowPreExpiryHours
+      )
+    ),
+    delayFollowUpEnabled:
+      typeof data.delayFollowUpEnabled === "boolean"
+        ? data.delayFollowUpEnabled
+        : DEFAULT_RESERVATION_NOTIFICATION_POLICY.delayFollowUpEnabled,
+    delayFollowUpInitialHours: Math.max(
+      1,
+      num(
+        data.delayFollowUpInitialHours,
+        DEFAULT_RESERVATION_NOTIFICATION_POLICY.delayFollowUpInitialHours
+      )
+    ),
+    delayFollowUpRepeatHours: Math.max(
+      1,
+      num(
+        data.delayFollowUpRepeatHours,
+        DEFAULT_RESERVATION_NOTIFICATION_POLICY.delayFollowUpRepeatHours
+      )
+    ),
+    note: str(data.note, "").trim() || null,
+    updatedAtMs: num(data.updatedAtMs, 0),
+    updatedByUid: str(data.updatedByUid, "").trim() || null,
+  };
 }
 
 const LIBRARY_PHASE_METRICS_WINDOW_MINUTES = 180;
@@ -2559,6 +2648,11 @@ export default function StaffView({
   const [externalLookupPolicyNote, setExternalLookupPolicyNote] = useState("");
   const [externalLookupPolicyUpdatedAtMs, setExternalLookupPolicyUpdatedAtMs] = useState(0);
   const [externalLookupPolicyUpdatedByUid, setExternalLookupPolicyUpdatedByUid] = useState("");
+  const [reservationNotificationPolicyBusy, setReservationNotificationPolicyBusy] = useState(false);
+  const [reservationNotificationPolicyStatus, setReservationNotificationPolicyStatus] = useState("");
+  const [reservationNotificationPolicy, setReservationNotificationPolicy] = useState<ReservationNotificationPolicyContract>(
+    DEFAULT_RESERVATION_NOTIFICATION_POLICY
+  );
   const [libraryRolloutPhaseBusy, setLibraryRolloutPhaseBusy] = useState(false);
   const [libraryRolloutPhaseStatus, setLibraryRolloutPhaseStatus] = useState("");
   const [libraryRolloutPhase, setLibraryRolloutPhase] = useState<LibraryRolloutPhase>("phase_3_admin_full");
@@ -4857,6 +4951,9 @@ export default function StaffView({
       setExternalLookupPolicyStatus(
         "Provider policy controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
       );
+      setReservationNotificationPolicyStatus(
+        "Notification policy controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
       setLibraryRolloutPhaseStatus(
         "Rollout phase controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
       );
@@ -4877,6 +4974,20 @@ export default function StaffView({
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         setExternalLookupPolicyStatus(`Provider policy load failed: ${message}`);
+      }
+
+      try {
+        const response = await client.postJson<ReservationNotificationPolicyResponse>(
+          V1_NOTIFICATIONS_RESERVATION_POLICY_GET_FN,
+          {}
+        );
+        setReservationNotificationPolicy(
+          normalizeReservationNotificationPolicy(response?.data?.policy)
+        );
+        setReservationNotificationPolicyStatus("");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setReservationNotificationPolicyStatus(`Notification policy load failed: ${message}`);
       }
 
       try {
@@ -6157,6 +6268,53 @@ export default function StaffView({
     externalLookupPolicyOpenLibraryEnabled,
     hasFunctionsAuthMismatch,
     user.uid,
+  ]);
+
+  const saveReservationNotificationPolicy = useCallback(async () => {
+    if (reservationNotificationPolicyBusy) return;
+    if (hasFunctionsAuthMismatch) {
+      setReservationNotificationPolicyStatus(
+        "Notification policy update requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+
+    setReservationNotificationPolicyBusy(true);
+    setReservationNotificationPolicyStatus("");
+    try {
+      const payload: ReservationNotificationPolicySetRequest = {
+        pickupReadyEnabled: reservationNotificationPolicy.pickupReadyEnabled,
+        pickupReminderEnabled: reservationNotificationPolicy.pickupReminderEnabled,
+        pickupReminderMode: reservationNotificationPolicy.pickupReminderMode,
+        pickupReminderHours:
+          reservationNotificationPolicy.pickupReminderMode === "fixed_hours"
+            ? reservationNotificationPolicy.pickupReminderHours
+            : undefined,
+        pickupWindowPreExpiryEnabled: reservationNotificationPolicy.pickupWindowPreExpiryEnabled,
+        pickupWindowPreExpiryHours: reservationNotificationPolicy.pickupWindowPreExpiryHours,
+        delayFollowUpEnabled: reservationNotificationPolicy.delayFollowUpEnabled,
+        delayFollowUpInitialHours: reservationNotificationPolicy.delayFollowUpInitialHours,
+        delayFollowUpRepeatHours: reservationNotificationPolicy.delayFollowUpRepeatHours,
+        note: reservationNotificationPolicy.note,
+      };
+      const response = await client.postJson<ReservationNotificationPolicyResponse>(
+        V1_NOTIFICATIONS_RESERVATION_POLICY_SET_FN,
+        payload
+      );
+      const nextPolicy = normalizeReservationNotificationPolicy(response?.data?.policy);
+      setReservationNotificationPolicy(nextPolicy);
+      setReservationNotificationPolicyStatus("Reservation notification policy updated.");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setReservationNotificationPolicyStatus(`Notification policy update failed: ${message}`);
+    } finally {
+      setReservationNotificationPolicyBusy(false);
+    }
+  }, [
+    client,
+    hasFunctionsAuthMismatch,
+    reservationNotificationPolicy,
+    reservationNotificationPolicyBusy,
   ]);
 
   const saveLibraryRolloutPhasePolicy = useCallback(async () => {
@@ -9347,6 +9505,202 @@ export default function StaffView({
     />
   );
 
+  const reservationNotificationPolicyContent = (
+    <>
+      <div className="card-title-row">
+        <div className="staff-subtitle">Reservation notification policy</div>
+      </div>
+      <div className="staff-note">
+        Tune global pickup and delay rules here. Client channel + event preferences still win at delivery time.
+      </div>
+      <div className="staff-module-grid">
+        <div className="staff-column">
+          <label className="staff-field">
+            <span>Pickup-ready notice</span>
+            <input
+              type="checkbox"
+              checked={reservationNotificationPolicy.pickupReadyEnabled}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  pickupReadyEnabled: event.target.checked,
+                }))
+              }
+            />
+          </label>
+          <label className="staff-field">
+            <span>Pickup reminders</span>
+            <input
+              type="checkbox"
+              checked={reservationNotificationPolicy.pickupReminderEnabled}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  pickupReminderEnabled: event.target.checked,
+                }))
+              }
+            />
+          </label>
+          <label className="staff-field">
+            <span>Reminder timing mode</span>
+            <select
+              value={reservationNotificationPolicy.pickupReminderMode}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  pickupReminderMode: event.target.value as ReservationNotificationPolicyContract["pickupReminderMode"],
+                }))
+              }
+            >
+              <option value="storage_window_ratio">Scale with storage policy window</option>
+              <option value="fixed_hours">Fixed hours after pickup-ready</option>
+            </select>
+          </label>
+          <label className="staff-field">
+            <span>Reminder hours after pickup-ready</span>
+            <input
+              type="text"
+              value={reservationNotificationPolicy.pickupReminderHours.join(", ")}
+              disabled={
+                reservationNotificationPolicyBusy ||
+                hasFunctionsAuthMismatch ||
+                reservationNotificationPolicy.pickupReminderMode !== "fixed_hours"
+              }
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  pickupReminderHours: normalizePositiveHoursList(
+                    event.target.value
+                      .split(",")
+                      .map((value) => value.trim())
+                      .filter(Boolean),
+                    prev.pickupReminderHours
+                  ),
+                }))
+              }
+            />
+          </label>
+          <div className="staff-mini">
+            Example: <code>168, 336</code> sends reminders after 1 week and 2 weeks.
+          </div>
+        </div>
+        <div className="staff-column">
+          <label className="staff-field">
+            <span>Delay follow-ups</span>
+            <input
+              type="checkbox"
+              checked={reservationNotificationPolicy.delayFollowUpEnabled}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  delayFollowUpEnabled: event.target.checked,
+                }))
+              }
+            />
+          </label>
+          <label className="staff-field">
+            <span>First delay follow-up (hours)</span>
+            <input
+              type="number"
+              min={1}
+              max={720}
+              value={reservationNotificationPolicy.delayFollowUpInitialHours}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  delayFollowUpInitialHours: Math.max(1, Number(event.target.value) || 1),
+                }))
+              }
+            />
+          </label>
+          <label className="staff-field">
+            <span>Repeat delay follow-up every (hours)</span>
+            <input
+              type="number"
+              min={1}
+              max={720}
+              value={reservationNotificationPolicy.delayFollowUpRepeatHours}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  delayFollowUpRepeatHours: Math.max(1, Number(event.target.value) || 1),
+                }))
+              }
+            />
+          </label>
+          <label className="staff-field">
+            <span>Pickup-window closing reminder</span>
+            <input
+              type="checkbox"
+              checked={reservationNotificationPolicy.pickupWindowPreExpiryEnabled}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  pickupWindowPreExpiryEnabled: event.target.checked,
+                }))
+              }
+            />
+          </label>
+          <label className="staff-field">
+            <span>Closing reminder lead time (hours)</span>
+            <input
+              type="number"
+              min={1}
+              max={336}
+              value={reservationNotificationPolicy.pickupWindowPreExpiryHours}
+              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              onChange={(event) =>
+                setReservationNotificationPolicy((prev) => ({
+                  ...prev,
+                  pickupWindowPreExpiryHours: Math.max(1, Number(event.target.value) || 1),
+                }))
+              }
+            />
+          </label>
+        </div>
+      </div>
+      <label className="staff-field">
+        <span>Operator note</span>
+        <textarea
+          value={reservationNotificationPolicy.note ?? ""}
+          placeholder="Why this policy is set or what assumption it represents."
+          disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+          onChange={(event) =>
+            setReservationNotificationPolicy((prev) => ({
+              ...prev,
+              note: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-secondary"
+          disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+          onClick={() => void saveReservationNotificationPolicy()}
+        >
+          {reservationNotificationPolicyBusy ? "Saving..." : "Save notification policy"}
+        </button>
+      </div>
+      <div className="staff-mini">
+        Last updated: {reservationNotificationPolicy.updatedAtMs ? when(reservationNotificationPolicy.updatedAtMs) : "-"}
+        {reservationNotificationPolicy.updatedByUid ? ` by ${reservationNotificationPolicy.updatedByUid}` : ""}
+      </div>
+      {reservationNotificationPolicyStatus ? (
+        <div className="staff-note" role="status" aria-live="polite">
+          {reservationNotificationPolicyStatus}
+        </div>
+      ) : null}
+    </>
+  );
+
   const cockpitOpsContent = (
     <CockpitOpsPanel
       busy={busy}
@@ -9391,6 +9745,7 @@ export default function StaffView({
       lastErr={lastErr}
       copy={copy}
       copyStatus={copyStatus}
+      reservationNotificationPolicyContent={reservationNotificationPolicyContent}
       resetModuleTelemetry={resetModuleTelemetry}
       moduleUsageRows={moduleUsageRows}
       lowEngagementModules={lowEngagementModules}

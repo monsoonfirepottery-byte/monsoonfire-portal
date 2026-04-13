@@ -72,12 +72,20 @@ Reservation notification flow now emits customer-facing jobs for:
 - status transitions (`CONFIRMED`, `WAITLISTED`, `CANCELLED`)
 - ETA/estimate window shifts
 - ready-for-pickup (`loadStatus=loaded`)
-- pickup/storage reminders (72h, 120h, 168h cadence after ready-for-pickup)
-- delayed ETA follow-ups (12h initial reminder, then 24h cadence while still delayed)
+- pickup/storage reminders (policy-driven cadence after ready-for-pickup)
+- delayed ETA follow-ups (policy-driven initial + repeat cadence while still delayed)
 
 Reservation sends respect both:
 - `users/{uid}/prefs/notifications` global/channel toggles
+- `users/{uid}/prefs/notifications.events` reservation-specific event toggles
 - `profiles/{uid}.notifyReservations` (defaults to `true` when unset)
+
+Staff can now tune the shared reservation cadence through:
+- `notificationSettings/reservationPolicy`
+- pickup-ready enable/disable
+- pickup reminders enable/disable plus fixed-hour or storage-window-scaled timing
+- pickup-window pre-expiry reminder lead time
+- delay follow-up enable/disable plus initial/repeat hour offsets
 
 Fallback behavior:
 - If recipient claim lookup fails, that user is treated as non-staff.

@@ -34,6 +34,10 @@ export const V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN =
   "apiV1/v1/library.externalLookup.providerConfig.set";
 export const V1_LIBRARY_ROLLOUT_CONFIG_GET_FN = "apiV1/v1/library.rollout.get";
 export const V1_LIBRARY_ROLLOUT_CONFIG_SET_FN = "apiV1/v1/library.rollout.set";
+export const V1_NOTIFICATIONS_RESERVATION_POLICY_GET_FN =
+  "apiV1/v1/notifications.reservationPolicy.get";
+export const V1_NOTIFICATIONS_RESERVATION_POLICY_SET_FN =
+  "apiV1/v1/notifications.reservationPolicy.set";
 export const V1_LIBRARY_STAFF_DASHBOARD_FN = "apiV1/v1/library.staff.dashboard";
 export const V1_LIBRARY_COVER_REVIEWS_RECONCILE_FN = "apiV1/v1/library.coverReviews.reconcile";
 export const V1_LIBRARY_METADATA_ENRICHMENT_RUN_FN = "apiV1/v1/library.metadata.enrichment.run";
@@ -92,6 +96,8 @@ export type PortalFnName =
   | typeof V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN
   | typeof V1_LIBRARY_ROLLOUT_CONFIG_GET_FN
   | typeof V1_LIBRARY_ROLLOUT_CONFIG_SET_FN
+  | typeof V1_NOTIFICATIONS_RESERVATION_POLICY_GET_FN
+  | typeof V1_NOTIFICATIONS_RESERVATION_POLICY_SET_FN
   | typeof V1_LIBRARY_STAFF_DASHBOARD_FN
   | typeof V1_LIBRARY_COVER_REVIEWS_RECONCILE_FN
   | typeof V1_LIBRARY_METADATA_ENRICHMENT_RUN_FN
@@ -167,6 +173,40 @@ export type PortalApiErrorEnvelope = {
  */
 export type PortalApiOkEnvelope = {
   ok: true;
+};
+
+export type ReservationNotificationPolicyContract = {
+  pickupReadyEnabled: boolean;
+  pickupReminderEnabled: boolean;
+  pickupReminderMode: "storage_window_ratio" | "fixed_hours";
+  pickupReminderHours: number[];
+  pickupWindowPreExpiryEnabled: boolean;
+  pickupWindowPreExpiryHours: number;
+  delayFollowUpEnabled: boolean;
+  delayFollowUpInitialHours: number;
+  delayFollowUpRepeatHours: number;
+  note: string | null;
+  updatedAtMs: number;
+  updatedByUid: string | null;
+};
+
+export type ReservationNotificationPolicyResponse = PortalApiOkEnvelope & {
+  data?: {
+    policy?: ReservationNotificationPolicyContract;
+  };
+};
+
+export type ReservationNotificationPolicySetRequest = {
+  pickupReadyEnabled?: boolean;
+  pickupReminderEnabled?: boolean;
+  pickupReminderMode?: "storage_window_ratio" | "fixed_hours";
+  pickupReminderHours?: number[];
+  pickupWindowPreExpiryEnabled?: boolean;
+  pickupWindowPreExpiryHours?: number;
+  delayFollowUpEnabled?: boolean;
+  delayFollowUpInitialHours?: number;
+  delayFollowUpRepeatHours?: number;
+  note?: string | null;
 };
 
 /**

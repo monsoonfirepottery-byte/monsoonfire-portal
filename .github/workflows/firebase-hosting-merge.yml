@@ -12,7 +12,13 @@ jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Resolve Firebase API key
         id: firebase_api_key
         env:
@@ -30,9 +36,18 @@ jobs:
           export VITE_FIREBASE_API_KEY
           npm --prefix web ci
           npm --prefix web run build
-      - uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
-          channelId: live
-          projectId: monsoonfire-portal
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
+      - name: Deploy live hosting
+        shell: bash
+        env:
+          FIREBASE_TOOLS_VERSION: 15.14.0
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@"$FIREBASE_TOOLS_VERSION" deploy \
+            --project monsoonfire-portal \
+            --only hosting \
+            --non-interactive

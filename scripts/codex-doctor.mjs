@@ -550,6 +550,25 @@ export async function runCodexDoctor({
     });
   }
 
+  const rememberHelperPath = resolve(repoRoot, "scripts", "lib", "studio-brain-memory-write.mjs");
+  const studioBrainMcpServerPath = resolve(repoRoot, "studio-brain-mcp", "server.mjs");
+  const rememberToolRegistered =
+    existsSync(rememberHelperPath) &&
+    existsSync(studioBrainMcpServerPath) &&
+    readFileSync(studioBrainMcpServerPath, "utf8").includes('"studio_brain_remember"');
+  checkCollector.push(
+    "codex-studio-brain-remember-surface",
+    rememberToolRegistered ? "info" : "warning",
+    rememberToolRegistered,
+    rememberToolRegistered
+      ? "Studio Brain remember write surface is registered in the MCP server."
+      : "Studio Brain remember write surface is not registered in the MCP server.",
+    {
+      mcpServerPath: studioBrainMcpServerPath,
+      rememberHelperPath,
+    },
+  );
+
   const summary = checkCollector.summarize();
   const report = {
     schema: "codex-doctor-v1",

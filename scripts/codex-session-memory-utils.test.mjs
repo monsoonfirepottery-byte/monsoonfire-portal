@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildThreadBootstrapQuery,
   normalizeHandoffArtifact,
+  rankBootstrapRows,
   resolveBootstrapContinuityState,
 } from "./lib/codex-session-memory-utils.mjs";
 import { stableHash } from "./lib/pst-memory-utils.mjs";
@@ -83,4 +85,87 @@ test("resolveBootstrapContinuityState falls back to validated local continuity w
   assert.equal(decision.continuityState, "ready");
   assert.equal(decision.blockerActive, false);
   assert.equal(decision.source, "validated-local-continuity");
+});
+
+test("buildThreadBootstrapQuery seeds the inferred repo lane for startup retrieval", () => {
+  const query = buildThreadBootstrapQuery({
+    threadInfo: {
+      threadId: "thread-portal-auth",
+      cwd: "D:/monsoonfire-portal",
+      title: "Test Studio Brain auth",
+      firstUserMessage: "call studiobrain memory and test auth",
+    },
+    historyLines: ["audit your connection to studiobrain and memory with context"],
+  });
+
+  assert.match(query, /\bmonsoonfire-portal\b/i);
+  assert.match(query, /\bmonsoonfire portal\b/i);
+});
+
+test("rankBootstrapRows boosts same-project lane rows for repo-scoped threads", () => {
+  const ranked = rankBootstrapRows(
+    [
+      {
+        id: "row-studio",
+        source: "manual",
+        score: 0.55,
+        content: "Studio Brain auth note from a different repo lane.",
+        metadata: {
+          projectLane: "studio-brain",
+        },
+      },
+      {
+        id: "row-portal",
+        source: "manual",
+        score: 0.55,
+        content: "Portal continuity note for the current repo lane.",
+        metadata: {
+          projectLane: "monsoonfire-portal",
+        },
+      },
+    ],
+    {
+      threadId: "thread-portal-auth",
+      cwd: "D:/monsoonfire-portal",
+      title: "Test Studio Brain auth",
+      firstUserMessage: "call studiobrain memory and test auth",
+    },
+  );
+
+  assert.equal(ranked[0]?.id, "row-portal");
+});
+
+test("rankBootstrapRows can overcome a modest cross-lane score lead for repo startup context", () => {
+  const ranked = rankBootstrapRows(
+    [
+      {
+        id: "row-studio",
+        source: "codex-handoff",
+        score: 0.9,
+        content: "Studio Brain checkpoint from a different repo lane.",
+        metadata: {
+          projectLane: "studio-brain",
+          startupEligible: true,
+        },
+      },
+      {
+        id: "row-portal",
+        source: "codex-handoff",
+        score: 0.62,
+        content: "Portal continuity note for the current repo lane.",
+        metadata: {
+          projectLane: "monsoonfire-portal",
+          startupEligible: true,
+        },
+      },
+    ],
+    {
+      threadId: "thread-portal-auth",
+      cwd: "D:/monsoonfire-portal",
+      title: "What was I doing in Monsoon Fire portal?",
+      firstUserMessage: "what was I doing in monsoonfire portal",
+    },
+  );
+
+  assert.equal(ranked[0]?.id, "row-portal");
 });

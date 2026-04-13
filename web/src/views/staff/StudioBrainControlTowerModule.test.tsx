@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "firebase/auth";
 import * as controlTowerUtils from "../../utils/studioBrainControlTower";
@@ -396,6 +396,7 @@ function createRoomPayload() {
 afterEach(() => {
   window.localStorage.clear();
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -669,5 +670,87 @@ describe("StudioBrainControlTowerModule", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Open portal/i }));
 
     expect(await screen.findByRole("dialog", { name: "portal details" })).toBeTruthy();
+  });
+
+  it("stops fallback polling once the stream is live", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(controlTowerUtils, "getStudioBrainControlTowerResolution").mockReturnValue({
+      baseUrl: "https://studio-brain.runtime.example",
+      configured: true,
+      enabled: true,
+      reason: "",
+    });
+    const fetchStateSpy = vi
+      .spyOn(controlTowerUtils, "fetchControlTowerState")
+      .mockResolvedValue(createStatePayload().state);
+    vi.spyOn(controlTowerUtils, "subscribeControlTowerEvents").mockImplementation((options) => {
+      options.onOpen?.();
+      return () => undefined;
+    });
+
+    render(
+      <StudioBrainControlTowerModule
+        user={createUser()}
+        active={true}
+        disabled={false}
+        adminToken=""
+        onNavigateTarget={() => undefined}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("30-second operator plane")).toBeTruthy();
+    expect(fetchStateSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(6_000);
+      await Promise.resolve();
+    });
+
+    expect(fetchStateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps polling when the stream falls back", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(controlTowerUtils, "getStudioBrainControlTowerResolution").mockReturnValue({
+      baseUrl: "https://studio-brain.runtime.example",
+      configured: true,
+      enabled: true,
+      reason: "",
+    });
+    const fetchStateSpy = vi
+      .spyOn(controlTowerUtils, "fetchControlTowerState")
+      .mockResolvedValue(createStatePayload().state);
+    vi.spyOn(controlTowerUtils, "subscribeControlTowerEvents").mockImplementation((options) => {
+      options.onError?.(new Error("stream offline"));
+      return () => undefined;
+    });
+
+    render(
+      <StudioBrainControlTowerModule
+        user={createUser()}
+        active={true}
+        disabled={false}
+        adminToken=""
+        onNavigateTarget={() => undefined}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("30-second operator plane")).toBeTruthy();
+    expect(fetchStateSpy).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(6_000);
+      await Promise.resolve();
+    });
+
+    expect(fetchStateSpy).toHaveBeenCalledTimes(3);
   });
 });

@@ -564,6 +564,47 @@ export async function collectWorkshopCommunitySignalCountsByEventIds(
   const queryLimit = WORKSHOP_SIGNAL_QUERY_LIMIT_DEFAULT;
   const queryPageLimit = WORKSHOP_SIGNAL_QUERY_PAGE_LIMIT;
 
+  const collectFallbackPages = async (params: {
+    buildQuery: (pageIndex: number) => any;
+    label: string;
+    sourceFilter?: WorkshopDemandSignalSource[];
+    sourceValue?: null | "";
+    eventIdChunkSize?: number;
+  }): Promise<void> => {
+    for (let pageIndex = 0; pageIndex < queryPageLimit; pageIndex += 1) {
+      let pageQuery = params.buildQuery(pageIndex);
+      if (pageIndex > 0) {
+        if (typeof pageQuery.offset !== "function") {
+          logger.warn(`${params.label} pagination unsupported`, {
+            sourceFilter: params.sourceFilter,
+            sourceValue: params.sourceValue,
+            eventIdChunkSize: params.eventIdChunkSize ?? 0,
+          });
+          return;
+        }
+        pageQuery = pageQuery.offset(pageIndex * queryLimit);
+      }
+      if (typeof pageQuery.limit === "function") {
+        pageQuery = pageQuery.limit(queryLimit);
+      }
+      const pageSnaps = await pageQuery.get();
+      const docs = pageSnaps.docs ?? [];
+      for (const docSnap of docs) {
+        addSignalDoc(docSnap);
+      }
+      if (!Array.isArray(docs) || docs.length < queryLimit) {
+        return;
+      }
+    }
+
+    logger.warn(`${params.label} pagination reached cap`, {
+      sourceFilter: params.sourceFilter,
+      sourceValue: params.sourceValue,
+      eventIdChunkSize: params.eventIdChunkSize ?? 0,
+      pageLimit: queryPageLimit,
+    });
+  };
+
   const addSignalDoc = (docSnap: any) => {
     if (!docSnap?.id) return;
     if (signalDocsById.has(docSnap.id)) return;
@@ -689,8 +730,12 @@ export async function collectWorkshopCommunitySignalCountsByEventIds(
           eventIdChunkSize: chunk?.length ?? 0,
         });
         try {
-          const fallbackSnaps = await buildQuery(sourceChunk, chunk, false).get();
-          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          await collectFallbackPages({
+            buildQuery: () => buildQuery(sourceChunk, chunk, false),
+            label: "collectWorkshopCommunitySignalCountsByEventIds source query fallback",
+            sourceFilter: sourceChunk,
+            eventIdChunkSize: chunk?.length ?? 0,
+          });
         } catch (fallbackError: any) {
           logger.warn("collectWorkshopCommunitySignalCountsByEventIds source query fallback failed", {
             message: toErrorMessage(fallbackError),
@@ -764,16 +809,22 @@ export async function collectWorkshopCommunitySignalCountsByEventIds(
           eventIdChunkSize: chunk?.length ?? 0,
           sourceValue,
         });
-        let fallbackQuery = db
-          .collection(SUPPORT_REQUESTS_COL)
-          .where("category", "==", "Workshops")
-          .where("source", "==", sourceValue) as any;
-        if (chunk?.length) {
-          fallbackQuery = fallbackQuery.where("eventId", "in", chunk);
-        }
         try {
-          const snaps = await fallbackQuery.limit(queryLimit).get();
-          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          await collectFallbackPages({
+            buildQuery: () => {
+              let query = db
+                .collection(SUPPORT_REQUESTS_COL)
+                .where("category", "==", "Workshops")
+                .where("source", "==", sourceValue) as any;
+              if (chunk?.length) {
+                query = query.where("eventId", "in", chunk);
+              }
+              return query;
+            },
+            label: "collectWorkshopCommunitySignalCountsByEventIds null-source fallback",
+            sourceValue,
+            eventIdChunkSize: chunk?.length ?? 0,
+          });
         } catch (fallbackError: any) {
           logger.warn("collectWorkshopCommunitySignalCountsByEventIds null-source fallback failed", {
             message: toErrorMessage(fallbackError),
@@ -839,15 +890,20 @@ export async function collectWorkshopCommunitySignalCountsByEventIds(
           message: toErrorMessage(error),
           eventIdChunkSize: chunk?.length ?? 0,
         });
-        let fallbackQuery = db
-          .collection(SUPPORT_REQUESTS_COL)
-          .where("category", "==", "Workshops") as any;
-        if (chunk?.length) {
-          fallbackQuery = fallbackQuery.where("eventId", "in", chunk);
-        }
         try {
-          const snaps = await fallbackQuery.limit(queryLimit).get();
-          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          await collectFallbackPages({
+            buildQuery: () => {
+              let query = db
+                .collection(SUPPORT_REQUESTS_COL)
+                .where("category", "==", "Workshops") as any;
+              if (chunk?.length) {
+                query = query.where("eventId", "in", chunk);
+              }
+              return query;
+            },
+            label: "collectWorkshopCommunitySignalCountsByEventIds source-free fallback",
+            eventIdChunkSize: chunk?.length ?? 0,
+          });
         } catch (fallbackError: any) {
           logger.warn("collectWorkshopCommunitySignalCountsByEventIds source-free fallback failed", {
             message: toErrorMessage(fallbackError),
@@ -1919,6 +1975,48 @@ export const listWorkshopDemandSignals = onRequest({ region: REGION }, async (re
   try {
     const signalDocsById = new Map<string, { id: string; raw: Record<string, any> }>();
     const eventIdsWithRecognizedSourceSignals = new Set<string>();
+    const collectFallbackPages = async (params: {
+      buildQuery: (pageIndex: number) => any;
+      label: string;
+      sourceFilter?: WorkshopDemandSignalSource[];
+      sourceValue?: null | "";
+      eventIdChunkSize?: number;
+    }): Promise<void> => {
+      for (let pageIndex = 0; pageIndex < WORKSHOP_SIGNAL_QUERY_PAGE_LIMIT; pageIndex += 1) {
+        let pageQuery = params.buildQuery(pageIndex);
+        if (pageIndex > 0) {
+          if (typeof pageQuery.offset !== "function") {
+            logger.warn(`${params.label} pagination unsupported`, {
+              requestId,
+              sourceFilter: params.sourceFilter,
+              sourceValue: params.sourceValue,
+              eventIdChunkSize: params.eventIdChunkSize ?? 0,
+            });
+            return;
+          }
+          pageQuery = pageQuery.offset(pageIndex * limit);
+        }
+        if (typeof pageQuery.limit === "function") {
+          pageQuery = pageQuery.limit(limit);
+        }
+        const pageSnaps = await pageQuery.get();
+        const docs = pageSnaps.docs ?? [];
+        for (const docSnap of docs) {
+          addSignalDoc(docSnap);
+        }
+        if (!Array.isArray(docs) || docs.length < limit) {
+          return;
+        }
+      }
+
+      logger.warn(`${params.label} pagination reached cap`, {
+        requestId,
+        sourceFilter: params.sourceFilter,
+        sourceValue: params.sourceValue,
+        eventIdChunkSize: params.eventIdChunkSize ?? 0,
+        pageLimit: WORKSHOP_SIGNAL_QUERY_PAGE_LIMIT,
+      });
+    };
 
     const addSignalDoc = (docSnap: any) => {
       if (!docSnap?.id) return;
@@ -1974,8 +2072,12 @@ export const listWorkshopDemandSignals = onRequest({ region: REGION }, async (re
             sourceCount: sourceChunk.length,
             eventIdChunkSize: eventIdChunk?.length ?? 0,
           });
-          const fallbackSnaps = await buildQuery(sourceChunk, eventIdChunk, false).get();
-          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          await collectFallbackPages({
+            buildQuery: () => buildQuery(sourceChunk, eventIdChunk, false),
+            label: "listWorkshopDemandSignals source query fallback",
+            sourceFilter: sourceChunk,
+            eventIdChunkSize: eventIdChunk?.length ?? 0,
+          });
         }
       };
 
@@ -2016,15 +2118,21 @@ export const listWorkshopDemandSignals = onRequest({ region: REGION }, async (re
             eventIdChunkSize: eventIdChunk.length,
             sourceValue,
           });
-          let fallbackQuery = db
-            .collection(SUPPORT_REQUESTS_COL)
-            .where("category", "==", "Workshops")
-            .where("source", "==", sourceValue) as any;
-          if (eventIdChunk.length > 0) {
-            fallbackQuery = fallbackQuery.where("eventId", "in", eventIdChunk);
-          }
-          const fallbackSnaps = await fallbackQuery.limit(limit).get();
-          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          await collectFallbackPages({
+            buildQuery: () => {
+              let query = db
+                .collection(SUPPORT_REQUESTS_COL)
+                .where("category", "==", "Workshops")
+                .where("source", "==", sourceValue) as any;
+              if (eventIdChunk.length > 0) {
+                query = query.where("eventId", "in", eventIdChunk);
+              }
+              return query;
+            },
+            label: "listWorkshopDemandSignals null-source fallback",
+            sourceValue,
+            eventIdChunkSize: eventIdChunk.length,
+          });
         }
       };
 
@@ -2059,12 +2167,17 @@ export const listWorkshopDemandSignals = onRequest({ region: REGION }, async (re
             message: toErrorMessage(error),
             eventIdChunkSize: eventIdChunk.length,
           });
-          let fallbackQuery = db.collection(SUPPORT_REQUESTS_COL).where("category", "==", "Workshops") as any;
-          if (eventIdChunk.length > 0) {
-            fallbackQuery = fallbackQuery.where("eventId", "in", eventIdChunk);
-          }
-          const fallbackSnaps = await fallbackQuery.limit(limit).get();
-          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          await collectFallbackPages({
+            buildQuery: () => {
+              let query = db.collection(SUPPORT_REQUESTS_COL).where("category", "==", "Workshops") as any;
+              if (eventIdChunk.length > 0) {
+                query = query.where("eventId", "in", eventIdChunk);
+              }
+              return query;
+            },
+            label: "listWorkshopDemandSignals source-free fallback",
+            eventIdChunkSize: eventIdChunk.length,
+          });
         }
       };
 

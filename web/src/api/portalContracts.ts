@@ -460,6 +460,8 @@ export type ReservationRecord = {
   storageNoticeHistory?: unknown[] | null;
   arrivalStatus?: string | null;
   arrivedAt?: string | null;
+  crateDwellMs?: number | null;
+  crateCheckedOutAt?: string | null;
   arrivalToken?: string | null;
   arrivalTokenIssuedAt?: string | null;
   arrivalTokenExpiresAt?: string | null;
@@ -527,6 +529,8 @@ export type ReservationPickupWindowResponse = PortalApiOkEnvelope & {
     lastRescheduleRequestedAt?: string | null;
   } | null;
   storageStatus?: string | null;
+  crateDwellMs?: number | null;
+  crateCheckedOutAt?: string | null;
   idempotentReplay?: boolean;
 };
 
@@ -1562,6 +1566,8 @@ export type ReservationCheckInResponse = PortalApiOkEnvelope & {
   reservationId?: string;
   arrivalStatus?: string | null;
   arrivedAt?: string | null;
+  crateDwellMs?: number | null;
+  crateCheckedOutAt?: string | null;
   idempotentReplay?: boolean;
 };
 

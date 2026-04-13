@@ -111,6 +111,8 @@ export type ReservationRecord = {
   archivedAt?: { toDate?: () => Date } | null;
   arrivalStatus?: string | null;
   arrivedAt?: { toDate?: () => Date } | null;
+  crateDwellMs?: number | null;
+  crateCheckedOutAt?: { toDate?: () => Date } | string | null;
   arrivalToken?: string | null;
   arrivalTokenIssuedAt?: { toDate?: () => Date } | null;
   arrivalTokenExpiresAt?: { toDate?: () => Date } | null;
@@ -555,6 +557,11 @@ export function normalizeReservationRecord(
     archivedAt: raw.archivedAt ?? null,
     arrivalStatus: typeof raw.arrivalStatus === "string" ? raw.arrivalStatus : null,
     arrivedAt: raw.arrivedAt ?? null,
+    crateDwellMs:
+      typeof raw.crateDwellMs === "number" && Number.isFinite(raw.crateDwellMs)
+        ? Math.max(0, Math.round(raw.crateDwellMs))
+        : null,
+    crateCheckedOutAt: raw.crateCheckedOutAt ?? null,
     arrivalToken: typeof raw.arrivalToken === "string" ? raw.arrivalToken : null,
     arrivalTokenIssuedAt: raw.arrivalTokenIssuedAt ?? null,
     arrivalTokenExpiresAt: raw.arrivalTokenExpiresAt ?? null,

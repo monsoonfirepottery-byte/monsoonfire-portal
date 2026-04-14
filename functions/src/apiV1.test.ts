@@ -7801,6 +7801,169 @@ test("reservations.rotateArrivalToken returns forbidden for authenticated non-st
   assert.equal(event?.requestId, body.requestId);
 });
 
+test("notifications.reservationPolicy.get returns the default policy for staff when no doc exists", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.get",
+      body: {},
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as {
+    ok: boolean;
+    data: {
+      policy: {
+        pickupReadyEnabled: boolean;
+        pickupReminderEnabled: boolean;
+        pickupReminderMode: string;
+        pickupReminderHours: number[];
+        pickupWindowPreExpiryEnabled: boolean;
+        pickupWindowPreExpiryHours: number;
+        delayFollowUpEnabled: boolean;
+        delayFollowUpInitialHours: number;
+        delayFollowUpRepeatHours: number;
+        note: string | null;
+        updatedAtMs: number;
+        updatedByUid: string | null;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data.policy, {
+    pickupReadyEnabled: true,
+    pickupReminderEnabled: true,
+    pickupReminderMode: "storage_window_ratio",
+    pickupReminderHours: [336, 420, 462],
+    pickupWindowPreExpiryEnabled: true,
+    pickupWindowPreExpiryHours: 24,
+    delayFollowUpEnabled: true,
+    delayFollowUpInitialHours: 12,
+    delayFollowUpRepeatHours: 24,
+    note: null,
+    updatedAtMs: 0,
+    updatedByUid: null,
+  });
+});
+
+test("notifications.reservationPolicy.get rejects unauthenticated callers", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.get",
+      body: {},
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "FORBIDDEN");
+  assert.equal(body.message, "Only staff can manage notification policy.");
+});
+
+test("notifications.reservationPolicy.set rejects authenticated non-staff callers", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.set",
+      body: {
+        pickupReminderEnabled: false,
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+      authClaims: { uid: "owner-1", staff: false },
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "FORBIDDEN");
+  assert.equal(body.message, "Only staff can manage notification policy.");
+});
+
+test("notifications.reservationPolicy.set validates payloads and persists staff updates", async () => {
+  const invalidResponse = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.set",
+      body: {},
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(invalidResponse.status, 400);
+  const invalidBody = invalidResponse.body as Record<string, unknown>;
+  assert.equal(invalidBody.code, "INVALID_ARGUMENT");
+  assert.equal(invalidBody.message, "Provide at least one reservation notification policy field.");
+
+  const state: MockDbState = {};
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.set",
+      body: {
+        pickupReminderEnabled: true,
+        pickupReminderMode: "fixed_hours",
+        pickupReminderHours: [168],
+        pickupWindowPreExpiryEnabled: true,
+        pickupWindowPreExpiryHours: 24,
+        delayFollowUpEnabled: true,
+        delayFollowUpInitialHours: 12,
+        delayFollowUpRepeatHours: 24,
+        note: "One-week pickup reminder rollout",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as {
+    ok: boolean;
+    data: {
+      policy: {
+        pickupReminderMode: string;
+        pickupReminderHours: number[];
+        note: string | null;
+        updatedAtMs: number;
+        updatedByUid: string | null;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.policy.pickupReminderMode, "fixed_hours");
+  assert.deepEqual(body.data.policy.pickupReminderHours, [168]);
+  assert.equal(body.data.policy.note, "One-week pickup reminder rollout");
+  assert.equal(body.data.policy.updatedByUid, "staff-1");
+  assert.equal(typeof body.data.policy.updatedAtMs, "number");
+  assert.ok(body.data.policy.updatedAtMs > 0);
+
+  const storedPolicy = state.notificationSettings?.reservationPolicy as Record<string, unknown> | undefined;
+  assert.ok(storedPolicy);
+  assert.equal(storedPolicy.pickupReadyEnabled, true);
+  assert.equal(storedPolicy.pickupReminderEnabled, true);
+  assert.equal(storedPolicy.pickupReminderMode, "fixed_hours");
+  assert.deepEqual(storedPolicy.pickupReminderHours, [168]);
+  assert.equal(storedPolicy.pickupWindowPreExpiryEnabled, true);
+  assert.equal(storedPolicy.pickupWindowPreExpiryHours, 24);
+  assert.equal(storedPolicy.delayFollowUpEnabled, true);
+  assert.equal(storedPolicy.delayFollowUpInitialHours, 12);
+  assert.equal(storedPolicy.delayFollowUpRepeatHours, 24);
+  assert.equal(storedPolicy.note, "One-week pickup reminder rollout");
+  assert.equal(storedPolicy.updatedByUid, "staff-1");
+  assert.ok(storedPolicy.updatedAt);
+  assert.ok(storedPolicy.createdAt);
+});
+
 test("support.requests.create stores policy resolution metadata when provided", async () => {
   const state: MockDbState = {
     supportRequests: {},

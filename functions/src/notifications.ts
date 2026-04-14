@@ -11,15 +11,20 @@ const REGION = "us-central1";
 const JOB_MAX_ATTEMPTS = 5;
 const JOB_BASE_RETRY_MS = 60_000;
 const SMS_MESSAGE_MAX_CHARS = 1200;
-const RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS = 12 * 60 * 60 * 1000;
-const RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const RESERVATION_DELAY_FOLLOW_UP_INITIAL_HOURS = 12;
+const RESERVATION_DELAY_FOLLOW_UP_REPEAT_HOURS = 24;
 const RESERVATION_STORAGE_REMINDER_SCHEDULE_MS = [
-  14 * 24 * 60 * 60 * 1000,
-  Math.round(17.5 * 24 * 60 * 60 * 1000),
-  Math.round(19.25 * 24 * 60 * 60 * 1000),
+  14 * DAY_MS,
+  Math.round(17.5 * DAY_MS),
+  Math.round(19.25 * DAY_MS),
 ] as const;
-const RESERVATION_STORAGE_GRACE_MS = 462 * 60 * 60 * 1000;
-const RESERVATION_STORAGE_BILLING_DAY_MS = 24 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_REMINDER_SCHEDULE_HOURS = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS.map(
+  (value) => Math.round(value / HOUR_MS)
+);
+const RESERVATION_STORAGE_GRACE_MS = 462 * HOUR_MS;
+const RESERVATION_STORAGE_BILLING_DAY_MS = DAY_MS;
 const RESERVATION_STORAGE_BILLING_MAX_DAYS = 28;
 const RESERVATION_STORAGE_PREPAID_INCLUDED_WEEKS = 4;
 const RESERVATION_STORAGE_STORED_BY_POLICY_MS =
@@ -33,6 +38,8 @@ const RESERVATION_STORAGE_BILLING_WINDOW_MS =
 const RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS.map(
   (threshold) => threshold / RESERVATION_STORAGE_GRACE_MS
 );
+const NOTIFICATION_SETTINGS_COLLECTION = "notificationSettings";
+const RESERVATION_NOTIFICATION_POLICY_DOC = "reservationPolicy";
 
 type ReservationStorageStatus = "active" | "reminder_pending" | "hold_pending" | "stored_by_policy";
 type ReservationStorageBillingStatus = "grace" | "billing" | "reclaimed";
@@ -257,6 +264,11 @@ type NotificationPrefs = {
     kilnUnloaded: boolean;
     kilnUnloadedBisque: boolean;
     kilnUnloadedGlaze: boolean;
+    reservationStatus: boolean;
+    reservationEtaShift: boolean;
+    reservationPickupReady: boolean;
+    reservationDelayFollowUp: boolean;
+    reservationPickupReminder: boolean;
   };
   quietHours?: {
     enabled: boolean;
@@ -336,6 +348,22 @@ type NotificationErrorClass =
   | "auth"
   | "unknown";
 
+type ReservationNotificationPolicy = {
+  pickupReadyEnabled: boolean;
+  pickupReminderEnabled: boolean;
+  pickupReminderMode: "storage_window_ratio" | "fixed_hours";
+  pickupReminderHours: number[];
+  pickupReminderRatios: number[];
+  pickupWindowPreExpiryEnabled: boolean;
+  pickupWindowPreExpiryHours: number;
+  delayFollowUpEnabled: boolean;
+  delayFollowUpInitialHours: number;
+  delayFollowUpRepeatHours: number;
+  note: string | null;
+  updatedAtMs: number;
+  updatedByUid: string | null;
+};
+
 const DEFAULT_PREFS: NotificationPrefs = {
   enabled: true,
   channels: {
@@ -348,6 +376,11 @@ const DEFAULT_PREFS: NotificationPrefs = {
     kilnUnloaded: true,
     kilnUnloadedBisque: true,
     kilnUnloadedGlaze: true,
+    reservationStatus: true,
+    reservationEtaShift: true,
+    reservationPickupReady: true,
+    reservationDelayFollowUp: true,
+    reservationPickupReminder: true,
   },
   quietHours: {
     enabled: false,
@@ -359,6 +392,22 @@ const DEFAULT_PREFS: NotificationPrefs = {
     mode: "immediate",
     digestHours: 6,
   },
+};
+
+const DEFAULT_RESERVATION_NOTIFICATION_POLICY: ReservationNotificationPolicy = {
+  pickupReadyEnabled: true,
+  pickupReminderEnabled: true,
+  pickupReminderMode: "storage_window_ratio",
+  pickupReminderHours: RESERVATION_STORAGE_REMINDER_SCHEDULE_HOURS,
+  pickupReminderRatios: [...RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS],
+  pickupWindowPreExpiryEnabled: true,
+  pickupWindowPreExpiryHours: 24,
+  delayFollowUpEnabled: true,
+  delayFollowUpInitialHours: RESERVATION_DELAY_FOLLOW_UP_INITIAL_HOURS,
+  delayFollowUpRepeatHours: RESERVATION_DELAY_FOLLOW_UP_REPEAT_HOURS,
+  note: null,
+  updatedAtMs: 0,
+  updatedByUid: null,
 };
 
 function hashId(value: string): string {
@@ -445,6 +494,16 @@ function mergePrefs(data?: Partial<NotificationPrefs> | null): NotificationPrefs
         prefs.events?.kilnUnloadedBisque ?? DEFAULT_PREFS.events.kilnUnloadedBisque,
       kilnUnloadedGlaze:
         prefs.events?.kilnUnloadedGlaze ?? DEFAULT_PREFS.events.kilnUnloadedGlaze,
+      reservationStatus:
+        prefs.events?.reservationStatus ?? DEFAULT_PREFS.events.reservationStatus,
+      reservationEtaShift:
+        prefs.events?.reservationEtaShift ?? DEFAULT_PREFS.events.reservationEtaShift,
+      reservationPickupReady:
+        prefs.events?.reservationPickupReady ?? DEFAULT_PREFS.events.reservationPickupReady,
+      reservationDelayFollowUp:
+        prefs.events?.reservationDelayFollowUp ?? DEFAULT_PREFS.events.reservationDelayFollowUp,
+      reservationPickupReminder:
+        prefs.events?.reservationPickupReminder ?? DEFAULT_PREFS.events.reservationPickupReminder,
     },
     quietHours: {
       enabled: prefs.quietHours?.enabled ?? DEFAULT_PREFS.quietHours?.enabled ?? false,
@@ -457,6 +516,179 @@ function mergePrefs(data?: Partial<NotificationPrefs> | null): NotificationPrefs
       digestHours: prefs.frequency?.digestHours ?? DEFAULT_PREFS.frequency.digestHours,
     },
   };
+}
+
+function normalizePositiveHoursList(value: unknown, fallback: readonly number[]): number[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const next = Array.from(
+    new Set(
+      value
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry) && entry > 0)
+        .map((entry) => Math.max(1, Math.round(entry)))
+    )
+  ).sort((a, b) => a - b);
+  return next.length ? next : [...fallback];
+}
+
+function notificationPolicyDoc() {
+  return db.collection(NOTIFICATION_SETTINGS_COLLECTION).doc(RESERVATION_NOTIFICATION_POLICY_DOC);
+}
+
+function parseNotificationPolicyTimestampMs(value: unknown): number {
+  const parsed = parseTimestampValue(value);
+  return parsed ? parsed.toMillis() : 0;
+}
+
+function toReservationNotificationPolicy(
+  row: Record<string, unknown> | null | undefined
+): ReservationNotificationPolicy {
+  const source = row ?? {};
+  const pickupReminderMode =
+    safeString(source.pickupReminderMode).trim().toLowerCase() === "fixed_hours"
+      ? "fixed_hours"
+      : "storage_window_ratio";
+  return {
+    pickupReadyEnabled:
+      source.pickupReadyEnabled === undefined
+        ? DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReadyEnabled
+        : source.pickupReadyEnabled !== false,
+    pickupReminderEnabled:
+      source.pickupReminderEnabled === undefined
+        ? DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderEnabled
+        : source.pickupReminderEnabled !== false,
+    pickupReminderMode,
+    pickupReminderHours: normalizePositiveHoursList(
+      source.pickupReminderHours,
+      DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderHours
+    ),
+    pickupReminderRatios: [...DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderRatios],
+    pickupWindowPreExpiryEnabled:
+      source.pickupWindowPreExpiryEnabled === undefined
+        ? DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupWindowPreExpiryEnabled
+        : source.pickupWindowPreExpiryEnabled !== false,
+    pickupWindowPreExpiryHours: Math.max(
+      1,
+      Math.round(
+        Number(source.pickupWindowPreExpiryHours) ||
+          DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupWindowPreExpiryHours
+      )
+    ),
+    delayFollowUpEnabled:
+      source.delayFollowUpEnabled === undefined
+        ? DEFAULT_RESERVATION_NOTIFICATION_POLICY.delayFollowUpEnabled
+        : source.delayFollowUpEnabled !== false,
+    delayFollowUpInitialHours: Math.max(
+      1,
+      Math.round(
+        Number(source.delayFollowUpInitialHours) ||
+          DEFAULT_RESERVATION_NOTIFICATION_POLICY.delayFollowUpInitialHours
+      )
+    ),
+    delayFollowUpRepeatHours: Math.max(
+      1,
+      Math.round(
+        Number(source.delayFollowUpRepeatHours) ||
+          DEFAULT_RESERVATION_NOTIFICATION_POLICY.delayFollowUpRepeatHours
+      )
+    ),
+    note: safeString(source.note).trim() || null,
+    updatedAtMs: parseNotificationPolicyTimestampMs(source.updatedAt),
+    updatedByUid: safeString(source.updatedByUid).trim() || null,
+  };
+}
+
+export async function getReservationNotificationPolicy(): Promise<ReservationNotificationPolicy> {
+  try {
+    const snap = await notificationPolicyDoc().get();
+    const row = snap.exists ? ((snap.data() ?? {}) as Record<string, unknown>) : null;
+    return toReservationNotificationPolicy(row);
+  } catch (error) {
+    logger.warn("Reservation notification policy fallback to defaults", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return { ...DEFAULT_RESERVATION_NOTIFICATION_POLICY };
+  }
+}
+
+export async function setReservationNotificationPolicy(input: {
+  pickupReadyEnabled?: boolean;
+  pickupReminderEnabled?: boolean;
+  pickupReminderMode?: "storage_window_ratio" | "fixed_hours" | null;
+  pickupReminderHours?: number[] | null;
+  pickupWindowPreExpiryEnabled?: boolean;
+  pickupWindowPreExpiryHours?: number | null;
+  delayFollowUpEnabled?: boolean;
+  delayFollowUpInitialHours?: number | null;
+  delayFollowUpRepeatHours?: number | null;
+  note?: string | null;
+  updatedByUid?: string | null;
+}): Promise<ReservationNotificationPolicy> {
+  const current = await getReservationNotificationPolicy();
+  const next: ReservationNotificationPolicy = {
+    pickupReadyEnabled:
+      typeof input.pickupReadyEnabled === "boolean"
+        ? input.pickupReadyEnabled
+        : current.pickupReadyEnabled,
+    pickupReminderEnabled:
+      typeof input.pickupReminderEnabled === "boolean"
+        ? input.pickupReminderEnabled
+        : current.pickupReminderEnabled,
+    pickupReminderMode:
+      input.pickupReminderMode === "fixed_hours" || input.pickupReminderMode === "storage_window_ratio"
+        ? input.pickupReminderMode
+        : current.pickupReminderMode,
+    pickupReminderHours:
+      input.pickupReminderHours === null || input.pickupReminderHours === undefined
+        ? current.pickupReminderHours
+        : normalizePositiveHoursList(input.pickupReminderHours, current.pickupReminderHours),
+    pickupReminderRatios: [...DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderRatios],
+    pickupWindowPreExpiryEnabled:
+      typeof input.pickupWindowPreExpiryEnabled === "boolean"
+        ? input.pickupWindowPreExpiryEnabled
+        : current.pickupWindowPreExpiryEnabled,
+    pickupWindowPreExpiryHours: Math.max(
+      1,
+      Math.round(input.pickupWindowPreExpiryHours ?? current.pickupWindowPreExpiryHours)
+    ),
+    delayFollowUpEnabled:
+      typeof input.delayFollowUpEnabled === "boolean"
+        ? input.delayFollowUpEnabled
+        : current.delayFollowUpEnabled,
+    delayFollowUpInitialHours: Math.max(
+      1,
+      Math.round(input.delayFollowUpInitialHours ?? current.delayFollowUpInitialHours)
+    ),
+    delayFollowUpRepeatHours: Math.max(
+      1,
+      Math.round(input.delayFollowUpRepeatHours ?? current.delayFollowUpRepeatHours)
+    ),
+    note: safeString(input.note).trim() || null,
+    updatedAtMs: Date.now(),
+    updatedByUid: safeString(input.updatedByUid).trim() || null,
+  };
+
+  const now = nowTs();
+  await notificationPolicyDoc().set(
+    {
+      pickupReadyEnabled: next.pickupReadyEnabled,
+      pickupReminderEnabled: next.pickupReminderEnabled,
+      pickupReminderMode: next.pickupReminderMode,
+      pickupReminderHours: next.pickupReminderHours,
+      pickupWindowPreExpiryEnabled: next.pickupWindowPreExpiryEnabled,
+      pickupWindowPreExpiryHours: next.pickupWindowPreExpiryHours,
+      delayFollowUpEnabled: next.delayFollowUpEnabled,
+      delayFollowUpInitialHours: next.delayFollowUpInitialHours,
+      delayFollowUpRepeatHours: next.delayFollowUpRepeatHours,
+      note: next.note,
+      updatedByUid: next.updatedByUid,
+      updatedAt: now,
+      createdAt: now,
+    },
+    { merge: true }
+  );
+
+  return next;
 }
 
 async function readPrefs(uid: string): Promise<NotificationPrefs> {
@@ -560,6 +792,38 @@ function shouldNotify(
   if (!prefs.events.kilnUnloaded) return false;
   if (firingType === "bisque" && !prefs.events.kilnUnloadedBisque) return false;
   if (firingType === "glaze" && !prefs.events.kilnUnloadedGlaze) return false;
+  return true;
+}
+
+function shouldNotifyReservationEvent(
+  prefs: NotificationPrefs,
+  eventKind: NotificationPayload["eventKind"] | undefined
+): boolean {
+  switch (eventKind) {
+  case "confirmed":
+  case "waitlisted":
+  case "cancelled":
+    return prefs.events.reservationStatus;
+  case "estimate_shift":
+    return prefs.events.reservationEtaShift;
+  case "pickup_ready":
+    return prefs.events.reservationPickupReady;
+  case "delay_follow_up":
+    return prefs.events.reservationDelayFollowUp;
+  case "pickup_reminder":
+    return prefs.events.reservationPickupReminder;
+  default:
+    return true;
+  }
+}
+
+function reservationEventEnabledByPolicy(
+  policy: ReservationNotificationPolicy,
+  eventKind: NotificationPayload["eventKind"] | undefined
+): boolean {
+  if (eventKind === "pickup_ready") return policy.pickupReadyEnabled;
+  if (eventKind === "pickup_reminder") return policy.pickupReminderEnabled;
+  if (eventKind === "delay_follow_up") return policy.delayFollowUpEnabled;
   return true;
 }
 
@@ -887,8 +1151,26 @@ function normalizePrepaidStorageWeeks(value: unknown): number | null {
   return Math.max(1, Math.round(value));
 }
 
+function resolveReservationPickupReminderScheduleMs(
+  coveredStorageMs: number,
+  policy: ReservationNotificationPolicy
+): number[] {
+  if (!policy.pickupReminderEnabled) return [];
+  if (policy.pickupReminderMode === "fixed_hours") {
+    return normalizePositiveHoursList(
+      policy.pickupReminderHours,
+      DEFAULT_RESERVATION_NOTIFICATION_POLICY.pickupReminderHours
+    ).map((hours) => hours * HOUR_MS);
+  }
+  return policy.pickupReminderRatios.map((ratio, index) => {
+    if (index === policy.pickupReminderRatios.length - 1) return coveredStorageMs;
+    return Math.min(coveredStorageMs, Math.round(coveredStorageMs * ratio));
+  });
+}
+
 function resolveReservationStoragePolicy(
-  input: ReservationStoragePolicySnapshot | null | undefined
+  input: ReservationStoragePolicySnapshot | null | undefined,
+  notificationPolicy: ReservationNotificationPolicy = DEFAULT_RESERVATION_NOTIFICATION_POLICY
 ): ReservationStoragePolicy {
   const prepaidStorageRequested = input?.prepaidStorageRequested === true;
   const prepaidStorageWeeks = prepaidStorageRequested
@@ -902,10 +1184,10 @@ function resolveReservationStoragePolicy(
   const coveredStorageMs = prepaidStorageRequested
     ? Math.max(RESERVATION_STORAGE_GRACE_MS, prepaidStorageWindowMs)
     : RESERVATION_STORAGE_GRACE_MS;
-  const reminderScheduleMs = RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS.map((ratio, index) => {
-    if (index === RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS.length - 1) return coveredStorageMs;
-    return Math.min(coveredStorageMs, Math.round(coveredStorageMs * ratio));
-  });
+  const reminderScheduleMs = resolveReservationPickupReminderScheduleMs(
+    coveredStorageMs,
+    notificationPolicy
+  );
 
   return {
     prepaidStorageRequested,
@@ -1220,17 +1502,18 @@ function buildReservationReason(
 
 function suggestedReservationUpdateIso(
   after: ReservationNotificationSnapshot,
-  delayMode: "none" | "initial" | "follow_up"
+  delayMode: "none" | "initial" | "follow_up",
+  policy: ReservationNotificationPolicy = DEFAULT_RESERVATION_NOTIFICATION_POLICY
 ): string | null {
   const anchor = after.estimatedWindow.updatedAt ?? after.updatedAt;
   if (!anchor) return null;
   const baseMs = anchor.toMillis();
   const offsetMs =
     delayMode === "initial"
-      ? RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS
+      ? policy.delayFollowUpInitialHours * HOUR_MS
       : delayMode === "follow_up"
-        ? RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS
-        : 24 * 60 * 60 * 1000;
+        ? policy.delayFollowUpRepeatHours * HOUR_MS
+        : DAY_MS;
   return new Date(baseMs + offsetMs).toISOString();
 }
 
@@ -1324,6 +1607,14 @@ async function enqueueReservationNotificationJob(params: {
       ...baseJob,
       status: "skipped",
       lastError: "PREFS_DISABLED",
+    });
+    return;
+  }
+  if (!shouldNotifyReservationEvent(routing.prefs, params.payload.eventKind)) {
+    await createJob({
+      ...baseJob,
+      status: "skipped",
+      lastError: "RESERVATION_EVENT_PREF_DISABLED",
     });
     return;
   }
@@ -1509,6 +1800,7 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
     }
 
     const routing = await readReservationRouting(uid);
+    const reservationNotificationPolicy = await getReservationNotificationPolicy();
     const updatedAtMs = tsMillis(after.updatedAt) ?? Date.now();
     const updatedAtIso = tsIso(after.updatedAt) ?? new Date(updatedAtMs).toISOString();
 
@@ -1528,7 +1820,11 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
     const pickupWindowEndIso = tsIso(after.pickupWindow.confirmedEnd);
     const delayEpisodeId =
       tsIso(after.estimatedWindow.updatedAt) ?? updatedAtIso;
-    const suggestedInitialDelayIso = suggestedReservationUpdateIso(after, "initial");
+    const suggestedInitialDelayIso = suggestedReservationUpdateIso(
+      after,
+      "initial",
+      reservationNotificationPolicy
+    );
 
     if (
       statusChanged &&
@@ -1557,7 +1853,9 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
           reason,
           estimateWindowLabel,
           suggestedNextUpdateAtIso:
-            after.status === "CANCELLED" ? null : suggestedReservationUpdateIso(after, "none"),
+            after.status === "CANCELLED"
+              ? null
+              : suggestedReservationUpdateIso(after, "none", reservationNotificationPolicy),
           previousWindowStartIso,
           previousWindowEndIso,
           currentWindowStartIso,
@@ -1592,7 +1890,7 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
           suggestedNextUpdateAtIso:
             after.estimatedWindow.slaState === "delayed"
               ? suggestedInitialDelayIso
-              : suggestedReservationUpdateIso(after, "none"),
+              : suggestedReservationUpdateIso(after, "none", reservationNotificationPolicy),
           previousWindowStartIso,
           previousWindowEndIso,
           currentWindowStartIso,
@@ -1601,8 +1899,10 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
         },
       });
 
-      if (after.estimatedWindow.slaState === "delayed") {
-        const baseRunAfter = new Date(Date.now() + RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS);
+      if (after.estimatedWindow.slaState === "delayed" && reservationNotificationPolicy.delayFollowUpEnabled) {
+        const baseRunAfter = new Date(
+          Date.now() + reservationNotificationPolicy.delayFollowUpInitialHours * HOUR_MS
+        );
         const resolvedRunAfter = resolveRunAfter(baseRunAfter, routing.prefs) ?? baseRunAfter;
         const runAfter = Timestamp.fromDate(resolvedRunAfter);
         await enqueueReservationNotificationJob({
@@ -1636,7 +1936,11 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
       }
     }
 
-    if (pickupWindowStatusChanged && after.pickupWindow.status === "open") {
+    if (
+      reservationNotificationPolicy.pickupReminderEnabled &&
+      pickupWindowStatusChanged &&
+      after.pickupWindow.status === "open"
+    ) {
       const readyForPickupAt = after.readyForPickupAt ?? after.updatedAt ?? nowTs();
       await enqueueReservationNotificationJob({
         uid,
@@ -1667,9 +1971,13 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
         },
       });
 
-      if (after.pickupWindow.confirmedEnd) {
+      if (
+        reservationNotificationPolicy.pickupWindowPreExpiryEnabled &&
+        after.pickupWindow.confirmedEnd
+      ) {
         const preExpiryDate = new Date(
-          after.pickupWindow.confirmedEnd.toMillis() - 24 * 60 * 60 * 1000
+          after.pickupWindow.confirmedEnd.toMillis() -
+            reservationNotificationPolicy.pickupWindowPreExpiryHours * HOUR_MS
         );
         if (preExpiryDate.getTime() > Date.now()) {
           const resolvedRunAfter = resolveRunAfter(preExpiryDate, routing.prefs) ?? preExpiryDate;
@@ -1711,34 +2019,39 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
         "Reservation load is complete and ready for pickup planning."
       );
       const readyForPickupAt = after.readyForPickupAt ?? after.updatedAt ?? nowTs();
-      const storagePolicy = resolveReservationStoragePolicy(after.storagePolicy);
-      await enqueueReservationNotificationJob({
-        uid,
-        type: "RESERVATION_READY_PICKUP",
-        routing,
-        payload: {
-          dedupeKey: `RESERVATION_READY_PICKUP:${reservationId}:${updatedAtMs}`,
-          firingId: reservationId,
-          reservationId,
-          reservationStatus: after.status,
-          previousReservationStatus: before.status,
-          reservationLoadStatus: after.loadStatus,
-          previousReservationLoadStatus: before.loadStatus,
-          eventKind: "pickup_ready",
-          reason,
-          storageStatus: "active",
-          previousStorageStatus: currentStorageStatus(before),
-          reminderCount: 0,
-          readyForPickupAtIso: tsIso(readyForPickupAt),
-          policyWindowLabel: pickupReadyPolicyWindowLabel(storagePolicy),
-          estimateWindowLabel,
-          suggestedNextUpdateAtIso: null,
-          previousWindowStartIso,
-          previousWindowEndIso,
-          currentWindowStartIso,
-          currentWindowEndIso,
-        },
-      });
+      const storagePolicy = resolveReservationStoragePolicy(
+        after.storagePolicy,
+        reservationNotificationPolicy
+      );
+      if (reservationNotificationPolicy.pickupReadyEnabled) {
+        await enqueueReservationNotificationJob({
+          uid,
+          type: "RESERVATION_READY_PICKUP",
+          routing,
+          payload: {
+            dedupeKey: `RESERVATION_READY_PICKUP:${reservationId}:${updatedAtMs}`,
+            firingId: reservationId,
+            reservationId,
+            reservationStatus: after.status,
+            previousReservationStatus: before.status,
+            reservationLoadStatus: after.loadStatus,
+            previousReservationLoadStatus: before.loadStatus,
+            eventKind: "pickup_ready",
+            reason,
+            storageStatus: "active",
+            previousStorageStatus: currentStorageStatus(before),
+            reminderCount: 0,
+            readyForPickupAtIso: tsIso(readyForPickupAt),
+            policyWindowLabel: pickupReadyPolicyWindowLabel(storagePolicy),
+            estimateWindowLabel,
+            suggestedNextUpdateAtIso: null,
+            previousWindowStartIso,
+            previousWindowEndIso,
+            currentWindowStartIso,
+            currentWindowEndIso,
+          },
+        });
+      }
 
       const nextHistory = pushStorageNotice(after.storageNoticeHistory, {
         at: nowTs(),
@@ -2823,11 +3136,13 @@ function isReservationJobType(type: NotificationJob["type"]): boolean {
 
 async function scheduleNextReservationDelayFollowUp(
   job: NotificationJob,
-  routing: ReservationNotificationRouting
+  routing: ReservationNotificationRouting,
+  policy: ReservationNotificationPolicy
 ): Promise<void> {
   if (job.type !== "RESERVATION_DELAY_FOLLOW_UP" || job.payload.eventKind !== "delay_follow_up") {
     return;
   }
+  if (!policy.delayFollowUpEnabled) return;
   const reservationId = safeString(job.payload.reservationId).trim();
   if (!reservationId) return;
 
@@ -2852,7 +3167,7 @@ async function scheduleNextReservationDelayFollowUp(
     tsIso(reservation.estimatedWindow.updatedAt) ||
     tsIso(reservation.updatedAt) ||
     String(Date.now());
-  const baseRunAfter = new Date(Date.now() + RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS);
+  const baseRunAfter = new Date(Date.now() + policy.delayFollowUpRepeatHours * HOUR_MS);
   const resolvedRunAfter = resolveRunAfter(baseRunAfter, routing.prefs) ?? baseRunAfter;
   const runAfter = Timestamp.fromDate(resolvedRunAfter);
 
@@ -2966,8 +3281,10 @@ async function processJob(ref: DocumentReference): Promise<void> {
   const errors: string[] = [];
   try {
     let reservationRouting: ReservationNotificationRouting | null = null;
+    let reservationPolicy: ReservationNotificationPolicy | null = null;
     if (isReservationJobType(job.type)) {
       reservationRouting = await readReservationRouting(job.uid);
+      reservationPolicy = await getReservationNotificationPolicy();
       if (!reservationRouting.notifyReservations || !reservationRouting.prefs.enabled) {
         await ref.set(
           {
@@ -2975,6 +3292,26 @@ async function processJob(ref: DocumentReference): Promise<void> {
             lastError: !reservationRouting.notifyReservations
               ? "RESERVATION_PREF_DISABLED"
               : "PREFS_DISABLED",
+          },
+          { merge: true }
+        );
+        return;
+      }
+      if (!shouldNotifyReservationEvent(reservationRouting.prefs, job.payload.eventKind)) {
+        await ref.set(
+          {
+            status: "skipped",
+            lastError: "RESERVATION_EVENT_PREF_DISABLED",
+          },
+          { merge: true }
+        );
+        return;
+      }
+      if (reservationPolicy && !reservationEventEnabledByPolicy(reservationPolicy, job.payload.eventKind)) {
+        await ref.set(
+          {
+            status: "skipped",
+            lastError: "RESERVATION_EVENT_POLICY_DISABLED",
           },
           { merge: true }
         );
@@ -3151,7 +3488,11 @@ async function processJob(ref: DocumentReference): Promise<void> {
     }
 
     if (reservationRouting) {
-      await scheduleNextReservationDelayFollowUp(job, reservationRouting);
+      await scheduleNextReservationDelayFollowUp(
+        job,
+        reservationRouting,
+        reservationPolicy ?? DEFAULT_RESERVATION_NOTIFICATION_POLICY
+      );
     }
 
     await ref.set(
@@ -3269,10 +3610,24 @@ function storageStatusTransitionDetail(
   return "Reservation storage status returned to active.";
 }
 
+function formatDurationHoursLabel(hours: number): string {
+  if (hours % (24 * 7) === 0) {
+    const weeks = Math.round(hours / (24 * 7));
+    return `${weeks} week${weeks === 1 ? "" : "s"}`;
+  }
+  if (hours % 24 === 0) {
+    const days = Math.round(hours / 24);
+    return `${days} day${days === 1 ? "" : "s"}`;
+  }
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
 function pickupReminderReason(
   reminderOrdinal: number,
   storagePolicy: ReservationStoragePolicy
 ): string {
+  const thresholdMs = storagePolicy.reminderScheduleMs[Math.max(0, reminderOrdinal - 1)] ?? 0;
+  const thresholdHours = Math.max(1, Math.round(thresholdMs / HOUR_MS));
   if (reminderOrdinal >= 3) {
     if (storagePolicy.prepaidStorageRequested && storagePolicy.prepaidStorageWeeks) {
       return `Final pickup reminder: your prepaid storage ends at the ${storagePolicy.prepaidStorageWeeks}-week pickup-ready cutoff, and billable storage starts after that.`;
@@ -3281,19 +3636,20 @@ function pickupReminderReason(
   }
   if (reminderOrdinal === 2) {
     if (storagePolicy.prepaidStorageRequested) {
-      return "Second pickup reminder: your prepaid storage hold is active, but billable storage is getting closer.";
+      return `Second pickup reminder: your reservation has been ready for pickup for about ${formatDurationHoursLabel(thresholdHours)}, and billable storage is getting closer.`;
     }
-    return "Second pickup reminder: your reservation is still in the grace window, but storage fees are getting closer.";
+    return `Second pickup reminder: your reservation has been ready for pickup for about ${formatDurationHoursLabel(thresholdHours)}, and storage fees are getting closer.`;
   }
   if (storagePolicy.prepaidStorageRequested) {
-    return "Pickup reminder: your reservation has been ready for pickup for a while and is still inside the prepaid storage window.";
+    return `Pickup reminder: your reservation has been ready for pickup for about ${formatDurationHoursLabel(thresholdHours)} and is still inside the prepaid storage window.`;
   }
-  return "Pickup reminder: your reservation has been ready for pickup for two weeks.";
+  return `Pickup reminder: your reservation has been ready for pickup for about ${formatDurationHoursLabel(thresholdHours)}.`;
 }
 
 export async function runReservationStorageHoldEvaluation(currentNow: Timestamp = nowTs()) {
   const now = currentNow;
   const nowMs = now.toMillis();
+  const reservationNotificationPolicy = await getReservationNotificationPolicy();
   const snap = await db
     .collection("reservations")
     .where("loadStatus", "==", "loaded")
@@ -3330,7 +3686,10 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
       updates.readyForPickupAt = readyAnchor;
     }
 
-    const storagePolicy = resolveReservationStoragePolicy(reservation.storagePolicy);
+    const storagePolicy = resolveReservationStoragePolicy(
+      reservation.storagePolicy,
+      reservationNotificationPolicy
+    );
     const chargeBasisHalfShelves =
       reservation.storageBilling?.chargeBasisHalfShelves && reservation.storageBilling.chargeBasisHalfShelves > 0
         ? reservation.storageBilling.chargeBasisHalfShelves
@@ -3382,28 +3741,30 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
         toStatus: nextStorageStatus,
         reminderCount: nextReminderCount,
       });
-      const routing = await readReservationRouting(uid);
-      await enqueueReservationNotificationJob({
-        uid,
-        type: "RESERVATION_PICKUP_REMINDER",
-        routing,
-        payload: {
-          dedupeKey: `RESERVATION_PICKUP_WINDOW_MISSED:${reservationId}:${pickupWindowEndMs}:${nextMissedCount}`,
-          firingId: reservationId,
-          reservationId,
-          reservationStatus: reservation.status,
-          reservationLoadStatus: reservation.loadStatus,
-          eventKind: "pickup_reminder",
-          reason: missReason,
-          storageStatus: nextStorageStatus,
-          previousStorageStatus,
-          reminderCount: nextReminderCount,
-          readyForPickupAtIso: tsIso(readyAnchor),
-          policyWindowLabel: pickupWindowMissedPolicyLabel(storagePolicy),
-          suggestedNextUpdateAtIso: null,
-        },
-      });
-      reminderJobs += 1;
+      if (reservationNotificationPolicy.pickupReminderEnabled) {
+        const routing = await readReservationRouting(uid);
+        await enqueueReservationNotificationJob({
+          uid,
+          type: "RESERVATION_PICKUP_REMINDER",
+          routing,
+          payload: {
+            dedupeKey: `RESERVATION_PICKUP_WINDOW_MISSED:${reservationId}:${pickupWindowEndMs}:${nextMissedCount}`,
+            firingId: reservationId,
+            reservationId,
+            reservationStatus: reservation.status,
+            reservationLoadStatus: reservation.loadStatus,
+            eventKind: "pickup_reminder",
+            reason: missReason,
+            storageStatus: nextStorageStatus,
+            previousStorageStatus,
+            reminderCount: nextReminderCount,
+            readyForPickupAtIso: tsIso(readyAnchor),
+            policyWindowLabel: pickupWindowMissedPolicyLabel(storagePolicy),
+            suggestedNextUpdateAtIso: null,
+          },
+        });
+        reminderJobs += 1;
+      }
     }
 
     const dueReminderOrdinal = nextDueReminderOrdinal({
@@ -3412,7 +3773,11 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
       reminderScheduleMs: storagePolicy.reminderScheduleMs,
     });
 
-    if (dueReminderOrdinal && !autoMissApplied) {
+    if (
+      reservationNotificationPolicy.pickupReminderEnabled &&
+      dueReminderOrdinal &&
+      !autoMissApplied
+    ) {
       const reason = pickupReminderReason(dueReminderOrdinal, storagePolicy);
       const routing = await readReservationRouting(uid);
       const reminderStatus: ReservationStorageStatus = "reminder_pending";

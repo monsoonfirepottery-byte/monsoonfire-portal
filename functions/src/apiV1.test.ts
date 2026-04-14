@@ -7079,6 +7079,97 @@ test("reservations.pickupWindow records misses without bypassing the storage gra
   assert.equal(data.pickupWindowStatus, "missed");
 });
 
+test("reservations.pickupWindow staff_mark_completed computes crate dwell time from arrival", async () => {
+  const arrivedAtIso = "2026-02-20T18:00:00.000Z";
+  const state: MockDbState = {
+    reservations: {
+      "reservation-pickup-completed": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        arrivedAt: arrivedAtIso,
+        pickupWindow: {
+          status: "confirmed",
+          confirmedStart: "2026-02-21T17:00:00.000Z",
+          confirmedEnd: "2026-02-21T19:00:00.000Z",
+        },
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-completed",
+        action: "staff_mark_completed",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.pickupWindowStatus, "completed");
+  assert.ok(typeof data.crateDwellMs === "number");
+  assert.ok(Number(data.crateDwellMs) >= 0);
+  assert.ok(data.crateCheckedOutAt instanceof Date);
+});
+
+test("reservations.pickupWindow staff_mark_completed replays stored crate dwell metadata once completed", async () => {
+  const checkedOutAtIso = "2026-02-21T19:05:00.000Z";
+  const state: MockDbState = {
+    reservations: {
+      "reservation-pickup-completed-replay": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        arrivedAt: "2026-02-20T18:00:00.000Z",
+        crateDwellMs: 90 * 60 * 1000,
+        crateCheckedOutAt: checkedOutAtIso,
+        pickupWindow: {
+          status: "completed",
+          confirmedStart: "2026-02-21T17:00:00.000Z",
+          confirmedEnd: "2026-02-21T19:00:00.000Z",
+          confirmedAt: "2026-02-21T17:05:00.000Z",
+          completedAt: checkedOutAtIso,
+        },
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-completed-replay",
+        action: "staff_mark_completed",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.idempotentReplay, true);
+  assert.equal(data.pickupWindowStatus, "completed");
+  assert.equal(data.crateDwellMs, 90 * 60 * 1000);
+  assert.equal((data.crateCheckedOutAt as Date).toISOString(), checkedOutAtIso);
+  const reservationRow = state.reservations?.["reservation-pickup-completed-replay"] as Record<string, unknown> | undefined;
+  assert.equal(reservationRow?.crateDwellMs, 90 * 60 * 1000);
+  assert.equal(reservationRow?.crateCheckedOutAt, checkedOutAtIso);
+});
+
 test("reservations.queueFairness records no-show evidence and updates policy penalty", async () => {
   const state: MockDbState = {
     reservations: {
@@ -7210,6 +7301,8 @@ test("reservations.list excludes cancelled by default and includes it when reque
       "reservation-open": {
         ownerUid: "owner-1",
         status: "REQUESTED",
+        crateDwellMs: 5400000,
+        crateCheckedOutAt: "2026-02-21T19:05:00.000Z",
         createdAt: { toMillis: () => 2 },
       },
       "reservation-cancelled": {
@@ -7234,6 +7327,8 @@ test("reservations.list excludes cancelled by default and includes it when reque
   const defaultRows = (((defaultBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
   assert.equal(defaultRows.length, 1);
   assert.equal(defaultRows[0]?.status, "REQUESTED");
+  assert.equal(defaultRows[0]?.crateDwellMs, 5400000);
+  assert.equal((defaultRows[0]?.crateCheckedOutAt as Date).toISOString(), "2026-02-21T19:05:00.000Z");
 
   const includeCancelledList = await invokeApiV1Route(
     state,
@@ -7596,6 +7691,11 @@ test("reservations.checkIn allows owner check-in by reservation id", async () =>
   const body = response.body as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.arrivalStatus, "arrived");
+  assert.equal(data.crateDwellMs, 0);
+  assert.equal(data.crateCheckedOutAt, null);
+  const reservationRow = state.reservations?.["reservation-checkin-owner"] as Record<string, unknown> | undefined;
+  assert.equal(reservationRow?.crateDwellMs, 0);
+  assert.equal(reservationRow?.crateCheckedOutAt, null);
 });
 
 test("reservations.checkIn rejects non-owner non-staff caller", async () => {
@@ -7699,6 +7799,169 @@ test("reservations.rotateArrivalToken returns forbidden for authenticated non-st
   assert.equal(event?.reasonCode, "FORBIDDEN");
   assert.equal(event?.result, "deny");
   assert.equal(event?.requestId, body.requestId);
+});
+
+test("notifications.reservationPolicy.get returns the default policy for staff when no doc exists", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.get",
+      body: {},
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as {
+    ok: boolean;
+    data: {
+      policy: {
+        pickupReadyEnabled: boolean;
+        pickupReminderEnabled: boolean;
+        pickupReminderMode: string;
+        pickupReminderHours: number[];
+        pickupWindowPreExpiryEnabled: boolean;
+        pickupWindowPreExpiryHours: number;
+        delayFollowUpEnabled: boolean;
+        delayFollowUpInitialHours: number;
+        delayFollowUpRepeatHours: number;
+        note: string | null;
+        updatedAtMs: number;
+        updatedByUid: string | null;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data.policy, {
+    pickupReadyEnabled: true,
+    pickupReminderEnabled: true,
+    pickupReminderMode: "storage_window_ratio",
+    pickupReminderHours: [336, 420, 462],
+    pickupWindowPreExpiryEnabled: true,
+    pickupWindowPreExpiryHours: 24,
+    delayFollowUpEnabled: true,
+    delayFollowUpInitialHours: 12,
+    delayFollowUpRepeatHours: 24,
+    note: null,
+    updatedAtMs: 0,
+    updatedByUid: null,
+  });
+});
+
+test("notifications.reservationPolicy.get rejects unauthenticated callers", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.get",
+      body: {},
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "FORBIDDEN");
+  assert.equal(body.message, "Only staff can manage notification policy.");
+});
+
+test("notifications.reservationPolicy.set rejects authenticated non-staff callers", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.set",
+      body: {
+        pickupReminderEnabled: false,
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+      authClaims: { uid: "owner-1", staff: false },
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "FORBIDDEN");
+  assert.equal(body.message, "Only staff can manage notification policy.");
+});
+
+test("notifications.reservationPolicy.set validates payloads and persists staff updates", async () => {
+  const invalidResponse = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.set",
+      body: {},
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(invalidResponse.status, 400);
+  const invalidBody = invalidResponse.body as Record<string, unknown>;
+  assert.equal(invalidBody.code, "INVALID_ARGUMENT");
+  assert.equal(invalidBody.message, "Provide at least one reservation notification policy field.");
+
+  const state: MockDbState = {};
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/notifications.reservationPolicy.set",
+      body: {
+        pickupReminderEnabled: true,
+        pickupReminderMode: "fixed_hours",
+        pickupReminderHours: [168],
+        pickupWindowPreExpiryEnabled: true,
+        pickupWindowPreExpiryHours: 24,
+        delayFollowUpEnabled: true,
+        delayFollowUpInitialHours: 12,
+        delayFollowUpRepeatHours: 24,
+        note: "One-week pickup reminder rollout",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as {
+    ok: boolean;
+    data: {
+      policy: {
+        pickupReminderMode: string;
+        pickupReminderHours: number[];
+        note: string | null;
+        updatedAtMs: number;
+        updatedByUid: string | null;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.policy.pickupReminderMode, "fixed_hours");
+  assert.deepEqual(body.data.policy.pickupReminderHours, [168]);
+  assert.equal(body.data.policy.note, "One-week pickup reminder rollout");
+  assert.equal(body.data.policy.updatedByUid, "staff-1");
+  assert.equal(typeof body.data.policy.updatedAtMs, "number");
+  assert.ok(body.data.policy.updatedAtMs > 0);
+
+  const storedPolicy = state.notificationSettings?.reservationPolicy as Record<string, unknown> | undefined;
+  assert.ok(storedPolicy);
+  assert.equal(storedPolicy.pickupReadyEnabled, true);
+  assert.equal(storedPolicy.pickupReminderEnabled, true);
+  assert.equal(storedPolicy.pickupReminderMode, "fixed_hours");
+  assert.deepEqual(storedPolicy.pickupReminderHours, [168]);
+  assert.equal(storedPolicy.pickupWindowPreExpiryEnabled, true);
+  assert.equal(storedPolicy.pickupWindowPreExpiryHours, 24);
+  assert.equal(storedPolicy.delayFollowUpEnabled, true);
+  assert.equal(storedPolicy.delayFollowUpInitialHours, 12);
+  assert.equal(storedPolicy.delayFollowUpRepeatHours, 24);
+  assert.equal(storedPolicy.note, "One-week pickup reminder rollout");
+  assert.equal(storedPolicy.updatedByUid, "staff-1");
+  assert.ok(storedPolicy.updatedAt);
+  assert.ok(storedPolicy.createdAt);
 });
 
 test("support.requests.create stores policy resolution metadata when provided", async () => {

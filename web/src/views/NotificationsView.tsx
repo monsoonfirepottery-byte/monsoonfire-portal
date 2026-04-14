@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import { Timestamp, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { createFunctionsClient } from "../api/functionsClient";
+import GuidedStateCard from "../components/GuidedStateCard";
 import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
@@ -411,13 +412,28 @@ export default function NotificationsView({
 
       <div className="notifications-list">
         {notifications.length === 0 ? (
-          <div className="card card-3d empty-state">No notifications yet.</div>
+          <GuidedStateCard
+            eyebrow="Notifications"
+            title="No notifications yet"
+            body="This is where pickup readiness, queue changes, and other studio alerts will appear once something needs your attention."
+            className="card card-3d empty-state"
+          />
         ) : visibleNotifications.length === 0 ? (
-          <div className="card card-3d empty-state">
-            {readFilter === "inbox"
-              ? "You're caught up. Switch to All to review earlier notifications."
-              : "No notifications yet."}
-          </div>
+          <GuidedStateCard
+            eyebrow="Notifications"
+            title={readFilter === "inbox" ? "You're caught up" : "No notifications yet"}
+            body={
+              readFilter === "inbox"
+                ? "Switch to All to review earlier notifications, or come back here when the studio posts the next update."
+                : "This feed will start filling once the studio sends you updates."
+            }
+            actions={
+              readFilter === "inbox"
+                ? [{ label: "Open all notifications", onClick: () => setReadFilter("all"), variant: "ghost" }]
+                : []
+            }
+            className="card card-3d empty-state"
+          />
         ) : (
           visibleNotifications.map((item) => {
             const createdAt = coerceDate(item.createdAt);

@@ -74,6 +74,10 @@ import {
   StudioReservationError,
 } from "./studioReservations";
 import { buildKilnTimeline } from "./kilnTimeline";
+import {
+  getReservationNotificationPolicy,
+  setReservationNotificationPolicy,
+} from "./notifications";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -1158,6 +1162,42 @@ const notificationsMarkReadSchema = z.object({
   notificationId: z.string().min(1).max(240).trim(),
   ownerUid: z.string().min(1).optional().nullable(),
 });
+
+const reservationNotificationPolicyGetSchema = z.object({});
+
+const reservationNotificationPolicySetSchema = z
+  .object({
+    pickupReadyEnabled: z.boolean().optional(),
+    pickupReminderEnabled: z.boolean().optional(),
+    pickupReminderMode: z.enum(["storage_window_ratio", "fixed_hours"]).optional(),
+    pickupReminderHours: z.array(z.number().int().min(1).max(24 * 60)).min(1).max(12).optional(),
+    pickupWindowPreExpiryEnabled: z.boolean().optional(),
+    pickupWindowPreExpiryHours: z.number().int().min(1).max(24 * 14).optional(),
+    delayFollowUpEnabled: z.boolean().optional(),
+    delayFollowUpInitialHours: z.number().int().min(1).max(24 * 30).optional(),
+    delayFollowUpRepeatHours: z.number().int().min(1).max(24 * 30).optional(),
+    note: z.string().max(300).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      typeof value.pickupReadyEnabled !== "boolean" &&
+      typeof value.pickupReminderEnabled !== "boolean" &&
+      value.pickupReminderMode === undefined &&
+      !Array.isArray(value.pickupReminderHours) &&
+      typeof value.pickupWindowPreExpiryEnabled !== "boolean" &&
+      typeof value.pickupWindowPreExpiryHours !== "number" &&
+      typeof value.delayFollowUpEnabled !== "boolean" &&
+      typeof value.delayFollowUpInitialHours !== "number" &&
+      typeof value.delayFollowUpRepeatHours !== "number" &&
+      value.note === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide at least one reservation notification policy field.",
+      });
+    }
+  });
 
 const reservationsLookupArrivalSchema = z.object({
   arrivalToken: z.string().min(4).max(120).trim(),
@@ -2299,6 +2339,8 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     archivedAt: parseReservationIsoDate(row.archivedAt),
     arrivalStatus: safeString(row.arrivalStatus) || null,
     arrivedAt: parseReservationIsoDate(row.arrivedAt),
+    crateDwellMs: readFiniteNumberOrNull(row.crateDwellMs),
+    crateCheckedOutAt: parseReservationIsoDate(row.crateCheckedOutAt),
     arrivalToken: safeString(row.arrivalToken) || null,
     arrivalTokenIssuedAt: parseReservationIsoDate(row.arrivalTokenIssuedAt),
     arrivalTokenExpiresAt: parseReservationIsoDate(row.arrivalTokenExpiresAt),
@@ -2459,6 +2501,8 @@ const LIBRARY_ROUTE_ROLLOUT_SET = "/v1/library.rollout.set";
 const LIBRARY_ROUTE_STAFF_DASHBOARD = "/v1/library.staff.dashboard";
 const LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE = "/v1/library.coverReviews.reconcile";
 const LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN = "/v1/library.metadata.enrichment.run";
+const RESERVATION_NOTIFICATION_POLICY_GET_ROUTE = "/v1/notifications.reservationPolicy.get";
+const RESERVATION_NOTIFICATION_POLICY_SET_ROUTE = "/v1/notifications.reservationPolicy.set";
 const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.catalog": "catalog:read",
   "/v1/agent.quote": "quote:write",
@@ -2522,6 +2566,8 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/library.loans.assessReplacementFee": null,
   "/v1/library.items.overrideStatus": null,
   "/v1/notifications.markRead": null,
+  [RESERVATION_NOTIFICATION_POLICY_GET_ROUTE]: null,
+  [RESERVATION_NOTIFICATION_POLICY_SET_ROUTE]: null,
   "/v1/studioReservations.listSpaces": "studioReservations:read",
   "/v1/studioReservations.listCalendar": "studioReservations:read",
   "/v1/studioReservations.listMine": "studioReservations:read",
@@ -2562,6 +2608,8 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.list",
   "/v1/reservations.exportContinuity",
   "/v1/notifications.markRead",
+  RESERVATION_NOTIFICATION_POLICY_GET_ROUTE,
+  RESERVATION_NOTIFICATION_POLICY_SET_ROUTE,
   "/v1/studioReservations.listSpaces",
   "/v1/studioReservations.listCalendar",
   "/v1/studioReservations.listMine",
@@ -2676,6 +2724,10 @@ const LIBRARY_V1_ALLOWED_BY_ROLLOUT_PHASE: Record<LibraryRolloutPhase, ReadonlyS
   phase_2_member_writes: LIBRARY_V1_PHASE_2_ALLOWED_ROUTES,
   phase_3_admin_full: LIBRARY_V1_PHASE_3_ALLOWED_ROUTES,
 };
+const RESERVATION_NOTIFICATION_POLICY_ROUTES = new Set<string>([
+  RESERVATION_NOTIFICATION_POLICY_GET_ROUTE,
+  RESERVATION_NOTIFICATION_POLICY_SET_ROUTE,
+]);
 
 function requiredLibraryRolloutPhaseForRoute(route: string): LibraryRolloutPhase | null {
   if (LIBRARY_V1_MEMBER_WRITE_ROUTES.has(route)) return "phase_2_member_writes";
@@ -4604,6 +4656,14 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
     }
   }
 
+  if (RESERVATION_NOTIFICATION_POLICY_ROUTES.has(route) && !isStaff) {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can manage notification policy.");
+      return;
+    }
+  }
+
   const rateLimit =
     route === "/v1/events.feed"
       ? { max: 600, windowMs: 60_000 }
@@ -5554,6 +5614,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         lastReminderFailureAt: null,
         storageNoticeHistory: [],
         storageBilling: toReservationStorageBillingWrite(storageBillingSeed),
+        crateDwellMs: null,
+        crateCheckedOutAt: null,
         isArchived: false,
         archivedAt: null,
         createdByUid: ctx.uid,
@@ -5896,6 +5958,84 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         notificationId,
         readAt,
       });
+      return;
+    }
+
+    if (route === RESERVATION_NOTIFICATION_POLICY_GET_ROUTE) {
+      const parsed = parseBody(reservationNotificationPolicyGetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      try {
+        const policy = await getReservationNotificationPolicy();
+        jsonOk(res, requestId, {
+          policy: {
+            pickupReadyEnabled: policy.pickupReadyEnabled,
+            pickupReminderEnabled: policy.pickupReminderEnabled,
+            pickupReminderMode: policy.pickupReminderMode,
+            pickupReminderHours: policy.pickupReminderHours,
+            pickupWindowPreExpiryEnabled: policy.pickupWindowPreExpiryEnabled,
+            pickupWindowPreExpiryHours: policy.pickupWindowPreExpiryHours,
+            delayFollowUpEnabled: policy.delayFollowUpEnabled,
+            delayFollowUpInitialHours: policy.delayFollowUpInitialHours,
+            delayFollowUpRepeatHours: policy.delayFollowUpRepeatHours,
+            note: policy.note,
+            updatedAtMs: policy.updatedAtMs,
+            updatedByUid: policy.updatedByUid,
+          },
+        });
+      } catch (error: unknown) {
+        jsonError(res, requestId, 500, "INTERNAL", "Failed to load reservation notification policy", {
+          message: safeErrorMessage(error),
+        });
+      }
+      return;
+    }
+
+    if (route === RESERVATION_NOTIFICATION_POLICY_SET_ROUTE) {
+      const parsed = parseBody(reservationNotificationPolicySetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      try {
+        const policy = await setReservationNotificationPolicy({
+          pickupReadyEnabled: parsed.data.pickupReadyEnabled,
+          pickupReminderEnabled: parsed.data.pickupReminderEnabled,
+          pickupReminderMode: parsed.data.pickupReminderMode,
+          pickupReminderHours: parsed.data.pickupReminderHours,
+          pickupWindowPreExpiryEnabled: parsed.data.pickupWindowPreExpiryEnabled,
+          pickupWindowPreExpiryHours: parsed.data.pickupWindowPreExpiryHours,
+          delayFollowUpEnabled: parsed.data.delayFollowUpEnabled,
+          delayFollowUpInitialHours: parsed.data.delayFollowUpInitialHours,
+          delayFollowUpRepeatHours: parsed.data.delayFollowUpRepeatHours,
+          note: parsed.data.note ?? null,
+          updatedByUid: ctx.uid,
+        });
+        jsonOk(res, requestId, {
+          policy: {
+            pickupReadyEnabled: policy.pickupReadyEnabled,
+            pickupReminderEnabled: policy.pickupReminderEnabled,
+            pickupReminderMode: policy.pickupReminderMode,
+            pickupReminderHours: policy.pickupReminderHours,
+            pickupWindowPreExpiryEnabled: policy.pickupWindowPreExpiryEnabled,
+            pickupWindowPreExpiryHours: policy.pickupWindowPreExpiryHours,
+            delayFollowUpEnabled: policy.delayFollowUpEnabled,
+            delayFollowUpInitialHours: policy.delayFollowUpInitialHours,
+            delayFollowUpRepeatHours: policy.delayFollowUpRepeatHours,
+            note: policy.note,
+            updatedAtMs: policy.updatedAtMs,
+            updatedByUid: policy.updatedByUid,
+          },
+        });
+      } catch (error: unknown) {
+        jsonError(res, requestId, 500, "INTERNAL", "Failed to update reservation notification policy", {
+          message: safeErrorMessage(error),
+        });
+      }
       return;
     }
 
@@ -6496,6 +6636,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         {
           arrivalStatus: "arrived",
           arrivedAt: row.arrivedAt ?? now,
+          crateDwellMs: 0,
+          crateCheckedOutAt: null,
           arrivalCheckIns: [...existingArrivalChecks, arrivalCheckRecord].slice(-40),
           stageHistory: stageHistory.slice(-120),
           stageStatus: {
@@ -6518,6 +6660,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         reservationId,
         arrivalStatus: "arrived",
         arrivedAt: row.arrivedAt ?? now,
+        crateDwellMs: 0,
+        crateCheckedOutAt: null,
         idempotentReplay: alreadyArrived && !note && !photoUrl && !photoPath,
       });
       return;
@@ -6791,6 +6935,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
           const pickupWindow = normalizeReservationPickupWindow(row.pickupWindow);
           const storageHistory = normalizeReservationStorageNoticeHistory(row.storageNoticeHistory);
+          const storedCrateDwellMs = readFiniteNumberOrNull(row.crateDwellMs);
+          const storedCrateCheckedOutAt = parseReservationIsoDate(row.crateCheckedOutAt);
           const updates: Record<string, unknown> = { updatedAt: now };
           let storageHistoryNext = [...storageHistory];
           let storageStatus = normalizeReservationStorageStatus(row.storageStatus) ?? "active";
@@ -6908,10 +7054,24 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
               storageStatus
             );
           } else if (action === "staff_mark_completed") {
+            if (pickupWindow.status === "completed" && !force) {
+              return {
+                reservationId,
+                pickupWindow,
+                storageStatus,
+                crateDwellMs: storedCrateDwellMs,
+                crateCheckedOutAt: storedCrateCheckedOutAt,
+                idempotentReplay: true,
+              };
+            }
+
             pickupWindow.status = "completed";
             pickupWindow.completedAt = nowDate;
             pickupWindow.confirmedAt = pickupWindow.confirmedAt ?? nowDate;
             transitionReason = "pickup_window_completed";
+            const arrivedAtMs = readTimestampLikeMs(row.arrivedAt);
+            updates.crateDwellMs = arrivedAtMs > 0 ? Math.max(0, nowDate.getTime() - arrivedAtMs) : null;
+            updates.crateCheckedOutAt = now;
             storageStatus = "active";
             updates.storageStatus = storageStatus;
             updates.readyForPickupAt = null;
@@ -6965,6 +7125,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             reservationId,
             pickupWindow,
             storageStatus,
+            crateDwellMs: readFiniteNumberOrNull(updates.crateDwellMs) ?? storedCrateDwellMs,
+            crateCheckedOutAt: parseReservationIsoDate(updates.crateCheckedOutAt) ?? storedCrateCheckedOutAt,
             idempotentReplay,
           };
         });
@@ -6986,6 +7148,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             lastRescheduleRequestedAt: out.pickupWindow.lastRescheduleRequestedAt,
           },
           storageStatus: out.storageStatus,
+          crateDwellMs: out.crateDwellMs ?? null,
+          crateCheckedOutAt: out.crateCheckedOutAt ?? null,
           idempotentReplay: out.idempotentReplay,
         });
       } catch (error: unknown) {

@@ -304,6 +304,52 @@ export type ControlTowerStartupScorecard = {
   recommendations: string[];
 };
 
+export type ControlTowerMemoryHealth = {
+  severity: ControlTowerSeverity;
+  summary: string;
+  highlights: string[];
+  coverage: {
+    rowsWithLattice: number;
+    totalRows: number;
+    ratio: number | null;
+  };
+  reviewBacklog: {
+    reviewNow: number;
+    revalidate: number;
+    resolveConflict: number;
+    retire: number;
+    folkloreRiskHigh: number;
+  };
+  conflictBacklog: {
+    contestedRows: number;
+    hardConflicts: number;
+    quarantinedRows: number;
+    conflictRecords: number;
+    retrievalShadowedRows: number;
+  };
+  startupReadiness: {
+    startupEligibleRows: number;
+    trustedStartupRows: number;
+    handoffRows: number;
+    checkpointRows: number;
+    fallbackRiskRows: number;
+  };
+  secretExposureFindings: {
+    totalRows: number;
+    redactedRows: number;
+    requiresReviewRows: number;
+    canonicalBlockedRows: number;
+    quarantinedRows: number;
+  };
+  shadowMcpFindings: {
+    totalRows: number;
+    governedRows: number;
+    ungovernedRows: number;
+    reviewRows: number;
+    highRiskRows: number;
+  };
+};
+
 export type ControlTowerRoomSummary = {
   id: string;
   name: string;
@@ -377,6 +423,7 @@ export type ControlTowerState = {
   approvals: ControlTowerApprovalItem[];
   memoryBrief: ControlTowerMemoryBrief;
   startupScorecard: ControlTowerStartupScorecard | null;
+  memoryHealth: ControlTowerMemoryHealth | null;
   events: ControlTowerEvent[];
   recentChanges: ControlTowerEvent[];
   actions: ControlTowerNextAction[];

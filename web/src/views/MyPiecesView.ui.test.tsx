@@ -552,6 +552,8 @@ describe("MyPiecesView permission resiliency", () => {
     renderMyPieces(user);
 
     await screen.findByText("Pieces in progress");
+    expect(screen.getAllByText(/Latest update:/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Next step: bisque firing/i)).toBeDefined();
     expect(screen.getByText("Needs rating")).toBeDefined();
     expect(screen.getByText("History")).toBeDefined();
     expect(

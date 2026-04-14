@@ -13,6 +13,7 @@ import { db } from "../firebase";
 import type { Announcement, DirectMessage, DirectMessageThread, LiveUser } from "../types/messaging";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import RevealCard from "../components/RevealCard";
+import GuidedStateCard from "../components/GuidedStateCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { trackedAddDoc, trackedGetDocs, trackedSetDoc, trackedUpdateDoc } from "../lib/firestoreTelemetry";
 
@@ -833,24 +834,53 @@ export default function MessagesView({
           <article className="announcement-preview card card-3d" data-testid="selected-announcement-preview">
             <div className="announcement-title">{selectedAnnouncement.title || "Studio update"}</div>
             <div className="announcement-meta">{formatMaybeTimestamp(selectedAnnouncement.createdAt)}</div>
-            <div className="announcement-body">{selectedAnnouncement.body || "Details coming soon."}</div>
+            <div className="announcement-body">
+              {selectedAnnouncement.body ||
+                "This notice was published without extra detail. Keep this thread open for direct follow-up if you need anything clarified."}
+            </div>
             {selectedAnnouncement.ctaLabel ? (
               <div className="announcement-cta">{selectedAnnouncement.ctaLabel}</div>
             ) : null}
           </article>
         ) : null}
         {announcementsLoading ? (
-          <div className="empty-state">Loading announcements...</div>
+          <GuidedStateCard
+            eyebrow="Studio announcements"
+            title="Loading studio announcements"
+            body="We are pulling the latest studio-wide notices for this inbox."
+            className="empty-state"
+          />
         ) : announcements.length === 0 ? (
-          <div className="empty-state">No announcements yet.</div>
+          <GuidedStateCard
+            eyebrow="Studio announcements"
+            title="No studio announcements yet"
+            body="Keep using direct messages for one-to-one questions. Studio-wide notices will appear here when they are published."
+            className="empty-state"
+          />
         ) : visibleAnnouncements.length === 0 ? (
-          <div className="empty-state">
-            {readFilter === "inbox"
-              ? selectedAnnouncementHiddenFromInbox
-                ? "Inbox cleared. You're reviewing a previously read studio update."
-                : "You're caught up on studio updates. Switch to All to review earlier posts."
-              : "No announcements yet."}
-          </div>
+          <GuidedStateCard
+            eyebrow="Studio announcements"
+            title={
+              readFilter === "inbox"
+                ? selectedAnnouncementHiddenFromInbox
+                  ? "Inbox cleared"
+                  : "You are caught up on studio updates"
+                : "No announcements yet"
+            }
+            body={
+              readFilter === "inbox"
+                ? selectedAnnouncementHiddenFromInbox
+                  ? "You are reviewing a previously read studio update. Switch to All when you want to revisit the full announcement history."
+                  : "Switch to All to review earlier posts, or stay in Inbox for only the updates that still need your attention."
+                : "Studio-wide notices will appear here when they are published."
+            }
+            actions={
+              readFilter === "inbox"
+                ? [{ label: "Open all announcements", onClick: () => setReadFilter("all"), variant: "ghost" }]
+                : []
+            }
+            className="empty-state"
+          />
         ) : (
           <div className="announcements-list">
             {visibleAnnouncements.map((announcement) => {
@@ -878,7 +908,10 @@ export default function MessagesView({
                     </div>
                     {unread ? <span className="notif-dot" /> : null}
                   </div>
-                  <div className="announcement-body">{announcement.body || "Details coming soon."}</div>
+                  <div className="announcement-body">
+                    {announcement.body ||
+                      "Open this announcement for the full context and any follow-up direction from the studio."}
+                  </div>
                   {isSelected && announcement.ctaLabel ? (
                     <div className="announcement-cta">{announcement.ctaLabel}</div>
                   ) : null}

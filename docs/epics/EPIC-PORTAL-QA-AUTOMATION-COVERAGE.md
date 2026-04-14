@@ -16,6 +16,7 @@ Close recurring QA gaps by automating functional, authz, index, theme-readabilit
 - Add dedicated theme contrast regression automation.
 - Add post-deploy promotion gate after production deploy.
 - Add fixture steward automation with TTL cleanup.
+- Add live-surface trust guards for portal handoff parity, stale public signals, and placeholder regressions.
 
 ## Success Criteria
 
@@ -28,3 +29,16 @@ Close recurring QA gaps by automating functional, authz, index, theme-readabilit
 - Replacing human exploratory QA.
 - Auto-merging code changes.
 - Auto-deploying index changes without review.
+
+## Audit Follow-up Backlog (2026-04-14)
+
+The live-surface audit surfaced a set of trust leaks that should become deterministic regression guards instead of recurring manual review items:
+
+1. legacy portal host links must fail CI and scheduled smoke
+2. stale or missing freshness states on public operational surfaces should be detectable
+3. generic placeholder copy should not appear in member-critical portal routes
+4. portal route semantics should continue to distinguish Ware Check-in intent from generic reservations
+
+## Child Tickets
+
+- `tickets/P1-live-surface-trust-automation-and-parity-guards.md`

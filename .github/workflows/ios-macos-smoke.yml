@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Prepare report paths
         run: |
@@ -75,7 +75,7 @@ jobs:
 
       - name: Upload iOS smoke artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-smoke-artifacts
           path: artifacts/

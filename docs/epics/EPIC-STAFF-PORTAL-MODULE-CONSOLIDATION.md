@@ -88,6 +88,16 @@ Reduce staff portal operator friction by consolidating duplicated module surface
 - Keep standalone `Reports` route available during transition.
 - Follow with Phase 2 anchor navigation to reduce scan cost.
 
+## Related Audit Follow-up Backlog (2026-04-14)
+
+The live-surface audit added adjacent portal-clarity work that should stay aligned with this consolidation epic even though the parent ownership is broader than staff-only IA:
+
+1. `tickets/P1-portal-member-start-surface-and-task-first-navigation.md`
+2. `tickets/P1-portal-ware-check-in-queue-status-and-piece-journey-clarity.md`
+3. `tickets/P2-production-placeholder-route-replacement-and-guided-fallbacks.md`
+
+These follow-ups should preserve Cockpit consolidation work instead of reintroducing duplicate navigation paths.
+
 ## Agent Handoff Notes
 
 - Treat this epic as a consolidation sequence, not a visual redesign rewrite.

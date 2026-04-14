@@ -28,7 +28,12 @@ import type {
   MemoryThreadMetadataScrubResult,
   MemoryContextRequest,
   MemoryContextResult,
+  MemoryAuthorityClass,
+  MemoryCategory,
+  MemoryConflictSeverity,
   MemoryImportResult,
+  MemoryFreshnessStatus,
+  MemoryLatticeSnapshot,
   MemoryLoopFeedbackStatsReport,
   MemoryLoopFeedbackStatsRequest,
   MemoryLoopActionPriority,
@@ -46,16 +51,24 @@ import type {
   MemoryLoopsRequest,
   MemoryLoopsResult,
   MemoryRecord,
+  MemoryRedactionState,
   MemoryRecentRequest,
   MemoryLayer,
   MemoryLoopLane,
   MemoryLoopState,
+  MemoryOperationalStatus,
+  MemoryEvidence,
+  MemoryReviewAction,
   MemorySearchRequest,
   MemorySearchResult,
+  MemorySourceClass,
   MemoryStats,
   MemoryStatsRequest,
   MemoryStatus,
+  MemoryTransitionEvent,
   MemoryType,
+  MemoryTruthStatus,
+  MemoryUseMode,
   RetrievalMode,
 } from "./contracts";
 import {
@@ -91,6 +104,7 @@ const SENSITIVE_TOKEN_COMPONENT_PATTERN = /(^|_)(token|jwt|bearer|access|refresh
 const SAFE_TOKEN_COMPONENT_PATTERN = /(^|_)(topic_tokens|participant_tokens|token_count|tokens_count|structure_signal_count)($|_)/i;
 const SAFE_METADATA_POINTER_KEY_PATTERN =
   /^(corpus_record_id|corpus_source_unit_id|chunk_id|source_client_request_id|source_client_request_ids)$/;
+const SAFE_CONTROL_METADATA_KEY_PATTERN = /^(secret_exposure|shadow_mcp_risk|redaction_state|mcp_governance)$/;
 const SOURCE_CONFIDENCE_DEFAULT = 0.5;
 const SOURCE_CONFIDENCE_BY_SOURCE: Record<string, number> = {
   "user-direct": 0.98,
@@ -109,6 +123,12 @@ const URL_PATTERN = /\bhttps?:\/\/[^\s)>"']+/gi;
 const TICKET_PATTERN = /\b(?:[A-Z]{2,10}-\d{1,8}|INC\d{4,10}|SR-\d{3,10}|BUG-\d{3,10}|#\d{2,8})\b/g;
 const MESSAGE_ID_PATTERN = /<[^>]+>/g;
 const DATE_PATTERN = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/g;
+const PRIVATE_KEY_BLOCK_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/gi;
+const BEARER_SECRET_PATTERN = /\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi;
+const JWT_SECRET_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}\.[A-Za-z0-9._-]{8,}\b/g;
+const OPENAI_KEY_PATTERN = /\bsk-[A-Za-z0-9]{16,}\b/g;
+const SECRET_ASSIGNMENT_PATTERN =
+  /\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|id[-_ ]?token|bearer token|authorization|password|session cookie)\b\s*[:=]\s*([^\s,;]+)/gi;
 const GRAPH_RELATION_LIMIT = 64;
 const ENTITY_INDEX_LIMIT = 96;
 const MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"] as const;
@@ -117,6 +137,20 @@ const MEMORY_SERVICE_REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const MEMORY_CONSOLIDATION_CONNECTION_SOURCE = "memory-consolidation-connection";
 const MEMORY_CONSOLIDATION_PROMOTION_CANDIDATE_SOURCE = "memory-consolidation-promotion-candidate";
 const MEMORY_CONSOLIDATION_PROMOTED_SOURCE = "memory-consolidation-promoted";
+const MEMORY_LATTICE_REVIEW_DAYS: Record<MemoryCategory, number> = {
+  observation: 14,
+  fact: 90,
+  decision: 180,
+  guardrail: 180,
+  preference: 120,
+  "known-bug": 21,
+  workaround: 14,
+  hypothesis: 21,
+  procedure: 90,
+  "derived-insight": 45,
+  "legacy-lore": 30,
+  "conflict-record": 14,
+};
 
 type DerivedEdge = {
   targetId: string;
@@ -411,6 +445,7 @@ function shouldRedactMetadataKey(key: string): boolean {
   const normalized = toNormalizedMetadataKey(key);
   if (!normalized) return false;
   if (SAFE_METADATA_POINTER_KEY_PATTERN.test(normalized)) return false;
+  if (SAFE_CONTROL_METADATA_KEY_PATTERN.test(normalized)) return false;
   if (SENSITIVE_KEY_PATTERN.test(normalized)) return true;
   if (SAFE_TOKEN_COMPONENT_PATTERN.test(normalized)) return false;
   if (SENSITIVE_TOKEN_COMPONENT_PATTERN.test(normalized)) return true;
@@ -2291,6 +2326,13 @@ function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function parseNullableDate(value: unknown): string | null {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 function looksLikeStartupPlaceholderText(value: unknown): boolean {
   const normalized = normalizeText(value).toLowerCase();
   return Boolean(normalized) && (normalized.includes("[startup-context]") || normalized === "startup-context");
@@ -3236,6 +3278,9 @@ function deriveSignalIndex(payload: {
   for (const relatedId of readStringValues(metadata.relatedMemoryIds, 32)) {
     appendEdge(edges, edgeSeen, payload.memoryId, relatedId, "related", 0.82, { via: "relatedMemoryIds" });
   }
+  for (const conflictingId of readStringValues(metadata.conflictingMemoryIds || metadata.conflictsWith, 24)) {
+    appendEdge(edges, edgeSeen, payload.memoryId, conflictingId, "contradicts", 0.94, { via: "conflictingMemoryIds" });
+  }
   for (const parentId of readStringValues(metadata.parentMemoryId || metadata.parentId, 8)) {
     appendEdge(edges, edgeSeen, payload.memoryId, parentId, "parent", 0.88, { via: "parent" });
   }
@@ -3597,6 +3642,1425 @@ function normalizeMemoryType(value: unknown): MemoryType {
   return "episodic";
 }
 
+function normalizeMemoryCategory(value: unknown): MemoryCategory | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "observation" ||
+    raw === "fact" ||
+    raw === "decision" ||
+    raw === "guardrail" ||
+    raw === "preference" ||
+    raw === "known-bug" ||
+    raw === "workaround" ||
+    raw === "hypothesis" ||
+    raw === "procedure" ||
+    raw === "derived-insight" ||
+    raw === "legacy-lore" ||
+    raw === "conflict-record"
+  ) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryTruthStatus(value: unknown): MemoryTruthStatus | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "observed" ||
+    raw === "inferred" ||
+    raw === "proposed" ||
+    raw === "verified" ||
+    raw === "trusted" ||
+    raw === "contradicted"
+  ) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryFreshnessStatus(value: unknown): MemoryFreshnessStatus | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "fresh" || raw === "aging" || raw === "revalidation-required" || raw === "stale") {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryOperationalStatus(value: unknown): MemoryOperationalStatus | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "active" ||
+    raw === "cooling" ||
+    raw === "quarantined" ||
+    raw === "deprecated" ||
+    raw === "archived" ||
+    raw === "retired"
+  ) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryAuthorityClass(value: unknown): MemoryAuthorityClass | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "a0-live" ||
+    raw === "a1-repo" ||
+    raw === "a2-policy" ||
+    raw === "a3-telemetry" ||
+    raw === "a4-derived" ||
+    raw === "a5-inferred"
+  ) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemorySourceClass(value: unknown): MemorySourceClass | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "live-check" ||
+    raw === "repo-file" ||
+    raw === "policy" ||
+    raw === "telemetry" ||
+    raw === "human" ||
+    raw === "derived" ||
+    raw === "mcp-tool" ||
+    raw === "runtime-artifact" ||
+    raw === "external-doc"
+  ) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryRedactionState(value: unknown): MemoryRedactionState | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "none" ||
+    raw === "redacted" ||
+    raw === "verified-redacted" ||
+    raw === "requires-review" ||
+    raw === "quarantined"
+  ) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryReviewAction(value: unknown): MemoryReviewAction | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "none" || raw === "revalidate" || raw === "resolve-conflict" || raw === "retire") {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryConflictSeverity(value: unknown): MemoryConflictSeverity | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "none" || raw === "soft" || raw === "hard") {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMemoryLoopState(value: unknown): MemoryLoopState | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "open-loop" || raw === "resolved" || raw === "reopened" || raw === "superseded") {
+    return raw;
+  }
+  return "";
+}
+
+function authorityStrength(authorityClass: MemoryAuthorityClass): number {
+  if (authorityClass === "a0-live") return 1;
+  if (authorityClass === "a1-repo") return 0.96;
+  if (authorityClass === "a2-policy") return 0.92;
+  if (authorityClass === "a3-telemetry") return 0.76;
+  if (authorityClass === "a4-derived") return 0.54;
+  return 0.34;
+}
+
+function authorityRank(authorityClass: MemoryAuthorityClass): number {
+  if (authorityClass === "a0-live") return 0;
+  if (authorityClass === "a1-repo") return 1;
+  if (authorityClass === "a2-policy") return 2;
+  if (authorityClass === "a3-telemetry") return 3;
+  if (authorityClass === "a4-derived") return 4;
+  return 5;
+}
+
+function hasImplicitEvidence(metadata: Record<string, unknown>): boolean {
+  return Boolean(
+    normalizeText(metadata.sourceArtifactPath) ||
+      normalizeText(metadata.sourceUri) ||
+      normalizeText(metadata.sourcePath) ||
+      normalizeText(metadata.corpusRecordId) ||
+      normalizeText(metadata.corpus_source_unit_id) ||
+      normalizeText(metadata.chunkId) ||
+      normalizeText(metadata.threadId) && normalizeText(metadata.threadEvidence) === "explicit"
+  );
+}
+
+function deriveMemorySourceClass(input: { source: string; metadata: Record<string, unknown> }): MemorySourceClass {
+  const explicit = normalizeMemorySourceClass(
+    input.metadata.sourceClass ?? normalizeMetadata(input.metadata.memoryLattice).sourceClass
+  );
+  if (explicit) return explicit;
+  const source = normalizeSource(input.source);
+  const toolClass = normalizeSource(String(input.metadata.toolClass ?? ""));
+  if (
+    metadataFlag(input.metadata, "authoritative") ||
+    metadataFlag(input.metadata, "liveCheck") ||
+    source.includes("healthcheck") ||
+    source.includes("runtime-check") ||
+    source.includes("status-check")
+  ) {
+    return "live-check";
+  }
+  if (source === "repo-markdown" || normalizeText(input.metadata.sourceArtifactPath) || normalizeText(input.metadata.corpusRecordId)) {
+    return "repo-file";
+  }
+  if (toolClass === "runbook" || normalizeText(input.metadata.policyVersion) || source === "startup-context") {
+    return "policy";
+  }
+  if (
+    source.includes("mcp") ||
+    toolClass === "mcp" ||
+    normalizeText(input.metadata.connectorId) ||
+    normalizeText(input.metadata.mcpServer)
+  ) {
+    return "mcp-tool";
+  }
+  if (normalizeText(input.metadata.sourceUri).startsWith("http")) {
+    return "external-doc";
+  }
+  if (source === "user-direct" || source === "manual") {
+    return "human";
+  }
+  if (
+    source.startsWith("mail:") ||
+    source.includes("email") ||
+    source === "incident-action" ||
+    normalizeText(input.metadata.threadEvidence) === "explicit"
+  ) {
+    return "telemetry";
+  }
+  if (source.includes("codex") || normalizeText(input.metadata.clientRequestId) || normalizeText(input.metadata.capturedFrom)) {
+    return "runtime-artifact";
+  }
+  return "derived";
+}
+
+type SensitiveContentScan = {
+  redactedContent: string;
+  redactionState: MemoryRedactionState;
+  detected: boolean;
+  reasons: string[];
+  canonicalPromotionBlocked: boolean;
+  quarantined: boolean;
+  requiresReview: boolean;
+};
+
+function scanSensitiveContent(content: string): SensitiveContentScan {
+  let redactedContent = String(content ?? "");
+  const reasons = new Set<string>();
+  const replaceIfMatched = (pattern: RegExp, replacement: string | ((match: string, ...args: string[]) => string), reason: string) => {
+    let matched = false;
+    redactedContent = redactedContent.replace(pattern, (...args) => {
+      matched = true;
+      if (typeof replacement === "function") {
+        return replacement(args[0] ?? "", ...(args.slice(1, -2) as string[]));
+      }
+      return replacement;
+    });
+    if (matched) reasons.add(reason);
+  };
+  replaceIfMatched(PRIVATE_KEY_BLOCK_PATTERN, "[redacted-private-key]", "private-key");
+  replaceIfMatched(BEARER_SECRET_PATTERN, "Bearer [redacted-token]", "bearer-token");
+  replaceIfMatched(JWT_SECRET_PATTERN, "[redacted-jwt]", "jwt");
+  replaceIfMatched(OPENAI_KEY_PATTERN, "[redacted-api-key]", "api-key");
+  replaceIfMatched(SECRET_ASSIGNMENT_PATTERN, (match, label) => `${label}: [redacted-secret]`, "secret-assignment");
+  const detected = reasons.size > 0;
+  return {
+    redactedContent,
+    redactionState: detected ? "redacted" : "none",
+    detected,
+    reasons: Array.from(reasons),
+    canonicalPromotionBlocked: detected,
+    quarantined: detected,
+    requiresReview: detected,
+  };
+}
+
+function buildMemoryEvidenceId(parts: Array<string | null | undefined>): string {
+  return `evidence:${createHash("sha1").update(parts.map((part) => String(part ?? "")).join("|")).digest("hex").slice(0, 24)}`;
+}
+
+function normalizeCaptureEvidence(input: {
+  memoryId: string;
+  sourceClass: MemorySourceClass;
+  metadata: Record<string, unknown>;
+  provided: MemoryCaptureRequest["evidence"];
+  clientRequestId: string | null;
+  occurredAt: string | null;
+  createdAt: string;
+  redactionState: MemoryRedactionState;
+}): MemoryEvidence[] {
+  const derived: MemoryEvidence[] = [];
+  const sourceArtifactPath = normalizeText(input.metadata.sourceArtifactPath || input.metadata.sourcePath);
+  const sourceUri = normalizeText(input.metadata.sourceUri);
+  const corpusRecordId = normalizeText(input.metadata.corpusRecordId);
+  const threadId = normalizeText(input.metadata.threadId);
+  const threadEvidence = normalizeText(input.metadata.threadEvidence);
+  const capturedAt = input.occurredAt ?? input.createdAt;
+  const verifier = normalizeText(input.metadata.verifier || input.metadata.owner || input.metadata.agentId) || null;
+  const verifiedAt = parseNullableDate(input.metadata.lastVerifiedAt ?? input.metadata.verifiedAt);
+  if (sourceArtifactPath || corpusRecordId || sourceUri) {
+    derived.push({
+      evidenceId: buildMemoryEvidenceId([input.memoryId, sourceArtifactPath, sourceUri, corpusRecordId, input.clientRequestId]),
+      sourceClass:
+        sourceArtifactPath || corpusRecordId ? "repo-file" : sourceUri.startsWith("http") ? "external-doc" : input.sourceClass,
+      sourceUri: sourceUri || null,
+      sourcePath: sourceArtifactPath || null,
+      capturedAt,
+      verifiedAt,
+      verifier,
+      redactionState: input.redactionState,
+      hash: corpusRecordId || null,
+      supportsMemoryIds: [input.memoryId],
+      metadata: {
+        corpusRecordId: corpusRecordId || undefined,
+        clientRequestId: input.clientRequestId || undefined,
+      },
+    });
+  }
+  if (threadId && threadEvidence === "explicit") {
+    derived.push({
+      evidenceId: buildMemoryEvidenceId([input.memoryId, threadId, threadEvidence, input.clientRequestId]),
+      sourceClass: input.sourceClass === "human" ? "human" : "runtime-artifact",
+      sourceUri: null,
+      sourcePath: null,
+      capturedAt,
+      verifiedAt: null,
+      verifier,
+      redactionState: input.redactionState,
+      hash: null,
+      supportsMemoryIds: [input.memoryId],
+      metadata: {
+        threadId,
+        threadEvidence,
+      },
+    });
+  }
+
+  const provided = Array.isArray(input.provided)
+    ? input.provided.map((entry, index): MemoryEvidence => {
+        const sourceUriValue = normalizeText(entry.sourceUri);
+        const sourcePathValue = normalizeText(entry.sourcePath);
+        const hashValue = normalizeText(entry.hash);
+        const sourceClass =
+          normalizeMemorySourceClass(entry.sourceClass) ||
+          (sourcePathValue ? "repo-file" : sourceUriValue.startsWith("http") ? "external-doc" : input.sourceClass);
+        return {
+          evidenceId:
+            normalizeText(entry.evidenceId) ||
+            buildMemoryEvidenceId([input.memoryId, sourceClass, sourceUriValue, sourcePathValue, hashValue, String(index)]),
+          sourceClass,
+          sourceUri: sourceUriValue || null,
+          sourcePath: sourcePathValue || null,
+          capturedAt: entry.capturedAt ?? capturedAt,
+          verifiedAt: entry.verifiedAt ?? verifiedAt,
+          verifier: normalizeText(entry.verifier) || verifier,
+          redactionState: normalizeMemoryRedactionState(entry.redactionState) || input.redactionState,
+          hash: hashValue || null,
+          supportsMemoryIds: Array.from(new Set([input.memoryId, ...entry.supportsMemoryIds.map((value) => normalizeText(value)).filter(Boolean)])).slice(0, 32),
+          metadata: normalizeMetadata(entry.metadata),
+        };
+      })
+    : [];
+
+  const merged = new Map<string, MemoryEvidence>();
+  for (const entry of [...provided, ...derived]) {
+    merged.set(entry.evidenceId, {
+      ...entry,
+      supportsMemoryIds: Array.from(new Set(entry.supportsMemoryIds.map((value) => normalizeText(value)).filter(Boolean))).slice(0, 32),
+      metadata: normalizeMetadata(entry.metadata),
+    });
+  }
+  return Array.from(merged.values()).slice(0, 16);
+}
+
+function buildMemoryTransitionEvents(input: {
+  memoryId: string;
+  previous: MemoryRecord | null;
+  nextStatus: MemoryStatus;
+  nextLattice: MemoryLatticeSnapshot;
+  evidence: MemoryEvidence[];
+  clientRequestId: string | null;
+  actor: string | null;
+  reason: string | null;
+  at: string;
+}): MemoryTransitionEvent[] {
+  const previousLattice = input.previous?.lattice ?? (input.previous ? withMemoryLatticeRecord(input.previous).lattice ?? null : null);
+  const changed =
+    !input.previous ||
+    input.previous.status !== input.nextStatus ||
+    previousLattice?.truthStatus !== input.nextLattice.truthStatus ||
+    previousLattice?.freshnessStatus !== input.nextLattice.freshnessStatus ||
+    previousLattice?.operationalStatus !== input.nextLattice.operationalStatus;
+  if (!changed) return [];
+  const transitionId = `transition:${createHash("sha1")
+    .update(
+      [
+        input.memoryId,
+        input.clientRequestId ?? "",
+        input.previous?.status ?? "",
+        input.nextStatus,
+        previousLattice?.truthStatus ?? "",
+        input.nextLattice.truthStatus,
+        previousLattice?.freshnessStatus ?? "",
+        input.nextLattice.freshnessStatus,
+        previousLattice?.operationalStatus ?? "",
+        input.nextLattice.operationalStatus,
+      ].join("|")
+    )
+    .digest("hex")
+    .slice(0, 24)}`;
+  return [
+    {
+      transitionId,
+      memoryId: input.memoryId,
+      actor: input.actor,
+      reason: input.reason,
+      at: input.at,
+      fromStatus: input.previous?.status ?? null,
+      toStatus: input.nextStatus,
+      fromTruthStatus: previousLattice?.truthStatus ?? null,
+      toTruthStatus: input.nextLattice.truthStatus,
+      fromFreshnessStatus: previousLattice?.freshnessStatus ?? null,
+      toFreshnessStatus: input.nextLattice.freshnessStatus,
+      fromOperationalStatus: previousLattice?.operationalStatus ?? null,
+      toOperationalStatus: input.nextLattice.operationalStatus,
+      evidenceIds: input.evidence.map((entry) => entry.evidenceId).slice(0, 16),
+      metadata: {
+        clientRequestId: input.clientRequestId ?? undefined,
+      },
+    },
+  ];
+}
+
+function reviewWindowDaysForCategory(category: MemoryCategory): number {
+  return MEMORY_LATTICE_REVIEW_DAYS[category] ?? 45;
+}
+
+function contradictionCountFromMetadata(metadata: Record<string, unknown>): number {
+  const explicit = Number(metadata.contradictionCount ?? metadata.memoryContradictionCount ?? metadata.conflictCount ?? 0);
+  const explicitCount = Number.isFinite(explicit) ? Math.max(0, Math.trunc(explicit)) : 0;
+  const listCount = Array.isArray(metadata.contradictions) ? metadata.contradictions.length : 0;
+  const loopConflict = metadata.conflictingLoopState === true ? 1 : 0;
+  const quarantinedConflict =
+    normalizeText(normalizeMetadata(metadata.quarantinedByConsolidation).reason) === "conflicting-loop-state" ? 1 : 0;
+  return Math.max(explicitCount, listCount, loopConflict, quarantinedConflict);
+}
+
+function conflictingMemoryIdsFromMetadata(metadata: Record<string, unknown>): string[] {
+  return Array.from(
+    new Set(
+      readStringValues(
+        [
+          metadata.conflictingMemoryIds,
+          metadata.conflictsWith,
+          metadata.conflictMemoryIds,
+          normalizeMetadata(metadata.memoryLattice).conflictingMemoryIds,
+        ],
+        24
+      )
+        .map((value) => normalizeText(value))
+        .filter((value) => value.startsWith("mem_") || value.startsWith("dream-connection:") || value.startsWith("conflict:"))
+    )
+  ).slice(0, 24);
+}
+
+function conflictKindsFromMetadata(metadata: Record<string, unknown>): string[] {
+  return Array.from(
+    new Set(
+      readStringValues(
+        [
+          metadata.conflictKinds,
+          metadata.conflictKind,
+          normalizeMetadata(metadata.memoryLattice).conflictKinds,
+        ],
+        12
+      )
+        .map((value) => normalizeSource(value))
+        .filter(Boolean)
+    )
+  ).slice(0, 8);
+}
+
+function deriveMemoryConflictSeverity(metadata: Record<string, unknown>, contradictionCount: number): MemoryConflictSeverity {
+  const explicit = normalizeMemoryConflictSeverity(
+    metadata.conflictSeverity ?? normalizeMetadata(metadata.memoryLattice).conflictSeverity
+  );
+  if (explicit) return explicit;
+  if (contradictionCount <= 0) return "none";
+  const kinds = conflictKindsFromMetadata(metadata);
+  if (
+    metadata.conflictingLoopState === true ||
+    kinds.includes("exact-loop-state") ||
+    kinds.includes("explicit-reference") ||
+    normalizeText(normalizeMetadata(metadata.quarantinedByConsolidation).reason) === "conflicting-loop-state"
+  ) {
+    return "hard";
+  }
+  return "soft";
+}
+
+function conflictSeverityRank(severity: MemoryConflictSeverity): number {
+  if (severity === "hard") return 2;
+  if (severity === "soft") return 1;
+  return 0;
+}
+
+function mergeConflictSeverity(
+  left: MemoryConflictSeverity,
+  right: MemoryConflictSeverity
+): MemoryConflictSeverity {
+  return conflictSeverityRank(right) > conflictSeverityRank(left) ? right : left;
+}
+
+function isContradictionRelationHit(hit: MemoryRelatedResult | undefined): boolean {
+  return Boolean(
+    hit?.relationTypes.some((entry) => normalizeText(entry).trim().toLowerCase() === "contradicts")
+  );
+}
+
+function shouldSurfaceQuarantinedConflictRow(
+  row: MemoryRecord,
+  hit: MemoryRelatedResult | undefined,
+  useMode: MemoryUseMode,
+  anchorMs = Date.now()
+): boolean {
+  if (row.status !== "quarantined") return true;
+  if (!isContradictionRelationHit(hit)) return false;
+  if (useMode !== "planning" && useMode !== "debugging" && useMode !== "exploratory") return false;
+  const lattice = withMemoryLatticeRecord(row, anchorMs).lattice;
+  return Boolean(
+    lattice &&
+      (
+        lattice.category === "conflict-record" ||
+        lattice.truthStatus === "contradicted" ||
+        lattice.conflictSeverity !== "none" ||
+        lattice.reviewAction === "resolve-conflict"
+      )
+  );
+}
+
+type MemoryConflictShadow = {
+  conflictSeverity: MemoryConflictSeverity;
+  conflictKinds: string[];
+  conflictingMemoryIds: string[];
+  reviewReasons: string[];
+  reviewPriority: number;
+};
+
+function applyConflictShadowToSearchRows(
+  rows: MemorySearchResult[],
+  companionRows: Array<MemoryRecord | MemorySearchResult>,
+  anchorMs = Date.now()
+): MemorySearchResult[] {
+  if (rows.length === 0 || companionRows.length === 0) return rows;
+  const seedIds = new Set(rows.map((row) => row.id));
+  const shadowById = new Map<string, MemoryConflictShadow>();
+
+  for (const companion of companionRows) {
+    const lattice = companion.lattice ?? withMemoryLatticeRecord(companion, anchorMs).lattice;
+    if (!lattice) continue;
+    if (
+      lattice.category !== "conflict-record" &&
+      lattice.truthStatus !== "contradicted" &&
+      lattice.contradictionCount <= 0 &&
+      lattice.conflictSeverity === "none"
+    ) {
+      continue;
+    }
+
+    const implicatedIds = new Set(
+      lattice.conflictingMemoryIds
+        .map((value) => normalizeText(value))
+        .filter((value) => seedIds.has(value))
+    );
+    if (implicatedIds.size === 0) continue;
+
+    for (const seedId of implicatedIds) {
+      const current = shadowById.get(seedId) ?? {
+        conflictSeverity: "none" as MemoryConflictSeverity,
+        conflictKinds: [],
+        conflictingMemoryIds: [],
+        reviewReasons: [],
+        reviewPriority: 0,
+      };
+      current.conflictSeverity = mergeConflictSeverity(current.conflictSeverity, lattice.conflictSeverity);
+      current.conflictKinds = Array.from(
+        new Set([
+          ...current.conflictKinds,
+          ...lattice.conflictKinds,
+          lattice.category === "conflict-record" ? "linked-conflict-record" : "linked-conflict",
+        ])
+      ).slice(0, 8);
+      current.conflictingMemoryIds = Array.from(
+        new Set(
+          [
+            ...current.conflictingMemoryIds,
+            lattice.category === "conflict-record" ? "" : companion.id,
+            ...lattice.conflictingMemoryIds,
+          ]
+            .map((value) => normalizeText(value))
+            .filter((value) => value && value !== seedId)
+        )
+      ).slice(0, 24);
+      current.reviewReasons = Array.from(
+        new Set([
+          ...current.reviewReasons,
+          "linked-conflict",
+          lattice.category === "conflict-record" ? "linked-conflict-record" : "",
+          lattice.truthStatus === "contradicted" ? "contradicted" : "",
+        ].filter(Boolean))
+      ).slice(0, 8);
+      current.reviewPriority = Math.max(
+        current.reviewPriority,
+        lattice.conflictSeverity === "hard" ? 0.96 : lattice.reviewAction === "resolve-conflict" ? 0.9 : 0.82
+      );
+      shadowById.set(seedId, current);
+    }
+  }
+
+  if (shadowById.size === 0) return rows;
+
+  return rows.map((row) => {
+    const shadow = shadowById.get(row.id);
+    if (!shadow) return row;
+    const lattice = row.lattice ?? withMemoryLatticeSearchResult(row, anchorMs).lattice;
+    if (!lattice) return row;
+    const mergedSeverity = mergeConflictSeverity(lattice.conflictSeverity, shadow.conflictSeverity);
+    const contradictionCount = Math.max(
+      lattice.contradictionCount,
+      mergedSeverity === "hard" ? 1 : lattice.contradictionCount > 0 ? lattice.contradictionCount : 0
+    );
+    const hardConflict = mergedSeverity === "hard";
+    const nextLattice: MemoryLatticeSnapshot = {
+      ...lattice,
+      truthStatus: hardConflict ? "contradicted" : lattice.truthStatus,
+      operationalStatus: hardConflict ? "quarantined" : lattice.operationalStatus,
+      contradictionCount,
+      conflictSeverity: mergedSeverity,
+      conflictKinds: Array.from(new Set([...lattice.conflictKinds, ...shadow.conflictKinds])).slice(0, 8),
+      conflictingMemoryIds: Array.from(
+        new Set([...lattice.conflictingMemoryIds, ...shadow.conflictingMemoryIds])
+      ).slice(0, 24),
+      reviewAction: mergedSeverity !== "none" ? "resolve-conflict" : lattice.reviewAction,
+      reviewPriority: Math.max(lattice.reviewPriority, shadow.reviewPriority),
+      reviewReasons: Array.from(new Set([...lattice.reviewReasons, ...shadow.reviewReasons])).slice(0, 8),
+      badges: Array.from(
+        new Set([
+          ...lattice.badges,
+          mergedSeverity !== "none" ? `conflict:${mergedSeverity}` : "",
+          contradictionCount > 0 ? "contested" : "",
+          mergedSeverity !== "none" ? "review:resolve-conflict" : "",
+        ].filter(Boolean))
+      ),
+    };
+    return {
+      ...row,
+      lattice: nextLattice,
+      matchedBy: Array.from(new Set([...row.matchedBy, "conflict-shadow"])),
+    };
+  });
+}
+
+function applyConflictShadowToRecords(rows: MemoryRecord[], anchorMs = Date.now()): MemoryRecord[] {
+  if (rows.length === 0) return rows;
+  const shadowed = applyConflictShadowToSearchRows(
+    rows.map((row) => toSearchResultFromRecord(row, undefined, anchorMs)),
+    rows,
+    anchorMs
+  );
+  return shadowed.map(({ score, scoreBreakdown, matchedBy, ...row }) => row);
+}
+
+function deriveMemoryAuthorityClass(input: {
+  source: string;
+  metadata: Record<string, unknown>;
+  memoryLayer: MemoryLayer;
+  sourceClass?: MemorySourceClass | null;
+}): MemoryAuthorityClass {
+  const explicit = normalizeMemoryAuthorityClass(
+    input.metadata.authorityClass ?? normalizeMetadata(input.metadata.memoryLattice).authorityClass
+  );
+  if (explicit) return explicit;
+  if (input.sourceClass === "live-check") return "a0-live";
+  if (input.sourceClass === "repo-file") return "a1-repo";
+  if (input.sourceClass === "policy") return "a2-policy";
+  if (
+    input.sourceClass === "telemetry" ||
+    input.sourceClass === "runtime-artifact" ||
+    input.sourceClass === "mcp-tool" ||
+    input.sourceClass === "external-doc"
+  ) {
+    return "a3-telemetry";
+  }
+  if (input.sourceClass === "derived") return "a4-derived";
+  const source = normalizeSource(input.source);
+  if (
+    metadataFlag(input.metadata, "authoritative") ||
+    metadataFlag(input.metadata, "liveCheck") ||
+    source.includes("healthcheck") ||
+    source.includes("runtime-check") ||
+    source.includes("status-check")
+  ) {
+    return "a0-live";
+  }
+  if (
+    source === "repo-markdown" ||
+    hasCanonicalLineage(input.metadata) ||
+    normalizeText(input.metadata.sourceArtifactPath) ||
+    normalizeText(input.metadata.corpusRecordId)
+  ) {
+    return "a1-repo";
+  }
+  if (
+    source === "user-direct" ||
+    source === "startup-context" ||
+    normalizeText(input.metadata.toolClass) === "runbook" ||
+    normalizeText(input.metadata.claimType) === "fact" ||
+    normalizeText(input.metadata.policyVersion)
+  ) {
+    return "a2-policy";
+  }
+  if (
+    source === "manual" ||
+    source === "incident-action" ||
+    source.startsWith("mail:") ||
+    source.includes("email") ||
+    metadataFlag(input.metadata, "threadEvidence")
+  ) {
+    return "a3-telemetry";
+  }
+  if (
+    source.includes("compaction") ||
+    source.includes("context-slice") ||
+    source.includes("codex") ||
+    input.memoryLayer === "canonical"
+  ) {
+    return "a4-derived";
+  }
+  return "a5-inferred";
+}
+
+function deriveMemoryCategory(input: {
+  source: string;
+  content: string;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  memoryLayer: MemoryLayer;
+  memoryType: MemoryType;
+  status: MemoryStatus;
+}): MemoryCategory {
+  const explicit = normalizeMemoryCategory(
+    input.metadata.memoryCategory ??
+      input.metadata.category ??
+      input.metadata.memory_type_category ??
+      normalizeMetadata(input.metadata.memoryLattice).category
+  );
+  if (explicit) return explicit;
+
+  const content = input.content.toLowerCase();
+  const hints = [
+    normalizeSource(input.source),
+    ...input.tags.map((tag) => normalizeSource(tag)),
+    normalizeSource(String(input.metadata.kind ?? "")),
+    normalizeSource(String(input.metadata.type ?? "")),
+    normalizeSource(String(input.metadata.memoryKind ?? "")),
+    normalizeSource(String(input.metadata.rememberKind ?? "")),
+    normalizeSource(String(input.metadata.codexTraceKind ?? "")),
+    normalizeSource(String(input.metadata.analysisType ?? "")),
+    normalizeSource(String(input.metadata.toolClass ?? "")),
+  ].filter(Boolean);
+  const hasHint = (...needles: string[]) => hints.some((value) => needles.some((needle) => value.includes(needle)));
+
+  if (contradictionCountFromMetadata(input.metadata) > 0 && (hasHint("conflict") || content.includes("conflict:"))) {
+    return "conflict-record";
+  }
+  if (
+    hasHint("guardrail", "policy", "safety", "constraint") ||
+    /\b(guardrail|safety rail|must not|never do|do not report done|non-negotiable)\b/i.test(input.content)
+  ) {
+    return "guardrail";
+  }
+  if (hasHint("preference") || /\b(preference:|prefer\s|operator preference)\b/i.test(input.content)) {
+    return "preference";
+  }
+  if (hasHint("workaround", "temp-fix", "temporary") || /\b(workaround|temporary fix|until fixed)\b/i.test(input.content)) {
+    return "workaround";
+  }
+  if (
+    hasHint("known-bug", "bug", "failure-pattern", "incident", "footgun") ||
+    /\b(known bug|failure pattern|footgun|repro|error signature|failed-precondition)\b/i.test(input.content)
+  ) {
+    return "known-bug";
+  }
+  if (hasHint("hypothesis", "guess") || /\b(hypothesis|plausible|maybe true|likely because|possibly)\b/i.test(input.content)) {
+    return "hypothesis";
+  }
+  if (
+    input.memoryType === "procedural" ||
+    hasHint("procedure", "playbook", "runbook", "workflow", "checklist") ||
+    input.source === "startup-context" ||
+    /\b(runbook|procedure|playbook|workflow|checklist|recovery path)\b/i.test(input.content)
+  ) {
+    return "procedure";
+  }
+  if (hasHint("decision", "approved", "checkpoint", "handoff") || /\b(decision:|approved|chosen|keep\s)\b/i.test(input.content)) {
+    return "decision";
+  }
+  if (
+    hasHint("derived", "insight", "synthesis") ||
+    normalizeSource(input.source).includes("compaction") ||
+    normalizeSource(input.source) === MEMORY_CONSOLIDATION_CONNECTION_SOURCE
+  ) {
+    return "derived-insight";
+  }
+  if (
+    hasHint("legacy", "deprecated") ||
+    normalizeText(input.metadata.deprecatedAt) ||
+    normalizeText(input.metadata.supersededBy) ||
+    normalizeText(input.metadata.sourceArtifactPath).includes("/legacy/")
+  ) {
+    return "legacy-lore";
+  }
+  if (input.memoryLayer === "canonical" || normalizeSource(input.source) === "repo-markdown") {
+    return "fact";
+  }
+  if (input.status === "accepted" && hasHint("fact")) {
+    return "fact";
+  }
+  return "observation";
+}
+
+function deriveMemoryScope(metadata: Record<string, unknown>): string | null {
+  const loopKey = normalizeText(loopClusterKeyFromMetadata(metadata));
+  if (loopKey) return `loop:${loopKey}`;
+  const threadKey = normalizeText(threadKeyFromMetadata(metadata));
+  if (threadKey) return `thread:${threadKey}`;
+  const subjectKey = normalizeSubjectKey(metadata.subjectKey || metadata.subject);
+  if (subjectKey) return `subject:${subjectKey}`;
+  const projectLane = normalizePatternKey(metadata.projectLane);
+  if (projectLane) return `lane:${projectLane}`;
+  return null;
+}
+
+function deriveFreshnessTimestamps(input: {
+  metadata: Record<string, unknown>;
+  category: MemoryCategory;
+  occurredAt: string | null;
+  createdAt: string;
+}): { lastVerifiedAt: string | null; nextReviewAt: string | null; freshnessExpiresAt: string | null } {
+  const explicitLastVerifiedAt = normalizeText(
+    input.metadata.lastVerifiedAt ??
+      input.metadata.verifiedAt ??
+      normalizeMetadata(input.metadata.memoryLattice).lastVerifiedAt
+  );
+  const explicitNextReviewAt = normalizeText(
+    input.metadata.nextReviewAt ?? normalizeMetadata(input.metadata.memoryLattice).nextReviewAt
+  );
+  const explicitFreshnessExpiresAt = normalizeText(
+    input.metadata.freshnessExpiresAt ?? normalizeMetadata(input.metadata.memoryLattice).freshnessExpiresAt
+  );
+  const reviewWindowDays = reviewWindowDaysForCategory(input.category);
+  const fallbackAnchor = explicitLastVerifiedAt || input.occurredAt || input.createdAt;
+  const anchorMs = Number.isFinite(Date.parse(fallbackAnchor)) ? Date.parse(fallbackAnchor) : Date.now();
+  const derivedNextReviewAt = new Date(anchorMs + reviewWindowDays * 86_400_000).toISOString();
+  return {
+    lastVerifiedAt: explicitLastVerifiedAt || null,
+    nextReviewAt: explicitNextReviewAt || derivedNextReviewAt,
+    freshnessExpiresAt: explicitFreshnessExpiresAt || explicitNextReviewAt || derivedNextReviewAt,
+  };
+}
+
+function deriveMemoryTruthStatus(input: {
+  metadata: Record<string, unknown>;
+  status: MemoryStatus;
+  category: MemoryCategory;
+  authorityClass: MemoryAuthorityClass;
+  sourceConfidence: number;
+}): MemoryTruthStatus {
+  const explicit = normalizeMemoryTruthStatus(
+    input.metadata.truthStatus ?? normalizeMetadata(input.metadata.memoryLattice).truthStatus
+  );
+  if (explicit) return explicit;
+  if (input.status === "quarantined" || contradictionCountFromMetadata(input.metadata) > 0) return "contradicted";
+  if (input.category === "hypothesis") return input.status === "accepted" ? "inferred" : "proposed";
+  if (input.category === "observation") return input.status === "accepted" ? "observed" : "proposed";
+  if (input.status === "proposed") {
+    return input.authorityClass === "a4-derived" || input.authorityClass === "a5-inferred" ? "proposed" : "inferred";
+  }
+  if (input.status === "accepted") {
+    if (
+      input.authorityClass === "a0-live" ||
+      input.authorityClass === "a1-repo" ||
+      input.authorityClass === "a2-policy"
+    ) {
+      return input.category === "workaround" ? "verified" : "trusted";
+    }
+    if (input.authorityClass === "a3-telemetry" && input.sourceConfidence >= 0.72) {
+      return "verified";
+    }
+  }
+  return input.status === "accepted" ? "verified" : "proposed";
+}
+
+function deriveMemoryFreshnessStatus(input: {
+  metadata: Record<string, unknown>;
+  category: MemoryCategory;
+  truthStatus: MemoryTruthStatus;
+  freshnessExpiresAt: string | null;
+  nextReviewAt: string | null;
+}): MemoryFreshnessStatus {
+  const explicit = normalizeMemoryFreshnessStatus(
+    input.metadata.freshnessStatus ?? normalizeMetadata(input.metadata.memoryLattice).freshnessStatus
+  );
+  if (explicit) return explicit;
+  const target = input.freshnessExpiresAt || input.nextReviewAt;
+  const targetMs = Number.isFinite(Date.parse(target ?? "")) ? Date.parse(target ?? "") : null;
+  if (targetMs === null) return "fresh";
+  const remainingMs = targetMs - Date.now();
+  const reviewWindowMs = reviewWindowDaysForCategory(input.category) * 86_400_000;
+  if (remainingMs <= 0) {
+    return input.truthStatus === "trusted" || input.truthStatus === "verified" ? "revalidation-required" : "stale";
+  }
+  if (remainingMs <= reviewWindowMs * 0.33) return "aging";
+  return "fresh";
+}
+
+function deriveMemoryOperationalStatus(input: {
+  metadata: Record<string, unknown>;
+  status: MemoryStatus;
+  category: MemoryCategory;
+  truthStatus: MemoryTruthStatus;
+  freshnessStatus: MemoryFreshnessStatus;
+}): MemoryOperationalStatus {
+  const explicit = normalizeMemoryOperationalStatus(
+    input.metadata.operationalStatus ?? normalizeMetadata(input.metadata.memoryLattice).operationalStatus
+  );
+  if (explicit) return explicit;
+  if (normalizeText(input.metadata.retiredAt)) return "retired";
+  if (input.status === "archived") return "archived";
+  if (input.status === "quarantined" || input.truthStatus === "contradicted") return "quarantined";
+  if (
+    input.category === "legacy-lore" ||
+    normalizeText(input.metadata.deprecatedAt) ||
+    normalizeText(input.metadata.supersededBy) ||
+    normalizeText(input.metadata.supersededAt)
+  ) {
+    return "deprecated";
+  }
+  if (input.freshnessStatus === "aging" || input.freshnessStatus === "revalidation-required" || input.freshnessStatus === "stale") {
+    return "cooling";
+  }
+  return "active";
+}
+
+function deriveFolkloreRisk(input: {
+  metadata: Record<string, unknown>;
+  authorityClass: MemoryAuthorityClass;
+  category: MemoryCategory;
+  truthStatus: MemoryTruthStatus;
+  freshnessStatus: MemoryFreshnessStatus;
+  source: string;
+}): number {
+  const explicit = Number(input.metadata.folkloreRisk ?? normalizeMetadata(input.metadata.memoryLattice).folkloreRisk);
+  if (Number.isFinite(explicit)) return clamp01(explicit);
+  let risk = 0.05;
+  const source = normalizeSource(input.source);
+  if (input.authorityClass === "a4-derived") risk += 0.36;
+  if (input.authorityClass === "a5-inferred") risk += 0.26;
+  if (source.includes("compaction")) risk += 0.18;
+  if (input.truthStatus === "proposed" || input.truthStatus === "inferred") risk += 0.16;
+  if (input.truthStatus === "contradicted") risk += 0.24;
+  if (input.freshnessStatus === "revalidation-required" || input.freshnessStatus === "stale") risk += 0.2;
+  if (input.category === "legacy-lore" || input.category === "derived-insight") risk += 0.1;
+  if (hasCanonicalLineage(input.metadata) || input.authorityClass === "a1-repo" || input.authorityClass === "a2-policy") {
+    risk -= 0.18;
+  }
+  return clamp01(risk, 0.12);
+}
+
+function deriveMemoryReviewPlan(input: {
+  metadata: Record<string, unknown>;
+  category: MemoryCategory;
+  truthStatus: MemoryTruthStatus;
+  freshnessStatus: MemoryFreshnessStatus;
+  operationalStatus: MemoryOperationalStatus;
+  authorityClass: MemoryAuthorityClass;
+  folkloreRisk: number;
+  contradictionCount: number;
+}): { reviewAction: MemoryReviewAction; reviewPriority: number; reviewReasons: string[] } {
+  const explicitAction = normalizeMemoryReviewAction(
+    input.metadata.reviewAction ?? normalizeMetadata(input.metadata.memoryLattice).reviewAction
+  );
+  const explicitPriority = Number(
+    input.metadata.reviewPriority ?? normalizeMetadata(input.metadata.memoryLattice).reviewPriority
+  );
+  const explicitReasons = readStringValues(
+    input.metadata.reviewReasons ?? normalizeMetadata(input.metadata.memoryLattice).reviewReasons,
+    8
+  )
+    .map((value) => normalizeSource(value))
+    .filter(Boolean)
+    .slice(0, 6);
+  if (explicitAction) {
+    return {
+      reviewAction: explicitAction,
+      reviewPriority: Number.isFinite(explicitPriority) ? clamp01(explicitPriority) : explicitAction === "none" ? 0 : 0.72,
+      reviewReasons: explicitReasons,
+    };
+  }
+  if (input.category === "conflict-record") {
+    return {
+      reviewAction: "none",
+      reviewPriority: 0,
+      reviewReasons: [],
+    };
+  }
+
+  const reasons = new Set<string>();
+  let reviewAction: MemoryReviewAction = "none";
+  let reviewPriority = 0;
+  const redactionState = normalizeMemoryRedactionState(
+    input.metadata.redactionState ?? normalizeMetadata(input.metadata.memoryLattice).redactionState
+  );
+  const secretExposure = normalizeMetadata(input.metadata.secretExposure);
+  const shadowMcpRisk =
+    input.metadata.shadowMcpRisk === true || normalizeMetadata(input.metadata.mcpGovernance).shadowRisk === true;
+  const highImpactCategory =
+    input.category === "fact" ||
+    input.category === "guardrail" ||
+    input.category === "decision" ||
+    input.category === "procedure";
+
+  if (secretExposure.detected === true || redactionState === "requires-review" || redactionState === "quarantined") {
+    reviewAction = "resolve-conflict";
+    reviewPriority = 0.99;
+    reasons.add("secret-exposure");
+  } else if (input.operationalStatus === "quarantined" || input.truthStatus === "contradicted" || input.contradictionCount > 0) {
+    reviewAction = "resolve-conflict";
+    reviewPriority = highImpactCategory ? 0.98 : 0.92;
+    if (input.operationalStatus === "quarantined") reasons.add("quarantined");
+    if (input.truthStatus === "contradicted" || input.contradictionCount > 0) reasons.add("contradicted");
+  } else if (shadowMcpRisk) {
+    reviewAction = "revalidate";
+    reviewPriority = 0.82;
+    reasons.add("shadow-mcp");
+  } else if (input.operationalStatus === "deprecated") {
+    reviewAction = "retire";
+    reviewPriority = highImpactCategory ? 0.86 : 0.8;
+    reasons.add("deprecated");
+  } else if (input.freshnessStatus === "stale") {
+    reviewAction =
+      input.category === "hypothesis" || input.category === "workaround" || input.category === "legacy-lore"
+        ? "retire"
+        : "revalidate";
+    reviewPriority = reviewAction === "retire" ? 0.82 : highImpactCategory ? 0.84 : 0.76;
+    reasons.add("stale");
+  } else if (input.freshnessStatus === "revalidation-required") {
+    reviewAction = "revalidate";
+    reviewPriority = highImpactCategory ? 0.81 : 0.72;
+    reasons.add("revalidation-required");
+  } else if (input.category === "legacy-lore" && input.operationalStatus === "active") {
+    reviewAction = "retire";
+    reviewPriority = 0.7;
+    reasons.add("legacy-lore");
+  } else if (
+    input.folkloreRisk >= 0.65 &&
+    (input.authorityClass === "a4-derived" || input.authorityClass === "a5-inferred")
+  ) {
+    reviewAction = "revalidate";
+    reviewPriority = 0.68;
+    reasons.add("folklore-risk");
+  } else if (input.category === "workaround" && input.freshnessStatus === "aging") {
+    reviewAction = "revalidate";
+    reviewPriority = 0.66;
+    reasons.add("aging-workaround");
+  }
+
+  if (input.folkloreRisk >= 0.65) reasons.add("folklore-risk");
+  if (input.category === "workaround") reasons.add("temporary");
+  return {
+    reviewAction,
+    reviewPriority: Number(reviewPriority.toFixed(3)),
+    reviewReasons: Array.from(reasons).slice(0, 6),
+  };
+}
+
+function buildMemoryLatticeSnapshot(input: {
+  source: string;
+  content: string;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  evidence?: MemoryEvidence[];
+  status: MemoryStatus;
+  memoryType: MemoryType;
+  memoryLayer: MemoryLayer;
+  sourceConfidence: number;
+  importance: number;
+  occurredAt: string | null;
+  createdAt: string;
+}): MemoryLatticeSnapshot {
+  const sourceClass = deriveMemorySourceClass({
+    source: input.source,
+    metadata: input.metadata,
+  });
+  const authorityClass = deriveMemoryAuthorityClass({
+    source: input.source,
+    metadata: input.metadata,
+    memoryLayer: input.memoryLayer,
+    sourceClass,
+  });
+  const category = deriveMemoryCategory({
+    source: input.source,
+    content: input.content,
+    tags: input.tags,
+    metadata: input.metadata,
+    memoryLayer: input.memoryLayer,
+    memoryType: input.memoryType,
+    status: input.status,
+  });
+  const freshnessTimestamps = deriveFreshnessTimestamps({
+    metadata: input.metadata,
+    category,
+    occurredAt: input.occurredAt,
+    createdAt: input.createdAt,
+  });
+  const truthStatus = deriveMemoryTruthStatus({
+    metadata: input.metadata,
+    status: input.status,
+    category,
+    authorityClass,
+    sourceConfidence: input.sourceConfidence,
+  });
+  const freshnessStatus = deriveMemoryFreshnessStatus({
+    metadata: input.metadata,
+    category,
+    truthStatus,
+    freshnessExpiresAt: freshnessTimestamps.freshnessExpiresAt,
+    nextReviewAt: freshnessTimestamps.nextReviewAt,
+  });
+  const operationalStatus = deriveMemoryOperationalStatus({
+    metadata: input.metadata,
+    status: input.status,
+    category,
+    truthStatus,
+    freshnessStatus,
+  });
+  const contradictionCount = contradictionCountFromMetadata(input.metadata);
+  const conflictSeverity = deriveMemoryConflictSeverity(input.metadata, contradictionCount);
+  const conflictKinds = conflictKindsFromMetadata(input.metadata);
+  const conflictingMemoryIds = conflictingMemoryIdsFromMetadata(input.metadata);
+  const scope = deriveMemoryScope(input.metadata);
+  const hasEvidence = (Array.isArray(input.evidence) && input.evidence.length > 0) || hasImplicitEvidence(input.metadata);
+  const evidenceStrength = clamp01(
+    authorityStrength(authorityClass) * 0.45 + input.sourceConfidence * 0.25 + (hasEvidence ? 0.3 : 0.05),
+    input.sourceConfidence
+  );
+  const redactionState = normalizeMemoryRedactionState(
+    input.metadata.redactionState ?? normalizeMetadata(input.metadata.memoryLattice).redactionState
+  );
+  const secretExposureMetadata = normalizeMetadata(input.metadata.secretExposure);
+  const secretExposure =
+    secretExposureMetadata.detected === true ||
+    secretExposureMetadata.quarantined === true ||
+    secretExposureMetadata.canonicalPromotionBlocked === true;
+  const shadowMcpRisk =
+    input.metadata.shadowMcpRisk === true ||
+    normalizeMetadata(input.metadata.memoryLattice).shadowMcpRisk === true ||
+    normalizeMetadata(input.metadata.mcpGovernance).shadowRisk === true;
+  const folkloreRisk = deriveFolkloreRisk({
+    metadata: input.metadata,
+    authorityClass,
+    category,
+    truthStatus,
+    freshnessStatus,
+    source: input.source,
+  });
+  const reviewPlan = deriveMemoryReviewPlan({
+    metadata: input.metadata,
+    category,
+    truthStatus,
+    freshnessStatus,
+    operationalStatus,
+    authorityClass,
+    folkloreRisk,
+    contradictionCount,
+  });
+  const badges = Array.from(
+    new Set(
+      [
+        category,
+        truthStatus,
+        freshnessStatus,
+        operationalStatus,
+        conflictSeverity !== "none" ? `conflict:${conflictSeverity}` : "",
+        reviewPlan.reviewAction !== "none" ? `review:${reviewPlan.reviewAction}` : "",
+        contradictionCount > 0 ? "contested" : "",
+        folkloreRisk >= 0.55 ? "folklore-risk" : "",
+        authorityClass,
+        sourceClass ? `source:${sourceClass}` : "",
+        hasEvidence ? "evidence" : "",
+        secretExposure ? "secret-exposure" : "",
+        shadowMcpRisk ? "shadow-mcp" : "",
+        redactionState && redactionState !== "none" ? `redaction:${redactionState}` : "",
+      ].filter(Boolean)
+    )
+  );
+  return {
+    category,
+    truthStatus,
+    freshnessStatus,
+    operationalStatus,
+    authorityClass,
+    sourceClass: sourceClass || null,
+    lastVerifiedAt: freshnessTimestamps.lastVerifiedAt,
+    nextReviewAt: freshnessTimestamps.nextReviewAt,
+    freshnessExpiresAt: freshnessTimestamps.freshnessExpiresAt,
+    folkloreRisk: Number(folkloreRisk.toFixed(3)),
+    contradictionCount,
+    conflictSeverity,
+    conflictKinds,
+    conflictingMemoryIds,
+    evidenceStrength: Number(evidenceStrength.toFixed(3)),
+    hasEvidence,
+    scope,
+    redactionState: redactionState || null,
+    secretExposure,
+    shadowMcpRisk,
+    reviewAction: reviewPlan.reviewAction,
+    reviewPriority: reviewPlan.reviewPriority,
+    reviewReasons: reviewPlan.reviewReasons,
+    badges,
+  };
+}
+
+function withMemoryLatticeRecord(row: MemoryRecord, anchorMs = Date.now()): MemoryRecord {
+  if (row.lattice) return row;
+  const metadata = normalizeMetadata(row.metadata);
+  return {
+    ...row,
+    lattice: buildMemoryLatticeSnapshot({
+      source: row.source,
+      content: row.content,
+      tags: row.tags,
+      metadata,
+      evidence: row.evidence,
+      status: row.status,
+      memoryType: row.memoryType,
+      memoryLayer: row.memoryLayer,
+      sourceConfidence: row.sourceConfidence,
+      importance: row.importance,
+      occurredAt: row.occurredAt,
+      createdAt: row.createdAt || new Date(anchorMs).toISOString(),
+    }),
+  };
+}
+
+function withMemoryLatticeSearchResult(row: MemorySearchResult, anchorMs = Date.now()): MemorySearchResult {
+  if (row.lattice) return row;
+  return {
+    ...row,
+    lattice: withMemoryLatticeRecord(row, anchorMs).lattice,
+  };
+}
+
+function allowsMemoryForUseMode(lattice: MemoryLatticeSnapshot, useMode: MemoryUseMode): boolean {
+  if (lattice.operationalStatus === "retired") return false;
+  if (useMode === "safety-critical") {
+    if (lattice.operationalStatus !== "active") return false;
+    if (lattice.truthStatus !== "verified" && lattice.truthStatus !== "trusted") return false;
+    if (lattice.freshnessStatus !== "fresh") return false;
+    if (
+      lattice.category === "hypothesis" ||
+      lattice.category === "workaround" ||
+      lattice.category === "legacy-lore" ||
+      lattice.category === "derived-insight" ||
+      lattice.category === "observation" ||
+      lattice.category === "preference" ||
+      lattice.category === "conflict-record"
+    ) {
+      return false;
+    }
+    return true;
+  }
+  if (useMode === "human-facing") {
+    if (lattice.operationalStatus === "quarantined") return false;
+    if (lattice.authorityClass === "a5-inferred") return false;
+    if (lattice.category === "conflict-record") return false;
+    return true;
+  }
+  if (useMode === "operational") {
+    if (lattice.category === "conflict-record") return false;
+    return lattice.operationalStatus !== "quarantined" && lattice.operationalStatus !== "deprecated" && lattice.operationalStatus !== "archived";
+  }
+  if (useMode === "planning") {
+    if (lattice.operationalStatus === "archived") return false;
+    if (lattice.operationalStatus !== "quarantined") return true;
+    return lattice.truthStatus === "contradicted" || lattice.conflictSeverity !== "none";
+  }
+  if (useMode === "debugging") {
+    return true;
+  }
+  if (useMode === "exploratory") {
+    return true;
+  }
+  return true;
+}
+
+function useModePenalty(lattice: MemoryLatticeSnapshot, useMode: MemoryUseMode): number {
+  let penalty = 0;
+  if (lattice.freshnessStatus === "aging") penalty += useMode === "safety-critical" ? 0.12 : 0.04;
+  if (lattice.freshnessStatus === "revalidation-required") penalty += useMode === "safety-critical" ? 0.28 : 0.12;
+  if (lattice.freshnessStatus === "stale") penalty += useMode === "safety-critical" ? 0.4 : 0.18;
+  if (lattice.truthStatus === "proposed" || lattice.truthStatus === "inferred") penalty += useMode === "planning" ? 0.04 : 0.12;
+  if (lattice.truthStatus === "contradicted") penalty += 0.36;
+  if (lattice.conflictSeverity === "hard") penalty += 0.08;
+  if (lattice.conflictSeverity === "soft") penalty += 0.03;
+  if (lattice.operationalStatus === "cooling") penalty += 0.03;
+  if (lattice.operationalStatus === "deprecated") penalty += 0.22;
+  if (lattice.operationalStatus === "archived") penalty += 0.3;
+  if (lattice.operationalStatus === "quarantined") penalty += 0.42;
+  penalty += lattice.folkloreRisk * (useMode === "exploratory" ? 0.04 : 0.12);
+  return penalty;
+}
+
+type MemoryRetrievalPolicy = {
+  useMode: MemoryUseMode;
+  limit: number;
+  fillToValidLimit?: boolean;
+  minAuthorityClass?: MemoryAuthorityClass;
+  excludeReviewActions?: MemoryReviewAction[];
+  evidenceRequired?: boolean;
+  allowContested?: boolean;
+  maxStalenessHours?: number;
+};
+
+function isContestedLattice(lattice: MemoryLatticeSnapshot): boolean {
+  return (
+    lattice.truthStatus === "contradicted" ||
+    lattice.operationalStatus === "quarantined" ||
+    lattice.conflictSeverity === "hard" ||
+    lattice.contradictionCount > 0
+  );
+}
+
+function retrievalAnchorAtMs(row: Pick<MemoryRecord, "occurredAt" | "createdAt" | "lattice">): number | null {
+  const anchor = row.lattice?.lastVerifiedAt || row.occurredAt || row.createdAt;
+  const parsed = Date.parse(anchor ?? "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function matchesRetrievalPolicy(
+  row: Pick<MemorySearchResult, "createdAt" | "occurredAt" | "lattice">,
+  policy: MemoryRetrievalPolicy,
+  anchorMs = Date.now()
+): boolean {
+  const lattice = row.lattice;
+  if (!lattice) return true;
+  if (policy.minAuthorityClass && authorityRank(lattice.authorityClass) > authorityRank(policy.minAuthorityClass)) {
+    return false;
+  }
+  if ((policy.excludeReviewActions ?? []).includes(lattice.reviewAction)) {
+    return false;
+  }
+  if (policy.evidenceRequired && lattice.hasEvidence !== true) {
+    return false;
+  }
+  if (policy.allowContested === false && isContestedLattice(lattice)) {
+    return false;
+  }
+  if (typeof policy.maxStalenessHours === "number") {
+    const anchorAtMs = retrievalAnchorAtMs(row);
+    if (anchorAtMs !== null && anchorMs - anchorAtMs > policy.maxStalenessHours * 60 * 60 * 1000) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function applyRetrievalPolicyToSearchRows(
+  rows: MemorySearchResult[],
+  policy: MemoryRetrievalPolicy,
+  anchorMs = Date.now()
+): MemorySearchResult[] {
+  return rows.filter((row) => matchesRetrievalPolicy(row, policy, anchorMs));
+}
+
+function shouldOverfetchForPolicy(policy: MemoryRetrievalPolicy): boolean {
+  return Boolean(
+    policy.fillToValidLimit ||
+      policy.useMode === "safety-critical" ||
+      policy.useMode === "planning" ||
+      policy.useMode === "operational" ||
+      policy.minAuthorityClass ||
+      (policy.excludeReviewActions ?? []).length > 0 ||
+      policy.evidenceRequired ||
+      policy.allowContested === false ||
+      typeof policy.maxStalenessHours === "number"
+  );
+}
+
+function applyUseModeToSearchRows(rows: MemorySearchResult[], useMode: MemoryUseMode, anchorMs = Date.now()): MemorySearchResult[] {
+  return rows
+    .map((row) => {
+      const withLattice = withMemoryLatticeSearchResult(row, anchorMs);
+      const lattice = withLattice.lattice;
+      if (!lattice) return withLattice;
+      const penalty = useModePenalty(lattice, useMode);
+      const matchedBy = [...withLattice.matchedBy];
+      if (lattice.freshnessStatus !== "fresh") matchedBy.push(`freshness:${lattice.freshnessStatus}`);
+      if (lattice.operationalStatus === "quarantined" || lattice.truthStatus === "contradicted") matchedBy.push("contested");
+      if (lattice.conflictSeverity !== "none") matchedBy.push(`conflict:${lattice.conflictSeverity}`);
+      if (lattice.folkloreRisk >= 0.55) matchedBy.push("folklore-risk");
+      if (lattice.reviewAction !== "none") matchedBy.push(`review:${lattice.reviewAction}`);
+      return {
+        ...withLattice,
+        score: Math.max(0, withLattice.score - penalty),
+        matchedBy: Array.from(new Set(matchedBy)),
+        scoreBreakdown: {
+          ...withLattice.scoreBreakdown,
+          signal: (withLattice.scoreBreakdown.signal ?? 0) - penalty,
+        },
+      };
+    })
+    .filter((row) => row.lattice ? allowsMemoryForUseMode(row.lattice, useMode) : true)
+    .sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt));
+}
+
+function applyUseModeToRecords(rows: MemoryRecord[], useMode: MemoryUseMode, anchorMs = Date.now()): MemoryRecord[] {
+  return rows
+    .map((row) => withMemoryLatticeRecord(row, anchorMs))
+    .filter((row) => row.lattice ? allowsMemoryForUseMode(row.lattice, useMode) : true);
+}
+
+function finalizeSearchRows(rows: MemorySearchResult[], policy: MemoryRetrievalPolicy, anchorMs = Date.now()): MemorySearchResult[] {
+  return diversifyRankedRows(
+    applyRetrievalPolicyToSearchRows(
+      applyUseModeToSearchRows(filterExpiredSearchResults(rows, anchorMs), policy.useMode, anchorMs),
+      policy,
+      anchorMs
+    ),
+    policy.limit
+  );
+}
+
 function inferImportance(tags: string[], metadata: Record<string, unknown>): number {
   const normalizedTags = tags.map((tag) => normalizeSource(tag));
   if (normalizedTags.some((tag) => tag.includes("critical") || tag.includes("decision") || tag.includes("blocker"))) {
@@ -3711,6 +5175,10 @@ function summarizeContextItems(items: MemorySearchResult[], maxChars = 480): str
     if (hints.some((entry) => entry.includes("state:reopened"))) flags.push("REOPENED");
     if (hints.some((entry) => entry.includes("state:superseded"))) flags.push("SUPERSEDED");
     if (hints.some((entry) => entry.includes("priority:urgent")) || metadataFlag(metadata, "urgentLike")) flags.push("URGENT");
+    if (row.lattice?.freshnessStatus === "stale") flags.push("STALE");
+    if (row.lattice?.freshnessStatus === "revalidation-required") flags.push("VERIFY");
+    if (row.lattice?.truthStatus === "contradicted" || row.lattice?.operationalStatus === "quarantined") flags.push("CONTESTED");
+    if (row.lattice?.reviewAction && row.lattice.reviewAction !== "none") flags.push("REVIEW");
     const snippet = row.content.replace(/\s+/g, " ").trim().slice(0, 120);
     const prefix = flags.length > 0 ? `[${flags.join("|")}] ` : "";
     const line = `${index + 1}. ${prefix}[${row.source}] ${snippet}`;
@@ -3721,6 +5189,60 @@ function summarizeContextItems(items: MemorySearchResult[], maxChars = 480): str
     }
   }
   return lines.join("\n");
+}
+
+function summarizeConflictBlockedContext(items: MemorySearchResult[], useMode: MemoryUseMode, maxChars = 480): string {
+  if ((useMode !== "operational" && useMode !== "safety-critical") || items.length === 0) return "";
+  const hardConflictItems = items.filter((row) => row.lattice?.conflictSeverity === "hard");
+  if (hardConflictItems.length === 0) return "";
+  const scopes = Array.from(
+    new Set(
+      hardConflictItems
+        .map((row) => normalizeText(row.lattice?.scope))
+        .filter(Boolean)
+    )
+  ).slice(0, 2);
+  const conflictRecord = hardConflictItems.find((row) => row.lattice?.category === "conflict-record");
+  const modeLabel = useMode === "safety-critical" ? "Safety-critical" : "Operational";
+  const scopeLabel = scopes[0] ?? `memory:${hardConflictItems[0]?.id ?? "unknown"}`;
+  const recordHint = conflictRecord ? ` Inspect ${conflictRecord.id}.` : "";
+  const summary = `${modeLabel} retrieval blocked by a hard conflict on ${scopeLabel}.${recordHint} Use planning or debugging mode to inspect both sides.`;
+  return summary.slice(0, maxChars);
+}
+
+function deriveBlockedByHardConflictDiagnostic(
+  items: MemorySearchResult[],
+  useMode: MemoryUseMode,
+  selectedCount: number
+): {
+  blocked: boolean;
+  useMode: MemoryUseMode;
+  scope: string | null;
+  conflictRecordId: string | null;
+  conflictingMemoryIds: string[];
+} | undefined {
+  if ((useMode !== "operational" && useMode !== "safety-critical") || selectedCount > 0 || items.length === 0) {
+    return undefined;
+  }
+  const hardConflictItems = items.filter((row) => row.lattice?.conflictSeverity === "hard");
+  if (hardConflictItems.length === 0) return undefined;
+  const conflictRecord = hardConflictItems.find((row) => row.lattice?.category === "conflict-record");
+  const scope =
+    hardConflictItems
+      .map((row) => normalizeText(row.lattice?.scope))
+      .find(Boolean)
+    ?? null;
+  const conflictingMemoryIds = Array.from(new Set(hardConflictItems.flatMap((row) => row.lattice?.conflictingMemoryIds ?? []))).slice(
+    0,
+    24,
+  );
+  return {
+    blocked: true,
+    useMode,
+    scope,
+    conflictRecordId: conflictRecord?.id ?? null,
+    conflictingMemoryIds,
+  };
 }
 
 function parseQuerySignals(query: string): {
@@ -3760,6 +5282,7 @@ function parseQuerySignals(query: string): {
 
 function inferProjectLaneFromQuery(query: string): string {
   const text = query.toLowerCase();
+  if (/\bmonsoonfire[- ]portal\b|\bportal\.monsoonfire\.com\b/.test(text)) return "monsoonfire-portal";
   if (/\bstudio brain\b|\bstudio-brain\b|\bopen memory\b|\bmemory service\b/.test(text)) return "studio-brain";
   if (/\bcloud functions\b|\bfirestore\b|\bfunctions?\b/.test(text)) return "functions";
   if (/\bwebsite\b|\bseo\b|\bga\b|\bmonsoonfire\.com\b/.test(text)) return "website";
@@ -4697,6 +6220,60 @@ function toSearchResultFromRecord(
   };
 }
 
+function scoreRecentRowsForQuery(
+  rows: MemoryRecord[],
+  query: string,
+  options: {
+    matchedBy?: string[];
+    lexicalCap?: number;
+    baseScore?: number;
+    sourceTrustWeight?: number;
+    importanceWeight?: number;
+    anchorMs?: number;
+    runId?: string | null;
+    agentId?: string | null;
+  } = {}
+): MemorySearchResult[] {
+  const queryTokens = String(query)
+    .toLowerCase()
+    .split(/\s+/)
+    .map((entry) => entry.replace(/[^a-z0-9._:@/-]+/g, "").trim())
+    .filter((entry) => entry.length >= 3)
+    .slice(0, 24);
+  const lexicalCap = Number.isFinite(options.lexicalCap ?? Number.NaN) ? Number(options.lexicalCap) : 0.34;
+  const baseScore = Number.isFinite(options.baseScore ?? Number.NaN) ? Number(options.baseScore) : 0.32;
+  const sourceTrustWeight = Number.isFinite(options.sourceTrustWeight ?? Number.NaN) ? Number(options.sourceTrustWeight) : 0.16;
+  const importanceWeight = Number.isFinite(options.importanceWeight ?? Number.NaN) ? Number(options.importanceWeight) : 0.14;
+  const anchorMs = options.anchorMs ?? Date.now();
+  return rows.map((row) => {
+    const metadata = normalizeMetadata(row.metadata);
+    const subject = normalizeText(metadata.subjectKey || metadata.subject).toLowerCase();
+    const haystack = `${row.content}\n${subject}`.toLowerCase();
+    const tokenHits = queryTokens.length === 0 ? 0 : queryTokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
+    const lexicalBoost = queryTokens.length === 0 ? 0 : Math.min(lexicalCap, (tokenHits / queryTokens.length) * lexicalCap);
+    const session =
+      options.runId && row.runId === options.runId ? 1 : options.agentId && row.agentId === options.agentId ? 0.5 : 0;
+    return toSearchResultFromRecord(
+      row,
+      {
+        score: baseScore + lexicalBoost + row.sourceConfidence * sourceTrustWeight + row.importance * importanceWeight,
+        matchedBy: [...(options.matchedBy ?? ["recent"])],
+        scoreBreakdown: {
+          rrf: 0.2 + lexicalBoost,
+          sourceTrust: row.sourceConfidence,
+          recency: recencyScore(row.occurredAt, row.createdAt, row.memoryType, anchorMs),
+          importance: row.importance,
+          session,
+          lexical: lexicalBoost,
+          semantic: 0,
+          sessionLane: session,
+        },
+      },
+      anchorMs
+    );
+  });
+}
+
 type MemoryServiceOptions = {
   store: MemoryStoreAdapter;
   embeddingAdapter?: EmbeddingAdapter;
@@ -4780,6 +6357,13 @@ export function createMemoryService(options: MemoryServiceOptions) {
     denySources: string[];
     allowLayers: MemoryLayer[];
     denyLayers: MemoryLayer[];
+    useMode: MemoryUseMode;
+    fillToValidLimit?: boolean;
+    minAuthorityClass?: MemoryAuthorityClass;
+    excludeReviewActions?: MemoryReviewAction[];
+    evidenceRequired?: boolean;
+    allowContested?: boolean;
+    maxStalenessHours?: number;
     limit: number;
   }): string =>
     stableStringify({
@@ -4792,6 +6376,14 @@ export function createMemoryService(options: MemoryServiceOptions) {
       sourceDenylist: [...params.denySources].sort((left, right) => left.localeCompare(right)),
       layerAllowlist: [...params.allowLayers].sort((left, right) => left.localeCompare(right)),
       layerDenylist: [...params.denyLayers].sort((left, right) => left.localeCompare(right)),
+      useMode: params.useMode,
+      fillToValidLimit: params.fillToValidLimit === true,
+      minAuthorityClass: params.minAuthorityClass ?? null,
+      excludeReviewActions: [...(params.excludeReviewActions ?? [])].sort((left, right) => left.localeCompare(right)),
+      evidenceRequired: params.evidenceRequired === true,
+      allowContested: params.allowContested ?? null,
+      maxStalenessHours:
+        typeof params.maxStalenessHours === "number" ? Math.max(0, Math.trunc(params.maxStalenessHours)) : null,
       limit: Math.max(1, params.limit),
     });
   const writeSearchFallbackCache = (cacheKey: string, rows: MemorySearchResult[]) => {
@@ -4833,6 +6425,13 @@ export function createMemoryService(options: MemoryServiceOptions) {
     sourceDenylist: string[];
     layerAllowlist: MemoryLayer[];
     layerDenylist: MemoryLayer[];
+    useMode: MemoryUseMode;
+    fillToValidLimit?: boolean;
+    minAuthorityClass?: MemoryAuthorityClass;
+    excludeReviewActions?: MemoryReviewAction[];
+    evidenceRequired?: boolean;
+    allowContested?: boolean;
+    maxStalenessHours?: number;
     maxItems: number;
     scanLimit: number;
   }): string =>
@@ -4846,6 +6445,14 @@ export function createMemoryService(options: MemoryServiceOptions) {
       sourceDenylist: [...params.sourceDenylist].sort((left, right) => left.localeCompare(right)),
       layerAllowlist: [...params.layerAllowlist].sort((left, right) => left.localeCompare(right)),
       layerDenylist: [...params.layerDenylist].sort((left, right) => left.localeCompare(right)),
+      useMode: params.useMode,
+      fillToValidLimit: params.fillToValidLimit === true,
+      minAuthorityClass: params.minAuthorityClass ?? null,
+      excludeReviewActions: [...(params.excludeReviewActions ?? [])].sort((left, right) => left.localeCompare(right)),
+      evidenceRequired: params.evidenceRequired === true,
+      allowContested: params.allowContested ?? null,
+      maxStalenessHours:
+        typeof params.maxStalenessHours === "number" ? Math.max(0, Math.trunc(params.maxStalenessHours)) : null,
       maxItems: Math.max(1, params.maxItems),
       scanLimit: Math.max(1, params.scanLimit),
     });
@@ -5100,9 +6707,127 @@ export function createMemoryService(options: MemoryServiceOptions) {
     };
   };
 
+  type ExactMemoryConflictMatch = {
+    memoryId: string;
+    scope: string;
+    kind: string;
+    severity: MemoryConflictSeverity;
+    reason: string;
+    existingState: MemoryLoopState | null;
+    incomingState: MemoryLoopState | null;
+  };
+
+  const memoryEventTimestampMs = (occurredAt: string | null | undefined, createdAt?: string | null): number =>
+    Number.isFinite(Date.parse(occurredAt || createdAt || "")) ? Date.parse(occurredAt || createdAt || "") : Date.now();
+
+  const exactLoopStateConflictReason = (input: {
+    incomingState: MemoryLoopState;
+    existingState: MemoryLoopState;
+    incomingOccurredAt: string | null;
+    existingOccurredAt: string | null;
+    existingCreatedAt: string;
+  }): string | null => {
+    if (input.incomingState === input.existingState) return null;
+    const incomingMs = memoryEventTimestampMs(input.incomingOccurredAt);
+    const existingMs = memoryEventTimestampMs(input.existingOccurredAt, input.existingCreatedAt);
+    if (input.incomingState === "superseded" || input.existingState === "superseded") return null;
+    if (input.incomingState === "reopened" && input.existingState === "resolved" && incomingMs > existingMs) return null;
+    if (input.incomingState === "resolved" && (input.existingState === "open-loop" || input.existingState === "reopened") && incomingMs > existingMs) {
+      return null;
+    }
+    if (input.incomingState === "open-loop" && input.existingState === "resolved") {
+      return "Scope was previously marked resolved but a new open-loop claim arrived without explicit reopen semantics.";
+    }
+    if (input.incomingState === "resolved" && (input.existingState === "open-loop" || input.existingState === "reopened")) {
+      return "Scope now carries unresolved and resolved claims without a clean progression boundary.";
+    }
+    if (input.incomingState === "reopened" && input.existingState !== "resolved") {
+      return "Scope carries a reopened claim that conflicts with the prior recorded state.";
+    }
+    return null;
+  };
+
+  const findExactCaptureConflicts = async (input: {
+    tenantId: string | null;
+    incomingId: string;
+    metadata: Record<string, unknown>;
+    category: MemoryCategory;
+    occurredAt: string | null;
+  }): Promise<ExactMemoryConflictMatch[]> => {
+    const matches: ExactMemoryConflictMatch[] = [];
+    const scope = deriveMemoryScope(input.metadata);
+    const incomingState = normalizeMemoryLoopState(
+      input.metadata.loopState ?? input.metadata.currentState ?? input.metadata.state
+    );
+    const explicitConflictIds = conflictingMemoryIdsFromMetadata(input.metadata).filter((value) => value !== input.incomingId);
+
+    if (explicitConflictIds.length > 0) {
+      const explicitRows = await options.store.getByIds({
+        tenantId: input.tenantId,
+        ids: explicitConflictIds,
+      });
+      for (const row of explicitRows) {
+        if (!row || row.id === input.incomingId) continue;
+        matches.push({
+          memoryId: row.id,
+          scope: scope || deriveMemoryScope(normalizeMetadata(row.metadata)) || `memory:${row.id}`,
+          kind: "explicit-reference",
+          severity: "hard",
+          reason: `Explicit conflict reference points to ${row.id}.`,
+          existingState: normalizeMemoryLoopState(extractLoopStateHint(row)) || null,
+          incomingState: incomingState || null,
+        });
+      }
+    }
+
+    const eligibleCategory =
+      input.category === "decision" ||
+      input.category === "guardrail" ||
+      input.category === "fact" ||
+      input.category === "known-bug" ||
+      input.category === "workaround" ||
+      input.category === "procedure";
+    if (!scope || !incomingState || !eligibleCategory) {
+      return Array.from(new Map(matches.map((match) => [`${match.memoryId}|${match.kind}`, match])).values());
+    }
+
+    const recentRows = await options.store.recent({
+      tenantId: input.tenantId,
+      limit: 160,
+      layerDenylist: ["core"],
+      excludeStatuses: ["archived"],
+    });
+    for (const row of recentRows) {
+      if (!row || row.id === input.incomingId) continue;
+      const rowMetadata = normalizeMetadata(row.metadata);
+      if (deriveMemoryScope(rowMetadata) !== scope) continue;
+      const existingState = normalizeMemoryLoopState(extractLoopStateHint(row));
+      if (!existingState) continue;
+      const reason = exactLoopStateConflictReason({
+        incomingState,
+        existingState,
+        incomingOccurredAt: input.occurredAt,
+        existingOccurredAt: row.occurredAt,
+        existingCreatedAt: row.createdAt,
+      });
+      if (!reason) continue;
+      matches.push({
+        memoryId: row.id,
+        scope,
+        kind: "exact-loop-state",
+        severity: "hard",
+        reason,
+        existingState,
+        incomingState,
+      });
+    }
+
+    return Array.from(new Map(matches.map((match) => [`${match.memoryId}|${match.kind}`, match])).values()).slice(0, 12);
+  };
+
   const capture = async (
     raw: unknown,
-    captureOptions?: { bypassRunWriteBurstLimit?: boolean; skipSignalIndexing?: boolean }
+    captureOptions?: { bypassRunWriteBurstLimit?: boolean; skipSignalIndexing?: boolean; skipConflictDetection?: boolean }
   ): Promise<MemoryRecord> => {
     let parsed: MemoryCaptureRequest;
     try {
@@ -5130,6 +6855,11 @@ export function createMemoryService(options: MemoryServiceOptions) {
         source: normalizedSource,
         clientRequestId: parsed.clientRequestId,
       });
+    const existing = (await options.store.getByIds({
+      tenantId: routing.tenantId,
+      ids: [id],
+    }))[0] ?? null;
+    const createdAt = new Date().toISOString();
     const requestedMetadata = {
       ...parsed.metadata,
       source: normalizedSource,
@@ -5162,16 +6892,17 @@ export function createMemoryService(options: MemoryServiceOptions) {
       derivedLayer === "working"
         ? applyDefaultWorkingTtl(metadataWithLayer, parsed.occurredAt ?? null)
         : metadataWithLayer;
-    const lineageAwareMetadata =
+    const lineageAwareMetadata = normalizeMetadata(
       derivedLayer === "canonical"
         ? withCanonicalLineage(ttlAwareMetadata, {
             id,
             source: normalizedSource,
             clientRequestId: parsed.clientRequestId ?? null,
           })
-        : ttlAwareMetadata;
-    const metadata = redactSensitiveMetadata(lineageAwareMetadata);
+        : ttlAwareMetadata
+    );
     let status = normalizeStatus(parsed.status, normalizedSource, parsed.content);
+    const memoryType = defaultMemoryTypeForLayer(derivedLayer, normalizeMemoryType(parsed.memoryType));
     if (
       derivedLayer === "episodic" &&
       shouldDefaultAcceptedEpisodic({
@@ -5179,26 +6910,215 @@ export function createMemoryService(options: MemoryServiceOptions) {
         source: normalizedSource,
         tags: parsed.tags,
         content: parsed.content,
-        metadata,
+        metadata: lineageAwareMetadata,
       })
     ) {
       status = "accepted";
     }
-    const memoryType = defaultMemoryTypeForLayer(derivedLayer, normalizeMemoryType(parsed.memoryType));
+    const derivedCategory = deriveMemoryCategory({
+      source: normalizedSource,
+      content: parsed.content,
+      tags: parsed.tags,
+      metadata: lineageAwareMetadata,
+      memoryLayer: derivedLayer,
+      memoryType,
+      status,
+    });
+    const exactConflictMatches =
+      captureOptions?.skipConflictDetection === true ||
+      normalizedSource === "memory-contradiction-watch" ||
+      derivedCategory === "conflict-record"
+        ? []
+        : await findExactCaptureConflicts({
+            tenantId: routing.tenantId,
+            incomingId: id,
+            metadata: lineageAwareMetadata,
+            category: derivedCategory,
+            occurredAt: parsed.occurredAt ?? null,
+          });
+    const conflictReasons = Array.from(
+      new Set([
+        ...readStringValues(lineageAwareMetadata.contradictions, 16).map((value) => normalizeText(value)).filter(Boolean),
+        ...exactConflictMatches.map((match) => match.reason),
+      ])
+    ).slice(0, 16);
+    const conflictKinds = Array.from(
+      new Set([
+        ...conflictKindsFromMetadata(lineageAwareMetadata),
+        ...exactConflictMatches.map((match) => match.kind),
+      ])
+    ).slice(0, 8);
+    const conflictingMemoryIds = Array.from(
+      new Set([
+        ...conflictingMemoryIdsFromMetadata(lineageAwareMetadata),
+        ...exactConflictMatches.map((match) => match.memoryId),
+      ])
+    ).slice(0, 24);
+    const contradictionCount = Math.max(
+      contradictionCountFromMetadata(lineageAwareMetadata),
+      conflictReasons.length > 0 ? conflictReasons.length : conflictingMemoryIds.length > 0 ? 1 : 0
+    );
+    const explicitConflictSeverity = normalizeMemoryConflictSeverity(lineageAwareMetadata.conflictSeverity);
+    const conflictAugmentedMetadata = {
+      ...lineageAwareMetadata,
+      contradictions: conflictReasons,
+      contradictionCount,
+      conflictKinds,
+      conflictKind: conflictKinds[0] ?? lineageAwareMetadata.conflictKind,
+      conflictSeverity:
+        exactConflictMatches.some((match) => match.severity === "hard")
+          ? "hard"
+          : contradictionCount > 0
+            ? explicitConflictSeverity || "soft"
+            : explicitConflictSeverity || "none",
+      conflictingMemoryIds,
+      relatedMemoryIds: Array.from(
+        new Set([
+          ...readStringValues(lineageAwareMetadata.relatedMemoryIds, 32),
+          ...conflictingMemoryIds,
+        ])
+      ).slice(0, 32),
+      conflictScope: deriveMemoryScope(lineageAwareMetadata),
+      conflictDetectedAt:
+        contradictionCount > contradictionCountFromMetadata(lineageAwareMetadata) || exactConflictMatches.length > 0
+          ? new Date().toISOString()
+          : normalizeText(lineageAwareMetadata.conflictDetectedAt) || undefined,
+      conflictingLoopState:
+        lineageAwareMetadata.conflictingLoopState === true || exactConflictMatches.some((match) => match.kind === "exact-loop-state"),
+    };
     const sourceConfidence = clamp01(parsed.sourceConfidence, sourceConfidenceForSource(normalizedSource));
-    const importance = clamp01(parsed.importance, inferImportance(parsed.tags, metadata));
+    const importance = clamp01(parsed.importance, inferImportance(parsed.tags, lineageAwareMetadata));
+    const sensitiveContent = scanSensitiveContent(parsed.content);
+    const sourceClass = deriveMemorySourceClass({
+      source: normalizedSource,
+      metadata: conflictAugmentedMetadata,
+    });
+    const rawMcpGovernance = normalizeMetadata((conflictAugmentedMetadata as Record<string, unknown>).mcpGovernance);
+    const mcpShadowRisk =
+      sourceClass === "mcp-tool" &&
+      String(rawMcpGovernance.approvalState ?? "").trim().toLowerCase() !== "approved";
+    const mcpGovernance =
+      sourceClass === "mcp-tool" || Object.keys(rawMcpGovernance).length > 0
+        ? {
+            ...rawMcpGovernance,
+            shadowRisk: rawMcpGovernance.shadowRisk === true || mcpShadowRisk,
+          }
+        : rawMcpGovernance;
+    status = sensitiveContent.quarantined ? "quarantined" : status;
+    const secretExposureMetadata = sensitiveContent.detected
+      ? {
+          detected: true,
+          reasons: sensitiveContent.reasons,
+          redactionState: sensitiveContent.redactionState,
+          canonicalPromotionBlocked: true,
+          quarantined: true,
+          requiresReview: true,
+        }
+      : {
+          detected: false,
+          reasons: [],
+          redactionState: "none",
+          canonicalPromotionBlocked: false,
+          quarantined: false,
+          requiresReview: false,
+        };
+    const trustMetadata = {
+      ...conflictAugmentedMetadata,
+      sourceClass,
+      redactionState: sensitiveContent.redactionState,
+      secretExposure: secretExposureMetadata,
+      shadowMcpRisk: mcpGovernance.shadowRisk === true,
+      mcpGovernance,
+    };
+    const evidence = normalizeCaptureEvidence({
+      memoryId: id,
+      sourceClass,
+      metadata: trustMetadata,
+      provided: parsed.evidence,
+      clientRequestId: parsed.clientRequestId ?? null,
+      occurredAt: parsed.occurredAt ?? null,
+      createdAt,
+      redactionState: sensitiveContent.redactionState,
+    });
+    const lattice = buildMemoryLatticeSnapshot({
+      source: normalizedSource,
+      content: sensitiveContent.redactedContent,
+      tags: parsed.tags,
+      metadata: {
+        ...trustMetadata,
+        memoryCategory: parsed.memoryCategory,
+        truthStatus: parsed.truthStatus,
+        freshnessStatus: parsed.freshnessStatus,
+        operationalStatus: parsed.operationalStatus,
+        authorityClass: parsed.authorityClass,
+        lastVerifiedAt: parsed.lastVerifiedAt,
+        nextReviewAt: parsed.nextReviewAt,
+        freshnessExpiresAt: parsed.freshnessExpiresAt,
+      },
+      evidence,
+      status,
+      memoryType,
+      memoryLayer: derivedLayer,
+      sourceConfidence,
+      importance,
+      occurredAt: parsed.occurredAt ?? null,
+      createdAt,
+    });
+    const transitionEvents = buildMemoryTransitionEvents({
+      memoryId: id,
+      previous: existing,
+      nextStatus: status,
+      nextLattice: lattice,
+      evidence,
+      clientRequestId: parsed.clientRequestId ?? null,
+      actor: routing.agentId,
+      reason:
+        sensitiveContent.detected
+          ? `secret-exposure:${sensitiveContent.reasons.join(",")}`
+          : normalizeText((conflictAugmentedMetadata as Record<string, unknown>).transitionReason) || parsed.clientRequestId || normalizedSource,
+      at: createdAt,
+    });
+    const metadata = redactSensitiveMetadata({
+      ...trustMetadata,
+      memoryCategory: lattice.category,
+      truthStatus: lattice.truthStatus,
+      freshnessStatus: lattice.freshnessStatus,
+      operationalStatus: lattice.operationalStatus,
+      authorityClass: lattice.authorityClass,
+      sourceClass: lattice.sourceClass,
+      lastVerifiedAt: lattice.lastVerifiedAt,
+      nextReviewAt: lattice.nextReviewAt,
+      freshnessExpiresAt: lattice.freshnessExpiresAt,
+      folkloreRisk: lattice.folkloreRisk,
+      contradictionCount: lattice.contradictionCount,
+      conflictSeverity: lattice.conflictSeverity,
+      conflictKinds: lattice.conflictKinds,
+      conflictingMemoryIds: lattice.conflictingMemoryIds,
+      evidenceStrength: lattice.evidenceStrength,
+      evidenceCount: evidence.length,
+      hasEvidence: lattice.hasEvidence,
+      scope: lattice.scope,
+      redactionState: lattice.redactionState,
+      secretExposure: secretExposureMetadata,
+      shadowMcpRisk: lattice.shadowMcpRisk,
+      reviewAction: lattice.reviewAction,
+      reviewPriority: lattice.reviewPriority,
+      reviewReasons: lattice.reviewReasons,
+      transitionsEmitted: transitionEvents.map((entry) => entry.transitionId),
+      memoryLattice: lattice,
+    });
     const contextualizedContent = buildContextualizedContent({
       source: normalizedSource,
       agentId: routing.agentId,
       runId: routing.runId,
       tags: parsed.tags,
-      content: parsed.content,
+      content: sensitiveContent.redactedContent,
       metadata,
     });
     const fingerprint = buildFingerprint({
       tenantId: routing.tenantId,
       source: normalizedSource,
-      content: parsed.content,
+      content: sensitiveContent.redactedContent,
       tags: parsed.tags,
     });
     const embedding = normalizeEmbedding(parsed.embedding ?? (await embeddingAdapter.embed(contextualizedContent)));
@@ -5208,7 +7128,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       tenantId: routing.tenantId,
       agentId: routing.agentId,
       runId: routing.runId,
-      content: parsed.content,
+      content: sensitiveContent.redactedContent,
       source: normalizedSource,
       tags: parsed.tags,
       metadata: {
@@ -5231,6 +7151,8 @@ export function createMemoryService(options: MemoryServiceOptions) {
       fingerprint,
       embeddingModel: metadata.embeddingModel ? String(metadata.embeddingModel) : null,
       embeddingVersion: 1,
+      evidence,
+      transitionEvents,
     });
 
     if (options.store.indexSignals && captureOptions?.skipSignalIndexing !== true) {
@@ -5516,7 +7438,71 @@ export function createMemoryService(options: MemoryServiceOptions) {
       }
     }
 
-    return stored;
+    if (
+      captureOptions?.skipConflictDetection !== true &&
+      exactConflictMatches.length > 0 &&
+      lattice.category !== "conflict-record"
+    ) {
+      const conflictScope = lattice.scope || deriveMemoryScope(normalizeMetadata(stored.metadata)) || `memory:${stored.id}`;
+      const conflictIds = Array.from(new Set([stored.id, ...exactConflictMatches.map((match) => match.memoryId)])).slice(0, 24);
+      const statePairs = Array.from(
+        new Set(
+          exactConflictMatches.map((match) =>
+            [match.incomingState || "unknown", match.existingState || "unknown"].join(" vs ")
+          )
+        )
+      ).slice(0, 6);
+      const scopeLabel = conflictScope.replace(/^subject:/, "").replace(/^thread:/, "").replace(/^loop:/, "");
+      const conflictId = `conflict:${createHash("sha1")
+        .update(`${stored.tenantId ?? "none"}|${conflictScope}|${conflictIds.slice().sort().join("|")}|${statePairs.join("|")}`)
+        .digest("hex")
+        .slice(0, 24)}`;
+      const contradictionSummaries = Array.from(new Set(exactConflictMatches.map((match) => match.reason))).slice(0, 8);
+      await capture(
+        {
+          id: conflictId,
+          tenantId: stored.tenantId ?? undefined,
+          agentId: stored.agentId,
+          runId: stored.runId,
+          content:
+            `Conflict: ${scopeLabel || conflictScope} has conflicting memory claims. `
+            + `Detected ${statePairs.join("; ")}. Review the contested memories before trusting inherited state.`,
+          source: "memory-contradiction-watch",
+          tags: ["conflict-record", "contradiction", "hard-conflict"],
+          metadata: {
+            subjectKey: normalizeSubjectKey(normalizeMetadata(stored.metadata).subjectKey || normalizeMetadata(stored.metadata).subject),
+            conflictScope,
+            conflictSeverity: "hard",
+            conflictKinds: Array.from(new Set(exactConflictMatches.map((match) => match.kind))).slice(0, 8),
+            reviewAction: "none",
+            reviewPriority: 0,
+            reviewReasons: [],
+            conflictingMemoryIds: conflictIds,
+            relatedMemoryIds: conflictIds,
+            derivedFromIds: conflictIds,
+            contradictions: contradictionSummaries,
+            conflictStates: statePairs,
+            conflictRecordFor: stored.id,
+            startupEligible: false,
+          },
+          clientRequestId: `conflict-record:${stored.id}`.slice(0, 128),
+          occurredAt: stored.occurredAt ?? undefined,
+          memoryCategory: "conflict-record",
+          truthStatus: "verified",
+          freshnessStatus: "fresh",
+          operationalStatus: "active",
+          authorityClass: "a3-telemetry",
+          sourceConfidence: Math.max(0.86, stored.sourceConfidence),
+          importance: Math.max(0.82, stored.importance),
+        },
+        {
+          bypassRunWriteBurstLimit: true,
+          skipConflictDetection: true,
+        }
+      );
+    }
+
+    return withMemoryLatticeRecord(stored);
   };
 
   const search = async (raw: unknown): Promise<MemorySearchResult[]> => {
@@ -5552,6 +7538,19 @@ export function createMemoryService(options: MemoryServiceOptions) {
     const denySources = applyDreamDefaultSourceDenylist(allowSources, sanitizeStringList(parsed.sourceDenylist));
     const allowLayers = normalizeMemoryLayerList(parsed.layerAllowlist);
     const denyLayers = normalizeMemoryLayerList(parsed.layerDenylist);
+    const retrievalPolicy: MemoryRetrievalPolicy = {
+      useMode: parsed.useMode,
+      limit: parsed.limit,
+      fillToValidLimit: parsed.fillToValidLimit,
+      minAuthorityClass: parsed.minAuthorityClass,
+      excludeReviewActions: parsed.excludeReviewActions,
+      evidenceRequired: parsed.evidenceRequired,
+      allowContested: parsed.allowContested,
+      maxStalenessHours: parsed.maxStalenessHours,
+    };
+    const searchLimit = shouldOverfetchForPolicy(retrievalPolicy)
+      ? Math.max(parsed.limit * 4, parsed.limit + 12)
+      : parsed.limit;
     const cacheKey = buildSearchFallbackCacheKey({
       tenantId,
       agentId: parsed.agentId,
@@ -5562,6 +7561,13 @@ export function createMemoryService(options: MemoryServiceOptions) {
       denySources,
       allowLayers,
       denyLayers,
+      useMode: parsed.useMode,
+      fillToValidLimit: parsed.fillToValidLimit,
+      minAuthorityClass: parsed.minAuthorityClass,
+      excludeReviewActions: parsed.excludeReviewActions,
+      evidenceRequired: parsed.evidenceRequired,
+      allowContested: parsed.allowContested,
+      maxStalenessHours: parsed.maxStalenessHours,
       limit: parsed.limit,
     });
     let rows: MemorySearchResult[] = [];
@@ -5579,7 +7585,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       minScore: parsed.minScore,
       explain: parsed.explain,
       embedding: embedding ?? undefined,
-      limit: parsed.limit,
+      limit: searchLimit,
     };
     try {
       rows = filterExpiredSearchResults(
@@ -5635,7 +7641,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
                 ...baseSearchInput,
                 retrievalMode: "lexical",
                 embedding: undefined,
-                limit: Math.max(parsed.limit * 3, 24),
+                limit: Math.max(searchLimit * 3, 24),
               }),
               fallbackStageTimeoutMs,
               "memory search lexical timeout fallback stage"
@@ -5670,41 +7676,16 @@ export function createMemoryService(options: MemoryServiceOptions) {
             "memory search recent fallback stage"
           )
         );
-        const queryTokens = String(parsed.query)
-          .toLowerCase()
-          .split(/\s+/)
-          .map((entry) => entry.replace(/[^a-z0-9._:@/-]+/g, "").trim())
-          .filter((entry) => entry.length >= 3)
-          .slice(0, 20);
         const fallbackScored = fallbackRows
-          .map((row) => {
-            const metadata = normalizeMetadata(row.metadata);
-            const subject = normalizeText(metadata.subjectKey || metadata.subject).toLowerCase();
-            const haystack = `${row.content}\n${subject}`.toLowerCase();
-            const tokenHits =
-              queryTokens.length === 0 ? 0 : queryTokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
-            const lexicalBoost = queryTokens.length === 0 ? 0 : Math.min(0.32, (tokenHits / queryTokens.length) * 0.32);
-            return toSearchResultFromRecord(
-              row,
-              {
-                score: 0.34 + lexicalBoost + row.sourceConfidence * 0.14 + row.importance * 0.14,
-                matchedBy: ["recent-fallback", "lexical-timeout"],
-                scoreBreakdown: {
-                  rrf: 0.2 + lexicalBoost,
-                  sourceTrust: row.sourceConfidence,
-                  recency: recencyScore(row.occurredAt, row.createdAt, row.memoryType),
-                  importance: row.importance,
-                  session: 0,
-                  lexical: lexicalBoost,
-                  semantic: 0,
-                  sessionLane: 0,
-                },
-              },
-              Date.now()
-            );
-          })
+          .flatMap((row) => scoreRecentRowsForQuery([row], parsed.query, {
+            matchedBy: ["recent-fallback", "lexical-timeout"],
+            lexicalCap: 0.32,
+            baseScore: 0.34,
+            sourceTrustWeight: 0.14,
+            importanceWeight: 0.14,
+          }))
           .sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt))
-          .slice(0, Math.max(parsed.limit * 3, parsed.limit));
+          .slice(0, Math.max(searchLimit, parsed.limit * 3));
         rows = fallbackScored;
         if (rows.length === 0) {
           const cachedRows = readSearchFallbackCache(cacheKey);
@@ -5872,15 +7853,60 @@ export function createMemoryService(options: MemoryServiceOptions) {
         return true;
       });
     };
+    const finalizeAndMaybeBackfill = async (
+      rowsInput: MemorySearchResult[],
+      conflictCompanions: Array<MemoryRecord | MemorySearchResult> = []
+    ): Promise<MemorySearchResult[]> => {
+      const shadowedScoped = applyConflictShadowToSearchRows(
+        applyRequestedScope(rowsInput),
+        [...rowsInput, ...conflictCompanions],
+        Date.now()
+      );
+      const scoped = shadowedScoped.sort(
+        (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
+      );
+      let finalized = finalizeSearchRows(scoped, retrievalPolicy);
+      if (!shouldOverfetchForPolicy(retrievalPolicy) || finalized.length >= parsed.limit) {
+        return finalized;
+      }
+      const fallbackRows = filterExpiredMemoryRecords(
+        await options.store.recent({
+          tenantId,
+          agentId: parsed.agentId,
+          runId: parsed.runId,
+          sourceAllowlist: allowSources,
+          sourceDenylist: denySources,
+          layerAllowlist: allowLayers,
+          layerDenylist: denyLayers,
+          limit: Math.max(searchLimit * 6, 120),
+        })
+      );
+      const mergedById = new Map(scoped.map((row) => [row.id, row] as const));
+      const additions = scoreRecentRowsForQuery(fallbackRows, parsed.query, {
+        matchedBy: ["recent-fill"],
+        lexicalCap: 0.32,
+        baseScore: 0.3,
+        sourceTrustWeight: 0.16,
+        importanceWeight: 0.14,
+        runId: parsed.runId ?? null,
+        agentId: parsed.agentId ?? null,
+      });
+      for (const row of additions) {
+        if (!mergedById.has(row.id)) {
+          mergedById.set(row.id, row);
+        }
+      }
+      const mergedRows = Array.from(mergedById.values());
+      finalized = finalizeSearchRows(
+        applyConflictShadowToSearchRows(mergedRows, [...mergedRows, ...conflictCompanions], Date.now()),
+        retrievalPolicy
+      );
+      return finalized;
+    };
     if (!options.store.related) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
-      return diversifyRankedRows(
-        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
-          (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
-        ),
-        parsed.limit
-      );
+      return finalizeAndMaybeBackfill(withLoopPointers);
     }
 
     const entityHints = extractQueryEntityHints(parsed.query);
@@ -5889,12 +7915,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
     if (seedIds.length === 0 && entityHints.length === 0 && patternHints.length === 0) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
-      return diversifyRankedRows(
-        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
-          (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
-        ),
-        parsed.limit
-      );
+      return finalizeAndMaybeBackfill(withLoopPointers);
     }
 
     let related: MemoryRelatedResult[] = [];
@@ -5911,37 +7932,34 @@ export function createMemoryService(options: MemoryServiceOptions) {
     } catch {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
-      return diversifyRankedRows(
-        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
-          (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
-        ),
-        parsed.limit
-      );
+      return finalizeAndMaybeBackfill(withLoopPointers);
     }
     if (related.length === 0) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
-      return diversifyRankedRows(
-        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
-          (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
-        ),
-        parsed.limit
-      );
+      return finalizeAndMaybeBackfill(withLoopPointers);
     }
 
     const relatedById = new Map(related.map((row) => [row.id, row]));
     const seeded = boosted.map((row) => applyRelatedBoost(row, relatedById.get(row.id)));
     const seededById = new Map(seeded.map((row) => [row.id, row]));
     const missingIds = related.map((row) => row.id).filter((id) => !seededById.has(id));
+    const conflictCompanions: Array<MemoryRecord | MemorySearchResult> = [];
     if (missingIds.length > 0) {
       const fetched = await options.store.getByIds({
         ids: missingIds,
         tenantId,
       });
       for (const row of fetched) {
-        if (row.status === "quarantined") continue;
         if (isExpiredRecord(row)) continue;
         if (!sourceAllowed(row.source, allowSources, denySources)) {
+          continue;
+        }
+        const relationHit = relatedById.get(row.id);
+        if (isContradictionRelationHit(relationHit)) {
+          conflictCompanions.push(row);
+        }
+        if (!shouldSurfaceQuarantinedConflictRow(row, relationHit, parsed.useMode, Date.now())) {
           continue;
         }
         const base = toSearchResultFromRecord(
@@ -5967,10 +7985,10 @@ export function createMemoryService(options: MemoryServiceOptions) {
 
     let reranked = Array.from(seededById.values())
       .sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt))
-      .slice(0, Math.max(parsed.limit * 4, parsed.limit));
+      .slice(0, Math.max(searchLimit, parsed.limit));
     reranked = await applyLoopStateOnRows(reranked);
     reranked = await mergeLoopStatePointerRows(reranked);
-    return diversifyRankedRows(filterExpiredSearchResults(applyRequestedScope(reranked)), parsed.limit);
+    return finalizeAndMaybeBackfill(reranked, conflictCompanions);
   };
 
   const recent = async (raw: unknown): Promise<MemoryRecord[]> => {
@@ -5981,13 +7999,18 @@ export function createMemoryService(options: MemoryServiceOptions) {
       throw normalizeError(error);
     }
     const tenantId = normalizeTenant(parsed.tenantId);
-    return filterExpiredMemoryRecords(
-      await options.store.recent({
-        tenantId,
-        layerAllowlist: normalizeMemoryLayerList(parsed.layerAllowlist),
-        layerDenylist: normalizeMemoryLayerList(parsed.layerDenylist),
-        limit: parsed.limit,
-      })
+    return applyUseModeToRecords(
+      applyConflictShadowToRecords(
+        filterExpiredMemoryRecords(
+        await options.store.recent({
+          tenantId,
+          layerAllowlist: normalizeMemoryLayerList(parsed.layerAllowlist),
+          layerDenylist: normalizeMemoryLayerList(parsed.layerDenylist),
+          limit: parsed.limit,
+        })
+        )
+      ),
+      parsed.useMode
     );
   };
 
@@ -6023,7 +8046,8 @@ export function createMemoryService(options: MemoryServiceOptions) {
     const byId = new Map(filtered.map((row) => [row.id, row] as const));
     return uniqueIds
       .map((id) => byId.get(id))
-      .filter((row): row is MemoryRecord => Boolean(row));
+      .filter((row): row is MemoryRecord => Boolean(row))
+      .map((row) => withMemoryLatticeRecord(row));
   };
 
   const stats = async (raw: unknown): Promise<MemoryStats> => {
@@ -6058,6 +8082,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       ...base,
       byLayer: base.byLayer.length > 0 ? base.byLayer : countByLayer([]),
       byStatus: base.byStatus ?? [],
+      lattice: base.lattice,
       continuity: {
         state:
           brief?.continuityState === "ready" || brief?.continuityState === "continuity_degraded" || brief?.continuityState === "missing"
@@ -7801,6 +9826,16 @@ export function createMemoryService(options: MemoryServiceOptions) {
     const sourceDenylist = applyDreamDefaultSourceDenylist(sourceAllowlist, sanitizeStringList(parsed.sourceDenylist));
     const layerAllowlist = normalizeMemoryLayerList(parsed.layerAllowlist);
     const layerDenylist = normalizeMemoryLayerList(parsed.layerDenylist);
+    const retrievalPolicy: MemoryRetrievalPolicy = {
+      useMode: parsed.useMode,
+      limit: parsed.maxItems,
+      fillToValidLimit: parsed.fillToValidLimit,
+      minAuthorityClass: parsed.minAuthorityClass,
+      excludeReviewActions: parsed.excludeReviewActions,
+      evidenceRequired: parsed.evidenceRequired,
+      allowContested: parsed.allowContested,
+      maxStalenessHours: parsed.maxStalenessHours,
+    };
     const queryEntityHints = query ? extractQueryEntityHints(query) : [];
     const queryPatternHints = query ? extractQueryPatternHints(query) : [];
     const briefArtifact = readMemoryBriefArtifact();
@@ -7816,6 +9851,13 @@ export function createMemoryService(options: MemoryServiceOptions) {
           sourceDenylist,
           layerAllowlist,
           layerDenylist,
+          useMode: parsed.useMode,
+          fillToValidLimit: parsed.fillToValidLimit,
+          minAuthorityClass: parsed.minAuthorityClass,
+          excludeReviewActions: parsed.excludeReviewActions,
+          evidenceRequired: parsed.evidenceRequired,
+          allowContested: parsed.allowContested,
+          maxStalenessHours: parsed.maxStalenessHours,
           maxItems: parsed.maxItems,
           scanLimit: parsed.scanLimit,
         })
@@ -8042,6 +10084,9 @@ export function createMemoryService(options: MemoryServiceOptions) {
       }
       const effectiveRetrievalMode: RetrievalMode =
         retrievalMode === "lexical" ? "lexical" : queryEmbedding ? retrievalMode : "lexical";
+      const querySearchLimit = shouldOverfetchForPolicy(retrievalPolicy)
+        ? Math.max(parsed.maxItems * 6, 36)
+        : Math.max(parsed.maxItems * 4, 24);
       retrievalModeUsed = effectiveRetrievalMode;
       try {
             searchRows = applySignalBoost(
@@ -8060,7 +10105,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
                     minScore: 0,
                     explain: parsed.explain,
                     embedding: queryEmbedding ?? undefined,
-                    limit: Math.max(parsed.maxItems * 4, 24),
+                    limit: querySearchLimit,
                   }),
                   stageTimeoutMs,
                   "memory context search stage"
@@ -8092,7 +10137,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
                     retrievalMode: "lexical",
                     minScore: 0,
                     explain: parsed.explain,
-                    limit: Math.max(parsed.maxItems * 4, 24),
+                    limit: querySearchLimit,
                   }),
                   fallbackStageTimeoutMs,
                   "memory context lexical timeout fallback stage"
@@ -8133,39 +10178,15 @@ export function createMemoryService(options: MemoryServiceOptions) {
                 "memory context recent fallback stage"
               )
             );
-            const queryTokens = String(query)
-              .toLowerCase()
-              .split(/\s+/)
-              .map((entry) => entry.replace(/[^a-z0-9._:@/-]+/g, "").trim())
-              .filter((entry) => entry.length >= 3)
-              .slice(0, 24);
-            searchRows = fallbackRows
-              .map((row) => {
-                const metadata = normalizeMetadata(row.metadata);
-                const subject = normalizeText(metadata.subjectKey || metadata.subject).toLowerCase();
-                const haystack = `${row.content}\n${subject}`.toLowerCase();
-                const tokenHits =
-                  queryTokens.length === 0 ? 0 : queryTokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
-                const lexicalBoost = queryTokens.length === 0 ? 0 : Math.min(0.34, (tokenHits / queryTokens.length) * 0.34);
-                return toSearchResultFromRecord(
-                  row,
-                  {
-                    score: 0.32 + lexicalBoost + row.sourceConfidence * 0.16 + row.importance * 0.14,
-                    matchedBy: ["context-recent-fallback", "search-timeout"],
-                    scoreBreakdown: {
-                      rrf: 0.2 + lexicalBoost,
-                      sourceTrust: row.sourceConfidence,
-                      recency: recencyScore(row.occurredAt, row.createdAt, row.memoryType),
-                      importance: row.importance,
-                      session: runId && row.runId === runId ? 1 : agentId && row.agentId === agentId ? 0.5 : 0,
-                      lexical: lexicalBoost,
-                      semantic: 0,
-                      sessionLane: runId && row.runId === runId ? 1 : agentId && row.agentId === agentId ? 0.5 : 0,
-                    },
-                  },
-                  Date.now()
-                );
-              })
+            searchRows = scoreRecentRowsForQuery(fallbackRows, query, {
+              matchedBy: ["context-recent-fallback", "search-timeout"],
+              lexicalCap: 0.34,
+              baseScore: 0.32,
+              sourceTrustWeight: 0.16,
+              importanceWeight: 0.14,
+              runId,
+              agentId,
+            })
               .sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt))
               .slice(0, Math.max(parsed.maxItems * 4, 24));
             contextSearchError = null;
@@ -8258,6 +10279,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
     let ranked = Array.from(scoredById.values()).sort(
       (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
     );
+    const rankedConflictCompanions: Array<MemoryRecord | MemorySearchResult> = [];
     if (!degradedComputeMode && options.store.related && ranked.length > 0) {
       const seedIds = ranked.slice(0, Math.max(4, Math.min(12, parsed.maxItems * 2))).map((row) => row.id);
       if (seedIds.length > 0 || queryEntityHints.length > 0) {
@@ -8282,6 +10304,13 @@ export function createMemoryService(options: MemoryServiceOptions) {
             });
             for (const row of fetched) {
               if (!matchesContextScope(row)) continue;
+              const relationHit = relatedById.get(row.id);
+              if (isContradictionRelationHit(relationHit)) {
+                rankedConflictCompanions.push(row);
+              }
+              if (!shouldSurfaceQuarantinedConflictRow(row, relationHit, parsed.useMode, temporalAnchorMs)) {
+                continue;
+              }
               const asSearch = toSearchResultFromRecord(
                 row,
                 {
@@ -8313,7 +10342,17 @@ export function createMemoryService(options: MemoryServiceOptions) {
       ranked = await applyLoopStateOnRows(ranked);
       ranked = await mergeLoopStatePointerRows(ranked);
     }
-    ranked = ranked.sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt));
+    ranked = applyConflictShadowToSearchRows(ranked, [...ranked, ...rankedConflictCompanions], temporalAnchorMs);
+    const prefilteredRanked = ranked;
+    ranked = applyRetrievalPolicyToSearchRows(
+      applyUseModeToSearchRows(
+        ranked.sort((left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)),
+        parsed.useMode,
+        temporalAnchorMs
+      ),
+      retrievalPolicy,
+      temporalAnchorMs
+    );
     const layerOrderedRanked = [...ranked].sort((left, right) => {
       const layerDelta = memoryLayerPriority(left.memoryLayer) - memoryLayerPriority(right.memoryLayer);
       if (layerDelta !== 0) return layerDelta;
@@ -8489,17 +10528,30 @@ export function createMemoryService(options: MemoryServiceOptions) {
       }
     }
 
-    if (query && selected.length > 0) {
+    const finalSelected = applyRetrievalPolicyToSearchRows(
+      applyUseModeToSearchRows(
+        applyConflictShadowToSearchRows(selected, [...selected, ...rankedConflictCompanions], temporalAnchorMs),
+        parsed.useMode,
+        temporalAnchorMs
+      ),
+      retrievalPolicy,
+      temporalAnchorMs
+    ).slice(0, parsed.maxItems);
+    const blockedByHardConflict = deriveBlockedByHardConflictDiagnostic(prefilteredRanked, parsed.useMode, finalSelected.length);
+
+    if (query && finalSelected.length > 0) {
       writeContextFallbackCache(
         contextFallbackCacheKey,
-        selected.slice(0, Math.max(parsed.maxItems * 3, parsed.maxItems)),
+        finalSelected.slice(0, Math.max(parsed.maxItems * 3, parsed.maxItems)),
         retrievalModeUsed
       );
     }
 
     return {
-      summary: summarizeContextItems(selected, 480),
-      items: selected,
+      summary:
+        summarizeContextItems(finalSelected, 480)
+        || summarizeConflictBlockedContext(prefilteredRanked, parsed.useMode, 480),
+      items: finalSelected,
       budget: {
         maxItems: parsed.maxItems,
         maxChars: parsed.maxChars,
@@ -8540,7 +10592,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
           searchRows: searchRows.length,
           mergedRows: ranked.length,
           byLayer: countByLayer([...coreRows, ...effectiveRows]),
-          selectedByLayer: countByLayerFromSearchRows(selected),
+          selectedByLayer: countByLayerFromSearchRows(finalSelected),
           fallbackByLayer: countByLayerFromSearchRows(
             ranked.filter((row) => row.matchedBy.includes("recent") || row.matchedBy.includes("context-recent-fallback"))
           ),
@@ -8571,6 +10623,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
         },
         tenantRowsTimedOut,
         degradedComputeMode,
+        blockedByHardConflict,
       },
     };
   };

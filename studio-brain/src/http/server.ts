@@ -631,9 +631,6 @@ function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): C
     retire: toBoundedInt(stats.reviewBacklog?.retire ?? stats.lattice?.backlog.retire, 0, 0, 1_000_000),
     folkloreRiskHigh: toBoundedInt(stats.reviewBacklog?.folkloreRiskHigh ?? stats.lattice?.backlog.folkloreRiskHigh, 0, 0, 1_000_000),
   };
-  const openReviewCases = toBoundedInt(stats.openReviewCases, 0, 0, 1_000_000);
-  const verificationFailures24h = toBoundedInt(stats.verificationFailures24h, 0, 0, 1_000_000);
-  const emberPromotionBacklog = toBoundedInt(stats.emberPromotionBacklog, 0, 0, 1_000_000);
   const conflictBacklog = {
     contestedRows: toBoundedInt(stats.conflictBacklog?.contestedRows, 0, 0, 1_000_000),
     hardConflicts: toBoundedInt(stats.conflictBacklog?.hardConflicts, 0, 0, 1_000_000),
@@ -694,15 +691,6 @@ function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): C
       reviewBacklog.reviewNow > 0
         ? `${reviewBacklog.reviewNow} memories are waiting for review`
         : "",
-      openReviewCases > 0
-        ? `${openReviewCases} memory review cases are open`
-        : "",
-      verificationFailures24h > 0
-        ? `${verificationFailures24h} verification runs failed in the last 24 hours`
-        : "",
-      emberPromotionBacklog > 0
-        ? `${emberPromotionBacklog} Ember guidance promotions are waiting for review`
-        : "",
       reviewBacklog.folkloreRiskHigh > 0
         ? `${reviewBacklog.folkloreRiskHigh} folklore-risk memories need verification`
         : "",
@@ -743,9 +731,6 @@ function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): C
     highlights,
     coverage,
     reviewBacklog,
-    openReviewCases,
-    verificationFailures24h,
-    emberPromotionBacklog,
     conflictBacklog,
     startupReadiness,
     secretExposureFindings,

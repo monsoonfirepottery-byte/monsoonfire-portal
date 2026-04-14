@@ -505,7 +505,7 @@
       "title": "Portal QA Automation Coverage Expansion",
       "file": "intents/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.intent.json",
       "epicPath": "docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md",
-      "epicDigestSha256": "0e17d6868411cf34b34a3d70e53e5ce719a8b96e530355b1be506fabf310a966",
+      "epicDigestSha256": "6b63110356be50cd936ecadcc4bbf4086ec3f18b89d3bc84194a28f77c9bbb76",
       "intentDigestSha256": "36acedf2604bf0f5e60a72df2b3f0ecd970d36054e34382a0e3e29d9ae281efc",
       "objective": "Close recurring QA gaps with repeatable automated checks for authz, index drift, canary health, fixture stewardship, and promotion safety.",
       "riskTier": "medium",
@@ -772,7 +772,7 @@
       "title": "Staff Portal Module Consolidation",
       "file": "intents/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.intent.json",
       "epicPath": "docs/epics/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.md",
-      "epicDigestSha256": "cad021bcc8e77ee8aa9f7d95dcf25988dbb6f08d43da0b6786b91591e8318838",
+      "epicDigestSha256": "96f7f4bfeb95de6db0faec93bd3a953c60abf2f708a5ee1d626f23325d83e874",
       "intentDigestSha256": "2fd89425b37587ed983bfb19d131d78773758eea38800480886d7403f22ad9e0",
       "objective": "Consolidate duplicated staff portal modules into a task-oriented cockpit flow while preserving operational capabilities and lowering navigation friction.",
       "riskTier": "medium",
@@ -1456,8 +1456,8 @@
       "authorityTier": "T2"
     }
   ],
-  "generatedAt": "2026-03-20T18:35:16.621Z",
+  "generatedAt": "2026-04-14T16:44:07.289Z",
   "intentCount": 8,
   "taskCount": 24,
-  "planDigestSha256": "c1e421cce609adaafe5520ac34a38d6759bdb0c41c6a491cc6694bd100f0227e"
+  "planDigestSha256": "96660e1fd06d3e94dadd7ba7cd995cb576e8514e50da3807535918123db0a8c5"
 }

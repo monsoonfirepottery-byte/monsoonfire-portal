@@ -144,6 +144,38 @@ const STAFF_OFFLINE_SYNC_MIN_DELAY_MS = 1200;
 const STAFF_OFFLINE_SYNC_MAX_DELAY_MS = 2800;
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const CHECKIN_JOURNEY_STAGES = [
+  {
+    id: "intake",
+    label: "Intake",
+    detail: "Capture the work, size, and firing path in one place.",
+  },
+  {
+    id: "booking",
+    label: "Booking",
+    detail: "Choose the shelf, kiln, or flexible lane that fits the load.",
+  },
+  {
+    id: "queue",
+    label: "Queue",
+    detail: "The studio places the work in order and watches capacity.",
+  },
+  {
+    id: "progress",
+    label: "Progress",
+    detail: "Updates move with the firing so you can track the cycle.",
+  },
+  {
+    id: "cooldown",
+    label: "Cooldown",
+    detail: "The kiln cools before the work is safe to handle.",
+  },
+  {
+    id: "pickup",
+    label: "Pickup",
+    detail: "You get the ready window and handoff guidance.",
+  },
+] as const;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = {
   DEV?: boolean;
@@ -545,6 +577,33 @@ function latestStageNote(record: ReservationRecord): string | null {
     if (typeof notes === "string" && notes.trim()) return notes.trim();
   }
   return null;
+}
+
+function getCheckinJourneySnapshot(intakeMode: IntakeMode) {
+  if (intakeMode === "COMMUNITY_SHELF") {
+    return {
+      heading: "Flexible tiny drop-off",
+      nextStep: "Next step: submit the intake, then we watch for leftover kiln space.",
+      detail:
+        "Intake is free, booking stays light, and the queue only moves when a safe gap opens.",
+    };
+  }
+
+  if (intakeMode === "WHOLE_KILN") {
+    return {
+      heading: "Dedicated kiln booking",
+      nextStep: "Next step: confirm the load, then the studio schedules a dedicated firing.",
+      detail:
+        "Intake locks in the booking lane, the queue tracks the full chamber, and pickup follows the firing + cooldown cycle.",
+    };
+  }
+
+  return {
+    heading: "Standard shelf booking",
+    nextStep: "Next step: submit the intake, then the studio confirms the booking and queue lane.",
+    detail:
+      "Intake collects the work details now, booking confirms shelf space, and queue, firing, cooldown, and pickup stay visible after that.",
+  };
 }
 
 function getCapacityPressure(usedHalfShelves: number) {
@@ -1047,6 +1106,7 @@ export default function ReservationsView({
       : intakeMode === "WHOLE_KILN"
         ? "Reserve the whole kiln"
         : "Standard shelf purchase";
+  const checkinJourneySnapshot = getCheckinJourneySnapshot(intakeMode);
   const canSuggestPriorityQueue = intakeMode !== "COMMUNITY_SHELF";
   const effectiveCommunityShelfFillInAllowed =
     intakeMode === "SHELF_PURCHASE" && (communityShelfFillInAllowed || rushRequested);
@@ -3222,6 +3282,9 @@ export default function ReservationsView({
 
   const isListOnly = viewMode === "listOnly";
   const showStaffTools = isStaff && !isListOnly;
+  const recentCheckinIndex = showStaffTools ? 2 : 1;
+  const journeyCardIndex = showStaffTools ? 1 : 0;
+  const formCardIndex = showStaffTools ? 3 : 2;
 
   return (
     <div className="page reservations-page">
@@ -3230,8 +3293,8 @@ export default function ReservationsView({
           <div>
             <h1>Ware Check-in</h1>
             <p className="page-subtitle">
-              Think of it like an airport: pre-check here to breeze through the gate-check, or let
-              an agent help you check in. Both are equally good ways to use the studio kiln rentals.
+              Start with intake, then we keep booking, queue, firing progress, cooldown, and pickup
+              visible so the work never disappears into a black box.
             </p>
           </div>
         </div>
@@ -3293,11 +3356,43 @@ export default function ReservationsView({
         </RevealCard>
       ) : null}
 
+      {!isListOnly ? (
+        <RevealCard
+          as="section"
+          className="card card-3d checkin-journey-card"
+          index={journeyCardIndex}
+          enabled={motionEnabled}
+        >
+          <div className="checkin-journey-head">
+            <div>
+              <div className="card-title">What happens next</div>
+              <p className="form-helper">
+                Intake is the form you fill out now. Booking, queue, progress, cooldown, and pickup
+                stay visible after that so you always know what comes next.
+              </p>
+            </div>
+            <div className="checkin-journey-callout">
+              <div className="checkin-journey-callout-label">{checkinJourneySnapshot.heading}</div>
+              <div className="checkin-journey-callout-copy">{checkinJourneySnapshot.nextStep}</div>
+            </div>
+          </div>
+          <div className="checkin-journey-rail" role="list" aria-label="Check-in journey stages">
+            {CHECKIN_JOURNEY_STAGES.map((stage) => (
+              <div key={stage.id} className="checkin-journey-stage" role="listitem">
+                <div className="checkin-journey-stage-label">{stage.label}</div>
+                <div className="checkin-journey-stage-copy">{stage.detail}</div>
+              </div>
+            ))}
+          </div>
+          <div className="checkin-journey-summary">{checkinJourneySnapshot.detail}</div>
+        </RevealCard>
+      ) : null}
+
       {mode === "client" && recentBisqueReservation ? (
         <RevealCard
           as="section"
           className="card card-3d recent-checkin-card"
-          index={1}
+          index={recentCheckinIndex}
           enabled={motionEnabled}
         >
           <div className="card-title">Recently bisqued? Send it to glaze</div>
@@ -3324,14 +3419,14 @@ export default function ReservationsView({
       ) : null}
 
       {!isListOnly ? (
-        <RevealCard as="section" className="card card-3d reservation-form" index={2} enabled={motionEnabled}>
+        <RevealCard as="section" className="card card-3d reservation-form" index={formCardIndex} enabled={motionEnabled}>
         <div className="card-title">
-          {mode === "staff" ? "Staff check-in workflow" : "Self check-in workflow"}
+          {mode === "staff" ? "Staff intake workflow" : "Member intake workflow"}
         </div>
         <p className="form-helper">
           {mode === "staff"
-            ? "Capture the essentials so the studio can load the next firing smoothly."
-            : "Tell us what you’re dropping off, snap a quick photo, and pick your kiln path."}
+            ? "Capture the essentials so the studio can book, queue, and track the work on the member’s behalf."
+            : "Tell us what you’re dropping off, snap a quick photo, and choose the booking lane that fits the work."}
         </p>
 
         {mode === "staff" && !staffTargetUid ? (
@@ -3740,6 +3835,11 @@ export default function ReservationsView({
                   {priceBreakApplied ? (
                     <div className="estimate-note">Price break starts at 4 half shelves.</div>
                   ) : null}
+                  <div className="estimate-next-step">
+                    <div className="estimate-next-step-label">What happens next</div>
+                    <div className="estimate-next-step-copy">{checkinJourneySnapshot.nextStep}</div>
+                    <div className="estimate-next-step-detail">{checkinJourneySnapshot.detail}</div>
+                  </div>
                 </aside>
                 {intakeMode === "SHELF_PURCHASE" ? (
                   <div className="community-overflow-optin community-overflow-optin-below-estimate">

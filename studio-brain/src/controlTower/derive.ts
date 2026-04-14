@@ -725,6 +725,7 @@ export function deriveControlTowerState(
     approvals: options.approvals ?? [],
     memoryBrief,
     startupScorecard: null,
+    memoryHealth: null,
     events,
     recentChanges: events.slice(0, 6),
     actions,

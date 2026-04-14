@@ -42,6 +42,42 @@ function retryCooldownKey(uid: string, projectId: string): string {
   return `bootstrappedRetryAfter:${uid}:${projectId}`;
 }
 
+function readBootstrapSuccess(uid: string, projectId: string): boolean {
+  const key = bootstrapSuccessKey(uid, projectId);
+  try {
+    if (safeStorageGetItem("sessionStorage", key) === "1") {
+      return true;
+    }
+  } catch {
+    // Ignore storage availability issues.
+  }
+
+  try {
+    if (safeStorageGetItem("localStorage", key) === "1") {
+      safeStorageRemoveItem("localStorage", key);
+    }
+  } catch {
+    // Ignore storage availability issues.
+  }
+
+  return false;
+}
+
+function writeBootstrapSuccess(uid: string, projectId: string) {
+  const key = bootstrapSuccessKey(uid, projectId);
+  try {
+    safeStorageSetItem("sessionStorage", key, "1");
+  } catch {
+    // Ignore storage availability issues.
+  }
+
+  try {
+    safeStorageRemoveItem("localStorage", key);
+  } catch {
+    // Ignore storage availability issues.
+  }
+}
+
 function readRetryCooldown(uid: string, projectId: string): number {
   try {
     const raw = safeStorageGetItem("localStorage", retryCooldownKey(uid, projectId));
@@ -81,14 +117,9 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
     return { ok: true, userCreated: false, profileCreated: false, skipped: true };
   }
 
-  try {
-    const key = bootstrapSuccessKey(args.uid, projectId);
-    if (safeStorageGetItem("localStorage", key) === "1") {
-      sessionGuards.add(sessionKey);
-      return { ok: true, userCreated: false, profileCreated: false, skipped: true };
-    }
-  } catch {
-    // Ignore storage availability issues.
+  if (readBootstrapSuccess(args.uid, projectId)) {
+    sessionGuards.add(sessionKey);
+    return { ok: true, userCreated: false, profileCreated: false, skipped: true };
   }
 
   const retryAfterMs = readRetryCooldown(args.uid, projectId);
@@ -157,12 +188,7 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
 
       sessionGuards.add(sessionKey);
       clearRetryCooldown(args.uid, projectId);
-
-      try {
-        safeStorageSetItem("localStorage", bootstrapSuccessKey(args.uid, projectId), "1");
-      } catch {
-        // Ignore storage availability issues.
-      }
+      writeBootstrapSuccess(args.uid, projectId);
 
       return {
         ok: true,

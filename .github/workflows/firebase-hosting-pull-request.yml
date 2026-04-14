@@ -6,6 +6,7 @@ on: pull_request
 permissions:
   checks: write
   contents: read
+  issues: write
   pull-requests: write
 jobs:
   build_and_preview:
@@ -14,7 +15,13 @@ jobs:
     env:
       IS_DEPENDABOT_PR: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Resolve Firebase API key
         id: firebase_api_key
         continue-on-error: ${{ env.IS_DEPENDABOT_PR == 'true' }}
@@ -56,13 +63,93 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
         run: node ./scripts/prune-firebase-preview-channels.mjs --project monsoonfire-portal --prefix pr --keep 20 --max-delete 80 --json
+      - name: Authenticate to Google Cloud
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
       - name: Deploy preview channel
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
-        uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258
+        id: preview_deploy
+        shell: bash
+        env:
+          FIREBASE_TOOLS_VERSION: 15.14.0
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          channel_id="pr-${PR_NUMBER}"
+          deploy_log="$RUNNER_TEMP/firebase-preview-deploy.log"
+
+          npx --yes firebase-tools@"$FIREBASE_TOOLS_VERSION" hosting:channel:deploy "$channel_id" \
+            --project monsoonfire-portal \
+            --expires 7d \
+            --non-interactive 2>&1 | tee "$deploy_log"
+
+          preview_url="$(grep -Eo 'https://[^[:space:]]*(web\.app|firebaseapp\.com)[^[:space:]]*' "$deploy_log" | tail -n 1)"
+          if [ -z "$preview_url" ]; then
+            echo "Unable to resolve preview URL from firebase-tools output." >&2
+            exit 1
+          fi
+
+          echo "channel_id=$channel_id" >> "$GITHUB_OUTPUT"
+          echo "preview_url=$preview_url" >> "$GITHUB_OUTPUT"
+
+      - name: Upsert preview comment
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.preview_deploy.outputs.preview_url }}
+          CHANNEL_ID: ${{ steps.preview_deploy.outputs.channel_id }}
+          COMMENT_MARKER: "<!-- firebase-hosting-preview -->"
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
-          projectId: monsoonfire-portal
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = process.env.COMMENT_MARKER;
+            const previewUrl = process.env.PREVIEW_URL;
+            const channelId = process.env.CHANNEL_ID;
+            const issueNumber = context.payload.pull_request?.number;
+            if (!issueNumber || !previewUrl || !channelId) {
+              core.setFailed("Preview deploy outputs are missing.");
+              return;
+            }
+
+            const body = [
+              marker,
+              "Firebase Hosting preview is ready.",
+              "",
+              `- Channel: \`${channelId}\``,
+              `- Preview: ${previewUrl}`,
+            ].join("\n");
+
+            const { owner, repo } = context.repo;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => {
+              const commentBody = String(comment.body || "");
+              return comment.user?.type === "Bot" && commentBody.includes(marker);
+            });
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }
 
       - name: Skip preview deploy for Dependabot PRs
         if: ${{ env.IS_DEPENDABOT_PR == 'true' }}

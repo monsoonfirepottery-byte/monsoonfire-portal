@@ -180,7 +180,7 @@ type LegacyRequestsRedirect = {
 };
 
 const NAV_TOP_ITEMS: NavItem[] = [
-  { key: "dashboard", label: "Dashboard" },
+  { key: "dashboard", label: "Start here" },
 ];
 
 const NAV_BOTTOM_ITEMS: NavItem[] = [
@@ -336,7 +336,7 @@ const NAV_SECTION_ICONS: Record<NavSectionKey, React.ReactNode> = {
 };
 
 const NAV_LABELS: Record<NavKey, string> = {
-  dashboard: "Dashboard",
+  dashboard: "Start here",
   profile: "Profile",
   integrations: "Integrations",
   pieces: "My Pieces",
@@ -2344,6 +2344,7 @@ export default function App() {
           }}
           onOpenIntegrations={() => setNav("integrations")}
           onOpenBilling={() => setNav("billing")}
+          onOpenStartSurface={() => setNav("dashboard")}
           onAvatarUpdated={() => {
             void syncUserFromAuth();
           }}
@@ -2470,6 +2471,7 @@ export default function App() {
             showEmulatorTools={isAuthEmulator}
             onOpenCheckin={() => setNav("wareCheckIn")}
             onOpenReservation={() => setNav("wareCheckIn")}
+            onOpenMemberStart={() => setNav("dashboard")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}
             onOpenFirings={() => openStaffWorkspace("firings")}
@@ -2845,7 +2847,7 @@ export default function App() {
                 prefersReducedMotion,
               }}
             >
-              <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
+              <div className="view-root">
                 {renderView(nav)}
               </div>
             </UiSettingsProvider>

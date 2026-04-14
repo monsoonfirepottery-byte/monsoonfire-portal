@@ -979,7 +979,7 @@ test("memory endpoints capture, search, recent, stats, and import", async () => 
       headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
       body: JSON.stringify({
         content:
-          "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.signature-value-0987654321",
+          "Operator note: Authorization: Bearer test-redaction-token",
         source: "manual",
       }),
     });
@@ -2952,7 +2952,7 @@ test("control tower state routes derive browser-friendly room and service data",
           headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
           body: JSON.stringify({
             content:
-              "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.signature-value-1122334455",
+              "Operator note: Authorization: Bearer test-redaction-token",
             source: "manual",
           }),
         });

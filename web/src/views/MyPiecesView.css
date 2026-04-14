@@ -295,6 +295,10 @@
   color: var(--muted);
 }
 
+.my-piece-overview-item strong {
+  line-height: 1.4;
+}
+
 .my-piece-studio-controls {
   display: grid;
   gap: 12px;

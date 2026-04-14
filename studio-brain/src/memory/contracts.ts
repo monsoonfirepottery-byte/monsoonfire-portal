@@ -11,9 +11,69 @@ const memoryLayerListSchema = z.array(z.enum(["core", "working", "episodic", "ca
 export const embeddingSchema = z.array(embeddingValue).min(1).max(4096);
 export const retrievalModeSchema = z.enum(["hybrid", "semantic", "lexical"]);
 export const memoryQueryLaneSchema = z.enum(["interactive", "ops", "bulk"]);
+export const memoryUseModeSchema = z.enum([
+  "operational",
+  "planning",
+  "debugging",
+  "safety-critical",
+  "exploratory",
+  "human-facing",
+]);
 export const memoryStatusSchema = z.enum(["proposed", "accepted", "quarantined", "archived"]);
 export const memoryTypeSchema = z.enum(["working", "episodic", "semantic", "procedural"]);
 export const memoryLayerSchema = z.enum(["core", "working", "episodic", "canonical"]);
+export const memoryCategorySchema = z.enum([
+  "observation",
+  "fact",
+  "decision",
+  "guardrail",
+  "preference",
+  "known-bug",
+  "workaround",
+  "hypothesis",
+  "procedure",
+  "derived-insight",
+  "legacy-lore",
+  "conflict-record",
+]);
+export const memoryTruthStatusSchema = z.enum([
+  "observed",
+  "inferred",
+  "proposed",
+  "verified",
+  "trusted",
+  "contradicted",
+]);
+export const memoryFreshnessStatusSchema = z.enum(["fresh", "aging", "revalidation-required", "stale"]);
+export const memoryOperationalStatusSchema = z.enum([
+  "active",
+  "cooling",
+  "quarantined",
+  "deprecated",
+  "archived",
+  "retired",
+]);
+export const memoryAuthorityClassSchema = z.enum(["a0-live", "a1-repo", "a2-policy", "a3-telemetry", "a4-derived", "a5-inferred"]);
+export const memorySourceClassSchema = z.enum([
+  "live-check",
+  "repo-file",
+  "policy",
+  "telemetry",
+  "human",
+  "derived",
+  "mcp-tool",
+  "runtime-artifact",
+  "external-doc",
+]);
+export const memoryRedactionStateSchema = z.enum([
+  "none",
+  "redacted",
+  "verified-redacted",
+  "requires-review",
+  "quarantined",
+]);
+export const memoryReviewActionSchema = z.enum(["none", "revalidate", "resolve-conflict", "retire"]);
+export const memoryConflictSeveritySchema = z.enum(["none", "soft", "hard"]);
 export const memoryLoopStateSchema = z.enum(["open-loop", "resolved", "reopened", "superseded"]);
 export const memoryLoopLaneSchema = z.enum(["critical", "high", "watch", "stable"]);
 export const memoryLoopIncidentActionTypeSchema = z.enum([
@@ -51,8 +111,32 @@ export const memoryCaptureRequestSchema = z.object({
   status: memoryStatusSchema.optional(),
   memoryType: memoryTypeSchema.optional(),
   memoryLayer: memoryLayerSchema.optional(),
+  memoryCategory: memoryCategorySchema.optional(),
+  truthStatus: memoryTruthStatusSchema.optional(),
+  freshnessStatus: memoryFreshnessStatusSchema.optional(),
+  operationalStatus: memoryOperationalStatusSchema.optional(),
+  authorityClass: memoryAuthorityClassSchema.optional(),
+  lastVerifiedAt: z.string().datetime().optional(),
+  nextReviewAt: z.string().datetime().optional(),
+  freshnessExpiresAt: z.string().datetime().optional(),
   sourceConfidence: z.number().min(0).max(1).optional(),
   importance: z.number().min(0).max(1).optional(),
+  sourceClass: memorySourceClassSchema.optional(),
+  evidence: z.array(
+    z.object({
+      evidenceId: z.string().trim().min(1).max(160).optional(),
+      sourceClass: memorySourceClassSchema.default("derived"),
+      sourceUri: z.string().trim().min(1).max(2048).optional(),
+      sourcePath: z.string().trim().min(1).max(2048).optional(),
+      capturedAt: z.string().datetime().optional(),
+      verifiedAt: z.string().datetime().optional(),
+      verifier: z.string().trim().min(1).max(160).optional(),
+      redactionState: memoryRedactionStateSchema.default("none"),
+      hash: z.string().trim().min(1).max(256).optional(),
+      supportsMemoryIds: z.array(z.string().trim().min(1).max(128)).max(32).default([]),
+      metadata: z.record(z.string(), z.unknown()).default({}),
+    })
+  ).max(16).default([]),
 });
 
 export const memorySearchRequestSchema = z.object({
@@ -65,11 +149,18 @@ export const memorySearchRequestSchema = z.object({
   layerAllowlist: memoryLayerListSchema.default([]),
   layerDenylist: memoryLayerListSchema.default([]),
   retrievalMode: retrievalModeSchema.default("hybrid"),
+  useMode: memoryUseModeSchema.default("operational"),
   queryLane: memoryQueryLaneSchema.optional(),
   bulk: z.boolean().optional(),
   minScore: z.number().min(0).max(2).optional(),
   explain: z.boolean().default(false),
   embedding: embeddingSchema.optional(),
+  fillToValidLimit: z.boolean().default(false),
+  minAuthorityClass: memoryAuthorityClassSchema.optional(),
+  excludeReviewActions: z.array(memoryReviewActionSchema).max(4).default([]),
+  evidenceRequired: z.boolean().default(false),
+  allowContested: z.boolean().optional(),
+  maxStalenessHours: z.number().int().min(0).max(24 * 365).optional(),
   limit: z.number().int().min(1).max(MAX_MEMORY_LIMIT).default(10),
 });
 
@@ -77,6 +168,7 @@ export const memoryRecentRequestSchema = z.object({
   tenantId: z.string().trim().min(1).max(128).nullable().optional(),
   layerAllowlist: memoryLayerListSchema.default([]),
   layerDenylist: memoryLayerListSchema.default([]),
+  useMode: memoryUseModeSchema.default("operational"),
   limit: z.number().int().min(1).max(200).default(20),
 });
 
@@ -97,10 +189,17 @@ export const memoryContextRequestSchema = z.object({
   layerAllowlist: memoryLayerListSchema.default([]),
   layerDenylist: memoryLayerListSchema.default([]),
   retrievalMode: retrievalModeSchema.default("hybrid"),
+  useMode: memoryUseModeSchema.default("operational"),
   queryLane: memoryQueryLaneSchema.optional(),
   bulk: z.boolean().optional(),
   temporalAnchorAt: z.string().datetime().optional(),
   explain: z.boolean().default(false),
+  fillToValidLimit: z.boolean().default(false),
+  minAuthorityClass: memoryAuthorityClassSchema.optional(),
+  excludeReviewActions: z.array(memoryReviewActionSchema).max(4).default([]),
+  evidenceRequired: z.boolean().default(false),
+  allowContested: z.boolean().optional(),
+  maxStalenessHours: z.number().int().min(0).max(24 * 365).optional(),
   maxItems: z.number().int().min(1).max(MAX_MEMORY_LIMIT).default(12),
   maxChars: z.number().int().min(256).max(100_000).default(8_000),
   scanLimit: z.number().int().min(1).max(500).default(200),
@@ -291,13 +390,82 @@ export type MemoryLoopActionPlanRequest = z.infer<typeof memoryLoopActionPlanReq
 export type MemoryLoopAutomationTickRequest = z.infer<typeof memoryLoopAutomationTickRequestSchema>;
 export type RetrievalMode = z.infer<typeof retrievalModeSchema>;
 export type MemoryQueryLane = z.infer<typeof memoryQueryLaneSchema>;
+export type MemoryUseMode = z.infer<typeof memoryUseModeSchema>;
 export type MemoryStatus = z.infer<typeof memoryStatusSchema>;
 export type MemoryType = z.infer<typeof memoryTypeSchema>;
 export type MemoryLayer = z.infer<typeof memoryLayerSchema>;
+export type MemoryCategory = z.infer<typeof memoryCategorySchema>;
+export type MemoryTruthStatus = z.infer<typeof memoryTruthStatusSchema>;
+export type MemoryFreshnessStatus = z.infer<typeof memoryFreshnessStatusSchema>;
+export type MemoryOperationalStatus = z.infer<typeof memoryOperationalStatusSchema>;
+export type MemoryAuthorityClass = z.infer<typeof memoryAuthorityClassSchema>;
+export type MemorySourceClass = z.infer<typeof memorySourceClassSchema>;
+export type MemoryRedactionState = z.infer<typeof memoryRedactionStateSchema>;
+export type MemoryReviewAction = z.infer<typeof memoryReviewActionSchema>;
+export type MemoryConflictSeverity = z.infer<typeof memoryConflictSeveritySchema>;
 export type MemoryLoopState = z.infer<typeof memoryLoopStateSchema>;
 export type MemoryLoopLane = z.infer<typeof memoryLoopLaneSchema>;
 export type MemoryLoopIncidentActionType = z.infer<typeof memoryLoopIncidentActionTypeSchema>;
 export type MemoryLoopActionPriority = z.infer<typeof memoryLoopActionPrioritySchema>;
+
+export type MemoryEvidence = {
+  evidenceId: string;
+  sourceClass: MemorySourceClass;
+  sourceUri: string | null;
+  sourcePath: string | null;
+  capturedAt: string;
+  verifiedAt: string | null;
+  verifier: string | null;
+  redactionState: MemoryRedactionState;
+  hash: string | null;
+  supportsMemoryIds: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryTransitionEvent = {
+  transitionId: string;
+  memoryId: string;
+  actor: string | null;
+  reason: string | null;
+  at: string;
+  fromStatus: MemoryStatus | null;
+  toStatus: MemoryStatus;
+  fromTruthStatus: MemoryTruthStatus | null;
+  toTruthStatus: MemoryTruthStatus;
+  fromFreshnessStatus: MemoryFreshnessStatus | null;
+  toFreshnessStatus: MemoryFreshnessStatus;
+  fromOperationalStatus: MemoryOperationalStatus | null;
+  toOperationalStatus: MemoryOperationalStatus;
+  evidenceIds: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryLatticeSnapshot = {
+  category: MemoryCategory;
+  truthStatus: MemoryTruthStatus;
+  freshnessStatus: MemoryFreshnessStatus;
+  operationalStatus: MemoryOperationalStatus;
+  authorityClass: MemoryAuthorityClass;
+  sourceClass: MemorySourceClass | null;
+  lastVerifiedAt: string | null;
+  nextReviewAt: string | null;
+  freshnessExpiresAt: string | null;
+  folkloreRisk: number;
+  contradictionCount: number;
+  conflictSeverity: MemoryConflictSeverity;
+  conflictKinds: string[];
+  conflictingMemoryIds: string[];
+  evidenceStrength: number;
+  hasEvidence: boolean;
+  scope: string | null;
+  redactionState: MemoryRedactionState | null;
+  secretExposure: boolean;
+  shadowMcpRisk: boolean;
+  reviewAction: MemoryReviewAction;
+  reviewPriority: number;
+  reviewReasons: string[];
+  badges: string[];
+};
 
 export type MemoryRecord = {
   id: string;
@@ -315,6 +483,9 @@ export type MemoryRecord = {
   memoryLayer: MemoryLayer;
   sourceConfidence: number;
   importance: number;
+  evidence?: MemoryEvidence[];
+  transitions?: MemoryTransitionEvent[];
+  lattice?: MemoryLatticeSnapshot;
 };
 
 export type MemoryScoreBreakdown = {
@@ -344,6 +515,60 @@ export type MemoryStats = {
   bySource: Array<{ source: string; count: number }>;
   byLayer: Array<{ layer: MemoryLayer; count: number }>;
   byStatus?: Array<{ status: MemoryStatus; count: number }>;
+  lattice?: {
+    coverage: {
+      rowsWithLattice: number;
+      totalRows: number;
+      ratio: number;
+    };
+    byCategory: Array<{ category: MemoryCategory; count: number }>;
+    byTruthStatus: Array<{ status: MemoryTruthStatus; count: number }>;
+    byFreshnessStatus: Array<{ status: MemoryFreshnessStatus; count: number }>;
+    byOperationalStatus: Array<{ status: MemoryOperationalStatus; count: number }>;
+    byReviewAction: Array<{ action: MemoryReviewAction; count: number }>;
+    backlog: {
+      reviewNow: number;
+      revalidate: number;
+      resolveConflict: number;
+      retire: number;
+      folkloreRiskHigh: number;
+    };
+  };
+  reviewBacklog?: {
+    reviewNow: number;
+    revalidate: number;
+    resolveConflict: number;
+    retire: number;
+    folkloreRiskHigh: number;
+  };
+  conflictBacklog?: {
+    contestedRows: number;
+    hardConflicts: number;
+    quarantinedRows: number;
+    conflictRecords: number;
+    retrievalShadowedRows?: number;
+  };
+  startupReadiness?: {
+    startupEligibleRows: number;
+    trustedStartupRows: number;
+    handoffRows: number;
+    checkpointRows: number;
+    fallbackRiskRows: number;
+  };
+  secretExposureFindings?: {
+    totalRows: number;
+    redactedRows: number;
+    requiresReviewRows: number;
+    canonicalBlockedRows: number;
+    quarantinedRows: number;
+  };
+  shadowMcpFindings?: {
+    totalRows: number;
+    governedRows: number;
+    ungovernedRows: number;
+    reviewRows: number;
+    highRiskRows: number;
+  };
   continuity?: {
     state: "ready" | "continuity_degraded" | "missing" | "unknown";
     fallbackSources: Array<{ source: string; count: number }>;
@@ -583,6 +808,13 @@ export type MemoryContextResult = {
         limit?: number;
       };
       pressure?: Record<string, unknown>;
+    };
+    blockedByHardConflict?: {
+      blocked: boolean;
+      useMode: MemoryUseMode;
+      scope: string | null;
+      conflictRecordId: string | null;
+      conflictingMemoryIds: string[];
     };
   };
 };

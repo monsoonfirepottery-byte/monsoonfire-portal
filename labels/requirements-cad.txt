@@ -1,0 +1,6 @@
+cadquery
+build123d
+trimesh
+manifold3d
+meshio
+jupyter-cadquery

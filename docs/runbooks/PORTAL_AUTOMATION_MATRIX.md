@@ -179,7 +179,13 @@ npm run functions:profile:coldstart:strict
 npm run qa:preflight:performance
 npm run portal:index:guard
 npm run rules:index:drift:blocker
+npm run portal:firebase:ops
+npm run portal:firebase:inspect
+npm run portal:visual:diff
+npm run portal:visual:baseline:capture
+npm run portal:auth:helper
 npm run deploy:preflight
+npm run deploy:namecheap:portal:live
 npm run deploy:evidence:pack
 npm run branch:divergence:guard
 npm run secrets:health:check
@@ -201,6 +207,31 @@ npm run events:industry:canary
 - `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (expects `email` + `uid` + `refreshToken`)
 - `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `~/secrets/portal/portal-agent-staff.json`)
 - `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD` remain optional for explicit `--auth-mode password-ui` diagnostics
+
+`portal:auth:helper` prints a redacted staff auth bootstrap summary for operators:
+- prefers the shared refresh-token bundle by default
+- reports `email`, `uid`, token source, and token expiry without printing raw bearer material
+- keeps `x-admin-token` guidance separate from production bearer auth
+
+`portal:firebase:ops` consolidates the current Firebase operator checks:
+- credential health
+- Firestore index contract guard
+- Firestore rules drift check
+- optional deploy preflight status
+- exact error-text triage for common index, rules, and undefined-write failures
+- repo-static query inspection for likely composite-index gaps and nullable/undefined write risks
+- separate repo-static, local/operator, and cloud/production report sections
+
+`portal:firebase:inspect` runs the repo-static Firestore query-shape inspector directly:
+- scans file-backed query shapes in `web/src`, `functions/src`, and `scripts/rules`
+- cross-checks inferred composite indexes against `firestore.indexes.json`
+- flags likely undefined-write and nullable queried-field hazards before runtime
+
+`portal:visual:diff` adds a headless baseline-and-diff workflow on top of the current portal canaries:
+- runs authenticated canary, community layout canary, and portal Playwright smoke in visual-diff mode
+- writes aggregate JSON/markdown summaries under `output/qa/portal-visual-diff/`
+- keeps approved baselines under `scripts/fixtures/portal-visual-diff/baselines/`
+- supports `--mode compare` for triage and `--mode capture` for explicit baseline refresh
 
 ## Local secrets directory (gitignored)
 

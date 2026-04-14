@@ -270,6 +270,12 @@ export default function StudioBrainControlTowerModule({
 
   useEffect(() => {
     if (!active || isDisabled || !resolution.baseUrl) return;
+    void loadState();
+  }, [active, isDisabled, loadState, resolution.baseUrl]);
+
+  useEffect(() => {
+    if (!active || isDisabled || !resolution.baseUrl) return;
+    if (streamStatus === "live") return;
     let cancelled = false;
     let timer: number | null = null;
 
@@ -282,7 +288,9 @@ export default function StudioBrainControlTowerModule({
       }, delay);
     };
 
-    void loadState();
+    if (streamStatus === "fallback") {
+      void loadState({ silent: true });
+    }
     queueNext();
 
     const onVisibilityChange = () => {
@@ -295,7 +303,7 @@ export default function StudioBrainControlTowerModule({
       if (timer !== null) window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [active, isDisabled, loadState, resolution.baseUrl]);
+  }, [active, isDisabled, loadState, resolution.baseUrl, streamStatus]);
 
   useEffect(() => {
     if (!active || isDisabled || !resolution.baseUrl) return;

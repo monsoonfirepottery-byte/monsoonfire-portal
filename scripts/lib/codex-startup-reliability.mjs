@@ -12,8 +12,99 @@ export const STARTUP_REASON_CODES = Object.freeze({
   STARTUP_UNAVAILABLE: "startup_unavailable",
 });
 
+export const STARTUP_DEGRADATION_BUCKETS = Object.freeze({
+  MEMORY_UNAVAILABLE: "memory_unavailable",
+  MEMORY_FALLBACK_ONLY: "memory_fallback_only",
+  THREAD_SCOPE_MISSING: "thread_scope_missing",
+  GROUNDING_UNTRUSTED: "grounding_untrusted",
+  ORDERING_UNPROVEN: "ordering_unproven",
+  PRE_START_REPO_READS_DETECTED: "pre_start_repo_reads_detected",
+  GROUNDING_MISSING: "grounding_missing",
+  STARTUP_AUTH_STALE: "startup_auth_stale",
+});
+
+export const STARTUP_GROUNDING_AUTHORITIES = Object.freeze({
+  THREAD_SCOPED: "thread-scoped",
+  VALIDATED_LOCAL: "validated-local",
+  THREAD_SCOPED_REPAIRED: "thread-scoped-repaired",
+  CROSS_THREAD_FALLBACK: "cross-thread-fallback",
+  MANUAL: "manual",
+});
+
+const TRUSTED_STARTUP_GROUNDING_AUTHORITIES = new Set([
+  STARTUP_GROUNDING_AUTHORITIES.THREAD_SCOPED,
+  STARTUP_GROUNDING_AUTHORITIES.VALIDATED_LOCAL,
+  STARTUP_GROUNDING_AUTHORITIES.THREAD_SCOPED_REPAIRED,
+]);
+
 export function clean(value) {
   return String(value ?? "").trim();
+}
+
+export function normalizeStartupGroundingAuthority(value) {
+  const normalized = clean(value).toLowerCase();
+  return Object.values(STARTUP_GROUNDING_AUTHORITIES).includes(normalized)
+    ? normalized
+    : STARTUP_GROUNDING_AUTHORITIES.CROSS_THREAD_FALLBACK;
+}
+
+export function isTrustedStartupGroundingAuthority(value) {
+  return TRUSTED_STARTUP_GROUNDING_AUTHORITIES.has(normalizeStartupGroundingAuthority(value));
+}
+
+export function deriveStartupGroundingAuthority({
+  diagnostics = {},
+  continuityState = "missing",
+} = {}) {
+  const normalizedContinuityState = clean(continuityState || diagnostics?.continuityState || "missing").toLowerCase();
+  const threadScopedItemCount = Math.max(0, Math.round(Number(diagnostics?.threadScopedItemCount || 0)));
+  const startupSourceQuality = clean(
+    diagnostics?.startupSourceQuality || diagnostics?.laneSourceQuality || diagnostics?.groundingQuality
+  ).toLowerCase();
+  const localContinuityValidated = diagnostics?.localContinuityValidated === true;
+  const localContinuitySource = clean(diagnostics?.localContinuitySource).toLowerCase();
+  const manualOnly = diagnostics?.manualOnly === true;
+  const localArtifactRepair =
+    diagnostics?.localArtifactRepair && typeof diagnostics.localArtifactRepair === "object"
+      ? diagnostics.localArtifactRepair
+      : null;
+
+  if (localArtifactRepair?.repaired === true && threadScopedItemCount > 0) {
+    return STARTUP_GROUNDING_AUTHORITIES.THREAD_SCOPED_REPAIRED;
+  }
+  if (
+    localContinuityValidated &&
+    (
+      threadScopedItemCount > 0 ||
+      localContinuitySource === "validated-local-continuity" ||
+      localContinuitySource === "local-artifact-quality"
+    )
+  ) {
+    return STARTUP_GROUNDING_AUTHORITIES.VALIDATED_LOCAL;
+  }
+  if (
+    threadScopedItemCount > 0 &&
+    !["cross-thread-fallback", "compaction-promoted-dominant", "missing"].includes(startupSourceQuality)
+  ) {
+    return STARTUP_GROUNDING_AUTHORITIES.THREAD_SCOPED;
+  }
+  if (manualOnly && normalizedContinuityState !== "ready") {
+    return STARTUP_GROUNDING_AUTHORITIES.MANUAL;
+  }
+  return STARTUP_GROUNDING_AUTHORITIES.CROSS_THREAD_FALLBACK;
+}
+
+function uniqueStrings(values = []) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values) {
+    const normalized = clean(value);
+    const hash = normalized.toLowerCase();
+    if (!normalized || seen.has(hash)) continue;
+    seen.add(hash);
+    output.push(normalized);
+  }
+  return output;
 }
 
 function normalizeJwtSegment(segment) {
@@ -170,6 +261,118 @@ export function startupRecoveryStep(reasonCode) {
     default:
       return "Capture the exact startup failure, take one unblock step, then retry the same query/runId once.";
   }
+}
+
+export function buildStartupContract({
+  reasonCode = STARTUP_REASON_CODES.STARTUP_UNAVAILABLE,
+  continuityState = "missing",
+  diagnostics = {},
+  telemetry = {},
+  tokenFreshness = null,
+  studioBrainReachable = null,
+  mcpBridgeOk = null,
+} = {}) {
+  const normalizedReasonCode = clean(reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE);
+  const normalizedContinuityState = clean(continuityState || diagnostics?.continuityState || "missing").toLowerCase();
+  const tokenState = clean(tokenFreshness?.state).toLowerCase();
+  const presentationProjectLane = clean(
+    diagnostics?.presentationProjectLane || diagnostics?.projectLane || diagnostics?.dominantProjectLane
+  );
+  const threadScopedItemCount = Math.max(0, Math.round(Number(diagnostics?.threadScopedItemCount || 0)));
+  const transcriptOrderingProven = telemetry?.transcriptOrderingProven === true;
+  const repoReadsBeforeStartupContext = Number(telemetry?.repoReadsBeforeStartupContext);
+  const groundingAuthority = normalizeStartupGroundingAuthority(
+    diagnostics?.groundingAuthority ||
+      deriveStartupGroundingAuthority({
+        diagnostics,
+        continuityState: normalizedContinuityState,
+      })
+  );
+  const trustedGrounding = isTrustedStartupGroundingAuthority(groundingAuthority);
+  const fallbackOnly =
+    diagnostics?.fallbackOnly === true ||
+    (normalizedContinuityState !== "ready" && normalizedReasonCode === STARTUP_REASON_CODES.OK);
+  const compactionDominated = diagnostics?.compactionDominated === true;
+  const startupSourceQuality = clean(
+    diagnostics?.startupSourceQuality || diagnostics?.laneSourceQuality || diagnostics?.groundingQuality
+  );
+  const fallbackDegraded =
+    fallbackOnly ||
+    (
+      diagnostics?.fallbackUsed === true &&
+      (
+        normalizedContinuityState !== "ready" ||
+        compactionDominated ||
+        startupSourceQuality === "compaction-promoted-dominant" ||
+        threadScopedItemCount <= 0
+      )
+    );
+  const failReasonCodes = new Set([
+    STARTUP_REASON_CODES.MISSING_TOKEN,
+    STARTUP_REASON_CODES.EXPIRED_TOKEN,
+    STARTUP_REASON_CODES.TRANSPORT_UNREACHABLE,
+    STARTUP_REASON_CODES.TIMEOUT,
+    STARTUP_REASON_CODES.STARTUP_UNAVAILABLE,
+  ]);
+  const degradationBuckets = uniqueStrings([
+    !studioBrainReachable || failReasonCodes.has(normalizedReasonCode)
+      ? STARTUP_DEGRADATION_BUCKETS.MEMORY_UNAVAILABLE
+      : "",
+    fallbackDegraded ? STARTUP_DEGRADATION_BUCKETS.MEMORY_FALLBACK_ONLY : "",
+    threadScopedItemCount <= 0 ? STARTUP_DEGRADATION_BUCKETS.THREAD_SCOPE_MISSING : "",
+    normalizedContinuityState === "ready" && !trustedGrounding
+      ? STARTUP_DEGRADATION_BUCKETS.GROUNDING_UNTRUSTED
+      : "",
+    transcriptOrderingProven ? "" : STARTUP_DEGRADATION_BUCKETS.ORDERING_UNPROVEN,
+    Number.isFinite(repoReadsBeforeStartupContext) && repoReadsBeforeStartupContext > 0
+      ? STARTUP_DEGRADATION_BUCKETS.PRE_START_REPO_READS_DETECTED
+      : "",
+    telemetry?.groundingLineEmitted === true ? "" : STARTUP_DEGRADATION_BUCKETS.GROUNDING_MISSING,
+    ["missing", "expired"].includes(tokenState) ||
+    normalizedReasonCode === STARTUP_REASON_CODES.MISSING_TOKEN ||
+    normalizedReasonCode === STARTUP_REASON_CODES.EXPIRED_TOKEN
+      ? STARTUP_DEGRADATION_BUCKETS.STARTUP_AUTH_STALE
+      : "",
+  ]);
+  const missingStartupIngredients = uniqueStrings([
+    threadScopedItemCount <= 0 ? "insufficient-thread-scoped-handoff-or-checkpoint-rows" : "",
+    compactionDominated || startupSourceQuality === "compaction-promoted-dominant"
+      ? "stale-or-generic-compaction-only-context"
+      : "",
+    presentationProjectLane ? "" : "missing-lane-resolution",
+    clean(diagnostics?.topBlocker) || normalizedContinuityState === "ready" ? "" : "unresolved-blocker-rows",
+  ]);
+  const status =
+    !studioBrainReachable ||
+    failReasonCodes.has(normalizedReasonCode) ||
+    mcpBridgeOk === false
+      ? "fail"
+      : normalizedContinuityState === "ready" &&
+          degradationBuckets.length === 0 &&
+          telemetry?.groundingLineEmitted === true &&
+          presentationProjectLane &&
+          diagnostics?.manualOnly !== true
+        ? "pass"
+        : "degraded";
+
+  return {
+    status,
+    reasonCode: normalizedReasonCode,
+    continuityState: normalizedContinuityState,
+    recoveryStep: startupRecoveryStep(normalizedReasonCode),
+    presentationProjectLane,
+    threadScopedItemCount,
+    transcriptOrderingProven,
+    degradationBuckets,
+    missingStartupIngredients,
+    dominantGoal: clean(diagnostics?.dominantGoal || diagnostics?.goal),
+    topBlocker: clean(diagnostics?.topBlocker),
+    nextRecommendedAction: clean(diagnostics?.nextRecommendedAction),
+    groundingAuthority,
+    laneSourceQuality: clean(diagnostics?.laneSourceQuality || diagnostics?.groundingQuality || "missing"),
+    startupSourceQuality: startupSourceQuality || "missing",
+    fallbackOnly,
+  };
 }
 
 export function evaluateStartupLatency(latencyMs, { targetMs = DEFAULT_STARTUP_BUDGET_TARGET_MS, hardMs = DEFAULT_STARTUP_BUDGET_HARD_MS } = {}) {

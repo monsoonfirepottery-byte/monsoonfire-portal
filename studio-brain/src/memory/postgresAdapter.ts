@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { QueryResultRow } from "pg";
+import type { PoolClient, QueryResultRow } from "pg";
 import { getPgPool } from "../db/postgres";
 import type { VectorStore } from "../connectivity/vectorStore";
 import type {
@@ -24,7 +24,23 @@ import type {
   MemoryStoreAdapter,
   MemoryUpsertInput,
 } from "./adapters";
-import type { MemoryLayer, MemoryLoopState, MemoryRecord, MemorySearchResult, MemoryStats, MemoryStatus } from "./contracts";
+import type {
+  MemoryEvidence,
+  MemoryCategory,
+  MemoryFreshnessStatus,
+  MemoryLayer,
+  MemoryLoopState,
+  MemoryOperationalStatus,
+  MemoryRedactionState,
+  MemoryRecord,
+  MemoryReviewAction,
+  MemorySearchResult,
+  MemorySourceClass,
+  MemoryStats,
+  MemoryStatus,
+  MemoryTransitionEvent,
+  MemoryTruthStatus,
+} from "./contracts";
 import { isAllowedMemoryLayer, normalizeMemoryLayer, normalizeMemoryLayerList } from "./layers";
 
 type AdapterParams = {
@@ -94,6 +110,18 @@ function parseNullableDate(value: unknown): string | null {
   if (!value) return null;
   const date = new Date(String(value));
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function parseStringList(value: unknown, maxItems = 64): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean)
+        .slice(0, maxItems)
+    )
+  );
 }
 
 function clamp01(value: unknown, fallback = 0.5): number {
@@ -300,6 +328,38 @@ function parseMemoryType(value: unknown): MemoryRecord["memoryType"] {
   return "episodic";
 }
 
+function parseSourceClass(value: unknown): MemorySourceClass | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "live-check" ||
+    raw === "repo-file" ||
+    raw === "policy" ||
+    raw === "telemetry" ||
+    raw === "human" ||
+    raw === "derived" ||
+    raw === "mcp-tool" ||
+    raw === "runtime-artifact" ||
+    raw === "external-doc"
+  ) {
+    return raw;
+  }
+  return null;
+}
+
+function parseRedactionState(value: unknown): MemoryRedactionState | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "none" ||
+    raw === "redacted" ||
+    raw === "verified-redacted" ||
+    raw === "requires-review" ||
+    raw === "quarantined"
+  ) {
+    return raw;
+  }
+  return null;
+}
+
 function parseMemoryLayer(metadata: Record<string, unknown>, memoryType: unknown): MemoryLayer {
   return normalizeMemoryLayer(metadata.memoryLayer, normalizeMemoryLayer(memoryType, "episodic"));
 }
@@ -316,6 +376,30 @@ function memoryLayerSql(): string {
       END
     )
   `;
+}
+
+function latticeTextSql(topLevelKey: string, nestedKey: string): string {
+  return `COALESCE(NULLIF(LOWER(metadata->>'${topLevelKey}'), ''), NULLIF(LOWER(metadata->'memoryLattice'->>'${nestedKey}'), ''))`;
+}
+
+function latticeNumericSql(topLevelKey: string, nestedKey: string, fallback = "0"): string {
+  return `
+    CASE
+      WHEN COALESCE(metadata->>'${topLevelKey}', metadata->'memoryLattice'->>'${nestedKey}', '') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+        THEN COALESCE(metadata->>'${topLevelKey}', metadata->'memoryLattice'->>'${nestedKey}')::numeric
+      ELSE ${fallback}::numeric
+    END
+  `;
+}
+
+function mapCountRows<T extends string>(rows: QueryResultRow[], key: string): Array<{ value: T; count: number }> {
+  return rows
+    .map((row) => ({
+      value: String(row[key] ?? "").trim().toLowerCase() as T,
+      count: Number(row.count ?? 0),
+    }))
+    .filter((row) => row.value.length > 0 && row.count > 0)
+    .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
 }
 
 function mapRowToRecord(row: QueryResultRow): MemoryRecord {
@@ -341,10 +425,377 @@ function mapRowToRecord(row: QueryResultRow): MemoryRecord {
   };
 }
 
+function mapEvidenceRow(row: QueryResultRow): MemoryEvidence {
+  return {
+    evidenceId: String(row.evidence_id),
+    sourceClass: parseSourceClass(row.source_class) ?? "derived",
+    sourceUri: row.source_uri === null ? null : String(row.source_uri),
+    sourcePath: row.source_path === null ? null : String(row.source_path),
+    capturedAt: parseDate(row.captured_at),
+    verifiedAt: parseNullableDate(row.verified_at),
+    verifier: row.verifier === null ? null : String(row.verifier),
+    redactionState: parseRedactionState(row.redaction_state) ?? "none",
+    hash: row.hash === null ? null : String(row.hash),
+    supportsMemoryIds: parseStringList(row.supports_memory_ids, 32),
+    metadata: asRecord(row.metadata),
+  };
+}
+
+function mapTransitionRow(row: QueryResultRow): MemoryTransitionEvent {
+  return {
+    transitionId: String(row.transition_id),
+    memoryId: String(row.memory_id),
+    actor: row.actor === null ? null : String(row.actor),
+    reason: row.reason === null ? null : String(row.reason),
+    at: parseDate(row.at),
+    fromStatus: row.from_status === null ? null : parseStatus(row.from_status),
+    toStatus: parseStatus(row.to_status),
+    fromTruthStatus: row.from_truth_status === null ? null : (String(row.from_truth_status) as MemoryTruthStatus),
+    toTruthStatus: String(row.to_truth_status) as MemoryTruthStatus,
+    fromFreshnessStatus:
+      row.from_freshness_status === null ? null : (String(row.from_freshness_status) as MemoryFreshnessStatus),
+    toFreshnessStatus: String(row.to_freshness_status) as MemoryFreshnessStatus,
+    fromOperationalStatus:
+      row.from_operational_status === null ? null : (String(row.from_operational_status) as MemoryOperationalStatus),
+    toOperationalStatus: String(row.to_operational_status) as MemoryOperationalStatus,
+    evidenceIds: parseStringList(row.evidence_ids, 32),
+    metadata: asRecord(row.metadata),
+  };
+}
+
 export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryStoreAdapter {
   const tableName = sanitizeTableName(params.tableName ?? "swarm_memory");
   const vectorStore = params.vectorStore;
   const pool = getPgPool();
+  const latticeProjectionTable = "memory_lattice_projection";
+  const evidenceTable = "memory_evidence";
+  const transitionTable = "memory_transition_event";
+
+  const attachRecordDetails = async <TRow extends MemoryRecord | MemorySearchResult>(rows: TRow[]): Promise<TRow[]> => {
+    const memoryIds = Array.from(new Set(rows.map((row) => String(row.id ?? "").trim()).filter(Boolean)));
+    if (memoryIds.length === 0) return rows;
+
+    const [evidenceResult, transitionResult] = await Promise.all([
+      pool.query(
+        `
+          SELECT
+            evidence_id,
+            memory_id,
+            source_class,
+            source_uri,
+            source_path,
+            captured_at,
+            verified_at,
+            verifier,
+            redaction_state,
+            hash,
+            supports_memory_ids,
+            metadata
+            FROM ${evidenceTable}
+           WHERE memory_id = ANY($1::text[])
+           ORDER BY captured_at ASC, evidence_id ASC
+        `,
+        [memoryIds]
+      ),
+      pool.query(
+        `
+          SELECT
+            transition_id,
+            memory_id,
+            actor,
+            reason,
+            at,
+            from_status,
+            to_status,
+            from_truth_status,
+            to_truth_status,
+            from_freshness_status,
+            to_freshness_status,
+            from_operational_status,
+            to_operational_status,
+            evidence_ids,
+            metadata
+            FROM ${transitionTable}
+           WHERE memory_id = ANY($1::text[])
+           ORDER BY at ASC, transition_id ASC
+        `,
+        [memoryIds]
+      ),
+    ]);
+
+    const evidenceByMemoryId = new Map<string, MemoryEvidence[]>();
+    for (const row of evidenceResult.rows) {
+      const memoryId = String(row.memory_id ?? "").trim();
+      if (!memoryId) continue;
+      const bucket = evidenceByMemoryId.get(memoryId) ?? [];
+      bucket.push(mapEvidenceRow(row));
+      evidenceByMemoryId.set(memoryId, bucket);
+    }
+
+    const transitionsByMemoryId = new Map<string, MemoryTransitionEvent[]>();
+    for (const row of transitionResult.rows) {
+      const memoryId = String(row.memory_id ?? "").trim();
+      if (!memoryId) continue;
+      const bucket = transitionsByMemoryId.get(memoryId) ?? [];
+      bucket.push(mapTransitionRow(row));
+      transitionsByMemoryId.set(memoryId, bucket);
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      evidence: evidenceByMemoryId.get(row.id) ?? [],
+      transitions: transitionsByMemoryId.get(row.id) ?? [],
+    }));
+  };
+
+  const persistLatticeProjection = async (client: PoolClient, input: MemoryUpsertInput): Promise<void> => {
+    const metadata = asRecord(input.metadata);
+    const lattice = asRecord(metadata.memoryLattice);
+    const secretExposure = asRecord(metadata.secretExposure);
+    const mcpGovernance = asRecord(metadata.mcpGovernance);
+    const sourceClass = parseSourceClass(metadata.sourceClass ?? lattice.sourceClass);
+    const redactionState = parseRedactionState(metadata.redactionState ?? lattice.redactionState);
+    const hasEvidence = Array.isArray(input.evidence)
+      ? input.evidence.length > 0
+      : Boolean(metadata.evidenceCount ?? lattice.hasEvidence);
+    const shadowMcpRisk =
+      metadata.shadowMcpRisk === true || lattice.shadowMcpRisk === true || mcpGovernance.shadowRisk === true;
+    const startupEligible = metadata.startupEligible === true || metadata.rememberForStartup === true;
+    await client.query(
+      `
+        INSERT INTO ${latticeProjectionTable} (
+          memory_id,
+          tenant_id,
+          memory_layer,
+          status,
+          category,
+          truth_status,
+          freshness_status,
+          operational_status,
+          authority_class,
+          review_action,
+          review_priority,
+          folklore_risk,
+          contradiction_count,
+          conflict_severity,
+          conflict_kinds,
+          conflicting_memory_ids,
+          scope,
+          last_verified_at,
+          next_review_at,
+          freshness_expires_at,
+          source_class,
+          has_evidence,
+          redaction_state,
+          secret_exposure,
+          canonical_promotion_blocked,
+          secret_quarantined,
+          shadow_mcp_risk,
+          mcp_governed,
+          mcp_approval_state,
+          review_shadow_mcp,
+          high_risk_shadow_mcp,
+          startup_eligible,
+          remember_kind,
+          updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
+          $18::timestamptz, $19::timestamptz, $20::timestamptz, $21, $22, $23, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, now()
+        )
+        ON CONFLICT (memory_id) DO UPDATE SET
+          tenant_id = EXCLUDED.tenant_id,
+          memory_layer = EXCLUDED.memory_layer,
+          status = EXCLUDED.status,
+          category = EXCLUDED.category,
+          truth_status = EXCLUDED.truth_status,
+          freshness_status = EXCLUDED.freshness_status,
+          operational_status = EXCLUDED.operational_status,
+          authority_class = EXCLUDED.authority_class,
+          review_action = EXCLUDED.review_action,
+          review_priority = EXCLUDED.review_priority,
+          folklore_risk = EXCLUDED.folklore_risk,
+          contradiction_count = EXCLUDED.contradiction_count,
+          conflict_severity = EXCLUDED.conflict_severity,
+          conflict_kinds = EXCLUDED.conflict_kinds,
+          conflicting_memory_ids = EXCLUDED.conflicting_memory_ids,
+          scope = EXCLUDED.scope,
+          last_verified_at = EXCLUDED.last_verified_at,
+          next_review_at = EXCLUDED.next_review_at,
+          freshness_expires_at = EXCLUDED.freshness_expires_at,
+          source_class = EXCLUDED.source_class,
+          has_evidence = EXCLUDED.has_evidence,
+          redaction_state = EXCLUDED.redaction_state,
+          secret_exposure = EXCLUDED.secret_exposure,
+          canonical_promotion_blocked = EXCLUDED.canonical_promotion_blocked,
+          secret_quarantined = EXCLUDED.secret_quarantined,
+          shadow_mcp_risk = EXCLUDED.shadow_mcp_risk,
+          mcp_governed = EXCLUDED.mcp_governed,
+          mcp_approval_state = EXCLUDED.mcp_approval_state,
+          review_shadow_mcp = EXCLUDED.review_shadow_mcp,
+          high_risk_shadow_mcp = EXCLUDED.high_risk_shadow_mcp,
+          startup_eligible = EXCLUDED.startup_eligible,
+          remember_kind = EXCLUDED.remember_kind,
+          updated_at = now()
+      `,
+      [
+        input.id,
+        input.tenantId ?? null,
+        input.memoryLayer,
+        input.status,
+        String(metadata.memoryCategory ?? lattice.category ?? "") || null,
+        String(metadata.truthStatus ?? lattice.truthStatus ?? "") || null,
+        String(metadata.freshnessStatus ?? lattice.freshnessStatus ?? "") || null,
+        String(metadata.operationalStatus ?? lattice.operationalStatus ?? "") || null,
+        String(metadata.authorityClass ?? lattice.authorityClass ?? "") || null,
+        String(metadata.reviewAction ?? lattice.reviewAction ?? "") || null,
+        Number(metadata.reviewPriority ?? lattice.reviewPriority ?? 0),
+        clamp01(metadata.folkloreRisk ?? lattice.folkloreRisk, 0),
+        Math.max(0, Math.trunc(Number(metadata.contradictionCount ?? lattice.contradictionCount ?? 0))),
+        String(metadata.conflictSeverity ?? lattice.conflictSeverity ?? "") || null,
+        JSON.stringify(parseStringList(metadata.conflictKinds ?? lattice.conflictKinds, 16)),
+        JSON.stringify(parseStringList(metadata.conflictingMemoryIds ?? lattice.conflictingMemoryIds, 32)),
+        String(metadata.scope ?? lattice.scope ?? "") || null,
+        parseNullableDate(metadata.lastVerifiedAt ?? lattice.lastVerifiedAt),
+        parseNullableDate(metadata.nextReviewAt ?? lattice.nextReviewAt),
+        parseNullableDate(metadata.freshnessExpiresAt ?? lattice.freshnessExpiresAt),
+        sourceClass,
+        hasEvidence,
+        redactionState,
+        JSON.stringify(secretExposure),
+        secretExposure.canonicalPromotionBlocked === true,
+        secretExposure.quarantined === true,
+        shadowMcpRisk,
+        String(mcpGovernance.approvalState ?? "").trim().length > 0,
+        String(mcpGovernance.approvalState ?? "") || null,
+        mcpGovernance.shadowRisk === true,
+        mcpGovernance.shadowRisk === true && String(mcpGovernance.approvalState ?? "").trim().toLowerCase() !== "approved",
+        startupEligible,
+        String(metadata.rememberKind ?? "") || null,
+      ]
+    );
+  };
+
+  const replaceEvidence = async (client: PoolClient, input: MemoryUpsertInput): Promise<void> => {
+    if (!Array.isArray(input.evidence)) return;
+    await client.query(`DELETE FROM ${evidenceTable} WHERE memory_id = $1`, [input.id]);
+    for (const evidence of input.evidence) {
+      await client.query(
+        `
+          INSERT INTO ${evidenceTable} (
+            evidence_id,
+            memory_id,
+            tenant_id,
+            source_class,
+            source_uri,
+            source_path,
+            captured_at,
+            verified_at,
+            verifier,
+            redaction_state,
+            hash,
+            supports_memory_ids,
+            metadata,
+            updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz, $9, $10, $11, $12::jsonb, $13::jsonb, now()
+          )
+          ON CONFLICT (evidence_id) DO UPDATE SET
+            memory_id = EXCLUDED.memory_id,
+            tenant_id = EXCLUDED.tenant_id,
+            source_class = EXCLUDED.source_class,
+            source_uri = EXCLUDED.source_uri,
+            source_path = EXCLUDED.source_path,
+            captured_at = EXCLUDED.captured_at,
+            verified_at = EXCLUDED.verified_at,
+            verifier = EXCLUDED.verifier,
+            redaction_state = EXCLUDED.redaction_state,
+            hash = EXCLUDED.hash,
+            supports_memory_ids = EXCLUDED.supports_memory_ids,
+            metadata = EXCLUDED.metadata,
+            updated_at = now()
+        `,
+        [
+          evidence.evidenceId,
+          input.id,
+          input.tenantId ?? null,
+          evidence.sourceClass,
+          evidence.sourceUri ?? null,
+          evidence.sourcePath ?? null,
+          evidence.capturedAt,
+          evidence.verifiedAt ?? null,
+          evidence.verifier ?? null,
+          evidence.redactionState,
+          evidence.hash ?? null,
+          JSON.stringify(parseStringList(evidence.supportsMemoryIds, 32)),
+          JSON.stringify(asRecord(evidence.metadata)),
+        ]
+      );
+    }
+  };
+
+  const upsertTransitionEvents = async (client: PoolClient, input: MemoryUpsertInput): Promise<void> => {
+    if (!Array.isArray(input.transitionEvents) || input.transitionEvents.length === 0) return;
+    for (const transition of input.transitionEvents) {
+      await client.query(
+        `
+          INSERT INTO ${transitionTable} (
+            transition_id,
+            memory_id,
+            tenant_id,
+            actor,
+            reason,
+            at,
+            from_status,
+            to_status,
+            from_truth_status,
+            to_truth_status,
+            from_freshness_status,
+            to_freshness_status,
+            from_operational_status,
+            to_operational_status,
+            evidence_ids,
+            metadata
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb
+          )
+          ON CONFLICT (transition_id) DO UPDATE SET
+            memory_id = EXCLUDED.memory_id,
+            tenant_id = EXCLUDED.tenant_id,
+            actor = EXCLUDED.actor,
+            reason = EXCLUDED.reason,
+            at = EXCLUDED.at,
+            from_status = EXCLUDED.from_status,
+            to_status = EXCLUDED.to_status,
+            from_truth_status = EXCLUDED.from_truth_status,
+            to_truth_status = EXCLUDED.to_truth_status,
+            from_freshness_status = EXCLUDED.from_freshness_status,
+            to_freshness_status = EXCLUDED.to_freshness_status,
+            from_operational_status = EXCLUDED.from_operational_status,
+            to_operational_status = EXCLUDED.to_operational_status,
+            evidence_ids = EXCLUDED.evidence_ids,
+            metadata = EXCLUDED.metadata
+        `,
+        [
+          transition.transitionId,
+          input.id,
+          input.tenantId ?? null,
+          transition.actor ?? null,
+          transition.reason ?? null,
+          transition.at,
+          transition.fromStatus ?? null,
+          transition.toStatus,
+          transition.fromTruthStatus ?? null,
+          transition.toTruthStatus,
+          transition.fromFreshnessStatus ?? null,
+          transition.toFreshnessStatus,
+          transition.fromOperationalStatus ?? null,
+          transition.toOperationalStatus,
+          JSON.stringify(parseStringList(transition.evidenceIds, 32)),
+          JSON.stringify(asRecord(transition.metadata)),
+        ]
+      );
+    }
+  };
 
   return {
     async upsert(input: MemoryUpsertInput): Promise<MemoryRecord> {
@@ -413,6 +864,20 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         // best-effort telemetry
       }
 
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await persistLatticeProjection(client, input);
+        await replaceEvidence(client, input);
+        await upsertTransitionEvents(client, input);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
       const row = await pool.query(
         `
           SELECT
@@ -435,7 +900,8 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         [input.id]
       );
       if (row.rowCount && row.rows[0]) {
-        return mapRowToRecord(row.rows[0]);
+        const [enriched] = await attachRecordDetails([mapRowToRecord(row.rows[0])]);
+        return enriched;
       }
 
       return {
@@ -454,6 +920,8 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         memoryLayer: input.memoryLayer,
         sourceConfidence: clamp01(input.sourceConfidence),
         importance: clamp01(input.importance),
+        evidence: Array.isArray(input.evidence) ? input.evidence : [],
+        transitions: Array.isArray(input.transitionEvents) ? input.transitionEvents : [],
       };
     },
 
@@ -498,7 +966,8 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
           matchedBy: row.matchedBy,
         };
       }).filter((row) => isAllowedMemoryLayer(row.memoryLayer, layerAllowlist, layerDenylist));
-      const matchedByCounts = mapped.reduce<Record<string, number>>((acc, row) => {
+      const enriched = await attachRecordDetails(mapped);
+      const matchedByCounts = enriched.reduce<Record<string, number>>((acc, row) => {
         for (const key of row.matchedBy) {
           const normalized = String(key || "").trim().toLowerCase();
           if (!normalized) continue;
@@ -533,12 +1002,12 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
             input.query,
             input.retrievalMode ?? "hybrid",
             rows.length,
-            mapped.length,
-            JSON.stringify(mapped.map((row) => row.id)),
+            enriched.length,
+            JSON.stringify(enriched.map((row) => row.id)),
             JSON.stringify({
-              topScore: mapped[0]?.score ?? null,
-              topMatchedBy: mapped[0]?.matchedBy ?? [],
-              topBreakdown: mapped[0]?.scoreBreakdown ?? null,
+              topScore: enriched[0]?.score ?? null,
+              topMatchedBy: enriched[0]?.matchedBy ?? [],
+              topBreakdown: enriched[0]?.scoreBreakdown ?? null,
               laneCounts: matchedByCounts,
               minScore: input.minScore ?? null,
             }),
@@ -548,7 +1017,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       } catch {
         // best-effort telemetry
       }
-      return mapped;
+      return enriched;
     },
 
     async recent(input): Promise<MemoryRecord[]> {
@@ -615,7 +1084,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
          LIMIT $${values.length}
       `;
       const result = await pool.query(query, values);
-      return result.rows.map(mapRowToRecord);
+      return attachRecordDetails(result.rows.map(mapRowToRecord));
     },
 
     async recentCreated(input): Promise<MemoryRecord[]> {
@@ -682,7 +1151,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
          LIMIT $${values.length}
       `;
       const result = await pool.query(query, values);
-      return result.rows.map(mapRowToRecord);
+      return attachRecordDetails(result.rows.map(mapRowToRecord));
     },
 
     async getByIds(input): Promise<MemoryRecord[]> {
@@ -714,27 +1183,31 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
          ORDER BY COALESCE(occurred_at, created_at) DESC, created_at DESC
       `;
       const result = await pool.query(query, values);
-      const rows = result.rows.map(mapRowToRecord);
+      const rows = await attachRecordDetails(result.rows.map(mapRowToRecord));
       return rows;
     },
 
     async stats(input): Promise<MemoryStats> {
       const values: unknown[] = [];
       const predicates: string[] = [];
+      const projectionPredicates: string[] = [];
       const memoryLayerExpr = memoryLayerSql();
       if (input.tenantId !== undefined) {
         values.push(input.tenantId);
         predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
+        projectionPredicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
       }
       const allowLayers = sanitizeLayerList(input.layerAllowlist);
       if (allowLayers.length > 0) {
         values.push(allowLayers);
         predicates.push(`${memoryLayerExpr} = ANY($${values.length}::text[])`);
+        projectionPredicates.push(`memory_layer = ANY($${values.length}::text[])`);
       }
       const denyLayers = sanitizeLayerList(input.layerDenylist);
       if (denyLayers.length > 0) {
         values.push(denyLayers);
         predicates.push(`${memoryLayerExpr} <> ALL($${values.length}::text[])`);
+        projectionPredicates.push(`memory_layer <> ALL($${values.length}::text[])`);
       }
       const whereClause = predicates.length ? `WHERE ${predicates.join(" AND ")}` : "";
 
@@ -783,9 +1256,167 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
+      const projectionWhereClause = projectionPredicates.length ? `WHERE ${projectionPredicates.join(" AND ")}` : "";
+      const latticeCoverage = await pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (
+              WHERE category IS NOT NULL
+                 OR truth_status IS NOT NULL
+                 OR freshness_status IS NOT NULL
+                 OR operational_status IS NOT NULL
+                 OR review_action IS NOT NULL
+            )::int AS rows_with_lattice,
+            COUNT(*) FILTER (WHERE review_action IS NOT NULL AND review_action <> 'none')::int AS review_now,
+            COUNT(*) FILTER (WHERE review_action = 'revalidate')::int AS revalidate,
+            COUNT(*) FILTER (WHERE review_action = 'resolve-conflict')::int AS resolve_conflict,
+            COUNT(*) FILTER (WHERE review_action = 'retire')::int AS retire,
+            COUNT(*) FILTER (WHERE folklore_risk >= 0.65)::int AS folklore_risk_high
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+        `,
+        values
+      );
+      const byCategory = await pool.query(
+        `
+          SELECT category,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} category IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, category ASC
+           LIMIT 16
+        `,
+        values
+      );
+      const byTruthStatus = await pool.query(
+        `
+          SELECT truth_status AS status,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} truth_status IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `,
+        values
+      );
+      const byFreshnessStatus = await pool.query(
+        `
+          SELECT freshness_status AS status,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} freshness_status IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `,
+        values
+      );
+      const byOperationalStatus = await pool.query(
+        `
+          SELECT operational_status AS status,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} operational_status IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `,
+        values
+      );
+      const byReviewAction = await pool.query(
+        `
+          SELECT review_action AS action,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} review_action IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, action ASC
+           LIMIT 8
+        `,
+        values
+      );
+      const launchFindings = await pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (WHERE truth_status = 'contradicted' OR operational_status = 'quarantined')::int AS contested_rows,
+            COUNT(*) FILTER (WHERE conflict_severity = 'hard')::int AS hard_conflicts,
+            COUNT(*) FILTER (WHERE operational_status = 'quarantined')::int AS quarantined_rows,
+            COUNT(*) FILTER (WHERE category = 'conflict-record')::int AS conflict_records,
+            COUNT(*) FILTER (WHERE startup_eligible)::int AS startup_eligible_rows,
+            COUNT(*) FILTER (
+              WHERE startup_eligible
+                AND operational_status = 'active'
+                AND truth_status IN ('trusted', 'verified')
+            )::int AS trusted_startup_rows,
+            COUNT(*) FILTER (WHERE remember_kind = 'handoff')::int AS handoff_rows,
+            COUNT(*) FILTER (WHERE remember_kind = 'checkpoint')::int AS checkpoint_rows,
+            COUNT(*) FILTER (WHERE startup_eligible AND has_evidence = false AND status <> 'accepted')::int AS fallback_risk_rows,
+            COUNT(*) FILTER (WHERE redaction_state IN ('redacted', 'verified-redacted'))::int AS redacted_rows,
+            COUNT(*) FILTER (WHERE redaction_state = 'requires-review')::int AS requires_review_rows,
+            COUNT(*) FILTER (WHERE canonical_promotion_blocked = true)::int AS canonical_blocked_rows,
+            COUNT(*) FILTER (WHERE secret_quarantined = true)::int AS secret_quarantined_rows,
+            COUNT(*) FILTER (
+              WHERE source_class = 'mcp-tool'
+                 OR mcp_governed = true
+                 OR mcp_approval_state IS NOT NULL
+                 OR shadow_mcp_risk = true
+            )::int AS total_shadow_rows,
+            COUNT(*) FILTER (
+              WHERE (source_class = 'mcp-tool' OR mcp_governed = true OR mcp_approval_state IS NOT NULL OR shadow_mcp_risk = true)
+                AND mcp_governed = true
+            )::int AS governed_shadow_rows,
+            COUNT(*) FILTER (
+              WHERE (source_class = 'mcp-tool' OR mcp_governed = true OR mcp_approval_state IS NOT NULL OR shadow_mcp_risk = true)
+                AND mcp_governed = false
+            )::int AS ungoverned_shadow_rows,
+            COUNT(*) FILTER (WHERE review_shadow_mcp = true)::int AS review_shadow_rows,
+            COUNT(*) FILTER (WHERE high_risk_shadow_mcp = true)::int AS high_risk_shadow_rows
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+        `,
+        values
+      );
+      const retrievalShadow = await pool.query(
+        `
+          WITH filtered AS (
+            SELECT memory_id, category, conflict_severity, operational_status, conflicting_memory_ids
+              FROM ${latticeProjectionTable}
+             ${projectionWhereClause}
+          ),
+          linked AS (
+            SELECT DISTINCT linked.memory_id
+              FROM filtered row
+              CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(row.conflicting_memory_ids, '[]'::jsonb)) AS linked(memory_id)
+              JOIN filtered target ON target.memory_id = linked.memory_id
+             WHERE row.category = 'conflict-record'
+               AND row.conflict_severity = 'hard'
+               AND COALESCE(row.operational_status, 'active') NOT IN ('archived', 'deprecated', 'retired')
+          )
+          SELECT COUNT(*)::int AS retrieval_shadowed_rows
+            FROM linked
+        `,
+        values
+      );
 
       const total = Number(totals.rows[0]?.total ?? 0);
       const lastRaw = totals.rows[0]?.last_captured_at;
+      const rowsWithLattice = Number(latticeCoverage.rows[0]?.rows_with_lattice ?? 0);
+      const launchRow = launchFindings.rows[0] ?? {};
+      const retrievalShadowRow = retrievalShadow.rows[0] ?? {};
+      const backlog = {
+        reviewNow: Number(latticeCoverage.rows[0]?.review_now ?? 0),
+        revalidate: Number(latticeCoverage.rows[0]?.revalidate ?? 0),
+        resolveConflict: Number(latticeCoverage.rows[0]?.resolve_conflict ?? 0),
+        retire: Number(latticeCoverage.rows[0]?.retire ?? 0),
+        folkloreRiskHigh: Number(latticeCoverage.rows[0]?.folklore_risk_high ?? 0),
+      };
       return {
         total,
         lastCapturedAt: lastRaw ? new Date(String(lastRaw)).toISOString() : null,
@@ -801,6 +1432,63 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
           status: parseStatus(row.status),
           count: Number(row.count ?? 0),
         })),
+        lattice: {
+          coverage: {
+            rowsWithLattice,
+            totalRows: total,
+            ratio: total > 0 ? Number((rowsWithLattice / total).toFixed(3)) : 0,
+          },
+          byCategory: mapCountRows<MemoryCategory>(byCategory.rows, "category").map((row) => ({
+            category: row.value,
+            count: row.count,
+          })),
+          byTruthStatus: mapCountRows<MemoryTruthStatus>(byTruthStatus.rows, "status").map((row) => ({
+            status: row.value,
+            count: row.count,
+          })),
+          byFreshnessStatus: mapCountRows<MemoryFreshnessStatus>(byFreshnessStatus.rows, "status").map((row) => ({
+            status: row.value,
+            count: row.count,
+          })),
+          byOperationalStatus: mapCountRows<MemoryOperationalStatus>(byOperationalStatus.rows, "status").map((row) => ({
+            status: row.value,
+            count: row.count,
+          })),
+          byReviewAction: mapCountRows<MemoryReviewAction>(byReviewAction.rows, "action").map((row) => ({
+            action: row.value,
+            count: row.count,
+          })),
+          backlog,
+        },
+        reviewBacklog: backlog,
+        conflictBacklog: {
+          contestedRows: Number(launchRow.contested_rows ?? 0),
+          hardConflicts: Number(launchRow.hard_conflicts ?? 0),
+          quarantinedRows: Number(launchRow.quarantined_rows ?? 0),
+          conflictRecords: Number(launchRow.conflict_records ?? 0),
+          retrievalShadowedRows: Number(retrievalShadowRow.retrieval_shadowed_rows ?? 0),
+        },
+        startupReadiness: {
+          startupEligibleRows: Number(launchRow.startup_eligible_rows ?? 0),
+          trustedStartupRows: Number(launchRow.trusted_startup_rows ?? 0),
+          handoffRows: Number(launchRow.handoff_rows ?? 0),
+          checkpointRows: Number(launchRow.checkpoint_rows ?? 0),
+          fallbackRiskRows: Number(launchRow.fallback_risk_rows ?? 0),
+        },
+        secretExposureFindings: {
+          totalRows: total,
+          redactedRows: Number(launchRow.redacted_rows ?? 0),
+          requiresReviewRows: Number(launchRow.requires_review_rows ?? 0),
+          canonicalBlockedRows: Number(launchRow.canonical_blocked_rows ?? 0),
+          quarantinedRows: Number(launchRow.secret_quarantined_rows ?? 0),
+        },
+        shadowMcpFindings: {
+          totalRows: Number(launchRow.total_shadow_rows ?? 0),
+          governedRows: Number(launchRow.governed_shadow_rows ?? 0),
+          ungovernedRows: Number(launchRow.ungoverned_shadow_rows ?? 0),
+          reviewRows: Number(launchRow.review_shadow_rows ?? 0),
+          highRiskRows: Number(launchRow.high_risk_shadow_rows ?? 0),
+        },
       };
     },
 

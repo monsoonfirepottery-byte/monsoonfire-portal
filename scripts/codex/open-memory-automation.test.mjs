@@ -23,7 +23,7 @@ function cleanupThreadRuntime(threadId) {
   return paths;
 }
 
-const TEST_FRESH_TOKEN = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.";
+const TEST_FRESH_TOKEN = "test~header.eyJleHAiOjQxMDI0NDQ4MDB9.test~signature";
 
 test("buildStartupContextPack keeps cross-thread fallback guidance in advisory fields only", () => {
   const pack = buildStartupContextPack({

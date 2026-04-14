@@ -25,7 +25,6 @@ import {
   readThreadHistoryLines,
   readThreadName,
   resolveStartupBootstrapPolicy,
-  resolveCodexThreadContext,
   runtimePathsForThread,
   writeBootstrapArtifacts,
   writeContinuityEnvelope,
@@ -38,13 +37,18 @@ import {
 } from "../scripts/lib/codex-machine-tool-profile.mjs";
 import { studioBrainRequestJson } from "../scripts/lib/studio-brain-memory-write.mjs";
 import { stableHash } from "../scripts/lib/pst-memory-utils.mjs";
+import { resolveBootstrapThreadInfo } from "./thread-context.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const studioBrainMcpEnvPath = resolve(repoRoot, "secrets", "studio-brain", "studio-brain-mcp.env");
 const studioBrainAutomationEnvPath = resolve(repoRoot, "secrets", "studio-brain", "studio-brain-automation.env");
+const homeStudioBrainMcpEnvPath = resolve(homedir(), "secrets", "studio-brain", "studio-brain-mcp.env");
+const homeStudioBrainAutomationEnvPath = resolve(homedir(), "secrets", "studio-brain", "studio-brain-automation.env");
 const defaultPortalEnvPath = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+const homePortalEnvPath = resolve(homedir(), "secrets", "portal", "portal-automation.env");
 const repoPortalCredentialsPath = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const homePortalSecretCredentialsPath = resolve(homedir(), "secrets", "portal", "portal-agent-staff.json");
 const homePortalCredentialsPath = resolve(homedir(), ".ssh", "portal-agent-staff.json");
 
 function clean(value) {
@@ -369,12 +373,14 @@ function buildContinuityEnvelope({ threadInfo, query, contextPayload, metadata, 
 }
 
 function resolvePortalEnvPath(env) {
-  return resolveFromRepoRoot(env.PORTAL_AUTOMATION_ENV_PATH, defaultPortalEnvPath);
+  const explicit = resolveFromRepoRoot(env.PORTAL_AUTOMATION_ENV_PATH);
+  const candidates = [explicit, defaultPortalEnvPath, homePortalEnvPath].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || explicit || defaultPortalEnvPath;
 }
 
 function resolvePortalCredentialsPath(env) {
   const explicitPath = resolveFromRepoRoot(env.PORTAL_AGENT_STAFF_CREDENTIALS);
-  const candidates = [explicitPath, repoPortalCredentialsPath, homePortalCredentialsPath].filter(Boolean);
+  const candidates = [explicitPath, repoPortalCredentialsPath, homePortalSecretCredentialsPath, homePortalCredentialsPath].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || "";
 }
 
@@ -445,7 +451,100 @@ function extractContextEnvelope(payload) {
   return { context, items, summary, diagnostics };
 }
 
+function extractPayloadRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.rows)) return payload.rows;
+  if (Array.isArray(payload.results)) return payload.results;
+  if (Array.isArray(payload.items)) return payload.items;
+  return [];
+}
+
+async function requestRemoteBootstrapSearch({
+  env,
+  query,
+  threadInfo,
+  timeoutMs,
+  strictStartupAllowlist = true,
+}) {
+  const headers = {
+    "content-type": "application/json",
+    accept: "application/json",
+  };
+  const authHeader = resolveStudioBrainAuthHeader(env);
+  if (authHeader) headers.authorization = authHeader;
+  const adminToken = clean(env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || env.STUDIO_BRAIN_ADMIN_TOKEN || "");
+  if (adminToken) headers["x-studio-brain-admin-token"] = adminToken;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(new URL("/api/memory/search", env.STUDIO_BRAIN_MCP_BASE_URL), {
+      method: "POST",
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        query,
+        limit: 24,
+        sourceAllowlist: strictStartupAllowlist ? preferredStartupSources() : undefined,
+        sourceDenylist: [],
+      }),
+    });
+    const raw = await response.text();
+    const payload = raw ? JSON.parse(raw) : {};
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: clean(payload?.message || payload?.error?.message || raw || `HTTP ${response.status}`),
+      };
+    }
+
+    const rankedItems = rankBootstrapRows(filterExpiredRows(extractPayloadRows(payload)), threadInfo).slice(0, 10);
+    const rankedSummary =
+      summarizeRows(rankedItems, 4, 480) ||
+      rankedItems.map((row) => clean(row?.content).slice(0, 120)).filter(Boolean).slice(0, 4).join(" | ");
+    return {
+      ok: rankedItems.length > 0,
+      status: response.status,
+      context: {
+        schema: "codex-startup-bootstrap-context.v1",
+        createdAt: new Date().toISOString(),
+        threadId: clean(threadInfo?.threadId),
+        query,
+        summary: rankedSummary || clean(payload?.summary),
+        items: rankedItems,
+        diagnostics: {
+          ...(payload?.diagnostics && typeof payload.diagnostics === "object" ? payload.diagnostics : {}),
+          startupSourceBias: strictStartupAllowlist ? "preferred-startup-sources" : "startup-ranking-only",
+          strictStartupAllowlist,
+          startupSelectionStrategy: "search-first",
+          fallbackUsed: false,
+          fallbackStrategy: null,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function requestRemoteBootstrapContext({ env, query, threadInfo, timeoutMs, strictStartupAllowlist = true }) {
+  const search = await requestRemoteBootstrapSearch({
+    env,
+    query,
+    threadInfo,
+    timeoutMs,
+    strictStartupAllowlist,
+  });
+  if (search.ok) return search;
+
   const headers = {
     "content-type": "application/json",
     accept: "application/json",
@@ -476,6 +575,9 @@ async function requestRemoteBootstrapContext({ env, query, threadInfo, timeoutMs
 
     const { items, summary, diagnostics } = extractContextEnvelope(payload);
     const rankedItems = rankBootstrapRows(filterExpiredRows(items), threadInfo).slice(0, 10);
+    const rankedSummary =
+      summarizeRows(rankedItems, 4, 480) ||
+      rankedItems.map((row) => clean(row?.content).slice(0, 120)).filter(Boolean).slice(0, 4).join(" | ");
     return {
       ok: rankedItems.length > 0,
       status: response.status,
@@ -484,12 +586,13 @@ async function requestRemoteBootstrapContext({ env, query, threadInfo, timeoutMs
         createdAt: new Date().toISOString(),
         threadId: clean(threadInfo?.threadId),
         query,
-        summary: summary || rankedItems.map((row) => clean(row?.content).slice(0, 120)).filter(Boolean).slice(0, 4).join(" | "),
+        summary: rankedSummary || summary,
         items: rankedItems,
         diagnostics: {
           ...(diagnostics && typeof diagnostics === "object" ? diagnostics : {}),
           startupSourceBias: strictStartupAllowlist ? "preferred-startup-sources" : "startup-ranking-only",
           strictStartupAllowlist,
+          startupSelectionStrategy: "context-fallback",
           fallbackUsed: false,
           fallbackStrategy: null,
         },
@@ -509,12 +612,14 @@ async function requestRemoteBootstrapContext({ env, query, threadInfo, timeoutMs
 async function bootstrapThreadContext(env) {
   const settings = compactionSettingsFromEnv(env);
   const policy = resolveStartupBootstrapPolicy(settings);
-  const resolvedThread = resolveCodexThreadContext({
-    threadId: env.CODEX_THREAD_ID,
-    cwd: env.PWD || env.INIT_CWD || process.cwd(),
+  const resolvedThread = resolveBootstrapThreadInfo({
+    env,
+    fallbackCwd: process.cwd(),
   });
-  if (!resolvedThread) {
-    return null;
+  if (resolvedThread.resolution === "fallback") {
+    process.stderr.write(
+      `[studio-brain-mcp] Warning: thread context not found in Codex state DB; using fallback bootstrap context for ${resolvedThread.threadId} (${resolvedThread.cwd}).\n`
+    );
   }
 
   const threadName = readThreadName(resolvedThread.threadId);
@@ -730,6 +835,8 @@ async function bootstrapThreadContext(env) {
 }
 
 const studioFileEnv = {
+  ...loadOptionalEnvFile(homeStudioBrainMcpEnvPath),
+  ...loadOptionalEnvFile(homeStudioBrainAutomationEnvPath),
   ...loadOptionalEnvFile(studioBrainMcpEnvPath),
   ...loadOptionalEnvFile(studioBrainAutomationEnvPath),
 };
@@ -850,6 +957,7 @@ if (bootstrapState?.paths) {
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_QUERY = bootstrapState.query;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_SATISFIED_BY = bootstrapState.satisfiedBy;
   mergedEnv.STUDIO_BRAIN_BOOTSTRAP_READY = bootstrapState.ready ? "1" : "0";
+  mergedEnv.STUDIO_BRAIN_STARTUP_CONTEXT_PREFER_LOCAL = "1";
   if (!bootstrapState.ready && bootstrapState.blocker) {
     process.stderr.write(
       `[studio-brain-mcp] Continuity blocked for thread ${bootstrapState.threadInfo.threadId} (${bootstrapState.blocker.failureClass}): ${bootstrapState.blocker.firstSignal}\n`

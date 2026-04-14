@@ -5,6 +5,10 @@ Owner: TBD
 Status: Active
 
 ## Pinned (Website First-Visit Review — 2026-02-16)
+- [ ] Start the live-surface trust remediation program from the April 2026 website + portal audit.
+  - Epic: `docs/epics/EPIC-LIVE-SURFACE-TRUST-AND-SERVICE-OPERATING-SYSTEM.md`
+  - Audit: `docs/audits/live-surface-audit-2026-04-12.md`
+  - First wave: canonical portal handoff, public freshness contract, member start surface, Ware Check-in clarity, guided fallbacks, and QA parity guards.
 - [x] Website first-time onboarding path + primary CTA clarity.
   - Ticket: `tickets/P2-website-new-user-primary-cta-and-start-path.md`
 - [x] Website mobile navigation affordance and tap-target clarity.

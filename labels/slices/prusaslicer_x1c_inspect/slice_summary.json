@@ -1,0 +1,52 @@
+[
+    {
+        "name":  "variant_A",
+        "input":  "labels/variant_A/variant_A.stl",
+        "output":  "labels/slices/prusaslicer_x1c_inspect/variant_A/auto_support.gcode",
+        "mode":  "auto_support",
+        "bytes":  2277731,
+        "support_sections":  27,
+        "support_detected":  true,
+        "last_write_time":  "2026-04-14T10:22:09.2988351-07:00"
+    },
+    {
+        "name":  "variant_B_frame",
+        "input":  "labels/variant_B/variant_B_frame.stl",
+        "output":  "labels/slices/prusaslicer_x1c_inspect/variant_B_frame/auto_support.gcode",
+        "mode":  "auto_support",
+        "bytes":  2172449,
+        "support_sections":  31,
+        "support_detected":  true,
+        "last_write_time":  "2026-04-14T10:22:09.8125120-07:00"
+    },
+    {
+        "name":  "variant_B_insert",
+        "input":  "labels/variant_B/variant_B_insert.stl",
+        "output":  "labels/slices/prusaslicer_x1c_inspect/variant_B_insert/auto_support.gcode",
+        "mode":  "auto_support",
+        "bytes":  532617,
+        "support_sections":  0,
+        "support_detected":  false,
+        "last_write_time":  "2026-04-14T10:22:10.2523697-07:00"
+    },
+    {
+        "name":  "variant_C",
+        "input":  "labels/variant_C/variant_C.stl",
+        "output":  "labels/slices/prusaslicer_x1c_inspect/variant_C/auto_support.gcode",
+        "mode":  "auto_support",
+        "bytes":  2430924,
+        "support_sections":  28,
+        "support_detected":  true,
+        "last_write_time":  "2026-04-14T10:22:10.8518115-07:00"
+    },
+    {
+        "name":  "variant_D",
+        "input":  "labels/variant_D/variant_D.stl",
+        "output":  "labels/slices/prusaslicer_x1c_inspect/variant_D/auto_support.gcode",
+        "mode":  "auto_support",
+        "bytes":  4258364,
+        "support_sections":  46,
+        "support_detected":  true,
+        "last_write_time":  "2026-04-14T10:22:11.4426815-07:00"
+    }
+]

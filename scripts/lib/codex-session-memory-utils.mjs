@@ -1699,7 +1699,6 @@ function rowHasStructuredContinuityPayload(row) {
   const metadata = rowMetadata(row);
   return metadata.startupEligible === true && rowContinuityRichness(row) >= 2;
 }
-
 function rowSourcePenalty(row, threadInfo, profile = "startup-strict") {
   const normalizedProfile = normalizeContinuityProfile(profile);
   const metadata = rowMetadata(row);

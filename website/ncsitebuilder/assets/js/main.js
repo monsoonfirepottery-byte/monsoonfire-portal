@@ -5,7 +5,6 @@
   };
   const RUNTIME_BANNER_HOST_ID = "mf-runtime-banner-host";
   const RUNTIME_BANNER_STYLE_ID = "mf-runtime-banner-style";
-  const kilnfirePortalHost = "monsoonfire.kilnfire.com";
   const betaPortalHost = "portal.monsoonfire.com";
   const root = document.documentElement;
   const body = document.body;
@@ -52,9 +51,9 @@
       }
       try {
         const parsed = new URL(href, window.location.origin);
-        // Keep live website links pointed at Kilnfire until portal cutover is complete.
-        if (parsed.hostname === betaPortalHost) {
-          parsed.hostname = kilnfirePortalHost;
+        // Keep preview and mirrored links pointed at the canonical portal host.
+        if (parsed.hostname === betaPortalHost || parsed.hostname === "portal.monsoonfire.com") {
+          parsed.hostname = betaPortalHost;
           link.setAttribute("href", parsed.toString());
         }
       } catch {
@@ -582,13 +581,23 @@
 
     const portalExperimentName = "portal_path_v1";
     const normalizeUrlHost = (hostname) => String(hostname || "").toLowerCase().replace(/^www\./, "");
-    const canonicalCampaignHosts = [kilnfirePortalHost, betaPortalHost, "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
+    const canonicalCampaignHosts = [betaPortalHost, "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
     const portalSurfaceTargets = {
       home: "dashboard",
       services: "reservations",
       kiln_firing: "reservations",
       memberships: "membership",
       contact: "support",
+      supplies: "supplies",
+      about: "dashboard",
+      blog: "dashboard",
+      faq: "dashboard",
+      gallery: "dashboard",
+      highlights: "dashboard",
+      policies: "dashboard",
+      support: "support",
+      updates: "dashboard",
+      classes: "dashboard",
     };
 
     const isCampaignHost = (hostname) => {
@@ -605,27 +614,31 @@
 
     const resolvePortalPageContext = () => {
       const normalizedPath = normalizePath(stripPreviewPrefix(window.location.pathname)).toLowerCase();
-      if (normalizedPath === "/ab/b/") {
-        return { surface: "home", variant: "b" };
-      }
-      if (normalizedPath === "/services/") {
-        return { surface: "services", variant: "a" };
-      }
-      if (normalizedPath === "/kiln-firing/") {
-        return { surface: "kiln_firing", variant: "a" };
-      }
-      if (normalizedPath === "/memberships/") {
-        return { surface: "memberships", variant: "a" };
-      }
-      if (normalizedPath === "/contact/") {
-        return { surface: "contact", variant: "a" };
-      }
-      return null;
+      const pageContexts = {
+        "/": { surface: "home", variant: "a" },
+        "/ab/a/": { surface: "home", variant: "a" },
+        "/ab/b/": { surface: "home", variant: "b" },
+        "/about/": { surface: "about", variant: "a" },
+        "/blog/": { surface: "blog", variant: "a" },
+        "/classes/": { surface: "classes", variant: "a" },
+        "/contact/": { surface: "contact", variant: "a" },
+        "/faq/": { surface: "faq", variant: "a" },
+        "/gallery/": { surface: "gallery", variant: "a" },
+        "/highlights/": { surface: "highlights", variant: "a" },
+        "/kiln-firing/": { surface: "kiln_firing", variant: "a" },
+        "/memberships/": { surface: "memberships", variant: "a" },
+        "/policies/": { surface: "policies", variant: "a" },
+        "/services/": { surface: "services", variant: "a" },
+        "/supplies/": { surface: "supplies", variant: "a" },
+        "/support/": { surface: "support", variant: "a" },
+        "/updates/": { surface: "updates", variant: "a" },
+      };
+      return pageContexts[normalizedPath] || null;
     };
 
     const resolvePortalTarget = (link, surface) => {
       const explicitTarget = normalizeLabel(link && link.getAttribute ? link.getAttribute("data-portal-target") || "" : "");
-      if (explicitTarget === "dashboard" || explicitTarget === "reservations" || explicitTarget === "membership" || explicitTarget === "support") {
+      if (explicitTarget === "dashboard" || explicitTarget === "reservations" || explicitTarget === "membership" || explicitTarget === "support" || explicitTarget === "supplies") {
         return explicitTarget;
       }
       return portalSurfaceTargets[surface] || null;
@@ -638,7 +651,6 @@
       const normalizedPath = parsed.pathname.toLowerCase();
       const isPortalCandidate =
         normalizedHost === betaPortalHost ||
-        normalizedHost === kilnfirePortalHost ||
         normalizedPath === "/new-user" ||
         normalizedPath.startsWith("/new-user/");
       if (!isPortalCandidate) return null;
@@ -791,7 +803,7 @@
       const cleanedUrl = href.toLowerCase();
       const portalTarget = normalizeLabel(link && link.getAttribute ? link.getAttribute("data-portal-target") || "" : "");
       if (portalTarget) return `portal_${portalTarget}`;
-      if (cleanedUrl.includes(kilnfirePortalHost) || cleanedUrl.includes(betaPortalHost)) return cleanedUrl.includes("/new-user") ? "get_started" : "login";
+    if (cleanedUrl.includes(betaPortalHost)) return cleanedUrl.includes("/new-user") ? "get_started" : "login";
       if (cleanedUrl.startsWith("mailto:")) return "email";
       if (cleanedUrl.startsWith("tel:")) return "phone";
       if (cleanedUrl.includes("discord")) return "discord";

@@ -336,7 +336,12 @@ describe("NotificationsView mark-read feedback", () => {
       expect(updateDocMock).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByTestId("notification-card-notif-open")).toBeNull();
-    expect(screen.queryByText("You're caught up. Switch to All to review earlier notifications.")).not.toBeNull();
+    expect(screen.queryByText("You're caught up")).not.toBeNull();
+    expect(
+      screen.queryByText(
+        "Switch to All to review earlier notifications, or come back here when the studio posts the next update."
+      )
+    ).not.toBeNull();
   });
 
   it("keeps view-queues notifications out of inbox across a remount while read sync finishes", async () => {

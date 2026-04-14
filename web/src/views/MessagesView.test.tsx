@@ -316,8 +316,11 @@ describe("MessagesView initial thread focus", () => {
       expect(screen.queryByTestId("announcement-card-ann-unread")).toBeNull();
     });
     expect(screen.getByTestId("selected-announcement-preview")).toBeTruthy();
+    expect(screen.getByText("Inbox cleared")).toBeTruthy();
     expect(
-      screen.getByText("Inbox cleared. You're reviewing a previously read studio update.")
+      screen.getByText(
+        "You are reviewing a previously read studio update. Switch to All when you want to revisit the full announcement history."
+      )
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /^All$/i }));

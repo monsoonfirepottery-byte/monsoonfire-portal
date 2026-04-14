@@ -265,15 +265,24 @@
 
   const portalExperimentName = 'portal_path_v1';
   const portalHost = 'portal.monsoonfire.com';
-  const legacyPortalHost = 'monsoonfire.kilnfire.com';
   const normalizeUrlHost = (hostname) => String(hostname || '').toLowerCase().replace(/^www\./, '');
-  const canonicalCampaignHosts = [legacyPortalHost, portalHost, 'instagram.com', 'discord.com', 'discord.gg', 'phoenixcenterforthearts.org'];
+  const canonicalCampaignHosts = [portalHost, 'instagram.com', 'discord.com', 'discord.gg', 'phoenixcenterforthearts.org'];
   const portalSurfaceTargets = {
     home: 'dashboard',
     services: 'reservations',
     kiln_firing: 'reservations',
     memberships: 'membership',
     contact: 'support',
+    supplies: 'supplies',
+    about: 'dashboard',
+    blog: 'dashboard',
+    faq: 'dashboard',
+    gallery: 'dashboard',
+    highlights: 'dashboard',
+    policies: 'dashboard',
+    support: 'support',
+    updates: 'dashboard',
+    classes: 'dashboard',
   };
 
   const isCampaignHost = (hostname) => {
@@ -290,27 +299,31 @@
 
   const resolvePortalPageContext = () => {
     const normalizedPath = normalizePath(window.location.pathname).toLowerCase();
-    if (normalizedPath === '/ab/b/') {
-      return { surface: 'home', variant: 'b' };
-    }
-    if (normalizedPath === '/services/') {
-      return { surface: 'services', variant: 'a' };
-    }
-    if (normalizedPath === '/kiln-firing/') {
-      return { surface: 'kiln_firing', variant: 'a' };
-    }
-    if (normalizedPath === '/memberships/') {
-      return { surface: 'memberships', variant: 'a' };
-    }
-    if (normalizedPath === '/contact/') {
-      return { surface: 'contact', variant: 'a' };
-    }
-    return null;
+    const pageContexts = {
+      '/': { surface: 'home', variant: 'a' },
+      '/ab/a/': { surface: 'home', variant: 'a' },
+      '/ab/b/': { surface: 'home', variant: 'b' },
+      '/about/': { surface: 'about', variant: 'a' },
+      '/blog/': { surface: 'blog', variant: 'a' },
+      '/classes/': { surface: 'classes', variant: 'a' },
+      '/contact/': { surface: 'contact', variant: 'a' },
+      '/faq/': { surface: 'faq', variant: 'a' },
+      '/gallery/': { surface: 'gallery', variant: 'a' },
+      '/highlights/': { surface: 'highlights', variant: 'a' },
+      '/kiln-firing/': { surface: 'kiln_firing', variant: 'a' },
+      '/memberships/': { surface: 'memberships', variant: 'a' },
+      '/policies/': { surface: 'policies', variant: 'a' },
+      '/services/': { surface: 'services', variant: 'a' },
+      '/supplies/': { surface: 'supplies', variant: 'a' },
+      '/support/': { surface: 'support', variant: 'a' },
+      '/updates/': { surface: 'updates', variant: 'a' },
+    };
+    return pageContexts[normalizedPath] || null;
   };
 
   const resolvePortalTarget = (link, surface) => {
     const explicitTarget = normalizeLabel(link && link.getAttribute ? link.getAttribute('data-portal-target') || '' : '');
-    if (explicitTarget === 'dashboard' || explicitTarget === 'reservations' || explicitTarget === 'membership' || explicitTarget === 'support') {
+    if (explicitTarget === 'dashboard' || explicitTarget === 'reservations' || explicitTarget === 'membership' || explicitTarget === 'support' || explicitTarget === 'supplies') {
       return explicitTarget;
     }
     return portalSurfaceTargets[surface] || null;
@@ -323,7 +336,6 @@
     const normalizedPath = parsed.pathname.toLowerCase();
     const isPortalCandidate =
       normalizedHost === portalHost ||
-      normalizedHost === legacyPortalHost ||
       normalizedPath === '/new-user' ||
       normalizedPath.startsWith('/new-user/');
     if (!isPortalCandidate) return null;
@@ -475,7 +487,7 @@
     const cleaned = href.toLowerCase();
     const portalTarget = normalizeLabel(link && link.getAttribute ? link.getAttribute('data-portal-target') || '' : '');
     if (portalTarget) return `portal_${portalTarget}`;
-    if (cleaned.includes(legacyPortalHost) || cleaned.includes(portalHost)) return cleaned.includes('/new-user') ? 'get_started' : 'login';
+    if (cleaned.includes(portalHost)) return cleaned.includes('/new-user') ? 'get_started' : 'login';
     if (cleaned.startsWith('mailto:')) return 'email';
     if (cleaned.startsWith('tel:')) return 'phone';
     if (cleaned.includes('discord')) return 'discord';

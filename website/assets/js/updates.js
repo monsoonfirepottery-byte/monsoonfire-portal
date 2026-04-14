@@ -128,7 +128,7 @@
         ? data.items.slice(0, 3)
         : [];
     if (!items.length) {
-      renderEmpty(teaserContainer, 'No public updates are live yet.');
+      renderEmpty(teaserContainer, 'Public updates are quiet right now. We will post the next bulletin when the studio has something to share.');
       return;
     }
     teaserContainer.replaceChildren(...items.map((item) => createCard(item, { compact: true })));
@@ -138,18 +138,21 @@
     if (!listContainer) return;
     const items = Array.isArray(data?.items) ? data.items : [];
     if (!items.length) {
-      renderEmpty(listContainer, 'No public updates are live right now.');
+      renderEmpty(listContainer, 'Public updates are quiet right now. We will post the next bulletin when the studio has something to share.');
       return;
     }
     listContainer.replaceChildren(...items.map((item) => createCard(item, { compact: false })));
   };
 
+  renderEmpty(teaserContainer, 'Syncing the latest public bulletin.');
+  renderEmpty(listContainer, 'Syncing the latest public bulletin.');
+
   fetch('/data/announcements.json', { cache: 'no-store' })
     .then((response) => (response.ok ? response.json() : null))
     .then((data) => {
       if (!data) {
-        renderEmpty(teaserContainer, 'Public updates are not available right now.');
-        renderEmpty(listContainer, 'Public updates are not available right now.');
+        renderEmpty(teaserContainer, 'Public updates are temporarily unavailable. Check back shortly for the latest bulletin.');
+        renderEmpty(listContainer, 'Public updates are temporarily unavailable. Check back shortly for the latest bulletin.');
         return;
       }
       if (generatedLabel) {
@@ -159,7 +162,7 @@
       renderList(data);
     })
     .catch(() => {
-      renderEmpty(teaserContainer, 'Public updates are not available right now.');
-      renderEmpty(listContainer, 'Public updates are not available right now.');
+      renderEmpty(teaserContainer, 'Public updates are temporarily unavailable. Check back shortly for the latest bulletin.');
+      renderEmpty(listContainer, 'Public updates are temporarily unavailable. Check back shortly for the latest bulletin.');
     });
 })();

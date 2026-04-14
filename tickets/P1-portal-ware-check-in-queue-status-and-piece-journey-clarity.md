@@ -1,6 +1,6 @@
 # P1 — Portal Ware Check-in, queue status, and piece journey clarity
 
-Status: Active
+Status: In review
 Date: 2026-04-14
 Priority: P1
 Owner: Portal + Ops
@@ -25,6 +25,12 @@ That leaves too much ambiguity around intake, queue progression, and what the st
 1. Ware Check-in reads as intake, not generic reservation management.
 2. Member-facing status surfaces explain current stage and next step with minimal ambiguity.
 3. Existing timeline/audit data is surfaced in a calmer, clearer format.
+
+## Implementation Notes
+
+1. Ware Check-in now includes clearer intake framing and an explicit `what happens next` journey rail.
+2. My Pieces surfaces `Latest update` and `Next step` inline so members do not have to infer status from raw timeline events alone.
+3. Focused UI coverage was extended in the reservations and pieces test suites.
 
 ## Dependencies
 

@@ -1,6 +1,6 @@
 # P1 — Public site operational freshness and status confidence
 
-Status: Active
+Status: In review
 Date: 2026-04-14
 Priority: P1
 Owner: Website + Ops
@@ -23,6 +23,12 @@ Public operational surfaces currently expose stale timestamps, raw loading copy,
 1. Public operational modules never rely on raw `Loading...` copy as the primary production state.
 2. Every operational data card shows either a valid freshness timestamp or an intentional fallback state.
 3. Event/programming surfaces distinguish confirmed content from tentative content.
+
+## Implementation Notes
+
+1. Kiln board copy now prefers calm sync/freshness messaging over raw loading-first placeholders.
+2. Static kiln status JSON is used before the API fallback on the static website server, eliminating the homepage console 404 in smoke coverage.
+3. Stale-state messaging is explicit and visually supported on both the website and `ncsitebuilder` variants.
 
 ## Dependencies
 

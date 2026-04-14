@@ -231,6 +231,35 @@ function toMillis(value: unknown): number {
   return new Date((value as string | number | Date | null) ?? 0).getTime();
 }
 
+function getPieceNextStepLabel(piece: Pick<PieceDoc, "stage" | "batchIsHistory" | "isArchived">): string {
+  if (piece.batchIsHistory || piece.isArchived) {
+    return "Next step: review the history or leave feedback";
+  }
+
+  switch (piece.stage) {
+    case "GREENWARE":
+      return "Next step: bisque firing";
+    case "BISQUE":
+      return "Next step: glaze and stage for the next firing";
+    case "GLAZED":
+      return "Next step: finish firing and cooldown";
+    case "FINISHED":
+      return "Next step: pickup or feedback";
+    case "HOLD":
+      return "Next step: studio review";
+    default:
+      return "Next step: studio review";
+  }
+}
+
+function getPieceLatestUpdateLabel(piece: Pick<PieceDoc, "updatedAt">): string {
+  return `Latest update: ${formatMaybeTimestamp(piece.updatedAt)}`;
+}
+
+function getPieceJourneyStatus(piece: PieceDoc): string {
+  return STAGE_LABELS[piece.stage];
+}
+
 type StarRatingProps = {
   value: number | null | undefined;
   onSelect: (value: number) => void;
@@ -1046,9 +1075,9 @@ export default function MyPiecesView({
         <div>
           <h1>My Pieces</h1>
           <p className="my-pieces-intro">
-            Follow what&apos;s moving through the studio, leave quick feedback
-            where it&apos;s needed, and open any piece when you want the full
-            story.
+            Follow what&apos;s moving through the studio, see the latest update
+            and next step at a glance, and open any piece when you want the
+            full story.
           </p>
         </div>
       </div>
@@ -1072,7 +1101,7 @@ export default function MyPiecesView({
             <div className="card-title">Pieces in progress</div>
             <p className="piece-meta my-pieces-section-copy">
               A still-first pass through what&apos;s currently moving through
-              the studio.
+              the studio, with the latest update and next step surfaced inline.
             </p>
           </div>
           {activePieces.length > 1 ? (
@@ -1147,7 +1176,10 @@ export default function MyPiecesView({
                       Check-in: {piece.batchTitle}
                     </div>
                     <div className="piece-meta">
-                      Updated {formatMaybeTimestamp(piece.updatedAt)}
+                      {getPieceLatestUpdateLabel(piece)}
+                    </div>
+                    <div className="piece-meta">
+                      {getPieceNextStepLabel(piece)}
                     </div>
                     <div className="my-piece-still-footer">
                       Tap to expose the full piece detail.
@@ -1201,7 +1233,10 @@ export default function MyPiecesView({
                   </div>
                   <div className="piece-meta">Check-in: {piece.batchTitle}</div>
                   <div className="piece-meta">
-                    Updated {formatMaybeTimestamp(piece.updatedAt)}
+                    {getPieceLatestUpdateLabel(piece)}
+                  </div>
+                  <div className="piece-meta">
+                    {getPieceNextStepLabel(piece)}
                   </div>
                 </div>
                 <div className="my-pieces-list-actions">
@@ -1280,7 +1315,10 @@ export default function MyPiecesView({
                   </div>
                   <div className="piece-meta">Check-in: {piece.batchTitle}</div>
                   <div className="piece-meta">
-                    Updated {formatMaybeTimestamp(piece.updatedAt)}
+                    {getPieceLatestUpdateLabel(piece)}
+                  </div>
+                  <div className="piece-meta">
+                    {getPieceNextStepLabel(piece)}
                   </div>
                 </div>
                 <div className="my-pieces-list-actions">
@@ -1342,21 +1380,24 @@ export default function MyPiecesView({
                   </div>
                   <div className="my-piece-still-caption">Still preview</div>
                 </div>
-                <div className="my-piece-exploded-meta">
-                  <div id="piece-detail-title" className="detail-title">
-                    {selectedPiece.pieceCode || selectedPiece.id}
-                  </div>
-                  <div className="piece-meta">
-                    {selectedPiece.shortDesc || "No description yet."}
-                  </div>
-                  <div className="piece-meta">
-                    Check-in: {selectedPiece.batchTitle}
-                  </div>
-                  <div className="piece-meta">
-                    Updated: {formatMaybeTimestamp(selectedPiece.updatedAt)}
+                  <div className="my-piece-exploded-meta">
+                    <div id="piece-detail-title" className="detail-title">
+                      {selectedPiece.pieceCode || selectedPiece.id}
+                    </div>
+                    <div className="piece-meta">
+                      {selectedPiece.shortDesc || "No description yet."}
+                    </div>
+                    <div className="piece-meta">
+                      Check-in: {selectedPiece.batchTitle}
+                    </div>
+                    <div className="piece-meta">
+                      {getPieceLatestUpdateLabel(selectedPiece)}
+                    </div>
+                    <div className="piece-meta">
+                      {getPieceNextStepLabel(selectedPiece)}
+                    </div>
                   </div>
                 </div>
-              </div>
               <button className="btn btn-ghost" onClick={closePieceDetail}>
                 Close
               </button>
@@ -1365,7 +1406,15 @@ export default function MyPiecesView({
             <div className="my-piece-overview-grid">
               <div className="my-piece-overview-item">
                 <span className="my-piece-overview-label">Stage</span>
-                <strong>{STAGE_LABELS[selectedPiece.stage]}</strong>
+                <strong>{getPieceJourneyStatus(selectedPiece)}</strong>
+              </div>
+              <div className="my-piece-overview-item">
+                <span className="my-piece-overview-label">Latest update</span>
+                <strong>{formatMaybeTimestamp(selectedPiece.updatedAt)}</strong>
+              </div>
+              <div className="my-piece-overview-item">
+                <span className="my-piece-overview-label">Next step</span>
+                <strong>{getPieceNextStepLabel(selectedPiece)}</strong>
               </div>
               <div className="my-piece-overview-item">
                 <span className="my-piece-overview-label">Category</span>

@@ -4,6 +4,7 @@ import { collection, getDocs, limit, orderBy, query, where } from "firebase/fire
 import { createPortalApi } from "../api/portalApi";
 import type { EventSummary } from "../api/portalContracts";
 import RevealCard from "../components/RevealCard";
+import GuidedStateCard from "../components/GuidedStateCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
 import { type PortalThemeName } from "../theme/themes";
@@ -806,25 +807,55 @@ export default function DashboardView({
     <div className="dashboard">
       <section className="quick-actions">
         <RevealCard className="card card-3d quick-action-card" index={0} enabled={motionEnabled}>
-          <div className="card-title">Quick actions</div>
-          <div className="quick-action-row">
+          <div className="card-title">Start here</div>
+          <p className="hero-copy">
+            This is your member home inside the portal. Start here when you want to check in new ware,
+            see what is already in motion, or jump straight to the next useful action without reading the full nav.
+          </p>
+          <div className="hero-actions">
             <button className="btn btn-primary" onClick={onOpenCheckin}>
               Start a check-in
             </button>
+            <button className="btn btn-ghost" onClick={() => onOpenPieces()}>
+              Open My Pieces
+            </button>
             <button className="btn btn-ghost" onClick={onOpenQueues}>
               View the queues
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenMessages}>
+              Message the studio
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
+              Glaze inspiration
             </button>
             {isStaff ? (
               <button className="btn btn-ghost" onClick={onOpenFirings}>
                 Firings
               </button>
             ) : null}
-            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
-              Glaze inspiration
-            </button>
-            <button className="btn btn-ghost" onClick={onOpenMessages}>
-              Message the studio
-            </button>
+          </div>
+          <div className="snapshot-grid">
+            <div className="snapshot-block">
+              <div className="snapshot-label">What this is</div>
+              <div className="snapshot-value">Your studio home</div>
+              <div className="snapshot-meta">
+                See the status of your work, the queue, and the next step without unpacking the whole app.
+              </div>
+            </div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">What you can do here</div>
+              <div className="snapshot-value">Check in, track, and coordinate</div>
+              <div className="snapshot-meta">
+                Start a check-in, open My Pieces, review firings, message the studio, or browse the rest of the portal when you need it.
+              </div>
+            </div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">Recommended next actions</div>
+              <div className="snapshot-value">Pick the next useful step</div>
+              <div className="snapshot-meta">
+                New drop-off: start a check-in. Existing work: open My Pieces. Need timing: view the queues.
+              </div>
+            </div>
           </div>
         </RevealCard>
       </section>
@@ -833,7 +864,7 @@ export default function DashboardView({
         <div className="hero-content">
           <div className="hero-toolbar">
             <div className="hero-title-block">
-              <h1>Your studio dashboard</h1>
+              <h1>Your studio at a glance</h1>
               <div className="hero-profile">
                 <span className="hero-profile-label">Signed in as</span>
                 <span className="hero-profile-name">{name}</span>
@@ -870,13 +901,21 @@ export default function DashboardView({
         <div className="hero-updates">
           <div className="hero-updates-title">Studio updates</div>
           {announcementPreview.length === 0 ? (
-            <div className="hero-updates-empty">No studio announcements yet.</div>
+            <GuidedStateCard
+              eyebrow="Studio bulletin"
+              title="No studio-wide notices right now"
+              body="Use Messages for direct questions, and check back here when the studio posts schedule changes, pickup notes, or broader service updates."
+              actions={[{ label: "Message the studio", onClick: onOpenMessages, variant: "ghost" }]}
+              className="hero-updates-empty"
+            />
           ) : (
             <div className="hero-updates-list">
               {announcementPreview.map((item) => (
                 <div className="hero-update" key={item.id}>
                   <div className="hero-update-title">{item.title || "Studio update"}</div>
-                  <p className="hero-update-body">{item.body || "Details coming soon."}</p>
+                  <p className="hero-update-body">
+                    {item.body || "Open Messages for the full studio note and any next-step timing."}
+                  </p>
                 </div>
               ))}
             </div>
@@ -1043,14 +1082,20 @@ export default function DashboardView({
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Workshop calendar</div>
           {workshopsLoading ? (
-            <div className="empty-state" role="status" aria-live="polite">
-              Loading...
-            </div>
+            <GuidedStateCard
+              eyebrow="Workshops"
+              title="Loading the workshop calendar"
+              body="Hold on for a moment while we pull the current class schedule and studio program openings."
+              className="empty-state"
+            />
           ) : workshopPreview.length === 0 ? (
-            <div className="empty-block">
-              <div className="empty-state">No workshops are currently scheduled.</div>
-              <div className="empty-meta">Open the workshop calendar for the latest schedule.</div>
-            </div>
+            <GuidedStateCard
+              eyebrow="Workshops"
+              title="No workshops are currently scheduled"
+              body="Open the workshop calendar for the latest schedule, or check back after the next studio drop."
+              actions={[{ label: "Open workshop calendar", onClick: onOpenWorkshops, variant: "ghost" }]}
+              className="empty-block"
+            />
           ) : (
             <div className="list">
               {workshopPreview.map((item) => {
@@ -1068,9 +1113,11 @@ export default function DashboardView({
               })}
             </div>
           )}
-          <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
-            Open workshop calendar
-          </button>
+          {workshopPreview.length > 0 ? (
+            <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
+              Open workshop calendar
+            </button>
+          ) : null}
         </RevealCard>
 
         <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>

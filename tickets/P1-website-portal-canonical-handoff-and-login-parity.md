@@ -1,6 +1,6 @@
 # P1 — Website and portal canonical handoff and login parity
 
-Status: Active
+Status: In review
 Date: 2026-04-14
 Priority: P1
 Owner: Website + Portal
@@ -23,6 +23,12 @@ Public pages still send users to more than one portal destination. That creates 
 1. No public website page links users to `monsoonfire.kilnfire.com`.
 2. Primary CTAs use consistent, user-intent-driven wording.
 3. Automated checks fail if a legacy user-facing portal host is reintroduced.
+
+## Implementation Notes
+
+1. Canonical portal handoffs now point to `https://portal.monsoonfire.com` across both `website/` and `website/ncsitebuilder/`.
+2. `data-portal-target` intent metadata is preserved on key CTA paths so portal routing still opens the intended area.
+3. `website/tests/legacy-host-guard.test.mjs` now fails fast if the legacy host reappears.
 
 ## Dependencies
 

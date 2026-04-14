@@ -4,6 +4,7 @@ import { collection, getDocs, limit, orderBy, query, where } from "firebase/fire
 import { createPortalApi } from "../api/portalApi";
 import type { EventSummary } from "../api/portalContracts";
 import RevealCard from "../components/RevealCard";
+import GuidedStateCard from "../components/GuidedStateCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
 import { type PortalThemeName } from "../theme/themes";
@@ -900,13 +901,21 @@ export default function DashboardView({
         <div className="hero-updates">
           <div className="hero-updates-title">Studio updates</div>
           {announcementPreview.length === 0 ? (
-            <div className="hero-updates-empty">No studio announcements yet.</div>
+            <GuidedStateCard
+              eyebrow="Studio bulletin"
+              title="No studio-wide notices right now"
+              body="Use Messages for direct questions, and check back here when the studio posts schedule changes, pickup notes, or broader service updates."
+              actions={[{ label: "Message the studio", onClick: onOpenMessages, variant: "ghost" }]}
+              className="hero-updates-empty"
+            />
           ) : (
             <div className="hero-updates-list">
               {announcementPreview.map((item) => (
                 <div className="hero-update" key={item.id}>
                   <div className="hero-update-title">{item.title || "Studio update"}</div>
-                  <p className="hero-update-body">{item.body || "Details coming soon."}</p>
+                  <p className="hero-update-body">
+                    {item.body || "Open Messages for the full studio note and any next-step timing."}
+                  </p>
                 </div>
               ))}
             </div>
@@ -1073,14 +1082,20 @@ export default function DashboardView({
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Workshop calendar</div>
           {workshopsLoading ? (
-            <div className="empty-state" role="status" aria-live="polite">
-              Loading...
-            </div>
+            <GuidedStateCard
+              eyebrow="Workshops"
+              title="Loading the workshop calendar"
+              body="Hold on for a moment while we pull the current class schedule and studio program openings."
+              className="empty-state"
+            />
           ) : workshopPreview.length === 0 ? (
-            <div className="empty-block">
-              <div className="empty-state">No workshops are currently scheduled.</div>
-              <div className="empty-meta">Open the workshop calendar for the latest schedule.</div>
-            </div>
+            <GuidedStateCard
+              eyebrow="Workshops"
+              title="No workshops are currently scheduled"
+              body="Open the workshop calendar for the latest schedule, or check back after the next studio drop."
+              actions={[{ label: "Open workshop calendar", onClick: onOpenWorkshops, variant: "ghost" }]}
+              className="empty-block"
+            />
           ) : (
             <div className="list">
               {workshopPreview.map((item) => {
@@ -1098,9 +1113,11 @@ export default function DashboardView({
               })}
             </div>
           )}
-          <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
-            Open workshop calendar
-          </button>
+          {workshopPreview.length > 0 ? (
+            <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
+              Open workshop calendar
+            </button>
+          ) : null}
         </RevealCard>
 
         <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>

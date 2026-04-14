@@ -449,8 +449,10 @@ describe("DashboardView kiln reload", () => {
       />
     );
 
-    expect(await screen.findByText("No workshops are currently scheduled.")).toBeDefined();
-    expect(screen.getByText("Open the workshop calendar for the latest schedule.")).toBeDefined();
+    expect(await screen.findByText("No workshops are currently scheduled")).toBeDefined();
+    expect(
+      screen.getByText("Open the workshop calendar for the latest schedule, or check back after the next studio drop.")
+    ).toBeDefined();
     expect(screen.queryByText(/QA Fixture Workshop/i)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /Open workshop calendar/i }));

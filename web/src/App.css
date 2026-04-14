@@ -454,6 +454,39 @@
   font-size: 14px;
 }
 
+.guided-state-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.guided-state-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.guided-state-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.guided-state-body {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.guided-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .hero-updates-list {
   display: flex;
   flex-direction: column;

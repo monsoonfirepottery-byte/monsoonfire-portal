@@ -325,6 +325,7 @@ export type ControlTowerMemoryHealth = {
     hardConflicts: number;
     quarantinedRows: number;
     conflictRecords: number;
+    retrievalShadowedRows: number;
   };
   startupReadiness: {
     startupEligibleRows: number;

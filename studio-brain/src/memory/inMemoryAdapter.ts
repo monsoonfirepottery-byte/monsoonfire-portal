@@ -305,6 +305,24 @@ function normalizeMetadata(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function readStringList(value: unknown, maxItems = 32): string[] {
+  const queue = Array.isArray(value) ? [...value] : value === undefined || value === null ? [] : [value];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  while (queue.length > 0 && out.length < maxItems) {
+    const next = queue.shift();
+    if (Array.isArray(next)) {
+      queue.unshift(...next);
+      continue;
+    }
+    const normalized = String(next ?? "").trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
 function readLatticeValue(metadata: Record<string, unknown>, key: string): unknown {
   const nested = normalizeMetadata(metadata.memoryLattice);
   if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== "") return metadata[key];
@@ -316,6 +334,23 @@ function mapBreakdown<T extends string>(counts: Map<T, number>, key: string): Ar
   return Array.from(counts.entries())
     .map(([value, count]) => ({ [key]: value, count }))
     .sort((left, right) => Number(right.count) - Number(left.count) || String(left[key]).localeCompare(String(right[key])));
+}
+
+function projectedConflictLinkedIds(rows: MemoryRecord[]): Set<string> {
+  const rowIds = new Set(rows.map((row) => row.id));
+  const linked = new Set<string>();
+  for (const row of rows) {
+    const metadata = normalizeMetadata(row.metadata);
+    const category = normalizeText(readLatticeValue(metadata, "memoryCategory") ?? readLatticeValue(metadata, "category"));
+    const conflictSeverity = normalizeText(readLatticeValue(metadata, "conflictSeverity"));
+    const operationalStatus = normalizeText(readLatticeValue(metadata, "operationalStatus"));
+    if (category !== "conflict-record" || conflictSeverity !== "hard") continue;
+    if (operationalStatus === "archived" || operationalStatus === "deprecated" || operationalStatus === "retired") continue;
+    for (const linkedId of readStringList(readLatticeValue(metadata, "conflictingMemoryIds"), 32)) {
+      if (rowIds.has(linkedId)) linked.add(linkedId);
+    }
+  }
+  return linked;
 }
 
 function latticeBreakdown(rows: MemoryRecord[]): MemoryStats["lattice"] {
@@ -537,6 +572,7 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
         }
       }
     }
+    const retrievalShadowedRows = projectedConflictLinkedIds(rows).size;
     return {
       total: rows.length,
       lastCapturedAt: rows.length ? rows[0].createdAt : null,
@@ -552,6 +588,7 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
         hardConflicts,
         quarantinedRows,
         conflictRecords,
+        retrievalShadowedRows,
       },
       startupReadiness: {
         startupEligibleRows,

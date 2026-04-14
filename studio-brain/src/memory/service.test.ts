@@ -464,6 +464,22 @@ test("memory capture quarantines exact conflicting loop states and emits a confl
   assert.equal(operationalRows.some((row) => row.id === conflictRecord?.id), false);
   assert.equal(operationalContext.items.length, 0);
   assert.equal(operationalContext.summary.includes("Operational retrieval blocked by a hard conflict"), true);
+  assert.equal(operationalContext.diagnostics.blockedByHardConflict?.blocked, true);
+  assert.equal(operationalContext.diagnostics.blockedByHardConflict?.useMode, "operational");
+  assert.equal(operationalContext.diagnostics.blockedByHardConflict?.scope, "subject:startup-continuity-auth-drift");
+  assert.equal(
+    operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === null
+      || operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === conflictRecord?.id,
+    true,
+  );
+  assert.equal(
+    operationalContext.diagnostics.blockedByHardConflict?.conflictingMemoryIds.includes(resolved.id),
+    true,
+  );
+  assert.equal(
+    operationalContext.diagnostics.blockedByHardConflict?.conflictingMemoryIds.includes(conflicting.id),
+    true,
+  );
   assert.equal(planningRows.some((row) => row.id === resolved.id), true);
   assert.equal(planningRows.some((row) => row.id === conflicting.id), true);
   assert.equal(planningRows.some((row) => row.id === conflictRecord?.id), true);
@@ -477,6 +493,9 @@ test("memory capture quarantines exact conflicting loop states and emits a confl
   assert.equal(conflictRecord?.lattice?.conflictSeverity, "hard");
   assert.equal(conflictRecord?.lattice?.reviewAction, "none");
   assert.equal(stats.lattice?.backlog.resolveConflict, 1);
+  assert.equal(stats.conflictBacklog?.contestedRows, 1);
+  assert.equal(stats.conflictBacklog?.quarantinedRows, 1);
+  assert.equal(stats.conflictBacklog?.retrievalShadowedRows, 2);
 });
 
 test("memory consolidation writes explainable artifacts and relationship repairs", { concurrency: false }, async () => {

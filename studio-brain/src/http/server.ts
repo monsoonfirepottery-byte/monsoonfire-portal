@@ -619,6 +619,7 @@ function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): C
     hardConflicts: toBoundedInt(stats.conflictBacklog?.hardConflicts, 0, 0, 1_000_000),
     quarantinedRows: toBoundedInt(stats.conflictBacklog?.quarantinedRows, 0, 0, 1_000_000),
     conflictRecords: toBoundedInt(stats.conflictBacklog?.conflictRecords, 0, 0, 1_000_000),
+    retrievalShadowedRows: toBoundedInt(stats.conflictBacklog?.retrievalShadowedRows, 0, 0, 1_000_000),
   };
   const startupReadiness = {
     startupEligibleRows: toBoundedInt(stats.startupReadiness?.startupEligibleRows, 0, 0, 1_000_000),
@@ -678,6 +679,9 @@ function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): C
         : "",
       conflictBacklog.hardConflicts > 0
         ? `${conflictBacklog.hardConflicts} hard conflicts remain in the lattice`
+        : "",
+      conflictBacklog.retrievalShadowedRows > 0
+        ? `${conflictBacklog.retrievalShadowedRows} memories are being shadowed by hard conflict retrieval rules`
         : "",
       coverage.totalRows > 0 && coverage.ratio != null && coverage.ratio < 0.95
         ? `lattice coverage is ${Math.round(coverage.ratio * 100)}%`

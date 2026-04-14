@@ -546,6 +546,7 @@ export type MemoryStats = {
     hardConflicts: number;
     quarantinedRows: number;
     conflictRecords: number;
+    retrievalShadowedRows?: number;
   };
   startupReadiness?: {
     startupEligibleRows: number;
@@ -807,6 +808,13 @@ export type MemoryContextResult = {
         limit?: number;
       };
       pressure?: Record<string, unknown>;
+    };
+    blockedByHardConflict?: {
+      blocked: boolean;
+      useMode: MemoryUseMode;
+      scope: string | null;
+      conflictRecordId: string | null;
+      conflictingMemoryIds: string[];
     };
   };
 };

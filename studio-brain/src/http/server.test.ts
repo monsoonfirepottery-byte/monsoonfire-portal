@@ -2700,6 +2700,7 @@ test("control tower state routes derive browser-friendly room and service data",
             memoryHealth: {
               severity: string;
               reviewBacklog: { reviewNow: number };
+              conflictBacklog: { retrievalShadowedRows: number };
               startupReadiness: { startupEligibleRows: number; handoffRows: number };
               secretExposureFindings: { canonicalBlockedRows: number };
               shadowMcpFindings: { highRiskRows: number };
@@ -2740,7 +2741,13 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal((payload.state.memoryHealth?.secretExposureFindings.canonicalBlockedRows ?? 0) >= 1, true);
         assert.equal((payload.state.memoryHealth?.shadowMcpFindings.highRiskRows ?? 0) >= 1, true);
         assert.equal(
-          (payload.state.memoryHealth?.highlights ?? []).some((entry) => /secret-bearing memories/i.test(entry)),
+          Object.prototype.hasOwnProperty.call(payload.state.memoryHealth?.conflictBacklog ?? {}, "retrievalShadowedRows"),
+          true,
+        );
+        assert.equal(
+          (payload.state.memoryHealth?.highlights ?? []).some((entry) =>
+            /secret-bearing memories|shadowed by hard conflict retrieval rules/i.test(entry)
+          ),
           true,
         );
         assert.equal(

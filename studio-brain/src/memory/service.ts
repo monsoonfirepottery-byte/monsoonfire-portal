@@ -5210,6 +5210,41 @@ function summarizeConflictBlockedContext(items: MemorySearchResult[], useMode: M
   return summary.slice(0, maxChars);
 }
 
+function deriveBlockedByHardConflictDiagnostic(
+  items: MemorySearchResult[],
+  useMode: MemoryUseMode,
+  selectedCount: number
+): {
+  blocked: boolean;
+  useMode: MemoryUseMode;
+  scope: string | null;
+  conflictRecordId: string | null;
+  conflictingMemoryIds: string[];
+} | undefined {
+  if ((useMode !== "operational" && useMode !== "safety-critical") || selectedCount > 0 || items.length === 0) {
+    return undefined;
+  }
+  const hardConflictItems = items.filter((row) => row.lattice?.conflictSeverity === "hard");
+  if (hardConflictItems.length === 0) return undefined;
+  const conflictRecord = hardConflictItems.find((row) => row.lattice?.category === "conflict-record");
+  const scope =
+    hardConflictItems
+      .map((row) => normalizeText(row.lattice?.scope))
+      .find(Boolean)
+    ?? null;
+  const conflictingMemoryIds = Array.from(new Set(hardConflictItems.flatMap((row) => row.lattice?.conflictingMemoryIds ?? []))).slice(
+    0,
+    24,
+  );
+  return {
+    blocked: true,
+    useMode,
+    scope,
+    conflictRecordId: conflictRecord?.id ?? null,
+    conflictingMemoryIds,
+  };
+}
+
 function parseQuerySignals(query: string): {
   decision: boolean;
   action: boolean;
@@ -10502,6 +10537,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       retrievalPolicy,
       temporalAnchorMs
     ).slice(0, parsed.maxItems);
+    const blockedByHardConflict = deriveBlockedByHardConflictDiagnostic(prefilteredRanked, parsed.useMode, finalSelected.length);
 
     if (query && finalSelected.length > 0) {
       writeContextFallbackCache(
@@ -10587,6 +10623,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
         },
         tenantRowsTimedOut,
         degradedComputeMode,
+        blockedByHardConflict,
       },
     };
   };

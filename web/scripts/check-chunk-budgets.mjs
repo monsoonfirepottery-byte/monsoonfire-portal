@@ -37,9 +37,9 @@ const requiredRouteChunks = [
 ];
 // Total budgets re-baselined after the StaffView lazy split, dependency refresh,
 // kiln queue timeline route, client-facing My Pieces redesign, portal handoff
-// attribution path, and Studio Brain control tower actionability bridge while
-// keeping future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_805_000;
+// attribution path, Studio Brain control tower actionability bridge, and
+// reservation notification policy controls while keeping future regressions visible.
+const MAX_TOTAL_JS_BYTES = 1_813_000;
 const MAX_TOTAL_CSS_BYTES = 292_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

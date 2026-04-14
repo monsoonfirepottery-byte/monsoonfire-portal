@@ -1087,6 +1087,17 @@ function bool(value: unknown): boolean {
   return value === true;
 }
 
+type ReservationNotificationPolicyBooleanKey =
+  | "pickupReadyEnabled"
+  | "pickupReminderEnabled"
+  | "delayFollowUpEnabled"
+  | "pickupWindowPreExpiryEnabled";
+
+type ReservationNotificationPolicyNumberKey =
+  | "delayFollowUpInitialHours"
+  | "delayFollowUpRepeatHours"
+  | "pickupWindowPreExpiryHours";
+
 const DEFAULT_RESERVATION_NOTIFICATION_POLICY: ReservationNotificationPolicyContract = {
   pickupReadyEnabled: true,
   pickupReminderEnabled: true,
@@ -1101,6 +1112,12 @@ const DEFAULT_RESERVATION_NOTIFICATION_POLICY: ReservationNotificationPolicyCont
   updatedAtMs: 0,
   updatedByUid: null,
 };
+
+const RESERVATION_NOTIFICATION_POLICY_CONTROLS_AUTH_MESSAGE =
+  "Notification policy controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production.";
+
+const RESERVATION_NOTIFICATION_POLICY_UPDATE_AUTH_MESSAGE =
+  "Notification policy update requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production.";
 
 function normalizePositiveHoursList(value: unknown, fallback: number[]): number[] {
   if (!Array.isArray(value)) return [...fallback];
@@ -2691,6 +2708,56 @@ export default function StaffView({
     [fBaseUrl]
   );
   const hasFunctionsAuthMismatch = usingLocalFunctions && !showEmulatorTools;
+  const updateReservationNotificationPolicy = (
+    patch: Partial<ReservationNotificationPolicyContract>
+  ) => {
+    setReservationNotificationPolicy((prev) => ({ ...prev, ...patch }));
+  };
+  const reservationNotificationPolicyControlsDisabled =
+    reservationNotificationPolicyBusy || hasFunctionsAuthMismatch;
+  const reservationNotificationPolicyReminderHoursDisabled =
+    reservationNotificationPolicyControlsDisabled ||
+    reservationNotificationPolicy.pickupReminderMode !== "fixed_hours";
+  const renderReservationNotificationPolicyCheckbox = (
+    key: ReservationNotificationPolicyBooleanKey,
+    label: string
+  ) => (
+    <label key={key} className="staff-field">
+      <span>{label}</span>
+      <input
+        type="checkbox"
+        checked={reservationNotificationPolicy[key]}
+        disabled={reservationNotificationPolicyControlsDisabled}
+        onChange={(event) =>
+          updateReservationNotificationPolicy({
+            [key]: event.target.checked,
+          } as Pick<ReservationNotificationPolicyContract, ReservationNotificationPolicyBooleanKey>)
+        }
+      />
+    </label>
+  );
+  const renderReservationNotificationPolicyNumberField = (
+    key: ReservationNotificationPolicyNumberKey,
+    label: string,
+    min: number,
+    max: number
+  ) => (
+    <label key={key} className="staff-field">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={reservationNotificationPolicy[key]}
+        disabled={reservationNotificationPolicyControlsDisabled}
+        onChange={(event) =>
+          updateReservationNotificationPolicy({
+            [key]: Math.max(1, Number(event.target.value) || 1),
+          } as Pick<ReservationNotificationPolicyContract, ReservationNotificationPolicyNumberKey>)
+        }
+      />
+    </label>
+  );
 
   useEffect(() => {
     const now = Date.now();
@@ -4951,9 +5018,7 @@ export default function StaffView({
       setExternalLookupPolicyStatus(
         "Provider policy controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
       );
-      setReservationNotificationPolicyStatus(
-        "Notification policy controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
-      );
+      setReservationNotificationPolicyStatus(RESERVATION_NOTIFICATION_POLICY_CONTROLS_AUTH_MESSAGE);
       setLibraryRolloutPhaseStatus(
         "Rollout phase controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
       );
@@ -6273,9 +6338,7 @@ export default function StaffView({
   const saveReservationNotificationPolicy = useCallback(async () => {
     if (reservationNotificationPolicyBusy) return;
     if (hasFunctionsAuthMismatch) {
-      setReservationNotificationPolicyStatus(
-        "Notification policy update requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
-      );
+      setReservationNotificationPolicyStatus(RESERVATION_NOTIFICATION_POLICY_UPDATE_AUTH_MESSAGE);
       return;
     }
 
@@ -9515,44 +9578,18 @@ export default function StaffView({
       </div>
       <div className="staff-module-grid">
         <div className="staff-column">
-          <label className="staff-field">
-            <span>Pickup-ready notice</span>
-            <input
-              type="checkbox"
-              checked={reservationNotificationPolicy.pickupReadyEnabled}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  pickupReadyEnabled: event.target.checked,
-                }))
-              }
-            />
-          </label>
-          <label className="staff-field">
-            <span>Pickup reminders</span>
-            <input
-              type="checkbox"
-              checked={reservationNotificationPolicy.pickupReminderEnabled}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  pickupReminderEnabled: event.target.checked,
-                }))
-              }
-            />
-          </label>
+          {renderReservationNotificationPolicyCheckbox("pickupReadyEnabled", "Pickup-ready notice")}
+          {renderReservationNotificationPolicyCheckbox("pickupReminderEnabled", "Pickup reminders")}
           <label className="staff-field">
             <span>Reminder timing mode</span>
             <select
               value={reservationNotificationPolicy.pickupReminderMode}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+              disabled={reservationNotificationPolicyControlsDisabled}
               onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  pickupReminderMode: event.target.value as ReservationNotificationPolicyContract["pickupReminderMode"],
-                }))
+                updateReservationNotificationPolicy({
+                  pickupReminderMode:
+                    event.target.value as ReservationNotificationPolicyContract["pickupReminderMode"],
+                })
               }
             >
               <option value="storage_window_ratio">Scale with storage policy window</option>
@@ -9564,22 +9601,17 @@ export default function StaffView({
             <input
               type="text"
               value={reservationNotificationPolicy.pickupReminderHours.join(", ")}
-              disabled={
-                reservationNotificationPolicyBusy ||
-                hasFunctionsAuthMismatch ||
-                reservationNotificationPolicy.pickupReminderMode !== "fixed_hours"
-              }
+              disabled={reservationNotificationPolicyReminderHoursDisabled}
               onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
+                updateReservationNotificationPolicy({
                   pickupReminderHours: normalizePositiveHoursList(
                     event.target.value
                       .split(",")
                       .map((value) => value.trim())
                       .filter(Boolean),
-                    prev.pickupReminderHours
+                    reservationNotificationPolicy.pickupReminderHours
                   ),
-                }))
+                })
               }
             />
           </label>
@@ -9588,82 +9620,29 @@ export default function StaffView({
           </div>
         </div>
         <div className="staff-column">
-          <label className="staff-field">
-            <span>Delay follow-ups</span>
-            <input
-              type="checkbox"
-              checked={reservationNotificationPolicy.delayFollowUpEnabled}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  delayFollowUpEnabled: event.target.checked,
-                }))
-              }
-            />
-          </label>
-          <label className="staff-field">
-            <span>First delay follow-up (hours)</span>
-            <input
-              type="number"
-              min={1}
-              max={720}
-              value={reservationNotificationPolicy.delayFollowUpInitialHours}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  delayFollowUpInitialHours: Math.max(1, Number(event.target.value) || 1),
-                }))
-              }
-            />
-          </label>
-          <label className="staff-field">
-            <span>Repeat delay follow-up every (hours)</span>
-            <input
-              type="number"
-              min={1}
-              max={720}
-              value={reservationNotificationPolicy.delayFollowUpRepeatHours}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  delayFollowUpRepeatHours: Math.max(1, Number(event.target.value) || 1),
-                }))
-              }
-            />
-          </label>
-          <label className="staff-field">
-            <span>Pickup-window closing reminder</span>
-            <input
-              type="checkbox"
-              checked={reservationNotificationPolicy.pickupWindowPreExpiryEnabled}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  pickupWindowPreExpiryEnabled: event.target.checked,
-                }))
-              }
-            />
-          </label>
-          <label className="staff-field">
-            <span>Closing reminder lead time (hours)</span>
-            <input
-              type="number"
-              min={1}
-              max={336}
-              value={reservationNotificationPolicy.pickupWindowPreExpiryHours}
-              disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-              onChange={(event) =>
-                setReservationNotificationPolicy((prev) => ({
-                  ...prev,
-                  pickupWindowPreExpiryHours: Math.max(1, Number(event.target.value) || 1),
-                }))
-              }
-            />
-          </label>
+          {renderReservationNotificationPolicyCheckbox("delayFollowUpEnabled", "Delay follow-ups")}
+          {renderReservationNotificationPolicyNumberField(
+            "delayFollowUpInitialHours",
+            "First delay follow-up (hours)",
+            1,
+            720
+          )}
+          {renderReservationNotificationPolicyNumberField(
+            "delayFollowUpRepeatHours",
+            "Repeat delay follow-up every (hours)",
+            1,
+            720
+          )}
+          {renderReservationNotificationPolicyCheckbox(
+            "pickupWindowPreExpiryEnabled",
+            "Pickup-window closing reminder"
+          )}
+          {renderReservationNotificationPolicyNumberField(
+            "pickupWindowPreExpiryHours",
+            "Closing reminder lead time (hours)",
+            1,
+            336
+          )}
         </div>
       </div>
       <label className="staff-field">
@@ -9671,19 +9650,14 @@ export default function StaffView({
         <textarea
           value={reservationNotificationPolicy.note ?? ""}
           placeholder="Why this policy is set or what assumption it represents."
-          disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
-          onChange={(event) =>
-            setReservationNotificationPolicy((prev) => ({
-              ...prev,
-              note: event.target.value,
-            }))
-          }
+          disabled={reservationNotificationPolicyControlsDisabled}
+          onChange={(event) => updateReservationNotificationPolicy({ note: event.target.value })}
         />
       </label>
       <div className="staff-actions-row">
         <button
           className="btn btn-secondary"
-          disabled={reservationNotificationPolicyBusy || hasFunctionsAuthMismatch}
+          disabled={reservationNotificationPolicyControlsDisabled}
           onClick={() => void saveReservationNotificationPolicy()}
         >
           {reservationNotificationPolicyBusy ? "Saving..." : "Save notification policy"}

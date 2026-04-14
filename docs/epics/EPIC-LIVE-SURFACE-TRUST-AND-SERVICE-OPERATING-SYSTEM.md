@@ -27,6 +27,7 @@ Turn the website and portal into a more coherent, modern, app-like service platf
 ## Audit Artifact
 
 - `docs/audits/live-surface-audit-2026-04-12.md`
+- `docs/standards/LIVE_SURFACE_TERMINOLOGY_AND_TRUST_CONTRACT.md`
 
 ## Scope
 
@@ -52,6 +53,12 @@ Turn the website and portal into a more coherent, modern, app-like service platf
 4. Separate Ware Check-in framing from general reservations and improve queue/status communication.
 5. Replace generic production placeholders with guided fallback states.
 6. Publish a cross-surface terminology and trust-component contract.
+
+## Progress Notes
+
+1. Website handoff and freshness fixes are implemented in the current swarm tranche and backed by a legacy-host guard plus Playwright smoke coverage.
+2. Portal onboarding, Ware Check-in clarity, piece journey messaging, and guided fallback copy are implemented in the current swarm tranche and backed by focused UI tests plus a full `web` production build.
+3. The cross-surface terminology and trust contract is now published at `docs/standards/LIVE_SURFACE_TERMINOLOGY_AND_TRUST_CONTRACT.md`.
 
 ## Acceptance Criteria
 

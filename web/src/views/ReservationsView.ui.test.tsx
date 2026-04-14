@@ -164,6 +164,10 @@ describe("ReservationsView ware check-in UX", () => {
   it("keeps a single community-shelf confirmation path and surfaces oversize feedback inline", async () => {
     render(<ReservationsView user={createUser()} isStaff={false} />);
 
+    expect(screen.getAllByText("What happens next").length).toBeGreaterThan(1);
+    expect(
+      screen.getByText(/Booking, queue, progress, cooldown, and pickup/i),
+    ).toBeTruthy();
     expect(screen.getByText("4. Size + firing option")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Flexible tiny drop-off/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Standard shelf purchase/i })).toBeTruthy();

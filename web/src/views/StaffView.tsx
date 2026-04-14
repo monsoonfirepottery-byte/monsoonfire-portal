@@ -142,6 +142,7 @@ type Props = {
   showEmulatorTools: boolean;
   onOpenCheckin?: () => void;
   onOpenReservation?: (reservationId?: string) => void;
+  onOpenMemberStart?: () => void;
   onOpenMessages?: () => void;
   onOpenMessageThread?: (threadId: string) => void;
   onOpenFirings?: () => void;
@@ -2384,6 +2385,7 @@ export default function StaffView({
   showEmulatorTools,
   onOpenCheckin,
   onOpenReservation,
+  onOpenMemberStart,
   onOpenMessages,
   onOpenMessageThread,
   onOpenFirings,
@@ -9872,6 +9874,11 @@ export default function StaffView({
           {!isTaskHomeRoute ? (
             <button className="btn btn-ghost" type="button" onClick={openTaskHome}>
               Open task home
+            </button>
+          ) : null}
+          {onOpenMemberStart ? (
+            <button className="btn btn-ghost" type="button" onClick={onOpenMemberStart}>
+              Open member start
             </button>
           ) : null}
           {onOpenCheckin ? (

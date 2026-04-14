@@ -78,6 +78,80 @@
   font-size: 14px;
 }
 
+.checkin-journey-card {
+  display: grid;
+  gap: 16px;
+}
+
+.checkin-journey-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.checkin-journey-callout {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(180, 79, 53, 0.08), rgba(180, 79, 53, 0.04));
+}
+
+.checkin-journey-callout-label,
+.estimate-next-step-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.checkin-journey-callout-copy,
+.estimate-next-step-copy {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.checkin-journey-rail {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkin-journey-stage {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.checkin-journey-stage-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.checkin-journey-stage-copy,
+.checkin-journey-summary,
+.estimate-next-step-detail {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.checkin-journey-summary {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 92%, white 8%);
+}
+
 .checkin-optional-step {
   padding: 0;
 }
@@ -417,6 +491,19 @@
 .estimate-note {
   font-size: 12px;
   color: var(--accent);
+}
+
+.estimate-next-step {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(180, 79, 53, 0.18);
+  background: rgba(180, 79, 53, 0.06);
+}
+
+.estimate-next-step-detail {
+  color: var(--text-dim);
 }
 
 .checkin-submit-btn {
@@ -1688,6 +1775,11 @@
     align-items: stretch;
   }
 
+  .checkin-journey-head,
+  .checkin-journey-rail {
+    grid-template-columns: 1fr;
+  }
+
   .reservation-card-header,
   .reservation-row {
     flex-direction: column;
@@ -1706,6 +1798,13 @@
   .continuity-export-panel {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .checkin-journey-callout,
+  .checkin-journey-stage,
+  .checkin-journey-summary,
+  .estimate-next-step {
+    padding: 12px 14px;
   }
 }
 

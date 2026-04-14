@@ -363,7 +363,7 @@ function renderHeader() {
         <a href="/blog/">Studio Notes</a>
       </nav>
       <div class="nav-portal-wrap">
-        <a class="button button-ghost nav-login" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Login</a>
+        <a class="button button-ghost nav-login" href="https://portal.monsoonfire.com" target="_blank" rel="noopener noreferrer">Login</a>
       </div>
       <button class="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" data-menu-toggle>
         <span></span><span></span><span></span>

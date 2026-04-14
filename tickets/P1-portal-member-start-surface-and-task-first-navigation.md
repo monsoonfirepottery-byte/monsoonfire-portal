@@ -1,6 +1,6 @@
 # P1 — Portal member start surface and task-first navigation
 
-Status: Active
+Status: In review
 Date: 2026-04-14
 Priority: P1
 Owner: Portal
@@ -23,6 +23,12 @@ The portal contains meaningful capability, but first-time members still have to 
 1. Signed-in members see a recommended next action without exploring the full nav.
 2. The portal presents a clearer split between member tasks and staff/operator tasks.
 3. First-use confusion decreases without removing current capability.
+
+## Implementation Notes
+
+1. The portal member landing label now reads `Start here`.
+2. Dashboard guidance now explains what the portal is for, what members can do next, and which action to take first.
+3. Profile and staff surfaces include direct return-to-start affordances without altering route compatibility.
 
 ## Dependencies
 

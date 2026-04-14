@@ -183,6 +183,37 @@ afterEach(() => {
 });
 
 describe("DashboardView kiln reload", () => {
+  it("explains the member start surface and keeps the next actions visible", async () => {
+    setupGetDocsEmptySuccess();
+
+    render(
+      <DashboardView
+        user={createUser()}
+        isStaff={false}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={vi.fn()}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenWorkshops={vi.fn()}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText(/This is your member home inside the portal/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: "Start a check-in" })).toBeTruthy();
+    expect(screen.getByText("What this is")).toBeDefined();
+    expect(screen.getByText("Recommended next actions")).toBeDefined();
+  });
+
   it("shows retry after permission failure and loads kiln rows on retry", async () => {
     const user = createUser();
 

@@ -699,8 +699,9 @@ select:focus-visible {
 }
 
 .status-pill.state-offline {
-  background: rgba(27, 26, 23, 0.18);
-  color: var(--paper-50);
+  background: rgba(27, 26, 23, 0.08);
+  border-color: rgba(27, 26, 23, 0.18);
+  color: var(--ink-900);
 }
 
 .status-label {

@@ -806,25 +806,55 @@ export default function DashboardView({
     <div className="dashboard">
       <section className="quick-actions">
         <RevealCard className="card card-3d quick-action-card" index={0} enabled={motionEnabled}>
-          <div className="card-title">Quick actions</div>
-          <div className="quick-action-row">
+          <div className="card-title">Start here</div>
+          <p className="hero-copy">
+            This is your member home inside the portal. Start here when you want to check in new ware,
+            see what is already in motion, or jump straight to the next useful action without reading the full nav.
+          </p>
+          <div className="hero-actions">
             <button className="btn btn-primary" onClick={onOpenCheckin}>
               Start a check-in
             </button>
+            <button className="btn btn-ghost" onClick={() => onOpenPieces()}>
+              Open My Pieces
+            </button>
             <button className="btn btn-ghost" onClick={onOpenQueues}>
               View the queues
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenMessages}>
+              Message the studio
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
+              Glaze inspiration
             </button>
             {isStaff ? (
               <button className="btn btn-ghost" onClick={onOpenFirings}>
                 Firings
               </button>
             ) : null}
-            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
-              Glaze inspiration
-            </button>
-            <button className="btn btn-ghost" onClick={onOpenMessages}>
-              Message the studio
-            </button>
+          </div>
+          <div className="snapshot-grid">
+            <div className="snapshot-block">
+              <div className="snapshot-label">What this is</div>
+              <div className="snapshot-value">Your studio home</div>
+              <div className="snapshot-meta">
+                See the status of your work, the queue, and the next step without unpacking the whole app.
+              </div>
+            </div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">What you can do here</div>
+              <div className="snapshot-value">Check in, track, and coordinate</div>
+              <div className="snapshot-meta">
+                Start a check-in, open My Pieces, review firings, message the studio, or browse the rest of the portal when you need it.
+              </div>
+            </div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">Recommended next actions</div>
+              <div className="snapshot-value">Pick the next useful step</div>
+              <div className="snapshot-meta">
+                New drop-off: start a check-in. Existing work: open My Pieces. Need timing: view the queues.
+              </div>
+            </div>
           </div>
         </RevealCard>
       </section>
@@ -833,7 +863,7 @@ export default function DashboardView({
         <div className="hero-content">
           <div className="hero-toolbar">
             <div className="hero-title-block">
-              <h1>Your studio dashboard</h1>
+              <h1>Your studio at a glance</h1>
               <div className="hero-profile">
                 <span className="hero-profile-label">Signed in as</span>
                 <span className="hero-profile-name">{name}</span>

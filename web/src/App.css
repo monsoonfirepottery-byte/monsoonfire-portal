@@ -608,6 +608,7 @@
 .snapshot-grid {
   display: grid;
   gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .snapshot-block {
@@ -4909,6 +4910,17 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 .panel-body.placeholder {
   margin-top: 12px;
   color: var(--muted);
+}
+
+.placeholder-copy {
+  max-width: 58ch;
+}
+
+.placeholder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .placeholder-grid {

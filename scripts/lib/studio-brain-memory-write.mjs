@@ -290,6 +290,74 @@ function buildRequestId({ threadId, turnId, kind, content, index }) {
   return `remember-${stableHash(`${threadId}|${turnId}|${kind}|${index}|${stableHash(content, 24)}`, 24)}`;
 }
 
+function deriveRememberSourceClass({ kind, source, metadata = {} }) {
+  const explicit = clean(metadata.sourceClass).toLowerCase();
+  if (
+    [
+      "live-check",
+      "repo-file",
+      "policy",
+      "telemetry",
+      "human",
+      "derived",
+      "mcp-tool",
+      "runtime-artifact",
+      "external-doc",
+    ].includes(explicit)
+  ) {
+    return explicit;
+  }
+  if (clean(metadata.sourceArtifactPath) || clean(metadata.corpusRecordId)) return "repo-file";
+  if (clean(metadata.sourceUri).startsWith("http")) return "external-doc";
+  if (clean(metadata.policyVersion) || clean(metadata.toolClass).toLowerCase() === "runbook") return "policy";
+  if (String(source || "").toLowerCase().includes("mcp") || clean(metadata.connectorId) || clean(metadata.mcpServer)) return "mcp-tool";
+  if (kind === "fact" || kind === "preference" || String(source || "").toLowerCase() === "manual") return "human";
+  if (String(source || "").toLowerCase().startsWith("mail:") || String(source || "").toLowerCase().includes("email")) return "telemetry";
+  return "runtime-artifact";
+}
+
+function buildRememberEvidence({ memoryId, sourceClass, metadata = {}, clientRequestId }) {
+  const evidence = [];
+  const sourceArtifactPath = clean(metadata.sourceArtifactPath || metadata.sourcePath);
+  const sourceUri = clean(metadata.sourceUri);
+  const corpusRecordId = clean(metadata.corpusRecordId);
+  const threadId = clean(metadata.threadId);
+  const threadEvidence = clean(metadata.threadEvidence) || (threadId ? "explicit" : "");
+  const capturedAt = clean(metadata.occurredAt || metadata.lastVerifiedAt) || new Date().toISOString();
+  const baseEvidenceId = (...parts) => `evidence-${stableHash(parts.filter(Boolean).join("|"), 20)}`;
+  if (sourceArtifactPath || sourceUri || corpusRecordId) {
+    evidence.push({
+      evidenceId: baseEvidenceId(memoryId, sourceClass, sourceArtifactPath, sourceUri, corpusRecordId, clientRequestId),
+      sourceClass: sourceArtifactPath || corpusRecordId ? "repo-file" : sourceUri.startsWith("http") ? "external-doc" : sourceClass,
+      sourceUri: sourceUri || undefined,
+      sourcePath: sourceArtifactPath || undefined,
+      capturedAt,
+      verifiedAt: clean(metadata.lastVerifiedAt || metadata.verifiedAt) || undefined,
+      verifier: clean(metadata.verifier || metadata.owner || metadata.agentId) || undefined,
+      redactionState: "none",
+      hash: corpusRecordId || undefined,
+      supportsMemoryIds: [memoryId],
+      metadata: {
+        corpusRecordId: corpusRecordId || undefined,
+      },
+    });
+  }
+  if (threadId && threadEvidence === "explicit") {
+    evidence.push({
+      evidenceId: baseEvidenceId(memoryId, threadId, threadEvidence, clientRequestId),
+      sourceClass: sourceClass === "human" ? "human" : "runtime-artifact",
+      capturedAt,
+      redactionState: "none",
+      supportsMemoryIds: [memoryId],
+      metadata: {
+        threadId,
+        threadEvidence,
+      },
+    });
+  }
+  return evidence;
+}
+
 function inferProfileClass({ kind, scopeClass, subjectKey, content, metadata = {} }) {
   if (!["fact", "preference"].includes(kind) || scopeClass !== "personal") {
     return "";
@@ -422,6 +490,17 @@ function buildRememberRows(rawInput, { env = process.env, threadContext, capture
     };
     const runId = clean(item.metadata?.runId || item.metadata?.startupRunId || threadContext.bootstrapArtifacts?.continuityEnvelope?.runId);
     const agentId = clean(item.metadata?.agentId || threadContext.bootstrapArtifacts?.continuityEnvelope?.agentId);
+    const sourceClass = deriveRememberSourceClass({
+      kind,
+      source: config.source,
+      metadata,
+    });
+    const evidence = buildRememberEvidence({
+      memoryId: clientRequestId,
+      sourceClass,
+      metadata,
+      clientRequestId,
+    });
     return {
       index: item.index,
       kind,
@@ -436,8 +515,10 @@ function buildRememberRows(rawInput, { env = process.env, threadContext, capture
         source: config.source,
         status: config.status,
         memoryType: config.memoryType,
+        sourceClass,
         tags: dedupeStrings(item.tags, 32),
         metadata,
+        evidence,
         clientRequestId,
         importance: item.importance,
         occurredAt: item.occurredAt || undefined,

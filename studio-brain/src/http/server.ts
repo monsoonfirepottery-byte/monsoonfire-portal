@@ -41,14 +41,7 @@ import { recordOperatorAction } from "../kiln/services/manualEvents";
 import { createFiringRun } from "../kiln/services/orchestration";
 import { buildFiringRunDetail, buildKilnDetail, buildKilnOverview } from "../kiln/services/overview";
 import { renderKilnCommandPage } from "../kiln/ui/renderKilnCommandPage";
-import type { SupportOpsStore } from "../supportOps/store";
 import { MemoryValidationError } from "../memory/service";
-import {
-  buildEmberMemoryScope,
-  buildEmberMemberSubject,
-  buildEmberPatternSubject,
-  buildEmberRunId,
-} from "../supportOps/service";
 import {
   DEFAULT_HOST_USER as DEFAULT_CONTROL_TOWER_HOST_USER,
   DEFAULT_ROOT_SESSION as DEFAULT_CONTROL_TOWER_ROOT_SESSION,
@@ -77,7 +70,6 @@ import type {
   ControlTowerStartupScorecard,
   ControlTowerState,
 } from "../controlTower/types";
-import { draftDiscordSupportReply, getSupportAgentProfile } from "../supportOps/discord";
 
 const CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"] as const;
 const CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"] as const;
@@ -1374,7 +1366,6 @@ export function startHttpServer(params: {
   endpointRateLimits?: Partial<EndpointRateLimitConfig>;
   abuseQuotaStore?: QuotaStore;
   pilotWriteExecutor?: PilotWriteExecutor | null;
-  supportOpsStore?: SupportOpsStore | null;
   controlTowerRepoRoot?: string;
   controlTowerRootSession?: string;
   controlTowerHostUser?: string;
@@ -1408,7 +1399,6 @@ export function startHttpServer(params: {
     endpointRateLimits,
     abuseQuotaStore = new InMemoryQuotaStore(),
     pilotWriteExecutor = null,
-    supportOpsStore = null,
     controlTowerRepoRoot,
     controlTowerRootSession = DEFAULT_CONTROL_TOWER_ROOT_SESSION,
     controlTowerHostUser = DEFAULT_CONTROL_TOWER_HOST_USER,
@@ -2830,136 +2820,6 @@ export function startHttpServer(params: {
         return;
       }
 
-      if (memoryService && method === "GET" && url.pathname === "/api/memory/review-cases") {
-        const auth = await assertCapabilityAuth(req);
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        try {
-          const tenantParam = url.searchParams.get("tenantId");
-          const limitRaw = Number(url.searchParams.get("limit") ?? "50");
-          const statuses = [
-            ...url.searchParams.getAll("status"),
-            ...url.searchParams.getAll("statuses"),
-            ...toStringList(url.searchParams.get("status")?.split(",") ?? []),
-          ];
-          const caseTypes = [
-            ...url.searchParams.getAll("caseType"),
-            ...url.searchParams.getAll("caseTypes"),
-            ...toStringList(url.searchParams.get("caseType")?.split(",") ?? []),
-          ];
-          const scopePrefixes = [
-            ...url.searchParams.getAll("scopePrefix"),
-            ...url.searchParams.getAll("scopePrefixes"),
-          ].map((value) => value.trim()).filter(Boolean);
-          const linkedMemoryIds = [
-            ...url.searchParams.getAll("linkedMemoryId"),
-            ...url.searchParams.getAll("linkedMemoryIds"),
-          ].map((value) => value.trim()).filter(Boolean);
-          const rows = await memoryService.listReviewCases({
-            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
-            statuses,
-            caseTypes,
-            scopePrefixes,
-            linkedMemoryIds,
-            limit: Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.trunc(limitRaw), 200)) : 50,
-          });
-          const latestVerificationRuns = memoryService.listVerificationRuns
-            ? await Promise.all(rows.map((row) => memoryService.listVerificationRuns({ tenantId: row.tenantId ?? undefined, caseId: row.id, limit: 1 })))
-            : [];
-          statusCode = 200;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({
-            ok: true,
-            rows,
-            latestVerificationRuns: latestVerificationRuns.flatMap((entry) => entry).slice(0, rows.length),
-          }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const isValidation = error instanceof MemoryValidationError;
-          statusCode = isValidation ? 400 : 500;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message }));
-        }
-        return;
-      }
-
-      const memoryReviewCaseActionMatch = memoryService && method === "POST"
-        ? url.pathname.match(/^\/api\/memory\/review-cases\/([^/]+)\/actions$/)
-        : null;
-      if (memoryService && memoryReviewCaseActionMatch) {
-        const auth = await assertCapabilityAuth(req);
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        try {
-          const payload = toObjectRecord(await readJsonBody(req));
-          const result = await memoryService.reviewCaseAction({
-            ...payload,
-            id: decodeURIComponent(memoryReviewCaseActionMatch[1] ?? ""),
-          });
-          statusCode = 200;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: true, ...result }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const isValidation = error instanceof MemoryValidationError;
-          statusCode = isValidation ? 400 : 500;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message }));
-        }
-        return;
-      }
-
-      const memoryReviewCaseMatch = memoryService && method === "GET"
-        ? url.pathname.match(/^\/api\/memory\/review-cases\/([^/]+)$/)
-        : null;
-      if (memoryService && memoryReviewCaseMatch) {
-        const auth = await assertCapabilityAuth(req);
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        try {
-          const tenantParam = url.searchParams.get("tenantId");
-          const reviewCase = await memoryService.getReviewCase({
-            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
-            id: decodeURIComponent(memoryReviewCaseMatch[1] ?? ""),
-          });
-          if (!reviewCase) {
-            statusCode = 404;
-            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-            res.end(JSON.stringify({ ok: false, message: "Memory review case not found." }));
-            return;
-          }
-          const verificationRuns = memoryService.listVerificationRuns
-            ? await memoryService.listVerificationRuns({
-                tenantId: reviewCase.tenantId ?? undefined,
-                caseId: reviewCase.id,
-                limit: 10,
-              })
-            : [];
-          statusCode = 200;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: true, reviewCase, verificationRuns }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const isValidation = error instanceof MemoryValidationError;
-          statusCode = isValidation ? 400 : 500;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message }));
-        }
-        return;
-      }
-
       if (memoryService && method === "GET" && url.pathname === "/api/memory/pressure") {
         const auth = await assertCapabilityAuth(req);
         if (!auth.ok) {
@@ -3896,200 +3756,6 @@ export function startHttpServer(params: {
             connectors: await capabilityRuntime.listConnectorHealth(),
           })
         );
-        return;
-      }
-
-      if (supportOpsStore && method === "GET" && url.pathname === "/api/support-ops/queue") {
-        const auth = await assertCapabilityAuth(req);
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        const limitRaw = Number(url.searchParams.get("limit") ?? "20");
-        const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 100)) : 20;
-        const recentCases = await supportOpsStore.listRecentCases(limit);
-        let casesWithReviewLinks = recentCases;
-        if (memoryService) {
-          const linkedCaseMap = new Map<string, string[]>();
-          for (const row of recentCases) {
-            const scope = toTrimmedString(row.emberMemoryScope ?? "");
-            if (!scope) continue;
-            try {
-              const reviewCases = await memoryService.listReviewCases({
-                tenantId: undefined,
-                statuses: ["open", "in-progress"],
-                scopePrefixes: [scope],
-                limit: 8,
-              });
-              if (reviewCases.length > 0) {
-                linkedCaseMap.set(row.supportRequestId, reviewCases.map((entry) => entry.id));
-              }
-            } catch {
-              // best-effort memory linkage
-            }
-          }
-          casesWithReviewLinks = recentCases.map((row) => ({
-            ...row,
-            linkedMemoryReviewCaseIds: linkedCaseMap.get(row.supportRequestId) ?? row.linkedMemoryReviewCaseIds ?? [],
-          }));
-        }
-        statusCode = 200;
-        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-        res.end(
-          JSON.stringify({
-            ok: true,
-            summary: await supportOpsStore.getQueueSummary(),
-            recentCases: casesWithReviewLinks,
-          })
-        );
-        return;
-      }
-
-      if (method === "GET" && url.pathname === "/api/support-ops/persona") {
-        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        statusCode = 200;
-        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-        res.end(JSON.stringify({ ok: true, persona: getSupportAgentProfile() }));
-        return;
-      }
-
-      if (method === "POST" && url.pathname === "/api/support-ops/discord/respond") {
-        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        const body = toObjectRecord(await readJsonBody(req));
-        try {
-          const draftInput = {
-            channelId: toTrimmedString(body.channelId),
-            threadId: toTrimmedString(body.threadId) || null,
-            messageId: toTrimmedString(body.messageId) || null,
-            guildId: toTrimmedString(body.guildId) || null,
-            senderId: toTrimmedString(body.senderId) || null,
-            senderName: toTrimmedString(body.senderName) || null,
-            senderEmail: toTrimmedString(body.senderEmail) || null,
-            question: toTrimmedString(body.question),
-            receivedAt: toTrimmedString(body.receivedAt) || null,
-          };
-          let draft = await draftDiscordSupportReply(draftInput);
-          if (memoryService) {
-            let emberContextSummary: string | null = null;
-            try {
-              const emberContext = await memoryService.context({
-                agentId: "ember-support",
-                runId: buildEmberRunId("discord", draft.conversationKey),
-                query: draftInput.question,
-                useMode: "planning",
-                includeTenantFallback: true,
-                layerAllowlist: ["working", "episodic", "canonical"],
-                maxItems: 4,
-                maxChars: 1_200,
-              });
-              emberContextSummary = toTrimmedString(emberContext.summary) || null;
-            } catch {
-              emberContextSummary = null;
-            }
-            if (emberContextSummary) {
-              draft = await draftDiscordSupportReply(draftInput, {
-                emberContextSummary,
-              });
-            }
-            const confusionState =
-              /\b(overwhelmed|lost|embarrassed)\b/i.test(draftInput.question)
-                ? "overwhelmed"
-                : /\b(frustrated|upset|annoyed|still waiting)\b/i.test(draftInput.question)
-                  ? "frustrated"
-                  : /\b(sorry|apolog(?:y|ize|ies)|my bad)\b/i.test(draftInput.question)
-                    ? "apologetic"
-                    : /\b(confused|not sure|timing|delay|any chance|can i|could i|would it be okay)\b/i.test(draftInput.question)
-                      ? "uncertain"
-                      : /\b(thank you|thanks|appreciate)\b/i.test(draftInput.question)
-                        ? "grateful"
-                        : "none";
-            const confusionReason = confusionState === "none" ? null : `discord-${confusionState}`;
-            try {
-              await memoryService.capture({
-                agentId: "ember-support",
-                runId: buildEmberRunId("discord", draft.conversationKey),
-                source: "support:discord:working",
-                tags: [
-                  "ember-support",
-                  "discord",
-                  "working",
-                  draft.policySlug ?? "general-support",
-                  confusionState,
-                ].filter(Boolean),
-                memoryLayer: "working",
-                memoryType: "working",
-                memoryCategory: "observation",
-                sourceConfidence: 0.62,
-                importance: draft.humanReviewRequired ? 0.82 : 0.68,
-                content: [
-                  `Discord support thread for ${draftInput.senderName || draftInput.senderEmail || draftInput.senderId || "unknown member"}.`,
-                  `Latest ask: ${draftInput.question}`,
-                  emberContextSummary ? `Existing Ember context: ${emberContextSummary}` : "",
-                  `Support summary: ${draft.supportSummary}`,
-                  `Next safe step: ${draft.humanReviewRequired ? "human review required" : "reply drafted for safe Discord follow-up"}`,
-                ].filter(Boolean).join(" "),
-                metadata: {
-                  scope: buildEmberMemoryScope("discord", draft.conversationKey),
-                  subjectKey: buildEmberMemberSubject(draftInput.senderEmail || draftInput.senderId || draftInput.senderName),
-                  relatedSubjects: [buildEmberPatternSubject(draft.policySlug ?? "general-support")],
-                  emberMemoryScope: buildEmberMemoryScope("discord", draft.conversationKey),
-                  conversationKey: draft.conversationKey,
-                  confusionState,
-                  confusionReason,
-                  humanHandoff: draft.humanReviewRequired,
-                  nextRecommendedAction: draft.humanReviewRequired ? "Escalate to human support review." : "Use the drafted Discord response as the next safe step.",
-                  supportSummary: draft.supportSummary,
-                  emberSummary: emberContextSummary ?? draft.supportSummary,
-                  startupEligible: false,
-                },
-              });
-            } catch {
-              // best-effort Ember working memory capture for Discord drafts
-            }
-          }
-          statusCode = 200;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: true, draft }));
-        } catch (error) {
-          statusCode = 400;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(
-            JSON.stringify({
-              ok: false,
-              message: error instanceof Error ? error.message : String(error),
-            }),
-          );
-        }
-        return;
-      }
-
-      if (supportOpsStore && method === "GET" && url.pathname === "/api/support-ops/dead-letters") {
-        const auth = await assertCapabilityAuth(req);
-        if (!auth.ok) {
-          statusCode = 401;
-          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: false, message: auth.message }));
-          return;
-        }
-        const limitRaw = Number(url.searchParams.get("limit") ?? "20");
-        const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 100)) : 20;
-        statusCode = 200;
-        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-        res.end(JSON.stringify({ ok: true, rows: await supportOpsStore.listDeadLetters(limit) }));
         return;
       }
 

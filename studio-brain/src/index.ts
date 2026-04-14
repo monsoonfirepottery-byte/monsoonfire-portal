@@ -30,19 +30,6 @@ import { acquireProcessLock, type ProcessLockHandle } from "./runtime/processLoc
 import { createKilnAidReadOnlyProvider } from "./kiln/adapters/kilnaid/provider";
 import { PostgresKilnStore } from "./kiln/postgresStore";
 import { scanGenesisWatchFolder } from "./kiln/services/artifacts";
-import { GmailSupportMailboxAdapter } from "./supportOps/gmailAdapter";
-import { NamecheapPrivateEmailSupportMailboxAdapter } from "./supportOps/namecheapPrivateEmailAdapter";
-import { mintSupportIngestBearerFromPortal } from "./supportOps/portalIngestAuth";
-import { PostgresSupportOpsStore } from "./supportOps/store";
-import {
-  buildEmberMemoryScope,
-  buildEmberMemberSubject,
-  buildEmberPatternSubject,
-  buildEmberRunId,
-  SupportOpsService,
-  type SupportEmailSyncReport,
-} from "./supportOps/service";
-import type { SupportMailboxAdapter, SupportReplySender } from "./supportOps/types";
 
 function parseArtifactPort(endpoint: string, fallback: number): number {
   try {
@@ -81,23 +68,6 @@ async function main(): Promise<void> {
     totalFailures: 0,
     consecutiveFailures: 0,
     lastFailureMessage: null as string | null,
-  };
-  const supportEmailState = {
-    enabled: env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED,
-    provider: env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER,
-    mailbox: env.STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX,
-    intervalMs: env.STUDIO_BRAIN_SUPPORT_EMAIL_SYNC_INTERVAL_MS,
-    jitterMs: env.STUDIO_BRAIN_SUPPORT_EMAIL_JITTER_MS,
-    initialDelayMs: env.STUDIO_BRAIN_SUPPORT_EMAIL_INITIAL_DELAY_MS,
-    nextRunAt: null as string | null,
-    lastRunStartedAt: null as string | null,
-    lastRunCompletedAt: null as string | null,
-    lastRunDurationMs: null as number | null,
-    totalRuns: 0,
-    totalFailures: 0,
-    consecutiveFailures: 0,
-    lastFailureMessage: null as string | null,
-    lastSummary: null as string | null,
   };
   const kilnWatchState = {
     enabled: env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED,
@@ -285,280 +255,9 @@ async function main(): Promise<void> {
     new PostgresPolicyStore(),
     connectorRegistry
   );
-  const supportOpsStore = new PostgresSupportOpsStore();
-  const recordSupportLoopSignal = async (input: {
-    loopKey: string;
-    supportRequestId?: string | null;
-    sourceMessageId?: string | null;
-    action: "ack" | "escalate";
-    note: string;
-    metadata?: Record<string, unknown>;
-  }): Promise<void> => {
-    const captured = await memoryService.capture({
-      content: input.note,
-      source: "support-ops",
-      tags: ["support", "support-ops", input.loopKey],
-      tenantId: env.STUDIO_BRAIN_DEFAULT_TENANT_ID,
-      metadata: {
-        loopKey: input.loopKey,
-        supportRequestId: input.supportRequestId ?? null,
-        sourceMessageId: input.sourceMessageId ?? null,
-        ...input.metadata,
-      },
-      importance: input.action === "escalate" ? 0.88 : 0.68,
-    });
-    await memoryService.incidentAction({
-      tenantId: env.STUDIO_BRAIN_DEFAULT_TENANT_ID,
-      loopKey: input.loopKey,
-      memoryId: captured.id,
-      action: input.action,
-      actorId: "studio-brain",
-      note: input.note,
-      metadata: {
-        supportRequestId: input.supportRequestId ?? null,
-        sourceMessageId: input.sourceMessageId ?? null,
-        ...input.metadata,
-      },
-    });
-  };
-  let supportMailboxReader: SupportMailboxAdapter | null = null;
-  let supportReplySender: SupportReplySender | null = null;
-  if (env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED) {
-    if (env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER === "gmail") {
-      supportMailboxReader = new GmailSupportMailboxAdapter({
-        oauthSource: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE,
-        credentialsPath: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CREDENTIALS_PATH || undefined,
-        clientId: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID || undefined,
-        clientSecret: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET || undefined,
-        refreshToken: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN || undefined,
-        userId: env.STUDIO_BRAIN_SUPPORT_EMAIL_USER_ID,
-      });
-      supportReplySender =
-        env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE === "disabled"
-          ? null
-          : env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE === "shared"
-            ? supportMailboxReader
-            : new GmailSupportMailboxAdapter({
-                oauthSource: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE,
-                credentialsPath: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CREDENTIALS_PATH || undefined,
-                clientId: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID || undefined,
-                clientSecret: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET || undefined,
-                refreshToken: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN || undefined,
-                userId: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_USER_ID,
-              });
-    } else {
-      supportMailboxReader = new NamecheapPrivateEmailSupportMailboxAdapter({
-        username: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME,
-        password: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD,
-        mailboxFolder: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER,
-        imapHost: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST,
-        imapPort: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_PORT,
-        imapSecure: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_SECURE,
-        smtpHost: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST,
-        smtpPort: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_PORT,
-        smtpSecure: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_SECURE,
-        ignoreTlsErrors: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IGNORE_TLS_ERRORS,
-        fromName: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FROM_NAME,
-      });
-      supportReplySender =
-        env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE === "disabled"
-          ? null
-          : env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE === "shared"
-            ? supportMailboxReader
-            : new NamecheapPrivateEmailSupportMailboxAdapter({
-                username: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME,
-                password: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD,
-                mailboxFolder: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER,
-                imapHost: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST,
-                imapPort: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_PORT,
-                imapSecure: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_SECURE,
-                smtpHost: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST,
-                smtpPort: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_PORT,
-                smtpSecure: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_SECURE,
-                ignoreTlsErrors: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IGNORE_TLS_ERRORS,
-                fromName: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FROM_NAME,
-              });
-    }
-  }
-  const supportOpsService = env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED
-    ? new SupportOpsService({
-        logger,
-        store: supportOpsStore,
-        mailboxReader: supportMailboxReader!,
-        replySender: supportReplySender,
-        capabilityRuntime,
-        eventStore,
-        mailbox: env.STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX,
-        provider: env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER,
-        tenantId: env.STUDIO_BRAIN_DEFAULT_TENANT_ID,
-        maxMessages: env.STUDIO_BRAIN_SUPPORT_EMAIL_MAX_MESSAGES,
-        query: env.STUDIO_BRAIN_SUPPORT_EMAIL_QUERY || undefined,
-        labelIds: env.STUDIO_BRAIN_SUPPORT_EMAIL_LABEL_IDS,
-        backoffBaseMs: env.STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_BASE_MS,
-        backoffMaxMs: env.STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_MAX_MS,
-        ingestRoute: env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ROUTE,
-        functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL,
-        ingestBearerToken:
-          env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE === "env"
-            ? env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN
-            : undefined,
-        ingestBearerTokenProvider:
-          env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE === "portal_automation"
-            ? () =>
-                mintSupportIngestBearerFromPortal({
-                  portalEnvPath: env.STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_ENV_PATH || undefined,
-                  portalCredentialsPath: env.STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_CREDENTIALS_PATH || undefined,
-                })
-            : undefined,
-        ingestAdminToken: env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ADMIN_TOKEN || undefined,
-        recordLoopSignal: recordSupportLoopSignal,
-        emberMemory: {
-          getDiscordContext: async ({ conversationKey, question }) => {
-            const context = await memoryService.context({
-              agentId: "ember-support",
-              runId: buildEmberRunId("discord", conversationKey),
-              query: question,
-              useMode: "planning",
-              includeTenantFallback: true,
-              layerAllowlist: ["working", "episodic", "canonical"],
-              maxItems: 4,
-              maxChars: 1_200,
-            });
-            return { summary: context.summary || null };
-          },
-          recordWorking: async (input) => {
-            const runId = buildEmberRunId(input.channel, input.conversationKey);
-            const emberMemoryScope = buildEmberMemoryScope(input.channel, input.conversationKey);
-            await memoryService.capture({
-              agentId: "ember-support",
-              runId,
-              source: `support:${input.channel}:working`,
-              tags: [
-                "ember-support",
-                input.channel,
-                "working",
-                input.issueType,
-                input.confusionState,
-              ].filter(Boolean),
-              memoryLayer: "working",
-              memoryType: "working",
-              memoryCategory: "observation",
-              sourceConfidence: 0.62,
-              importance: input.humanHandoff ? 0.82 : 0.68,
-              content: [
-                `Support continuity for ${input.senderName || input.senderEmail || input.supportRequestId}.`,
-                `Latest ask: ${input.latestAsk}`,
-                input.supportSummary ? `Current read: ${input.supportSummary}` : "",
-                input.nextRecommendedAction ? `Next safe step: ${input.nextRecommendedAction}` : "",
-              ].filter(Boolean).join(" "),
-              metadata: {
-                scope: emberMemoryScope,
-                subjectKey: buildEmberMemberSubject(input.senderEmail || input.senderName || input.supportRequestId),
-                relatedSubjects: [buildEmberPatternSubject(input.issueType)],
-                emberMemoryScope,
-                conversationKey: input.conversationKey,
-                supportRequestId: input.supportRequestId,
-                supportSummary: input.supportSummary,
-                emberSummary: input.supportSummary,
-                confusionState: input.confusionState,
-                confusionReason: input.confusionReason,
-                humanHandoff: input.humanHandoff,
-                nextRecommendedAction: input.nextRecommendedAction,
-              },
-            });
-            return {
-              emberMemoryScope,
-              emberSummary: input.supportSummary,
-            };
-          },
-          recordResolved: async (input) => {
-            const runId = buildEmberRunId(input.channel, input.conversationKey);
-            const emberMemoryScope = buildEmberMemoryScope(input.channel, input.conversationKey);
-            await memoryService.capture({
-              agentId: "ember-support",
-              runId,
-              source: `support:${input.channel}:resolved`,
-              tags: [
-                "ember-support",
-                input.channel,
-                "resolved",
-                input.issueType,
-                input.confusionState,
-              ].filter(Boolean),
-              memoryLayer: "episodic",
-              memoryType: "episodic",
-              memoryCategory: "derived-insight",
-              sourceConfidence: 0.68,
-              importance: 0.74,
-              content: [
-                `Resolved support case for ${input.senderName || input.senderEmail || input.supportRequestId}.`,
-                input.supportSummary ? `What helped: ${input.supportSummary}` : "",
-                input.nextRecommendedAction ? `Resolution path: ${input.nextRecommendedAction}` : "",
-              ].filter(Boolean).join(" "),
-              metadata: {
-                scope: emberMemoryScope,
-                subjectKey: buildEmberMemberSubject(input.senderEmail || input.senderName || input.supportRequestId),
-                relatedSubjects: [buildEmberPatternSubject(input.issueType)],
-                emberMemoryScope,
-                supportRequestId: input.supportRequestId,
-                supportSummary: input.supportSummary,
-                confusionState: input.confusionState,
-                confusionReason: input.confusionReason,
-                humanHandoff: input.humanHandoff,
-              },
-            });
-            if (input.confusionState !== "none" && input.successfulReply && !input.humanHandoff) {
-              await memoryService.capture({
-                agentId: "ember-support",
-                runId,
-                source: `support:${input.channel}:guidance-candidate`,
-                tags: [
-                  "ember-support",
-                  input.channel,
-                  "guidance-candidate",
-                  input.issueType,
-                  input.confusionState,
-                ].filter(Boolean),
-                memoryLayer: "episodic",
-                memoryType: "procedural",
-                memoryCategory: "procedure",
-                sourceConfidence: 0.66,
-                importance: 0.76,
-                content: [
-                  `Candidate Ember guidance for ${input.issueType}.`,
-                  input.supportSummary ? `Situation: ${input.supportSummary}` : "",
-                  `Successful phrasing: ${input.successfulReply}`,
-                ].filter(Boolean).join(" "),
-                metadata: {
-                  scope: emberMemoryScope,
-                  subjectKey: buildEmberPatternSubject(input.issueType),
-                  emberMemoryScope,
-                  supportRequestId: input.supportRequestId,
-                  emberSummary: input.supportSummary,
-                  confusionState: input.confusionState,
-                  confusionReason: input.confusionReason,
-                  humanHandoff: false,
-                  memoryReviewCaseType: "promote-guidance",
-                  reviewAction: "revalidate",
-                  reviewPriority: 0.76,
-                  reviewReasons: ["promote-guidance", input.confusionState],
-                },
-              });
-            }
-          },
-        },
-      })
-    : null;
-
   const jobHandlers: Record<string, JobHandler> = {
     computeStudioState: computeStudioStateJob,
   };
-  if (supportOpsService) {
-    jobHandlers.supportEmailSync = async () => {
-      const report: SupportEmailSyncReport = await supportOpsService.syncMailbox();
-      return { summary: report.summary };
-    };
-  }
   const runner = new JobRunner(
     {
       stateStore,
@@ -587,37 +286,6 @@ async function main(): Promise<void> {
     } finally {
       schedulerState.lastRunCompletedAt = new Date().toISOString();
       schedulerState.lastRunDurationMs = Date.now() - startedAtMs;
-    }
-  };
-
-  const runSupportEmailSync = async (trigger: "startup" | "scheduled"): Promise<void> => {
-    if (!supportOpsService) return;
-    const startedAtMs = Date.now();
-    supportEmailState.lastRunStartedAt = new Date(startedAtMs).toISOString();
-    supportEmailState.totalRuns += 1;
-    try {
-      await runner.run("supportEmailSync");
-      const mailboxState = await supportOpsStore.getMailboxState(
-        env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER,
-        env.STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX
-      );
-      supportEmailState.consecutiveFailures = 0;
-      supportEmailState.lastFailureMessage = null;
-      supportEmailState.lastSummary =
-        typeof mailboxState?.metadata?.processed === "number"
-          ? `processed=${mailboxState.metadata.processed} replies=${mailboxState.metadata.repliesSent ?? 0} drafts=${mailboxState.metadata.replyDrafts ?? 0} proposals=${mailboxState.metadata.proposalsCreated ?? 0}`
-          : "support sync completed";
-    } catch (error) {
-      supportEmailState.totalFailures += 1;
-      supportEmailState.consecutiveFailures += 1;
-      supportEmailState.lastFailureMessage = error instanceof Error ? error.message : String(error);
-      logger.error("support_email_sync_failed", {
-        trigger,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      supportEmailState.lastRunCompletedAt = new Date().toISOString();
-      supportEmailState.lastRunDurationMs = Date.now() - startedAtMs;
     }
   };
   const runKilnWatch = async (trigger: "startup" | "scheduled"): Promise<void> => {
@@ -659,9 +327,6 @@ async function main(): Promise<void> {
   if (env.STUDIO_BRAIN_ENABLE_STARTUP_COMPUTE) {
     await runCompute("startup");
   }
-  if (env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED && env.STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC) {
-    await runSupportEmailSync("startup");
-  }
   if (env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED) {
     await runKilnWatch("startup");
   }
@@ -683,7 +348,6 @@ async function main(): Promise<void> {
   };
 
   let timer: NodeJS.Timeout | null = null;
-  let supportEmailTimer: NodeJS.Timeout | null = null;
   let kilnWatchTimer: NodeJS.Timeout | null = null;
   let pruneInterval: NodeJS.Timeout | null = null;
   let shuttingDown = false;
@@ -765,7 +429,6 @@ async function main(): Promise<void> {
     getRuntimeStatus: () => ({
       startedAt: runtimeStartedAt,
       scheduler: { ...schedulerState },
-      supportEmail: { ...supportEmailState },
       kilnWatch: { ...kilnWatchState },
       retention: {
         enabled: env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE,
@@ -775,7 +438,6 @@ async function main(): Promise<void> {
     }),
     getRuntimeMetrics: () => ({
       scheduler: { ...schedulerState },
-      supportEmail: { ...supportEmailState },
       kilnWatch: { ...kilnWatchState },
       retention: {
         enabled: env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE,
@@ -803,7 +465,6 @@ async function main(): Promise<void> {
     pilotWriteExecutor: env.STUDIO_BRAIN_ENABLE_WRITE_EXECUTION
       ? createPilotWriteExecutor({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })
       : null,
-    supportOpsStore,
     artifactStore,
     kilnStore,
     kilnEnabled: env.STUDIO_BRAIN_KILN_ENABLED,
@@ -825,24 +486,6 @@ async function main(): Promise<void> {
     }, effectiveDelayMs);
     if (typeof timer.unref === "function") {
       timer.unref();
-    }
-  };
-
-  const scheduleSupportEmailNext = (delayMs: number): void => {
-    if (!supportOpsService || shuttingDown) return;
-    const jitterMs =
-      env.STUDIO_BRAIN_SUPPORT_EMAIL_JITTER_MS > 0
-        ? Math.floor(Math.random() * (env.STUDIO_BRAIN_SUPPORT_EMAIL_JITTER_MS + 1))
-        : 0;
-    const effectiveDelayMs = delayMs + jitterMs;
-    supportEmailState.nextRunAt = new Date(Date.now() + effectiveDelayMs).toISOString();
-    supportEmailTimer = setTimeout(async () => {
-      supportEmailState.nextRunAt = null;
-      await runSupportEmailSync("scheduled");
-      scheduleSupportEmailNext(env.STUDIO_BRAIN_SUPPORT_EMAIL_SYNC_INTERVAL_MS);
-    }, effectiveDelayMs);
-    if (typeof supportEmailTimer.unref === "function") {
-      supportEmailTimer.unref();
     }
   };
   const scheduleKilnWatchNext = (delayMs: number): void => {
@@ -872,15 +515,6 @@ async function main(): Promise<void> {
 
   scheduleNext(firstDelayMs);
 
-  if (supportOpsService) {
-    const firstSupportDelayMs =
-      env.STUDIO_BRAIN_SUPPORT_EMAIL_INITIAL_DELAY_MS > 0
-        ? env.STUDIO_BRAIN_SUPPORT_EMAIL_INITIAL_DELAY_MS
-        : env.STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC
-          ? env.STUDIO_BRAIN_SUPPORT_EMAIL_SYNC_INTERVAL_MS
-          : 0;
-    scheduleSupportEmailNext(firstSupportDelayMs);
-  }
   if (kilnStore && env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED) {
     const firstKilnDelayMs =
       env.STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS > 0
@@ -908,10 +542,6 @@ async function main(): Promise<void> {
     if (timer) {
       clearTimeout(timer);
       timer = null;
-    }
-    if (supportEmailTimer) {
-      clearTimeout(supportEmailTimer);
-      supportEmailTimer = null;
     }
     if (kilnWatchTimer) {
       clearTimeout(kilnWatchTimer);

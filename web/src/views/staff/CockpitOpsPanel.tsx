@@ -145,6 +145,7 @@ type Props = {
   lastErr: { atIso: string; message: string; stack: string | null } | null;
   copy: (value: string) => Promise<void>;
   copyStatus: string;
+  reservationNotificationPolicyContent: ReactNode;
   resetModuleTelemetry: () => void;
   moduleUsageRows: ModuleUsageRow[];
   lowEngagementModules: string[];
@@ -234,6 +235,7 @@ export default function CockpitOpsPanel({
   lastErr,
   copy,
   copyStatus,
+  reservationNotificationPolicyContent,
   resetModuleTelemetry,
   moduleUsageRows,
   lowEngagementModules,
@@ -565,6 +567,7 @@ export default function CockpitOpsPanel({
                 Function-backed modules are paused to avoid false 401 errors.
               </div>
             ) : null}
+            {reservationNotificationPolicyContent}
             <div className="card-title-row">
               <div className="staff-subtitle">Recent handler errors</div>
               <div className="staff-log-actions">

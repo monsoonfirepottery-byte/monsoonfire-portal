@@ -309,6 +309,7 @@ service cloud.firestore {
       allow read: if isOwner(profileId) || isStaff();
       allow create, update: if isOwner(profileId)
         && hasOnlyKeys([
+          "createdAt",
           "displayName",
           "preferredKilns",
           "membershipTier",
@@ -325,6 +326,10 @@ service cloud.firestore {
           "updatedAt"
         ])
         && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["createdAt"])
+          || request.resource.data.createdAt is timestamp
+        )
         && (
           !request.resource.data.keys().hasAny(["membershipTier"])
           || isMembershipTier(request.resource.data.membershipTier)
@@ -365,6 +370,11 @@ service cloud.firestore {
           !request.resource.data.keys().hasAny(["uiEnhancedMotion"])
           || request.resource.data.uiEnhancedMotion is bool
           || request.resource.data.uiEnhancedMotion == null
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["createdAt"])
+          || request.resource.data.createdAt == resource.data.createdAt
         )
         && (
           resource == null
@@ -516,7 +526,12 @@ service cloud.firestore {
         && request.resource.data.events.keys().hasOnly([
           "kilnUnloaded",
           "kilnUnloadedBisque",
-          "kilnUnloadedGlaze"
+          "kilnUnloadedGlaze",
+          "reservationStatus",
+          "reservationEtaShift",
+          "reservationPickupReady",
+          "reservationDelayFollowUp",
+          "reservationPickupReminder"
         ])
         && request.resource.data.frequency.keys().hasOnly([
           "mode",

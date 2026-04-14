@@ -1,5 +1,5 @@
 ---
-- name: Provision the Studio Brain host access stack
+- name: Provision the Studio Brain host access and print stack
   hosts: localhost
   connection: local
   gather_facts: true
@@ -22,6 +22,20 @@
           - mosh
           - tmux
         state: present
+
+    - name: Install baseline host print packages
+      ansible.builtin.apt:
+        name:
+          - cups
+          - cups-client
+          - cups-filters
+        state: present
+
+    - name: Enable the CUPS scheduler
+      ansible.builtin.systemd:
+        name: cups
+        enabled: true
+        state: started
 
     - name: Check UFW state
       ansible.builtin.command: ufw status

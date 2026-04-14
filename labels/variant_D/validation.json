@@ -1,0 +1,38 @@
+{
+  "variant": "variant_D",
+  "assembly_type": "single_part",
+  "notes": "Heavy-duty block with deeper QR protection, a thicker saddle clip, and rear reinforcement pads.",
+  "print_orientation": "Print front face down; the heavy saddle remains printable because the channel roof bridges under 5 mm.",
+  "recommended_material": "PETG or ABS/ASA if the tags will live in hotter, rougher studio conditions.",
+  "parts": [
+    {
+      "name": "variant_D",
+      "stl": "variant_D.stl",
+      "step": "variant_D.step",
+      "watertight": true,
+      "components": 1,
+      "volume_mm3": 46238.509,
+      "faces": 4122,
+      "vertices": 2063,
+      "bounds_mm": [
+        [
+          -52.0,
+          -36.0,
+          -7.800000190734863
+        ],
+        [
+          52.0,
+          36.0,
+          6.400000095367432
+        ]
+      ],
+      "previews": {
+        "front_svg": "variant_D_front.svg",
+        "iso_svg": "variant_D_iso.svg",
+        "iso_png": "variant_D_iso.png",
+        "rear_iso_svg": "variant_D_rear_iso.svg",
+        "rear_iso_png": "variant_D_rear_iso.png"
+      }
+    }
+  ]
+}

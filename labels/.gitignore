@@ -1,0 +1,4 @@
+.venv-cad/
+__pycache__/
+cadquery_smoke.stl
+slices/**/auto_support.gcode

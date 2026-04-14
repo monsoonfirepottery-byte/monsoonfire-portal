@@ -1383,11 +1383,33 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
+      const retrievalShadow = await pool.query(
+        `
+          WITH filtered AS (
+            SELECT memory_id, category, conflict_severity, operational_status, conflicting_memory_ids
+              FROM ${latticeProjectionTable}
+             ${projectionWhereClause}
+          ),
+          linked AS (
+            SELECT DISTINCT linked.memory_id
+              FROM filtered row
+              CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(row.conflicting_memory_ids, '[]'::jsonb)) AS linked(memory_id)
+              JOIN filtered target ON target.memory_id = linked.memory_id
+             WHERE row.category = 'conflict-record'
+               AND row.conflict_severity = 'hard'
+               AND COALESCE(row.operational_status, 'active') NOT IN ('archived', 'deprecated', 'retired')
+          )
+          SELECT COUNT(*)::int AS retrieval_shadowed_rows
+            FROM linked
+        `,
+        values
+      );
 
       const total = Number(totals.rows[0]?.total ?? 0);
       const lastRaw = totals.rows[0]?.last_captured_at;
       const rowsWithLattice = Number(latticeCoverage.rows[0]?.rows_with_lattice ?? 0);
       const launchRow = launchFindings.rows[0] ?? {};
+      const retrievalShadowRow = retrievalShadow.rows[0] ?? {};
       const backlog = {
         reviewNow: Number(latticeCoverage.rows[0]?.review_now ?? 0),
         revalidate: Number(latticeCoverage.rows[0]?.revalidate ?? 0),
@@ -1444,6 +1466,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
           hardConflicts: Number(launchRow.hard_conflicts ?? 0),
           quarantinedRows: Number(launchRow.quarantined_rows ?? 0),
           conflictRecords: Number(launchRow.conflict_records ?? 0),
+          retrievalShadowedRows: Number(retrievalShadowRow.retrieval_shadowed_rows ?? 0),
         },
         startupReadiness: {
           startupEligibleRows: Number(launchRow.startup_eligible_rows ?? 0),

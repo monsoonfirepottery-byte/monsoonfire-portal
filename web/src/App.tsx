@@ -2845,7 +2845,7 @@ export default function App() {
                 prefersReducedMotion,
               }}
             >
-              <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
+              <div className="view-root">
                 {renderView(nav)}
               </div>
             </UiSettingsProvider>

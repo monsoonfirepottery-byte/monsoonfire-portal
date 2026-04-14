@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeRolloutRecord, parseRolloutEntries, resolveCodexThreadContext } from "./codex-session-memory-utils.mjs";
@@ -24,6 +25,26 @@ const EXEC_REPO_READ_PATTERN = /\b(rg|cat|type|dir|ls|get-content|gc|sed|findstr
 
 function clean(value) {
   return String(value ?? "").trim();
+}
+
+function startupToolNameVariants(value) {
+  const normalized = clean(value);
+  if (!normalized) return [];
+  const variants = new Set([normalized]);
+  const withoutFunctionsPrefix = normalized.replace(/^functions\./i, "");
+  if (withoutFunctionsPrefix) variants.add(withoutFunctionsPrefix);
+  if (withoutFunctionsPrefix.startsWith("mcp__")) {
+    const parts = withoutFunctionsPrefix.split("__");
+    if (parts.length >= 3) {
+      variants.add(parts.slice(2).join("__"));
+    }
+  }
+  return Array.from(variants).filter(Boolean);
+}
+
+export function matchesStartupToolName(value, startupToolNames = DEFAULT_STARTUP_TOOL_NAMES) {
+  const allowed = new Set(Array.from(startupToolNames || []).map((entry) => clean(entry)).filter(Boolean));
+  return startupToolNameVariants(value).some((variant) => allowed.has(variant));
 }
 
 function resolveStartupThreadHint(env = process.env) {
@@ -110,7 +131,7 @@ export function inspectStartupTranscriptTelemetry({
 
   const firstStartupToolIndex = records.findIndex((record) => {
     if (record?.captureKind !== "function_call") return false;
-    return startupToolNames.has(clean(record?.metadata?.toolName));
+    return matchesStartupToolName(record?.metadata?.toolName, startupToolNames);
   });
   const firstAssistantIndex = records.findIndex((record) => isAssistantMessage(record));
   const assistantTelemetryIndex =
@@ -118,6 +139,7 @@ export function inspectStartupTranscriptTelemetry({
       ? records.findIndex((record, index) => index > firstStartupToolIndex && isAssistantMessage(record))
       : firstAssistantIndex;
   const assistantRecord = assistantTelemetryIndex >= 0 ? records[assistantTelemetryIndex] : null;
+  const startupToolRecord = firstStartupToolIndex >= 0 ? records[firstStartupToolIndex] : null;
   const groundingLineEmitted = assistantRecord
     ? clean(assistantRecord.content).replace(/^\s+/, "").startsWith("Grounding:")
     : null;
@@ -126,6 +148,7 @@ export function inspectStartupTranscriptTelemetry({
     threadId: clean(threadInfo.threadId),
     rolloutPath,
     startupToolObserved: firstStartupToolIndex >= 0,
+    startupToolName: clean(startupToolRecord?.metadata?.toolName),
     startupToolCalledBeforeFirstAssistantMessage:
       firstStartupToolIndex >= 0 && firstAssistantIndex >= 0 ? firstStartupToolIndex < firstAssistantIndex : null,
     groundingLineEmitted: toNullableBoolean(groundingLineEmitted),
@@ -137,6 +160,67 @@ export function inspectStartupTranscriptTelemetry({
     repoReadTelemetryObserved: firstStartupToolIndex >= 0,
     source: "codex-rollout",
   };
+}
+
+function readToolcallEntries(toolcallPath) {
+  if (!toolcallPath || !existsSync(toolcallPath)) return [];
+  const raw = readFileSync(toolcallPath, "utf8");
+  return String(raw || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function sleepMs(durationMs) {
+  const millis = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (millis <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, millis);
+}
+
+function withStartupObservationLock(toolcallPath, fn, { timeoutMs = 2000, pollMs = 25 } = {}) {
+  const lockPath = `${toolcallPath}.startup.lock`;
+  mkdirSync(dirname(lockPath), { recursive: true });
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    let lockFd = null;
+    try {
+      lockFd = openSync(lockPath, "wx");
+      try {
+        return fn();
+      } finally {
+        if (lockFd != null) closeSync(lockFd);
+        try {
+          unlinkSync(lockPath);
+        } catch {}
+      }
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      sleepMs(pollMs);
+    }
+  }
+
+  return fn();
+}
+
+function hasStartupObservation(entries, { tool, action, observationKey, threadId, rolloutPath }) {
+  return (entries || []).some((entry) => {
+    if (clean(entry?.tool) !== clean(tool) || clean(entry?.action) !== clean(action)) return false;
+    const startup = entry?.context?.startup && typeof entry.context.startup === "object" ? entry.context.startup : {};
+    if (observationKey && clean(startup.observationKey) === observationKey) return true;
+    if (threadId && rolloutPath) {
+      return clean(startup.threadId) === threadId && clean(startup.rolloutPath) === rolloutPath;
+    }
+    return false;
+  });
 }
 
 export function logStartupTelemetryToolcall({
@@ -190,4 +274,44 @@ export function logStartupTelemetryToolcall({
     stderr: clean(result.stderr),
     error: result.error instanceof Error ? result.error.message : "",
   };
+}
+
+export function maybeLogStartupTelemetryToolcall({
+  tool,
+  action = "startup-bootstrap",
+  context = null,
+  cwd = REPO_ROOT,
+  ...rest
+} = {}) {
+  const startup = context?.startup && typeof context.startup === "object" ? context.startup : {};
+  const observationKey = clean(startup.observationKey);
+  const threadId = clean(startup.threadId);
+  const rolloutPath = clean(startup.rolloutPath);
+  if (!observationKey && !(threadId && rolloutPath)) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "missing-startup-observation-key",
+    };
+  }
+
+  const toolcallPath = resolve(cwd, ".codex", "toolcalls.ndjson");
+  return withStartupObservationLock(toolcallPath, () => {
+    const existingEntries = readToolcallEntries(toolcallPath);
+    if (hasStartupObservation(existingEntries, { tool, action, observationKey, threadId, rolloutPath })) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "startup-observation-already-logged",
+      };
+    }
+
+    return logStartupTelemetryToolcall({
+      tool,
+      action,
+      context,
+      cwd,
+      ...rest,
+    });
+  });
 }

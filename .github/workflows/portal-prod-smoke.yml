@@ -29,10 +29,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -82,12 +82,12 @@ jobs:
             --json
 
       - name: Authenticate to Google Cloud (production smoke)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
 
       - name: Setup gcloud (production smoke)
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: monsoonfire-portal
 
@@ -151,7 +151,7 @@ jobs:
 
       - name: Upload production portal smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-playwright-prod-smoke
           path: |
@@ -162,7 +162,7 @@ jobs:
 
       - name: Upload virtual staff regression report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-virtual-staff-regression
           path: output/qa/portal-virtual-staff-regression-prod.json
@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload production cutover verify report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-prod-cutover-verify
           path: output/qa/portal-prod-cutover-verify.json
@@ -180,7 +180,7 @@ jobs:
 
       - name: Upload production smoke feedback profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-prod-smoke-feedback
           path: output/qa/portal-prod-smoke-feedback.json

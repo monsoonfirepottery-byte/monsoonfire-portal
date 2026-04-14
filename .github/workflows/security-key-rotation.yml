@@ -44,7 +44,7 @@ jobs:
       resolve_alert: ${{ steps.plan.outputs.resolve_alert }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build rotation plan
         id: plan
@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate required automation secrets
         if: ${{ needs.assess.outputs.dry_run != 'true' }}
@@ -74,13 +74,13 @@ jobs:
 
       - name: Authenticate to Google Cloud
         if: ${{ needs.assess.outputs.dry_run != 'true' }}
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
 
       - name: Setup gcloud
         if: ${{ needs.assess.outputs.dry_run != 'true' }}
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: monsoonfire-portal
 
@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload key rotation artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: security-key-rotation
           path: output/security/key-rotation-*.json

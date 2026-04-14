@@ -49,25 +49,53 @@ export function normalizeBearer(token) {
   return /^bearer\s+/i.test(raw) ? raw : `Bearer ${raw}`;
 }
 
-function readAgentStaffCredentialsFromEnv({
+function normalizePortalAgentStaffCredentials(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  return {
+    email: clean(raw.email || raw.staffEmail),
+    uid: clean(raw.uid),
+    refreshToken: clean(raw.refreshToken || raw.tokens?.refresh_token),
+    password: clean(raw.password || raw.staffPassword),
+    tokens: raw.tokens && typeof raw.tokens === "object" ? raw.tokens : undefined,
+    raw,
+  };
+}
+
+export function resolvePortalAgentStaffCredentials({
   env = process.env,
+  credentialsJson = "",
+  credentialsPath = "",
   defaultCredentialsPath = resolvePreferredSecretPath("secrets", "portal", "portal-agent-staff.json"),
 } = {}) {
-  const credentialsJsonEnv = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON);
-  if (credentialsJsonEnv) {
-    const parsed = parseJsonSafely(credentialsJsonEnv);
-    if (parsed) return parsed;
+  const inlinePayload = clean(credentialsJson || env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON);
+  if (inlinePayload) {
+    const parsed = parseJsonSafely(inlinePayload);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("PORTAL_AGENT_STAFF_CREDENTIALS_JSON is not valid JSON.");
+    }
+    return {
+      ...normalizePortalAgentStaffCredentials(parsed),
+      source: "env_json",
+      path: "",
+    };
   }
 
-  const configuredPath = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS || defaultCredentialsPath);
-  const credentialsPath = isAbsolute(configuredPath)
+  const configuredPath = clean(credentialsPath || env.PORTAL_AGENT_STAFF_CREDENTIALS || defaultCredentialsPath);
+  const resolvedPath = isAbsolute(configuredPath)
     ? configuredPath
     : resolveCredentialPath(configuredPath);
-  if (!credentialsPath || !existsSync(credentialsPath)) {
+  if (!resolvedPath || !existsSync(resolvedPath)) {
     return null;
   }
-  const parsed = parseJsonSafely(readFileSync(credentialsPath, "utf8"));
-  return parsed && typeof parsed === "object" ? parsed : null;
+  const parsed = parseJsonSafely(readFileSync(resolvedPath, "utf8"));
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`Portal agent staff credential file is not valid JSON: ${resolvedPath}`);
+  }
+  return {
+    ...normalizePortalAgentStaffCredentials(parsed),
+    source: "file",
+    path: resolvedPath,
+  };
 }
 
 async function exchangeRefreshToken(apiKey, refreshToken) {
@@ -179,7 +207,7 @@ export async function mintStaffIdTokenFromPortalEnv({
     return { ok: false, reason: "missing-portal-api-key", token: "", source: null };
   }
 
-  const credentials = readAgentStaffCredentialsFromEnv({ env, defaultCredentialsPath });
+  const credentials = resolvePortalAgentStaffCredentials({ env, defaultCredentialsPath });
   const refreshCandidates = dedupeNonEmpty([
     env.PORTAL_STAFF_REFRESH_TOKEN,
     credentials?.refreshToken,

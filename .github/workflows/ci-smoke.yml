@@ -28,7 +28,7 @@ jobs:
       IS_DEPENDABOT_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -50,7 +50,7 @@ jobs:
             --report-path output/security/gitleaks-ci-dir.json
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -61,20 +61,20 @@ jobs:
             studio-brain/package-lock.json
 
       - name: Setup Java for emulator tasks
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Authenticate to Google Cloud (rules checks)
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
 
       - name: Setup gcloud (rules checks)
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: monsoonfire-portal
 
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload portal smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-playwright-smoke
           path: output/playwright/portal
@@ -237,7 +237,7 @@ jobs:
 
       - name: Upload portal deep smoke artifacts
         if: ${{ always() && (github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-playwright-smoke-deep
           path: output/playwright/portal/deep
@@ -246,7 +246,7 @@ jobs:
 
       - name: Upload virtual staff backend regression artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-virtual-staff-regression-ci
           path: output/qa/portal-virtual-staff-regression-ci.json
@@ -255,7 +255,7 @@ jobs:
 
       - name: Upload rules/index drift artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: firestore-rules-index-drift-ci
           path: output/qa/firestore-index-contract-guard-ci.json
@@ -264,7 +264,7 @@ jobs:
 
       - name: Upload gitleaks CI artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gitleaks-ci
           path: output/security/gitleaks-ci-dir.json
@@ -273,7 +273,7 @@ jobs:
 
       - name: Upload website smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: website-playwright-smoke
           path: output/playwright

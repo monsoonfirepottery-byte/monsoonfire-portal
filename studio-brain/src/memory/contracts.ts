@@ -74,6 +74,42 @@ export const memoryRedactionStateSchema = z.enum([
 ]);
 export const memoryReviewActionSchema = z.enum(["none", "revalidate", "resolve-conflict", "retire"]);
 export const memoryConflictSeveritySchema = z.enum(["none", "soft", "hard"]);
+export const memoryReviewCaseTypeSchema = z.enum([
+  "resolve-conflict",
+  "revalidate",
+  "retire",
+  "promote-guidance",
+]);
+export const memoryReviewCaseStatusSchema = z.enum(["open", "in-progress", "resolved", "dismissed"]);
+export const memoryReviewCaseActionSchema = z.enum([
+  "verify_now",
+  "accept_winner",
+  "keep_quarantined",
+  "retire_memory",
+  "dismiss_case",
+  "promote_guidance",
+  "reject_promotion",
+]);
+export const memoryVerifierKindSchema = z.enum([
+  "repo-head",
+  "runtime-check",
+  "startup-instruction",
+  "support-policy",
+  "support-outcome",
+  "operator-attested",
+]);
+export const memoryVerificationTriggerSchema = z.enum([
+  "capture-conflict",
+  "operational-read",
+  "safety-read",
+  "review-action",
+  "startup-pack-change",
+  "repo-diff",
+  "support-case-resolved",
+  "weekly-maintenance",
+  "manual",
+]);
+export const memoryVerificationResultStatusSchema = z.enum(["passed", "failed", "needs-review", "skipped"]);
 export const memoryLoopStateSchema = z.enum(["open-loop", "resolved", "reopened", "superseded"]);
 export const memoryLoopLaneSchema = z.enum(["critical", "high", "watch", "stable"]);
 export const memoryLoopIncidentActionTypeSchema = z.enum([
@@ -206,6 +242,25 @@ export const memoryContextRequestSchema = z.object({
   includeTenantFallback: z.boolean().default(false),
   expandRelationships: z.boolean().default(false),
   maxHops: z.number().int().min(1).max(4).default(2),
+});
+
+export const memoryReviewCaseListRequestSchema = z.object({
+  tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+  statuses: z.array(memoryReviewCaseStatusSchema).max(4).default([]),
+  caseTypes: z.array(memoryReviewCaseTypeSchema).max(4).default([]),
+  scopePrefixes: z.array(z.string().trim().min(1).max(240)).max(32).default([]),
+  linkedMemoryIds: z.array(z.string().trim().min(1).max(128)).max(64).default([]),
+  limit: z.number().int().min(1).max(200).default(50),
+});
+
+export const memoryReviewCaseActionRequestSchema = z.object({
+  tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+  action: memoryReviewCaseActionSchema,
+  actorId: z.string().trim().min(1).max(160).optional(),
+  selectedMemoryId: z.string().trim().min(1).max(128).optional(),
+  verifierKind: memoryVerifierKindSchema.optional(),
+  note: z.string().trim().min(1).max(4_000).optional(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
 export const memoryImportRequestSchema = z.object({
@@ -377,6 +432,8 @@ export type MemorySearchRequest = z.infer<typeof memorySearchRequestSchema>;
 export type MemoryRecentRequest = z.infer<typeof memoryRecentRequestSchema>;
 export type MemoryStatsRequest = z.infer<typeof memoryStatsRequestSchema>;
 export type MemoryContextRequest = z.infer<typeof memoryContextRequestSchema>;
+export type MemoryReviewCaseListRequest = z.infer<typeof memoryReviewCaseListRequestSchema>;
+export type MemoryReviewCaseActionRequest = z.infer<typeof memoryReviewCaseActionRequestSchema>;
 export type MemoryImportRequest = z.infer<typeof memoryImportRequestSchema>;
 export type MemoryEmailThreadBackfillRequest = z.infer<typeof memoryEmailThreadBackfillRequestSchema>;
 export type MemorySignalIndexBackfillRequest = z.infer<typeof memorySignalIndexBackfillRequestSchema>;
@@ -403,6 +460,12 @@ export type MemorySourceClass = z.infer<typeof memorySourceClassSchema>;
 export type MemoryRedactionState = z.infer<typeof memoryRedactionStateSchema>;
 export type MemoryReviewAction = z.infer<typeof memoryReviewActionSchema>;
 export type MemoryConflictSeverity = z.infer<typeof memoryConflictSeveritySchema>;
+export type MemoryReviewCaseType = z.infer<typeof memoryReviewCaseTypeSchema>;
+export type MemoryReviewCaseStatus = z.infer<typeof memoryReviewCaseStatusSchema>;
+export type MemoryReviewCaseAction = z.infer<typeof memoryReviewCaseActionSchema>;
+export type MemoryVerifierKind = z.infer<typeof memoryVerifierKindSchema>;
+export type MemoryVerificationTrigger = z.infer<typeof memoryVerificationTriggerSchema>;
+export type MemoryVerificationResultStatus = z.infer<typeof memoryVerificationResultStatusSchema>;
 export type MemoryLoopState = z.infer<typeof memoryLoopStateSchema>;
 export type MemoryLoopLane = z.infer<typeof memoryLoopLaneSchema>;
 export type MemoryLoopIncidentActionType = z.infer<typeof memoryLoopIncidentActionTypeSchema>;
@@ -437,6 +500,42 @@ export type MemoryTransitionEvent = {
   fromOperationalStatus: MemoryOperationalStatus | null;
   toOperationalStatus: MemoryOperationalStatus;
   evidenceIds: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryReviewCase = {
+  id: string;
+  tenantId: string | null;
+  caseType: MemoryReviewCaseType;
+  status: MemoryReviewCaseStatus;
+  scope: string | null;
+  primaryMemoryId: string | null;
+  linkedMemoryIds: string[];
+  priority: number;
+  reasonCodes: string[];
+  recommendedActions: MemoryReviewCaseAction[];
+  owner: string | null;
+  resolution: string | null;
+  lastVerificationRunId: string | null;
+  openedAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryVerificationRun = {
+  id: string;
+  tenantId: string | null;
+  caseId: string | null;
+  targetMemoryId: string | null;
+  verifierKind: MemoryVerifierKind;
+  trigger: MemoryVerificationTrigger;
+  requestSnapshot: Record<string, unknown>;
+  resultStatus: MemoryVerificationResultStatus;
+  resultSummary: string | null;
+  evidenceIds: string[];
+  startedAt: string;
+  finishedAt: string | null;
   metadata: Record<string, unknown>;
 };
 
@@ -541,6 +640,9 @@ export type MemoryStats = {
     retire: number;
     folkloreRiskHigh: number;
   };
+  openReviewCases?: number;
+  verificationFailures24h?: number;
+  emberPromotionBacklog?: number;
   conflictBacklog?: {
     contestedRows: number;
     hardConflicts: number;
@@ -814,6 +916,9 @@ export type MemoryContextResult = {
       useMode: MemoryUseMode;
       scope: string | null;
       conflictRecordId: string | null;
+      reviewCaseId?: string | null;
+      reasonCodes?: string[];
+      recommendedActions?: MemoryReviewCaseAction[];
       conflictingMemoryIds: string[];
     };
   };

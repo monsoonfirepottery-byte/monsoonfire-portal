@@ -447,7 +447,6 @@ function validateConnectivityConfig(env: BrainEnv): string[] {
       errors.push("STUDIO_BRAIN_KILN_WATCH_DIR is required when kiln watch ingestion is enabled");
     }
   }
-
   return errors;
 }
 

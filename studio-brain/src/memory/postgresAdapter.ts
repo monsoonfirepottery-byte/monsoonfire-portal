@@ -14,6 +14,8 @@ import type {
   MemoryLoopFeedbackStatsResult,
   MemoryLoopFeedbackUpsertInput,
   MemoryIndexInput,
+  MemoryReviewCaseListInput,
+  MemoryReviewCaseUpsertInput,
   MemorySignalIndexPresenceInput,
   MemorySignalIndexPresenceResult,
   MemoryLoopStateResult,
@@ -23,6 +25,8 @@ import type {
   MemoryRelatedResult,
   MemoryStoreAdapter,
   MemoryUpsertInput,
+  MemoryVerificationRunListInput,
+  MemoryVerificationRunUpsertInput,
 } from "./adapters";
 import type {
   MemoryEvidence,
@@ -34,12 +38,20 @@ import type {
   MemoryRedactionState,
   MemoryRecord,
   MemoryReviewAction,
+  MemoryReviewCase,
+  MemoryReviewCaseAction,
+  MemoryReviewCaseStatus,
+  MemoryReviewCaseType,
   MemorySearchResult,
   MemorySourceClass,
   MemoryStats,
   MemoryStatus,
   MemoryTransitionEvent,
   MemoryTruthStatus,
+  MemoryVerificationRun,
+  MemoryVerificationResultStatus,
+  MemoryVerificationTrigger,
+  MemoryVerifierKind,
 } from "./contracts";
 import { isAllowedMemoryLayer, normalizeMemoryLayer, normalizeMemoryLayerList } from "./layers";
 
@@ -463,6 +475,119 @@ function mapTransitionRow(row: QueryResultRow): MemoryTransitionEvent {
   };
 }
 
+function parseReviewCaseType(value: unknown): MemoryReviewCaseType {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "resolve-conflict" || raw === "revalidate" || raw === "retire" || raw === "promote-guidance") {
+    return raw;
+  }
+  return "revalidate";
+}
+
+function parseReviewCaseStatus(value: unknown): MemoryReviewCaseStatus {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "open" || raw === "in-progress" || raw === "resolved" || raw === "dismissed") {
+    return raw;
+  }
+  return "open";
+}
+
+function parseReviewCaseAction(value: unknown): MemoryReviewCaseAction {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "verify_now" ||
+    raw === "accept_winner" ||
+    raw === "keep_quarantined" ||
+    raw === "retire_memory" ||
+    raw === "dismiss_case" ||
+    raw === "promote_guidance" ||
+    raw === "reject_promotion"
+  ) {
+    return raw;
+  }
+  return "verify_now";
+}
+
+function parseVerifierKind(value: unknown): MemoryVerifierKind {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "repo-head" ||
+    raw === "runtime-check" ||
+    raw === "startup-instruction" ||
+    raw === "support-policy" ||
+    raw === "support-outcome" ||
+    raw === "operator-attested"
+  ) {
+    return raw;
+  }
+  return "operator-attested";
+}
+
+function parseVerificationTrigger(value: unknown): MemoryVerificationTrigger {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "capture-conflict" ||
+    raw === "operational-read" ||
+    raw === "safety-read" ||
+    raw === "review-action" ||
+    raw === "startup-pack-change" ||
+    raw === "repo-diff" ||
+    raw === "support-case-resolved" ||
+    raw === "weekly-maintenance" ||
+    raw === "manual"
+  ) {
+    return raw;
+  }
+  return "manual";
+}
+
+function parseVerificationResultStatus(value: unknown): MemoryVerificationResultStatus {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "passed" || raw === "failed" || raw === "needs-review" || raw === "skipped") {
+    return raw;
+  }
+  return "needs-review";
+}
+
+function mapReviewCaseRow(row: QueryResultRow): MemoryReviewCase {
+  return {
+    id: String(row.id ?? ""),
+    tenantId: row.tenant_id === null ? null : String(row.tenant_id),
+    caseType: parseReviewCaseType(row.case_type),
+    status: parseReviewCaseStatus(row.status),
+    scope: row.scope === null ? null : String(row.scope),
+    primaryMemoryId: row.primary_memory_id === null ? null : String(row.primary_memory_id),
+    linkedMemoryIds: parseStringList(row.linked_memory_ids, 64),
+    priority: clamp01(row.priority, 0.5),
+    reasonCodes: parseStringList(row.reason_codes, 32),
+    recommendedActions: parseStringList(row.recommended_actions, 16).map((value) => parseReviewCaseAction(value)),
+    owner: row.owner === null ? null : String(row.owner),
+    resolution: row.resolution === null ? null : String(row.resolution),
+    lastVerificationRunId: row.last_verification_run_id === null ? null : String(row.last_verification_run_id),
+    openedAt: parseDate(row.opened_at),
+    updatedAt: parseDate(row.updated_at),
+    resolvedAt: parseNullableDate(row.resolved_at),
+    metadata: asRecord(row.metadata),
+  };
+}
+
+function mapVerificationRunRow(row: QueryResultRow): MemoryVerificationRun {
+  return {
+    id: String(row.id ?? ""),
+    tenantId: row.tenant_id === null ? null : String(row.tenant_id),
+    caseId: row.case_id === null ? null : String(row.case_id),
+    targetMemoryId: row.target_memory_id === null ? null : String(row.target_memory_id),
+    verifierKind: parseVerifierKind(row.verifier_kind),
+    trigger: parseVerificationTrigger(row.trigger),
+    requestSnapshot: asRecord(row.request_snapshot),
+    resultStatus: parseVerificationResultStatus(row.result_status),
+    resultSummary: row.result_summary === null ? null : String(row.result_summary),
+    evidenceIds: parseStringList(row.evidence_ids, 64),
+    startedAt: parseDate(row.started_at),
+    finishedAt: parseNullableDate(row.finished_at),
+    metadata: asRecord(row.metadata),
+  };
+}
+
 export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryStoreAdapter {
   const tableName = sanitizeTableName(params.tableName ?? "swarm_memory");
   const vectorStore = params.vectorStore;
@@ -470,6 +595,8 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
   const latticeProjectionTable = "memory_lattice_projection";
   const evidenceTable = "memory_evidence";
   const transitionTable = "memory_transition_event";
+  const reviewCaseTable = "memory_review_case";
+  const verificationRunTable = "memory_verification_run";
 
   const attachRecordDetails = async <TRow extends MemoryRecord | MemorySearchResult>(rows: TRow[]): Promise<TRow[]> => {
     const memoryIds = Array.from(new Set(rows.map((row) => String(row.id ?? "").trim()).filter(Boolean)));
@@ -1378,7 +1505,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
             )::int AS ungoverned_shadow_rows,
             COUNT(*) FILTER (WHERE review_shadow_mcp = true)::int AS review_shadow_rows,
             COUNT(*) FILTER (WHERE high_risk_shadow_mcp = true)::int AS high_risk_shadow_rows
-            FROM ${latticeProjectionTable}
+           FROM ${latticeProjectionTable}
            ${projectionWhereClause}
         `,
         values
@@ -1404,12 +1531,39 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
+      const reviewWorkflow = await pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (WHERE status IN ('open', 'in-progress'))::int AS open_review_cases,
+            COUNT(*) FILTER (
+              WHERE case_type = 'promote-guidance'
+                AND status IN ('open', 'in-progress')
+            )::int AS ember_promotion_backlog
+            FROM ${reviewCaseTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+        `,
+        [input.tenantId ?? null]
+      );
+      const verificationFailures = await pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (
+              WHERE result_status = 'failed'
+                AND COALESCE(finished_at, started_at) >= now() - interval '24 hours'
+            )::int AS verification_failures_24h
+            FROM ${verificationRunTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+        `,
+        [input.tenantId ?? null]
+      );
 
       const total = Number(totals.rows[0]?.total ?? 0);
       const lastRaw = totals.rows[0]?.last_captured_at;
       const rowsWithLattice = Number(latticeCoverage.rows[0]?.rows_with_lattice ?? 0);
       const launchRow = launchFindings.rows[0] ?? {};
       const retrievalShadowRow = retrievalShadow.rows[0] ?? {};
+      const reviewWorkflowRow = reviewWorkflow.rows[0] ?? {};
+      const verificationFailuresRow = verificationFailures.rows[0] ?? {};
       const backlog = {
         reviewNow: Number(latticeCoverage.rows[0]?.review_now ?? 0),
         revalidate: Number(latticeCoverage.rows[0]?.revalidate ?? 0),
@@ -1461,6 +1615,9 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
           backlog,
         },
         reviewBacklog: backlog,
+        openReviewCases: Number(reviewWorkflowRow.open_review_cases ?? 0),
+        verificationFailures24h: Number(verificationFailuresRow.verification_failures_24h ?? 0),
+        emberPromotionBacklog: Number(reviewWorkflowRow.ember_promotion_backlog ?? 0),
         conflictBacklog: {
           contestedRows: Number(launchRow.contested_rows ?? 0),
           hardConflicts: Number(launchRow.hard_conflicts ?? 0),
@@ -1490,6 +1647,202 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
           highRiskRows: Number(launchRow.high_risk_shadow_rows ?? 0),
         },
       };
+    },
+
+    async upsertReviewCase(input: MemoryReviewCaseUpsertInput): Promise<MemoryReviewCase> {
+      const result = await pool.query(
+        `
+          INSERT INTO ${reviewCaseTable} (
+            id,
+            tenant_id,
+            case_type,
+            status,
+            scope,
+            primary_memory_id,
+            linked_memory_ids,
+            priority,
+            reason_codes,
+            recommended_actions,
+            owner,
+            resolution,
+            last_verification_run_id,
+            opened_at,
+            updated_at,
+            resolved_at,
+            metadata
+          ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14::timestamptz,$15::timestamptz,$16::timestamptz,$17::jsonb
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
+            case_type = EXCLUDED.case_type,
+            status = EXCLUDED.status,
+            scope = EXCLUDED.scope,
+            primary_memory_id = EXCLUDED.primary_memory_id,
+            linked_memory_ids = EXCLUDED.linked_memory_ids,
+            priority = EXCLUDED.priority,
+            reason_codes = EXCLUDED.reason_codes,
+            recommended_actions = EXCLUDED.recommended_actions,
+            owner = EXCLUDED.owner,
+            resolution = EXCLUDED.resolution,
+            last_verification_run_id = EXCLUDED.last_verification_run_id,
+            opened_at = EXCLUDED.opened_at,
+            updated_at = EXCLUDED.updated_at,
+            resolved_at = EXCLUDED.resolved_at,
+            metadata = EXCLUDED.metadata
+          RETURNING *
+        `,
+        [
+          input.id,
+          input.tenantId ?? null,
+          input.caseType,
+          input.status,
+          input.scope ?? null,
+          input.primaryMemoryId ?? null,
+          JSON.stringify(normalizeIdList(input.linkedMemoryIds, 64)),
+          clamp01(input.priority, 0.5),
+          JSON.stringify(parseStringList(input.reasonCodes, 32)),
+          JSON.stringify(
+            Array.from(new Set((input.recommendedActions ?? []).map((entry) => parseReviewCaseAction(entry)))).slice(0, 16)
+          ),
+          input.owner ?? null,
+          input.resolution ?? null,
+          input.lastVerificationRunId ?? null,
+          parseDate(input.openedAt),
+          parseDate(input.updatedAt),
+          parseNullableDate(input.resolvedAt),
+          JSON.stringify(asRecord(input.metadata)),
+        ]
+      );
+      return mapReviewCaseRow(result.rows[0]);
+    },
+
+    async getReviewCaseById(input): Promise<MemoryReviewCase | null> {
+      const result = await pool.query(
+        `
+          SELECT *
+            FROM ${reviewCaseTable}
+           WHERE id = $1
+             AND ($2::text IS NULL OR tenant_id IS NOT DISTINCT FROM $2::text)
+           LIMIT 1
+        `,
+        [String(input.id ?? "").trim(), input.tenantId ?? null]
+      );
+      if (!result.rowCount) return null;
+      return mapReviewCaseRow(result.rows[0]);
+    },
+
+    async listReviewCases(input: MemoryReviewCaseListInput): Promise<MemoryReviewCase[]> {
+      const result = await pool.query(
+        `
+          SELECT *
+            FROM ${reviewCaseTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+             AND ($2::text[] IS NULL OR status = ANY($2::text[]))
+             AND ($3::text[] IS NULL OR case_type = ANY($3::text[]))
+             AND (
+               $4::text[] IS NULL OR EXISTS (
+                 SELECT 1
+                   FROM unnest($4::text[]) AS prefix
+                  WHERE scope IS NOT NULL
+                    AND LOWER(scope) LIKE LOWER(prefix) || '%'
+               )
+             )
+             AND (
+               $5::text[] IS NULL OR EXISTS (
+                 SELECT 1
+                   FROM jsonb_array_elements_text(COALESCE(linked_memory_ids, '[]'::jsonb)) AS linked(memory_id)
+                  WHERE linked.memory_id = ANY($5::text[])
+               )
+             )
+           ORDER BY priority DESC, updated_at DESC
+           LIMIT $6
+        `,
+        [
+          input.tenantId ?? null,
+          input.statuses && input.statuses.length > 0 ? input.statuses : null,
+          input.caseTypes && input.caseTypes.length > 0 ? input.caseTypes : null,
+          input.scopePrefixes && input.scopePrefixes.length > 0 ? input.scopePrefixes.map((entry) => entry.toLowerCase()) : null,
+          input.linkedMemoryIds && input.linkedMemoryIds.length > 0 ? normalizeIdList(input.linkedMemoryIds, 64) : null,
+          clampLimit(input.limit ?? 50, 50),
+        ]
+      );
+      return result.rows.map((row) => mapReviewCaseRow(row));
+    },
+
+    async upsertVerificationRun(input: MemoryVerificationRunUpsertInput): Promise<MemoryVerificationRun> {
+      const result = await pool.query(
+        `
+          INSERT INTO ${verificationRunTable} (
+            id,
+            tenant_id,
+            case_id,
+            target_memory_id,
+            verifier_kind,
+            trigger,
+            request_snapshot,
+            result_status,
+            result_summary,
+            evidence_ids,
+            started_at,
+            finished_at,
+            metadata
+          ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11::timestamptz,$12::timestamptz,$13::jsonb
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
+            case_id = EXCLUDED.case_id,
+            target_memory_id = EXCLUDED.target_memory_id,
+            verifier_kind = EXCLUDED.verifier_kind,
+            trigger = EXCLUDED.trigger,
+            request_snapshot = EXCLUDED.request_snapshot,
+            result_status = EXCLUDED.result_status,
+            result_summary = EXCLUDED.result_summary,
+            evidence_ids = EXCLUDED.evidence_ids,
+            started_at = EXCLUDED.started_at,
+            finished_at = EXCLUDED.finished_at,
+            metadata = EXCLUDED.metadata
+          RETURNING *
+        `,
+        [
+          input.id,
+          input.tenantId ?? null,
+          input.caseId ?? null,
+          input.targetMemoryId ?? null,
+          input.verifierKind,
+          input.trigger,
+          JSON.stringify(asRecord(input.requestSnapshot)),
+          input.resultStatus,
+          input.resultSummary ?? null,
+          JSON.stringify(normalizeIdList(input.evidenceIds, 64)),
+          parseDate(input.startedAt),
+          parseNullableDate(input.finishedAt),
+          JSON.stringify(asRecord(input.metadata)),
+        ]
+      );
+      return mapVerificationRunRow(result.rows[0]);
+    },
+
+    async listVerificationRuns(input: MemoryVerificationRunListInput): Promise<MemoryVerificationRun[]> {
+      const result = await pool.query(
+        `
+          SELECT *
+            FROM ${verificationRunTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+             AND ($2::text IS NULL OR case_id IS NOT DISTINCT FROM $2::text)
+             AND ($3::text IS NULL OR target_memory_id IS NOT DISTINCT FROM $3::text)
+           ORDER BY COALESCE(finished_at, started_at) DESC, started_at DESC
+           LIMIT $4
+        `,
+        [
+          input.tenantId ?? null,
+          input.caseId ?? null,
+          input.targetMemoryId ?? null,
+          clampLimit(input.limit ?? 50, 50),
+        ]
+      );
+      return result.rows.map((row) => mapVerificationRunRow(row));
     },
 
     async indexSignals(input: MemoryIndexInput): Promise<void> {

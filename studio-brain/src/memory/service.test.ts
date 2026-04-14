@@ -292,7 +292,7 @@ test("memory capture redacts secret-bearing content, quarantines it, and emits a
 
   const captured = await service.capture({
     content:
-      "Operator note: Authorization: Bearer test-redaction-token",
+      "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature-value-1234567890",
     source: "manual",
     clientRequestId: "secret-capture-1",
   });
@@ -360,7 +360,7 @@ test("memory stats surface startup, secret, and shadow MCP launch findings", asy
   });
   await service.capture({
     content:
-      "Operator note: Authorization: Bearer test-redaction-token",
+      "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.signature-value-0987654321",
     source: "manual",
     clientRequestId: "launch-secret",
   });
@@ -462,14 +462,16 @@ test("memory capture quarantines exact conflicting loop states and emits a confl
   assert.equal(operationalRows.some((row) => row.id === resolved.id), false);
   assert.equal(operationalRows.some((row) => row.id === conflicting.id), false);
   assert.equal(operationalRows.some((row) => row.id === conflictRecord?.id), false);
-  assert.equal(operationalContext.items.length, 0);
+  assert.equal(operationalContext.items.some((row) => row.id === resolved.id), false);
+  assert.equal(operationalContext.items.some((row) => row.id === conflicting.id), false);
+  assert.equal(operationalContext.items.some((row) => row.id === conflictRecord?.id), false);
   assert.equal(operationalContext.summary.includes("Operational retrieval blocked by a hard conflict"), true);
   assert.equal(operationalContext.diagnostics.blockedByHardConflict?.blocked, true);
   assert.equal(operationalContext.diagnostics.blockedByHardConflict?.useMode, "operational");
   assert.equal(operationalContext.diagnostics.blockedByHardConflict?.scope, "subject:startup-continuity-auth-drift");
   assert.equal(
     operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === null
-      || operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === conflictRecord?.id,
+    || operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === conflictRecord?.id,
     true,
   );
   assert.equal(
@@ -496,6 +498,112 @@ test("memory capture quarantines exact conflicting loop states and emits a confl
   assert.equal(stats.conflictBacklog?.contestedRows, 1);
   assert.equal(stats.conflictBacklog?.quarantinedRows, 1);
   assert.equal(stats.conflictBacklog?.retrievalShadowedRows, 2);
+});
+
+test("memory review cases open for hard conflicts and blocked diagnostics surface review guidance", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-memory-review-cases",
+    defaultAgentId: "agent:codex",
+  });
+
+  const resolved = await service.capture({
+    content: "Decision: startup continuity auth drift is resolved and the operator path is stable again.",
+    source: "manual",
+    tags: ["decision"],
+    metadata: {
+      subjectKey: "startup-continuity-auth-drift",
+      loopState: "resolved",
+    },
+  });
+  await service.capture({
+    content: "Decision: startup continuity auth drift still blocks the operator path right now.",
+    source: "manual",
+    tags: ["decision"],
+    metadata: {
+      subjectKey: "startup-continuity-auth-drift",
+      loopState: "open-loop",
+    },
+  });
+
+  const context = await service.context({
+    query: "startup continuity auth drift",
+    useMode: "operational",
+    maxItems: 8,
+    maxChars: 3_000,
+  });
+  const reviewCases = await service.listReviewCases({
+    statuses: ["open", "in-progress"],
+    limit: 10,
+  });
+  const verificationRuns = await service.listVerificationRuns({
+    caseId: reviewCases[0]?.id ?? null,
+    limit: 10,
+  });
+  const stats = await service.stats({});
+
+  assert.equal(context.diagnostics.blockedByHardConflict?.blocked, true);
+  assert.equal(Boolean(context.diagnostics.blockedByHardConflict?.reviewCaseId), true);
+  assert.equal(
+    context.diagnostics.blockedByHardConflict?.recommendedActions?.includes("accept_winner"),
+    true,
+  );
+  assert.equal(reviewCases.length >= 1, true);
+  assert.equal(reviewCases[0]?.caseType, "resolve-conflict");
+  assert.equal(reviewCases[0]?.linkedMemoryIds.includes(resolved.id), true);
+  assert.equal(verificationRuns.length >= 1, true);
+  assert.equal(verificationRuns[0]?.resultStatus === "failed" || verificationRuns[0]?.resultStatus === "needs-review", true);
+  assert.equal((stats.openReviewCases ?? 0) >= 1, true);
+  assert.equal((stats.verificationFailures24h ?? 0) >= 0, true);
+});
+
+test("memory review actions retire stale workaround memory and resolve the review case", async () => {
+  const service = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "tenant-memory-review-actions",
+    defaultAgentId: "agent:codex",
+  });
+
+  const workaround = await service.capture({
+    content: "Workaround: rely on the archived startup cache when repo verification is unavailable.",
+    source: "manual",
+    occurredAt: "2025-01-10T00:00:00.000Z",
+    memoryCategory: "workaround",
+  });
+  const reviewCase = (await service.listReviewCases({
+    statuses: ["open", "in-progress"],
+    caseTypes: ["retire"],
+    limit: 10,
+  }))[0];
+
+  assert.ok(reviewCase);
+
+  const actionResult = await service.reviewCaseAction({
+    id: reviewCase.id,
+    action: "retire_memory",
+    actorId: "staff-test",
+    selectedMemoryId: workaround.id,
+  });
+  const updated = (await service.getByIds({
+    ids: [workaround.id],
+    includeArchived: true,
+  }))[0];
+  const latestCase = await service.getReviewCase({
+    id: reviewCase.id,
+  });
+  const verificationRuns = await service.listVerificationRuns({
+    caseId: reviewCase.id,
+    limit: 10,
+  });
+
+  assert.equal(actionResult.reviewCase?.status, "resolved");
+  assert.equal(updated.status, "archived");
+  assert.equal(updated.lattice?.operationalStatus, "retired");
+  assert.equal(updated.lattice?.reviewAction, "none");
+  assert.equal((updated.evidence?.length ?? 0) >= 1, true);
+  assert.equal((updated.transitions?.length ?? 0) >= 1, true);
+  assert.equal(latestCase?.status, "resolved");
+  assert.equal(verificationRuns.some((row) => row.resultStatus === "passed"), true);
 });
 
 test("memory consolidation writes explainable artifacts and relationship repairs", { concurrency: false }, async () => {

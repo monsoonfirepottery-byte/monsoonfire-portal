@@ -59,6 +59,10 @@ import type {
   MemoryOperationalStatus,
   MemoryEvidence,
   MemoryReviewAction,
+  MemoryReviewCase,
+  MemoryReviewCaseAction,
+  MemoryReviewCaseActionRequest,
+  MemoryReviewCaseListRequest,
   MemorySearchRequest,
   MemorySearchResult,
   MemorySourceClass,
@@ -69,6 +73,9 @@ import type {
   MemoryType,
   MemoryTruthStatus,
   MemoryUseMode,
+  MemoryVerificationRun,
+  MemoryVerificationTrigger,
+  MemoryVerifierKind,
   RetrievalMode,
 } from "./contracts";
 import {
@@ -83,6 +90,8 @@ import {
   memoryLoopIncidentActionRequestSchema,
   memoryLoopIncidentActionBatchRequestSchema,
   memoryLoopOwnerQueuesRequestSchema,
+  memoryReviewCaseActionRequestSchema,
+  memoryReviewCaseListRequestSchema,
   memoryLoopsRequestSchema,
   memoryRecentRequestSchema,
   memorySearchRequestSchema,
@@ -4449,6 +4458,10 @@ function deriveMemoryCategory(input: {
 }
 
 function deriveMemoryScope(metadata: Record<string, unknown>): string | null {
+  const explicitScope = normalizeText(metadata.scope ?? metadata.memoryScope ?? metadata.emberMemoryScope);
+  if (/^(loop|thread|subject|lane|run|case):/i.test(explicitScope)) {
+    return explicitScope;
+  }
   const loopKey = normalizeText(loopClusterKeyFromMetadata(metadata));
   if (loopKey) return `loop:${loopKey}`;
   const threadKey = normalizeText(threadKeyFromMetadata(metadata));
@@ -5210,32 +5223,45 @@ function summarizeConflictBlockedContext(items: MemorySearchResult[], useMode: M
   return summary.slice(0, maxChars);
 }
 
+function isCoreContextOnlySearchResult(row: MemorySearchResult): boolean {
+  if (row.memoryLayer === "core") return true;
+  if (row.source === "startup-context") return true;
+  if (row.matchedBy.includes("core-block")) return true;
+  return row.tags.includes("core-block");
+}
+
 function deriveBlockedByHardConflictDiagnostic(
   items: MemorySearchResult[],
   useMode: MemoryUseMode,
-  selectedCount: number
+  selectedRows: MemorySearchResult[]
 ): {
   blocked: boolean;
   useMode: MemoryUseMode;
   scope: string | null;
   conflictRecordId: string | null;
+  reviewCaseId?: string | null;
+  reasonCodes?: string[];
+  recommendedActions?: MemoryReviewCaseAction[];
   conflictingMemoryIds: string[];
 } | undefined {
-  if ((useMode !== "operational" && useMode !== "safety-critical") || selectedCount > 0 || items.length === 0) {
+  if ((useMode !== "operational" && useMode !== "safety-critical") || items.length === 0) {
     return undefined;
   }
   const hardConflictItems = items.filter((row) => row.lattice?.conflictSeverity === "hard");
   if (hardConflictItems.length === 0) return undefined;
+  const selectedBlockingRows = selectedRows.filter((row) => !isCoreContextOnlySearchResult(row));
+  if (selectedBlockingRows.length > 0) return undefined;
   const conflictRecord = hardConflictItems.find((row) => row.lattice?.category === "conflict-record");
   const scope =
     hardConflictItems
       .map((row) => normalizeText(row.lattice?.scope))
       .find(Boolean)
     ?? null;
-  const conflictingMemoryIds = Array.from(new Set(hardConflictItems.flatMap((row) => row.lattice?.conflictingMemoryIds ?? []))).slice(
-    0,
-    24,
-  );
+  const conflictingMemoryIds = Array.from(
+    new Set(
+      hardConflictItems.flatMap((row) => row.lattice?.conflictingMemoryIds ?? [])
+    )
+  ).slice(0, 24);
   return {
     blocked: true,
     useMode,
@@ -6825,6 +6851,575 @@ export function createMemoryService(options: MemoryServiceOptions) {
     return Array.from(new Map(matches.map((match) => [`${match.memoryId}|${match.kind}`, match])).values()).slice(0, 12);
   };
 
+  const memoryReviewCaseGetRequestSchema = z.object({
+    tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+    id: z.string().trim().min(1).max(160),
+  });
+
+  const isOpenReviewCaseStatus = (status: MemoryReviewCase["status"]): boolean =>
+    status === "open" || status === "in-progress";
+
+  const deriveReviewCaseTypeForRow = (
+    row: Pick<MemoryRecord, "metadata"> & { lattice?: MemorySearchResult["lattice"] }
+  ): MemoryReviewCase["caseType"] | null => {
+    const metadata = normalizeMetadata(row.metadata);
+    const explicit = normalizeText(metadata.memoryReviewCaseType || metadata.reviewCaseType || metadata.emberPromotionCaseType);
+    if (explicit === "resolve-conflict" || explicit === "revalidate" || explicit === "retire" || explicit === "promote-guidance") {
+      return explicit;
+    }
+    const reviewAction = row.lattice?.reviewAction;
+    if (reviewAction === "resolve-conflict") return "resolve-conflict";
+    if (reviewAction === "revalidate") return "revalidate";
+    if (reviewAction === "retire") return "retire";
+    return null;
+  };
+
+  const recommendedActionsForCaseType = (caseType: MemoryReviewCase["caseType"]): MemoryReviewCaseAction[] => {
+    switch (caseType) {
+      case "resolve-conflict":
+        return ["verify_now", "accept_winner", "keep_quarantined", "dismiss_case"];
+      case "retire":
+        return ["retire_memory", "verify_now", "dismiss_case"];
+      case "promote-guidance":
+        return ["promote_guidance", "reject_promotion", "verify_now"];
+      case "revalidate":
+      default:
+        return ["verify_now", "keep_quarantined", "dismiss_case"];
+    }
+  };
+
+  const verifierKindForCase = (
+    caseType: MemoryReviewCase["caseType"],
+    metadata: Record<string, unknown>,
+    scope: string | null,
+  ): MemoryVerifierKind => {
+    const explicit = normalizeText(metadata.preferredVerifierKind || metadata.verifierKind || metadata.memoryVerifierKind);
+    if (
+      explicit === "repo-head" ||
+      explicit === "runtime-check" ||
+      explicit === "startup-instruction" ||
+      explicit === "support-policy" ||
+      explicit === "support-outcome" ||
+      explicit === "operator-attested"
+    ) {
+      return explicit;
+    }
+    if (caseType === "promote-guidance") return "support-outcome";
+    if (caseType === "resolve-conflict" && scope?.startsWith("subject:")) return "repo-head";
+    if (caseType === "revalidate" && scope?.startsWith("subject:")) return "startup-instruction";
+    if (caseType === "retire") return "operator-attested";
+    return "repo-head";
+  };
+
+  const buildReviewCaseId = (input: {
+    tenantId: string | null;
+    caseType: MemoryReviewCase["caseType"];
+    scope: string | null;
+    linkedMemoryIds: string[];
+  }): string =>
+    `review:${createHash("sha1")
+      .update(
+        [
+          input.tenantId ?? "none",
+          input.caseType,
+          input.scope ?? "",
+          [...input.linkedMemoryIds].sort((left, right) => left.localeCompare(right)).join("|"),
+        ].join("|"),
+      )
+      .digest("hex")
+      .slice(0, 24)}`;
+
+  const mergeEvidenceRows = (existing: MemoryEvidence[] | undefined, additions: MemoryEvidence[] = []): MemoryEvidence[] => {
+    const merged = new Map<string, MemoryEvidence>();
+    for (const entry of [...(existing ?? []), ...additions]) {
+      const evidenceId = normalizeText(entry?.evidenceId);
+      if (!evidenceId) continue;
+      merged.set(evidenceId, {
+        ...entry,
+        evidenceId,
+        supportsMemoryIds: Array.from(
+          new Set((entry.supportsMemoryIds ?? []).map((value) => normalizeText(value)).filter(Boolean))
+        ).slice(0, 32),
+        metadata: normalizeMetadata(entry.metadata),
+      });
+    }
+    return Array.from(merged.values()).slice(0, 24);
+  };
+
+  const reindexRecordSignals = async (row: MemoryRecord): Promise<void> => {
+    if (!options.store.indexSignals) return;
+    try {
+      await options.store.indexSignals(
+        deriveSignalIndex({
+          tenantId: row.tenantId,
+          memoryId: row.id,
+          content: row.content,
+          metadata: normalizeMetadata(row.metadata),
+          source: row.source,
+          tags: row.tags,
+        }),
+      );
+    } catch {
+      // best-effort review indexing
+    }
+  };
+
+  const updateMemoryLifecycle = async (input: {
+    record: MemoryRecord;
+    actorId: string | null;
+    reason: string;
+    status?: MemoryStatus;
+    memoryLayer?: MemoryLayer;
+    memoryType?: MemoryType;
+    truthStatus?: MemoryTruthStatus;
+    freshnessStatus?: MemoryFreshnessStatus;
+    operationalStatus?: MemoryOperationalStatus;
+    authorityClass?: MemoryAuthorityClass;
+    reviewAction?: MemoryReviewAction;
+    reviewPriority?: number;
+    reviewReasons?: string[];
+    conflictSeverity?: MemoryConflictSeverity;
+    conflictKinds?: string[];
+    conflictingMemoryIds?: string[];
+    contradictionCount?: number;
+    nextReviewAt?: string | null;
+    freshnessExpiresAt?: string | null;
+    lastVerifiedAt?: string | null;
+    metadata?: Record<string, unknown>;
+    evidenceAdditions?: MemoryEvidence[];
+    clientRequestId?: string | null;
+  }): Promise<MemoryRecord> => {
+    const previous = withMemoryLatticeRecord(input.record);
+    const previousLattice = previous.lattice!;
+    const nextStatus = input.status ?? previous.status;
+    const nextLayer = input.memoryLayer ?? previous.memoryLayer;
+    const nextType = input.memoryType ?? previous.memoryType;
+    const at = new Date().toISOString();
+    const nextEvidence = mergeEvidenceRows(previous.evidence, input.evidenceAdditions);
+    const metadataSeed = normalizeMetadata({
+      ...normalizeMetadata(previous.metadata),
+      ...(input.metadata ?? {}),
+      memoryLayer: nextLayer,
+      memoryCategory: input.metadata?.memoryCategory ?? previousLattice.category,
+      truthStatus: input.truthStatus ?? previousLattice.truthStatus,
+      freshnessStatus: input.freshnessStatus ?? previousLattice.freshnessStatus,
+      operationalStatus: input.operationalStatus ?? previousLattice.operationalStatus,
+      authorityClass: input.authorityClass ?? previousLattice.authorityClass,
+      sourceClass: input.metadata?.sourceClass ?? previousLattice.sourceClass ?? undefined,
+      lastVerifiedAt: input.lastVerifiedAt ?? previousLattice.lastVerifiedAt ?? undefined,
+      nextReviewAt: input.nextReviewAt ?? previousLattice.nextReviewAt ?? undefined,
+      freshnessExpiresAt: input.freshnessExpiresAt ?? previousLattice.freshnessExpiresAt ?? undefined,
+      contradictionCount:
+        input.contradictionCount ??
+        (input.conflictingMemoryIds ? input.conflictingMemoryIds.length : previousLattice.contradictionCount),
+      conflictSeverity: input.conflictSeverity ?? previousLattice.conflictSeverity,
+      conflictKinds: input.conflictKinds ?? previousLattice.conflictKinds,
+      conflictingMemoryIds: input.conflictingMemoryIds ?? previousLattice.conflictingMemoryIds,
+      reviewAction: input.reviewAction ?? previousLattice.reviewAction,
+      reviewPriority: input.reviewPriority ?? previousLattice.reviewPriority,
+      reviewReasons: input.reviewReasons ?? previousLattice.reviewReasons,
+    });
+    const nextLattice = buildMemoryLatticeSnapshot({
+      source: previous.source,
+      content: previous.content,
+      tags: previous.tags,
+      metadata: metadataSeed,
+      evidence: nextEvidence,
+      status: nextStatus,
+      memoryType: nextType,
+      memoryLayer: nextLayer,
+      sourceConfidence: previous.sourceConfidence,
+      importance: previous.importance,
+      occurredAt: previous.occurredAt,
+      createdAt: previous.createdAt,
+    });
+    const transitionEvents = buildMemoryTransitionEvents({
+      memoryId: previous.id,
+      previous,
+      nextStatus,
+      nextLattice,
+      evidence: nextEvidence,
+      clientRequestId: input.clientRequestId ?? null,
+      actor: input.actorId,
+      reason: input.reason,
+      at,
+    });
+    const metadata = redactSensitiveMetadata({
+      ...metadataSeed,
+      memoryCategory: nextLattice.category,
+      truthStatus: nextLattice.truthStatus,
+      freshnessStatus: nextLattice.freshnessStatus,
+      operationalStatus: nextLattice.operationalStatus,
+      authorityClass: nextLattice.authorityClass,
+      sourceClass: nextLattice.sourceClass,
+      lastVerifiedAt: nextLattice.lastVerifiedAt,
+      nextReviewAt: nextLattice.nextReviewAt,
+      freshnessExpiresAt: nextLattice.freshnessExpiresAt,
+      folkloreRisk: nextLattice.folkloreRisk,
+      contradictionCount: nextLattice.contradictionCount,
+      conflictSeverity: nextLattice.conflictSeverity,
+      conflictKinds: nextLattice.conflictKinds,
+      conflictingMemoryIds: nextLattice.conflictingMemoryIds,
+      evidenceStrength: nextLattice.evidenceStrength,
+      evidenceCount: nextEvidence.length,
+      hasEvidence: nextLattice.hasEvidence,
+      scope: nextLattice.scope,
+      redactionState: nextLattice.redactionState,
+      shadowMcpRisk: nextLattice.shadowMcpRisk,
+      reviewAction: nextLattice.reviewAction,
+      reviewPriority: nextLattice.reviewPriority,
+      reviewReasons: nextLattice.reviewReasons,
+      transitionsEmitted: transitionEvents.map((entry) => entry.transitionId),
+      memoryLattice: nextLattice,
+    });
+    const stored = await options.store.upsert({
+      id: previous.id,
+      tenantId: previous.tenantId,
+      agentId: previous.agentId,
+      runId: previous.runId,
+      content: previous.content,
+      source: previous.source,
+      tags: previous.tags,
+      metadata: {
+        ...metadata,
+        status: nextStatus,
+        memoryType: nextType,
+        memoryLayer: nextLayer,
+        sourceConfidence: previous.sourceConfidence,
+        importance: previous.importance,
+      },
+      embedding: null,
+      occurredAt: previous.occurredAt,
+      clientRequestId: input.clientRequestId ?? null,
+      status: nextStatus,
+      memoryType: nextType,
+      memoryLayer: nextLayer,
+      sourceConfidence: previous.sourceConfidence,
+      importance: previous.importance,
+      contextualizedContent: buildContextualizedContent({
+        source: previous.source,
+        agentId: previous.agentId,
+        runId: previous.runId,
+        tags: previous.tags,
+        content: previous.content,
+        metadata,
+      }),
+      fingerprint: buildFingerprint({
+        tenantId: previous.tenantId,
+        source: previous.source,
+        content: previous.content,
+        tags: previous.tags,
+      }),
+      embeddingModel: null,
+      embeddingVersion: 1,
+      evidence: nextEvidence,
+      transitionEvents,
+    });
+    const withLattice = withMemoryLatticeRecord(stored);
+    await reindexRecordSignals(withLattice);
+    return withLattice;
+  };
+
+  const upsertReviewCase = async (input: {
+    tenantId: string | null;
+    caseType: MemoryReviewCase["caseType"];
+    scope: string | null;
+    primaryMemoryId: string | null;
+    linkedMemoryIds: string[];
+    priority: number;
+    reasonCodes: string[];
+    recommendedActions?: MemoryReviewCaseAction[];
+    owner?: string | null;
+    resolution?: string | null;
+    lastVerificationRunId?: string | null;
+    status?: MemoryReviewCase["status"];
+    metadata?: Record<string, unknown>;
+  }): Promise<MemoryReviewCase | null> => {
+    if (!options.store.upsertReviewCase || !options.store.listReviewCases) return null;
+    const linkedMemoryIds = Array.from(new Set(input.linkedMemoryIds.map((value) => normalizeText(value)).filter(Boolean))).slice(0, 64);
+    if (linkedMemoryIds.length === 0 && !input.scope) return null;
+    const existing = (
+      await options.store.listReviewCases({
+        tenantId: input.tenantId,
+        statuses: ["open", "in-progress"],
+        caseTypes: [input.caseType],
+        linkedMemoryIds,
+        limit: 8,
+      })
+    ).find((row) => !input.scope || row.scope === input.scope || row.primaryMemoryId === input.primaryMemoryId);
+    const id = existing?.id ?? buildReviewCaseId({
+      tenantId: input.tenantId,
+      caseType: input.caseType,
+      scope: input.scope,
+      linkedMemoryIds,
+    });
+    return options.store.upsertReviewCase({
+      id,
+      tenantId: input.tenantId,
+      caseType: input.caseType,
+      status: input.status ?? existing?.status ?? "open",
+      scope: input.scope,
+      primaryMemoryId: input.primaryMemoryId,
+      linkedMemoryIds: Array.from(new Set([...(existing?.linkedMemoryIds ?? []), ...linkedMemoryIds])).slice(0, 64),
+      priority: Math.max(input.priority, existing?.priority ?? 0),
+      reasonCodes: Array.from(new Set([...(existing?.reasonCodes ?? []), ...input.reasonCodes])).slice(0, 24),
+      recommendedActions: input.recommendedActions ?? existing?.recommendedActions ?? recommendedActionsForCaseType(input.caseType),
+      owner: input.owner ?? existing?.owner ?? null,
+      resolution: input.resolution ?? existing?.resolution ?? null,
+      lastVerificationRunId: input.lastVerificationRunId ?? existing?.lastVerificationRunId ?? null,
+      openedAt: existing?.openedAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      resolvedAt: input.status === "resolved" || input.status === "dismissed" ? new Date().toISOString() : null,
+      metadata: {
+        ...(existing?.metadata ?? {}),
+        ...(input.metadata ?? {}),
+      },
+    });
+  };
+
+  const buildVerificationEvidence = (input: {
+    caseId: string | null;
+    runId: string;
+    targetMemoryId: string | null;
+    verifierKind: MemoryVerifierKind;
+    summary: string;
+    actorId: string | null;
+  }): MemoryEvidence => {
+    const capturedAt = new Date().toISOString();
+    const sourceClass: MemorySourceClass =
+      input.verifierKind === "runtime-check"
+        ? "live-check"
+        : input.verifierKind === "repo-head" || input.verifierKind === "startup-instruction"
+          ? "repo-file"
+          : input.verifierKind === "support-policy"
+            ? "policy"
+            : input.verifierKind === "support-outcome"
+              ? "telemetry"
+              : "human";
+    return {
+      evidenceId: `evidence:verify:${createHash("sha1")
+        .update([input.runId, input.caseId ?? "", input.targetMemoryId ?? "", input.verifierKind].join("|"))
+        .digest("hex")
+        .slice(0, 24)}`,
+      sourceClass,
+      sourceUri: null,
+      sourcePath: null,
+      capturedAt,
+      verifiedAt: capturedAt,
+      verifier: input.actorId ? `memory-review:${input.actorId}` : `memory-review:${input.verifierKind}`,
+      redactionState: "none",
+      hash: null,
+      supportsMemoryIds: input.targetMemoryId ? [input.targetMemoryId] : [],
+      metadata: {
+        reviewCaseId: input.caseId ?? null,
+        verifierKind: input.verifierKind,
+        summary: input.summary,
+      },
+    };
+  };
+
+  const executeVerificationRun = async (input: {
+    reviewCase: MemoryReviewCase;
+    targetMemoryId: string | null;
+    actorId: string | null;
+    trigger: MemoryVerificationTrigger;
+    verifierKind?: MemoryVerifierKind;
+  }): Promise<{ run: MemoryVerificationRun | null; target: MemoryRecord | null }> => {
+    const targetId = normalizeText(input.targetMemoryId) || input.reviewCase.primaryMemoryId || null;
+    const verifierKind = input.verifierKind ?? verifierKindForCase(input.reviewCase.caseType, input.reviewCase.metadata, input.reviewCase.scope);
+    const runId = `verify:${createHash("sha1")
+      .update([input.reviewCase.id, targetId ?? "", verifierKind, input.trigger, Date.now().toString()].join("|"))
+      .digest("hex")
+      .slice(0, 24)}`;
+    const target =
+      targetId
+        ? ((await options.store.getByIds({ tenantId: input.reviewCase.tenantId, ids: [targetId] }))[0] ?? null)
+        : null;
+    const targetWithLattice = target ? withMemoryLatticeRecord(target) : null;
+    let resultStatus: MemoryVerificationRun["resultStatus"] = "needs-review";
+    let resultSummary = "Verification adapter could not produce an authoritative pass yet.";
+    if (!targetWithLattice) {
+      resultStatus = "failed";
+      resultSummary = "Target memory is missing and cannot be verified.";
+    } else if (verifierKind === "operator-attested") {
+      resultStatus = "passed";
+      resultSummary = "Operator attestation recorded for this memory review case.";
+    } else if (input.reviewCase.caseType === "retire" && ["deprecated", "archived", "retired"].includes(targetWithLattice.lattice!.operationalStatus)) {
+      resultStatus = "passed";
+      resultSummary = "Target memory is already out of the active operational set.";
+    } else if (targetWithLattice.lattice!.conflictSeverity === "hard" || targetWithLattice.lattice!.operationalStatus === "quarantined") {
+      resultStatus = input.reviewCase.caseType === "resolve-conflict" ? "failed" : "needs-review";
+      resultSummary = "Target memory remains contested or quarantined and cannot be auto-verified.";
+    } else if (targetWithLattice.lattice!.freshnessStatus === "stale" || targetWithLattice.lattice!.freshnessStatus === "revalidation-required") {
+      resultStatus = "needs-review";
+      resultSummary = "Target memory is stale and needs a stronger source check before trust can be restored.";
+    } else if (
+      (targetWithLattice.lattice!.truthStatus === "verified" || targetWithLattice.lattice!.truthStatus === "trusted")
+      && targetWithLattice.lattice!.hasEvidence
+    ) {
+      resultStatus = "passed";
+      resultSummary = `Verification adapter ${verifierKind} found the target memory already evidence-backed and within freshness policy.`;
+    }
+    const evidence = resultStatus === "passed"
+      ? [buildVerificationEvidence({
+          caseId: input.reviewCase.id,
+          runId,
+          targetMemoryId: targetId,
+          verifierKind,
+          summary: resultSummary,
+          actorId: input.actorId,
+        })]
+      : [];
+    const run = options.store.upsertVerificationRun
+      ? await options.store.upsertVerificationRun({
+          id: runId,
+          tenantId: input.reviewCase.tenantId,
+          caseId: input.reviewCase.id,
+          targetMemoryId: targetId,
+          verifierKind,
+          trigger: input.trigger,
+          requestSnapshot: {
+            reviewCaseId: input.reviewCase.id,
+            scope: input.reviewCase.scope,
+            caseType: input.reviewCase.caseType,
+            linkedMemoryIds: input.reviewCase.linkedMemoryIds,
+          },
+          resultStatus,
+          resultSummary,
+          evidenceIds: evidence.map((entry) => entry.evidenceId),
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          metadata: {
+            actorId: input.actorId,
+          },
+        })
+      : null;
+    if (!targetWithLattice) {
+      return { run, target: null };
+    }
+    if (resultStatus === "passed") {
+      const reviewWindowDays = reviewWindowDaysForCategory(targetWithLattice.lattice!.category);
+      const freshnessAnchor = new Date();
+      const nextReviewAt = new Date(freshnessAnchor.getTime() + reviewWindowDays * 24 * 60 * 60 * 1000).toISOString();
+      const verifiedTarget = await updateMemoryLifecycle({
+        record: targetWithLattice,
+        actorId: input.actorId,
+        reason: `verification:${verifierKind}:${input.trigger}`,
+        truthStatus:
+          targetWithLattice.lattice!.truthStatus === "trusted" ? "trusted" : "verified",
+        freshnessStatus: "fresh",
+        operationalStatus:
+          input.reviewCase.caseType === "retire" ? "retired" : targetWithLattice.lattice!.operationalStatus === "retired" ? "retired" : "active",
+        reviewAction: input.reviewCase.caseType === "resolve-conflict" ? targetWithLattice.lattice!.reviewAction : "none",
+        reviewPriority: input.reviewCase.caseType === "resolve-conflict" ? targetWithLattice.lattice!.reviewPriority : 0,
+        reviewReasons: input.reviewCase.caseType === "resolve-conflict" ? targetWithLattice.lattice!.reviewReasons : [],
+        lastVerifiedAt: freshnessAnchor.toISOString(),
+        nextReviewAt,
+        freshnessExpiresAt: nextReviewAt,
+        evidenceAdditions: evidence,
+        metadata: {
+          lastVerificationRunId: run?.id ?? null,
+          lastVerificationSummary: resultSummary,
+        },
+        clientRequestId: run?.id ?? null,
+      });
+      return { run, target: verifiedTarget };
+    }
+    const downgradedTarget = await updateMemoryLifecycle({
+      record: targetWithLattice,
+      actorId: input.actorId,
+      reason: `verification:${verifierKind}:${input.trigger}:${resultStatus}`,
+      freshnessStatus: resultStatus === "failed" ? "stale" : "revalidation-required",
+      operationalStatus:
+        input.reviewCase.caseType === "resolve-conflict" || resultStatus === "failed"
+          ? "quarantined"
+          : targetWithLattice.lattice!.operationalStatus,
+      truthStatus:
+        input.reviewCase.caseType === "resolve-conflict" && resultStatus === "failed"
+          ? "contradicted"
+          : targetWithLattice.lattice!.truthStatus,
+      reviewAction: input.reviewCase.caseType === "resolve-conflict" ? "resolve-conflict" : "revalidate",
+      reviewPriority: Math.max(targetWithLattice.lattice!.reviewPriority, 0.86),
+      reviewReasons: Array.from(new Set([...(targetWithLattice.lattice!.reviewReasons ?? []), resultSummary])).slice(0, 8),
+      metadata: {
+        lastVerificationRunId: run?.id ?? null,
+        lastVerificationSummary: resultSummary,
+      },
+      clientRequestId: run?.id ?? null,
+    });
+    return { run, target: downgradedTarget };
+  };
+
+  const ensureReviewCaseForRows = async (input: {
+    tenantId: string | null;
+    rows: Array<MemoryRecord | MemorySearchResult>;
+    useMode?: MemoryUseMode;
+    trigger?: MemoryVerificationTrigger;
+  }): Promise<MemoryReviewCase | null> => {
+    const rowsWithLattice = input.rows
+      .map((row) => ("score" in row ? withMemoryLatticeSearchResult(row) : withMemoryLatticeRecord(row)))
+      .filter((row) => row.lattice && row.lattice.reviewAction !== "none");
+    if (rowsWithLattice.length === 0) return null;
+    const primary = rowsWithLattice[0];
+    const hardConflict = rowsWithLattice.some((row) => row.lattice?.conflictSeverity === "hard");
+    const caseType =
+      hardConflict ? "resolve-conflict" : deriveReviewCaseTypeForRow(primary) ?? (primary.lattice?.reviewAction === "retire" ? "retire" : "revalidate");
+    const linkedMemoryIds = Array.from(
+      new Set(
+        rowsWithLattice.flatMap((row) => [
+          row.id,
+          ...(row.lattice?.conflictingMemoryIds ?? []),
+        ]),
+      ),
+    ).slice(0, 64);
+    const reviewCase = await upsertReviewCase({
+      tenantId: input.tenantId,
+      caseType,
+      scope: primary.lattice?.scope ?? null,
+      primaryMemoryId: primary.id,
+      linkedMemoryIds,
+      priority: Math.max(...rowsWithLattice.map((row) => row.lattice?.reviewPriority ?? 0.5)),
+      reasonCodes: Array.from(new Set(rowsWithLattice.flatMap((row) => row.lattice?.reviewReasons ?? []))).slice(0, 24),
+      recommendedActions: recommendedActionsForCaseType(caseType),
+      metadata: {
+        useMode: input.useMode ?? null,
+        trigger: input.trigger ?? null,
+      },
+    });
+    if (
+      reviewCase &&
+      caseType === "resolve-conflict" &&
+      input.trigger &&
+      reviewCase.lastVerificationRunId == null
+    ) {
+      const verification = await executeVerificationRun({
+        reviewCase,
+        targetMemoryId: primary.id,
+        actorId: "memory-review-system",
+        trigger: input.trigger,
+      });
+      if (verification.run?.id) {
+        return upsertReviewCase({
+          tenantId: reviewCase.tenantId,
+          caseType: reviewCase.caseType,
+          scope: reviewCase.scope,
+          primaryMemoryId: reviewCase.primaryMemoryId,
+          linkedMemoryIds: reviewCase.linkedMemoryIds,
+          priority: reviewCase.priority,
+          reasonCodes: reviewCase.reasonCodes,
+          recommendedActions: reviewCase.recommendedActions,
+          lastVerificationRunId: verification.run.id,
+          metadata: {
+            ...reviewCase.metadata,
+            lastVerificationSummary: verification.run.resultSummary,
+            lastVerificationResultStatus: verification.run.resultStatus,
+          },
+        });
+      }
+    }
+    return reviewCase;
+  };
+
   const capture = async (
     raw: unknown,
     captureOptions?: { bypassRunWriteBurstLimit?: boolean; skipSignalIndexing?: boolean; skipConflictDetection?: boolean }
@@ -7502,7 +8097,16 @@ export function createMemoryService(options: MemoryServiceOptions) {
       );
     }
 
-    return withMemoryLatticeRecord(stored);
+    const storedWithLattice = withMemoryLatticeRecord(stored);
+    if (storedWithLattice.lattice?.reviewAction && storedWithLattice.lattice.reviewAction !== "none") {
+      await ensureReviewCaseForRows({
+        tenantId: stored.tenantId,
+        rows: [storedWithLattice],
+        trigger: exactConflictMatches.length > 0 ? "capture-conflict" : "manual",
+      });
+    }
+
+    return storedWithLattice;
   };
 
   const search = async (raw: unknown): Promise<MemorySearchResult[]> => {
@@ -7866,6 +8470,14 @@ export function createMemoryService(options: MemoryServiceOptions) {
         (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
       );
       let finalized = finalizeSearchRows(scoped, retrievalPolicy);
+      if ((parsed.useMode === "operational" || parsed.useMode === "safety-critical") && finalized.length > 0) {
+        await ensureReviewCaseForRows({
+          tenantId,
+          rows: finalized.filter((row) => row.lattice?.reviewAction && row.lattice.reviewAction !== "none"),
+          useMode: parsed.useMode,
+          trigger: parsed.useMode === "safety-critical" ? "safety-read" : "operational-read",
+        });
+      }
       if (!shouldOverfetchForPolicy(retrievalPolicy) || finalized.length >= parsed.limit) {
         return finalized;
       }
@@ -7901,6 +8513,14 @@ export function createMemoryService(options: MemoryServiceOptions) {
         applyConflictShadowToSearchRows(mergedRows, [...mergedRows, ...conflictCompanions], Date.now()),
         retrievalPolicy
       );
+      if ((parsed.useMode === "operational" || parsed.useMode === "safety-critical") && finalized.length > 0) {
+        await ensureReviewCaseForRows({
+          tenantId,
+          rows: finalized.filter((row) => row.lattice?.reviewAction && row.lattice.reviewAction !== "none"),
+          useMode: parsed.useMode,
+          trigger: parsed.useMode === "safety-critical" ? "safety-read" : "operational-read",
+        });
+      }
       return finalized;
     };
     if (!options.store.related) {
@@ -8125,6 +8745,362 @@ export function createMemoryService(options: MemoryServiceOptions) {
             : [],
       },
     };
+  };
+
+  const listReviewCases = async (raw: unknown): Promise<MemoryReviewCase[]> => {
+    if (!options.store.listReviewCases) return [];
+    let parsed: MemoryReviewCaseListRequest;
+    try {
+      parsed = memoryReviewCaseListRequestSchema.parse(raw ?? {});
+    } catch (error) {
+      throw normalizeError(error);
+    }
+    return options.store.listReviewCases({
+      tenantId: normalizeTenant(parsed.tenantId),
+      statuses: parsed.statuses,
+      caseTypes: parsed.caseTypes,
+      scopePrefixes: parsed.scopePrefixes,
+      linkedMemoryIds: parsed.linkedMemoryIds,
+      limit: parsed.limit,
+    });
+  };
+
+  const getReviewCase = async (raw: unknown): Promise<MemoryReviewCase | null> => {
+    if (!options.store.getReviewCaseById) return null;
+    let parsed: z.infer<typeof memoryReviewCaseGetRequestSchema>;
+    try {
+      parsed = memoryReviewCaseGetRequestSchema.parse(raw ?? {});
+    } catch (error) {
+      throw normalizeError(error);
+    }
+    return options.store.getReviewCaseById({
+      tenantId: normalizeTenant(parsed.tenantId),
+      id: parsed.id,
+    });
+  };
+
+  const listVerificationRuns = async (
+    raw: unknown,
+  ): Promise<MemoryVerificationRun[]> => {
+    if (!options.store.listVerificationRuns) return [];
+    let parsed: { tenantId?: string | null; caseId?: string | null; targetMemoryId?: string | null; limit?: number };
+    try {
+      parsed = z
+        .object({
+          tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+          caseId: z.string().trim().min(1).max(160).nullable().optional(),
+          targetMemoryId: z.string().trim().min(1).max(128).nullable().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        })
+        .parse(raw ?? {});
+    } catch (error) {
+      throw normalizeError(error);
+    }
+    return options.store.listVerificationRuns({
+      tenantId: parsed.tenantId === undefined ? undefined : normalizeTenant(parsed.tenantId),
+      caseId: parsed.caseId === undefined ? undefined : normalizeText(parsed.caseId) || null,
+      targetMemoryId: parsed.targetMemoryId === undefined ? undefined : normalizeText(parsed.targetMemoryId) || null,
+      limit: parsed.limit,
+    });
+  };
+
+  const reviewCaseAction = async (
+    raw: unknown,
+  ): Promise<{ reviewCase: MemoryReviewCase | null; verificationRun: MemoryVerificationRun | null; updatedMemoryIds: string[] }> => {
+    if (!options.store.getReviewCaseById || !options.store.upsertReviewCase) {
+      throw new MemoryValidationError("Memory review workflow is not available on this store adapter.");
+    }
+    let parsed: MemoryReviewCaseActionRequest & { id: string; tenantId?: string | null };
+    try {
+      parsed = z
+        .object({
+          id: z.string().trim().min(1).max(160),
+        })
+        .merge(memoryReviewCaseActionRequestSchema)
+        .parse(raw ?? {});
+    } catch (error) {
+      throw normalizeError(error);
+    }
+    const tenantId = normalizeTenant(parsed.tenantId);
+    const reviewCase = await options.store.getReviewCaseById({
+      tenantId,
+      id: parsed.id,
+    });
+    if (!reviewCase) {
+      throw new MemoryValidationError(`Memory review case ${parsed.id} was not found.`);
+    }
+
+    const actorId = normalizeText(parsed.actorId) || "memory-review-operator";
+    const selectedMemoryId = normalizeText(parsed.selectedMemoryId) || reviewCase.primaryMemoryId || null;
+    const linkedIds = Array.from(new Set(reviewCase.linkedMemoryIds.map((value) => normalizeText(value)).filter(Boolean))).slice(0, 64);
+    const linkedRowsRaw = linkedIds.length > 0
+      ? await options.store.getByIds({
+          tenantId: reviewCase.tenantId,
+          ids: linkedIds,
+        })
+      : [];
+    const linkedRows = linkedRowsRaw.map((row) => withMemoryLatticeRecord(row));
+    const rowById = new Map(linkedRows.map((row) => [row.id, row]));
+    let verificationRun: MemoryVerificationRun | null = null;
+    const updatedMemoryIds = new Set<string>();
+
+    const resolveCase = async (status: MemoryReviewCase["status"], resolution: string, overrides: Partial<MemoryReviewCase> = {}) =>
+      upsertReviewCase({
+        tenantId: reviewCase.tenantId,
+        caseType: reviewCase.caseType,
+        scope: reviewCase.scope,
+        primaryMemoryId: reviewCase.primaryMemoryId,
+        linkedMemoryIds: reviewCase.linkedMemoryIds,
+        priority: reviewCase.priority,
+        reasonCodes: reviewCase.reasonCodes,
+        recommendedActions: reviewCase.recommendedActions,
+        owner: overrides.owner ?? actorId,
+        resolution,
+        lastVerificationRunId: overrides.lastVerificationRunId ?? reviewCase.lastVerificationRunId ?? verificationRun?.id ?? null,
+        status,
+        metadata: {
+          ...reviewCase.metadata,
+          actorId,
+          selectedMemoryId,
+          ...(overrides.metadata ?? {}),
+        },
+      });
+
+    switch (parsed.action) {
+      case "verify_now": {
+        const verification = await executeVerificationRun({
+          reviewCase,
+          targetMemoryId: selectedMemoryId,
+          actorId,
+          trigger: "review-action",
+        });
+        verificationRun = verification.run;
+        if (verification.target) updatedMemoryIds.add(verification.target.id);
+        const nextStatus =
+          verification.run?.resultStatus === "passed" && (reviewCase.caseType === "revalidate" || reviewCase.caseType === "retire")
+            ? "resolved"
+            : "in-progress";
+        return {
+          reviewCase: await resolveCase(
+            nextStatus,
+            verification.run?.resultSummary ?? "Verification requested.",
+            { lastVerificationRunId: verification.run?.id ?? reviewCase.lastVerificationRunId },
+          ),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+      }
+      case "accept_winner": {
+        if (!selectedMemoryId || !rowById.has(selectedMemoryId)) {
+          throw new MemoryValidationError("accept_winner requires selectedMemoryId to be one of the linked memories.");
+        }
+        const operatorRun = await executeVerificationRun({
+          reviewCase,
+          targetMemoryId: selectedMemoryId,
+          actorId,
+          trigger: "review-action",
+          verifierKind: "operator-attested",
+        });
+        verificationRun = operatorRun.run;
+        for (const row of linkedRows) {
+          if (row.id === selectedMemoryId) {
+            await updateMemoryLifecycle({
+              record: row,
+              actorId,
+              reason: `review-case:${reviewCase.id}:accept-winner`,
+              truthStatus: row.lattice?.truthStatus === "trusted" ? "trusted" : "verified",
+              freshnessStatus: "fresh",
+              operationalStatus: "active",
+              reviewAction: "none",
+              reviewPriority: 0,
+              reviewReasons: [],
+              conflictSeverity: "none",
+              conflictKinds: [],
+              conflictingMemoryIds: [],
+              contradictionCount: 0,
+              lastVerifiedAt: new Date().toISOString(),
+              evidenceAdditions: operatorRun.run?.resultStatus === "passed" ? [
+                buildVerificationEvidence({
+                  caseId: reviewCase.id,
+                  runId: operatorRun.run.id,
+                  targetMemoryId: row.id,
+                  verifierKind: "operator-attested",
+                  summary: operatorRun.run.resultSummary ?? "Conflict winner accepted by operator.",
+                  actorId,
+                }),
+              ] : [],
+              metadata: {
+                acceptedConflictWinner: true,
+                lastResolvedReviewCaseId: reviewCase.id,
+              },
+              clientRequestId: operatorRun.run?.id ?? null,
+            });
+          } else {
+            await updateMemoryLifecycle({
+              record: row,
+              actorId,
+              reason: `review-case:${reviewCase.id}:losing-claim`,
+              truthStatus: "contradicted",
+              freshnessStatus: row.lattice?.freshnessStatus ?? "aging",
+              operationalStatus: "quarantined",
+              reviewAction: "none",
+              reviewPriority: 0,
+              reviewReasons: [],
+              conflictSeverity: "soft",
+              metadata: {
+                rejectedByReviewCaseId: reviewCase.id,
+                winningMemoryId: selectedMemoryId,
+              },
+              clientRequestId: reviewCase.id,
+            });
+          }
+          updatedMemoryIds.add(row.id);
+        }
+        return {
+          reviewCase: await resolveCase("resolved", `Accepted ${selectedMemoryId} as the winning memory for this conflict.`, {
+            lastVerificationRunId: verificationRun?.id ?? reviewCase.lastVerificationRunId,
+          }),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+      }
+      case "keep_quarantined": {
+        for (const row of linkedRows) {
+          await updateMemoryLifecycle({
+            record: row,
+            actorId,
+            reason: `review-case:${reviewCase.id}:keep-quarantined`,
+            operationalStatus: "quarantined",
+            reviewAction: "none",
+            reviewPriority: 0,
+            reviewReasons: [],
+            metadata: {
+              quarantineHeldByReviewCaseId: reviewCase.id,
+            },
+            clientRequestId: reviewCase.id,
+          });
+          updatedMemoryIds.add(row.id);
+        }
+        return {
+          reviewCase: await resolveCase("resolved", "Kept linked memories quarantined after review."),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+      }
+      case "retire_memory": {
+        if (!selectedMemoryId || !rowById.has(selectedMemoryId)) {
+          throw new MemoryValidationError("retire_memory requires a selected or primary memory.");
+        }
+        const target = rowById.get(selectedMemoryId)!;
+        verificationRun = (
+          await executeVerificationRun({
+            reviewCase,
+            targetMemoryId: selectedMemoryId,
+            actorId,
+            trigger: "review-action",
+            verifierKind: "operator-attested",
+          })
+        ).run;
+        await updateMemoryLifecycle({
+          record: target,
+          actorId,
+          reason: `review-case:${reviewCase.id}:retire`,
+          status: "archived",
+          freshnessStatus: "stale",
+          operationalStatus: "retired",
+          reviewAction: "none",
+          reviewPriority: 0,
+          reviewReasons: [],
+          metadata: {
+            retiredByReviewCaseId: reviewCase.id,
+          },
+          clientRequestId: verificationRun?.id ?? reviewCase.id,
+        });
+        updatedMemoryIds.add(target.id);
+        return {
+          reviewCase: await resolveCase("resolved", `Retired memory ${target.id}.`, {
+            lastVerificationRunId: verificationRun?.id ?? reviewCase.lastVerificationRunId,
+          }),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+      }
+      case "promote_guidance": {
+        if (!selectedMemoryId || !rowById.has(selectedMemoryId)) {
+          throw new MemoryValidationError("promote_guidance requires a selected or primary memory.");
+        }
+        const target = rowById.get(selectedMemoryId)!;
+        verificationRun = (
+          await executeVerificationRun({
+            reviewCase,
+            targetMemoryId: selectedMemoryId,
+            actorId,
+            trigger: "review-action",
+            verifierKind: "operator-attested",
+          })
+        ).run;
+        await updateMemoryLifecycle({
+          record: target,
+          actorId,
+          reason: `review-case:${reviewCase.id}:promote-guidance`,
+          status: "accepted",
+          memoryLayer: "canonical",
+          memoryType: target.memoryType === "procedural" ? "procedural" : "semantic",
+          truthStatus: "trusted",
+          freshnessStatus: "fresh",
+          operationalStatus: "active",
+          reviewAction: "none",
+          reviewPriority: 0,
+          reviewReasons: [],
+          metadata: {
+            emberGuidanceApproved: true,
+            emberCanonicalPromotionAt: new Date().toISOString(),
+            emberCanonicalPromotionBy: actorId,
+            lastResolvedReviewCaseId: reviewCase.id,
+          },
+          clientRequestId: verificationRun?.id ?? reviewCase.id,
+        });
+        updatedMemoryIds.add(target.id);
+        return {
+          reviewCase: await resolveCase("resolved", `Promoted ${target.id} into canonical Ember guidance.`, {
+            lastVerificationRunId: verificationRun?.id ?? reviewCase.lastVerificationRunId,
+          }),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+      }
+      case "reject_promotion": {
+        if (selectedMemoryId && rowById.has(selectedMemoryId)) {
+          await updateMemoryLifecycle({
+            record: rowById.get(selectedMemoryId)!,
+            actorId,
+            reason: `review-case:${reviewCase.id}:reject-promotion`,
+            reviewAction: "none",
+            reviewPriority: 0,
+            reviewReasons: [],
+            metadata: {
+              emberGuidanceRejected: true,
+              emberGuidanceRejectedAt: new Date().toISOString(),
+              emberGuidanceRejectedBy: actorId,
+            },
+            clientRequestId: reviewCase.id,
+          });
+          updatedMemoryIds.add(selectedMemoryId);
+        }
+        return {
+          reviewCase: await resolveCase("resolved", "Rejected promotion into canonical Ember guidance."),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+      }
+      case "dismiss_case":
+      default:
+        return {
+          reviewCase: await resolveCase("dismissed", "Dismissed without additional memory changes."),
+          verificationRun,
+          updatedMemoryIds: [...updatedMemoryIds],
+        };
+    }
   };
 
   const loops = async (raw: unknown): Promise<MemoryLoopsResult> => {
@@ -10537,7 +11513,30 @@ export function createMemoryService(options: MemoryServiceOptions) {
       retrievalPolicy,
       temporalAnchorMs
     ).slice(0, parsed.maxItems);
-    const blockedByHardConflict = deriveBlockedByHardConflictDiagnostic(prefilteredRanked, parsed.useMode, finalSelected.length);
+    const blockedByHardConflictBase = deriveBlockedByHardConflictDiagnostic(prefilteredRanked, parsed.useMode, finalSelected);
+    let blockedByHardConflict = blockedByHardConflictBase;
+    if (parsed.useMode === "operational" || parsed.useMode === "safety-critical") {
+      const reviewRows = blockedByHardConflictBase
+        ? prefilteredRanked.filter((row) => row.lattice?.conflictSeverity === "hard")
+        : finalSelected.filter((row) => row.lattice?.reviewAction && row.lattice.reviewAction !== "none");
+      const reviewCase =
+        reviewRows.length > 0
+          ? await ensureReviewCaseForRows({
+              tenantId: tenantResolution.tenantId,
+              rows: reviewRows,
+              useMode: parsed.useMode,
+              trigger: parsed.useMode === "safety-critical" ? "safety-read" : "operational-read",
+            })
+          : null;
+      if (blockedByHardConflictBase && reviewCase) {
+        blockedByHardConflict = {
+          ...blockedByHardConflictBase,
+          reviewCaseId: reviewCase.id,
+          reasonCodes: reviewCase.reasonCodes,
+          recommendedActions: reviewCase.recommendedActions,
+        };
+      }
+    }
 
     if (query && finalSelected.length > 0) {
       writeContextFallbackCache(
@@ -10549,7 +11548,10 @@ export function createMemoryService(options: MemoryServiceOptions) {
 
     return {
       summary:
-        summarizeContextItems(finalSelected, 480)
+        (blockedByHardConflict
+          ? summarizeConflictBlockedContext(prefilteredRanked, parsed.useMode, 480)
+          : "")
+        || summarizeContextItems(finalSelected, 480)
         || summarizeConflictBlockedContext(prefilteredRanked, parsed.useMode, 480),
       items: finalSelected,
       budget: {
@@ -14066,6 +15068,10 @@ export function createMemoryService(options: MemoryServiceOptions) {
     recent,
     getByIds,
     stats,
+    listReviewCases,
+    getReviewCase,
+    listVerificationRuns,
+    reviewCaseAction,
     loops,
     incidentAction,
     incidentActionBatch,

@@ -248,3 +248,91 @@ test("memory ingest requires hmac secret when enabled", () => {
     }
   );
 });
+
+test("support email reply mode disabled does not require separate reply credentials", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+      STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "gmail",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: "reader-client-id",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: "reader-client-secret",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: "reader-refresh-token",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "disabled",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED, true);
+      assert.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE, "disabled");
+    }
+  );
+});
+
+test("support email separate reply mode requires reply credentials", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+      STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "gmail",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: "reader-client-id",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: "reader-client-secret",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: "reader-refresh-token",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "separate",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    },
+    () => {
+      assert.throws(() => readEnv(), /STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID|STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET|STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN/);
+    }
+  );
+});
+
+test("namecheap support email provider validates without Gmail OAuth fields", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+      STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "namecheap_private_email",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME: "support@monsoonfire.com",
+      STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD: "namecheap-password",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "disabled",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER, "namecheap_private_email");
+      assert.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME, "support@monsoonfire.com");
+    }
+  );
+});
+
+test("namecheap separate reply mode requires separate login credentials", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+      STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "namecheap_private_email",
+      STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME: "support@monsoonfire.com",
+      STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD: "namecheap-password",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "separate",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD: "",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+      STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    },
+    () => {
+      assert.throws(
+        () => readEnv(),
+        /STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME|STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD/
+      );
+    }
+  );
+});

@@ -1,5 +1,9 @@
 import type {
   MemoryEvidence,
+  MemoryReviewCase,
+  MemoryReviewCaseAction,
+  MemoryReviewCaseStatus,
+  MemoryReviewCaseType,
   MemoryLoopState,
   MemoryRecord,
   MemorySearchResult,
@@ -8,6 +12,10 @@ import type {
   MemoryStatus,
   MemoryTransitionEvent,
   MemoryType,
+  MemoryVerificationRun,
+  MemoryVerifierKind,
+  MemoryVerificationResultStatus,
+  MemoryVerificationTrigger,
   RetrievalMode,
 } from "./contracts";
 
@@ -73,6 +81,58 @@ export type MemoryStatsInput = {
   tenantId: string | null | undefined;
   layerAllowlist?: MemoryLayer[];
   layerDenylist?: MemoryLayer[];
+};
+
+export type MemoryReviewCaseUpsertInput = {
+  id: string;
+  tenantId: string | null;
+  caseType: MemoryReviewCaseType;
+  status: MemoryReviewCaseStatus;
+  scope: string | null;
+  primaryMemoryId: string | null;
+  linkedMemoryIds: string[];
+  priority: number;
+  reasonCodes: string[];
+  recommendedActions: MemoryReviewCaseAction[];
+  owner: string | null;
+  resolution: string | null;
+  lastVerificationRunId: string | null;
+  openedAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryReviewCaseListInput = {
+  tenantId: string | null | undefined;
+  statuses?: MemoryReviewCaseStatus[];
+  caseTypes?: MemoryReviewCaseType[];
+  scopePrefixes?: string[];
+  linkedMemoryIds?: string[];
+  limit?: number;
+};
+
+export type MemoryVerificationRunUpsertInput = {
+  id: string;
+  tenantId: string | null;
+  caseId: string | null;
+  targetMemoryId: string | null;
+  verifierKind: MemoryVerifierKind;
+  trigger: MemoryVerificationTrigger;
+  requestSnapshot: Record<string, unknown>;
+  resultStatus: MemoryVerificationResultStatus;
+  resultSummary: string | null;
+  evidenceIds: string[];
+  startedAt: string;
+  finishedAt: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryVerificationRunListInput = {
+  tenantId: string | null | undefined;
+  caseId?: string | null;
+  targetMemoryId?: string | null;
+  limit?: number;
 };
 
 export type MemoryEdgeUpsertInput = {
@@ -253,6 +313,11 @@ export type MemoryStoreAdapter = {
   recentCreated?: (input: MemoryRecentInput) => Promise<MemoryRecord[]>;
   getByIds: (input: MemoryGetByIdsInput) => Promise<MemoryRecord[]>;
   stats: (input: MemoryStatsInput) => Promise<MemoryStats>;
+  upsertReviewCase?: (input: MemoryReviewCaseUpsertInput) => Promise<MemoryReviewCase>;
+  getReviewCaseById?: (input: { tenantId: string | null | undefined; id: string }) => Promise<MemoryReviewCase | null>;
+  listReviewCases?: (input: MemoryReviewCaseListInput) => Promise<MemoryReviewCase[]>;
+  upsertVerificationRun?: (input: MemoryVerificationRunUpsertInput) => Promise<MemoryVerificationRun>;
+  listVerificationRuns?: (input: MemoryVerificationRunListInput) => Promise<MemoryVerificationRun[]>;
   indexSignals?: (input: MemoryIndexInput) => Promise<void>;
   hasSignalIndex?: (input: MemorySignalIndexPresenceInput) => Promise<MemorySignalIndexPresenceResult>;
   related?: (input: MemoryRelatedInput) => Promise<MemoryRelatedResult[]>;

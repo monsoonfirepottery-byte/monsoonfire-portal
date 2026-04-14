@@ -2299,6 +2299,8 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     archivedAt: parseReservationIsoDate(row.archivedAt),
     arrivalStatus: safeString(row.arrivalStatus) || null,
     arrivedAt: parseReservationIsoDate(row.arrivedAt),
+    crateDwellMs: readFiniteNumberOrNull(row.crateDwellMs),
+    crateCheckedOutAt: parseReservationIsoDate(row.crateCheckedOutAt),
     arrivalToken: safeString(row.arrivalToken) || null,
     arrivalTokenIssuedAt: parseReservationIsoDate(row.arrivalTokenIssuedAt),
     arrivalTokenExpiresAt: parseReservationIsoDate(row.arrivalTokenExpiresAt),
@@ -5554,6 +5556,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         lastReminderFailureAt: null,
         storageNoticeHistory: [],
         storageBilling: toReservationStorageBillingWrite(storageBillingSeed),
+        crateDwellMs: null,
+        crateCheckedOutAt: null,
         isArchived: false,
         archivedAt: null,
         createdByUid: ctx.uid,
@@ -6496,6 +6500,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         {
           arrivalStatus: "arrived",
           arrivedAt: row.arrivedAt ?? now,
+          crateDwellMs: 0,
+          crateCheckedOutAt: null,
           arrivalCheckIns: [...existingArrivalChecks, arrivalCheckRecord].slice(-40),
           stageHistory: stageHistory.slice(-120),
           stageStatus: {
@@ -6518,6 +6524,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         reservationId,
         arrivalStatus: "arrived",
         arrivedAt: row.arrivedAt ?? now,
+        crateDwellMs: 0,
+        crateCheckedOutAt: null,
         idempotentReplay: alreadyArrived && !note && !photoUrl && !photoPath,
       });
       return;
@@ -6791,6 +6799,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
           const pickupWindow = normalizeReservationPickupWindow(row.pickupWindow);
           const storageHistory = normalizeReservationStorageNoticeHistory(row.storageNoticeHistory);
+          const storedCrateDwellMs = readFiniteNumberOrNull(row.crateDwellMs);
+          const storedCrateCheckedOutAt = parseReservationIsoDate(row.crateCheckedOutAt);
           const updates: Record<string, unknown> = { updatedAt: now };
           let storageHistoryNext = [...storageHistory];
           let storageStatus = normalizeReservationStorageStatus(row.storageStatus) ?? "active";
@@ -6908,10 +6918,24 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
               storageStatus
             );
           } else if (action === "staff_mark_completed") {
+            if (pickupWindow.status === "completed" && !force) {
+              return {
+                reservationId,
+                pickupWindow,
+                storageStatus,
+                crateDwellMs: storedCrateDwellMs,
+                crateCheckedOutAt: storedCrateCheckedOutAt,
+                idempotentReplay: true,
+              };
+            }
+
             pickupWindow.status = "completed";
             pickupWindow.completedAt = nowDate;
             pickupWindow.confirmedAt = pickupWindow.confirmedAt ?? nowDate;
             transitionReason = "pickup_window_completed";
+            const arrivedAtMs = readTimestampLikeMs(row.arrivedAt);
+            updates.crateDwellMs = arrivedAtMs > 0 ? Math.max(0, nowDate.getTime() - arrivedAtMs) : null;
+            updates.crateCheckedOutAt = now;
             storageStatus = "active";
             updates.storageStatus = storageStatus;
             updates.readyForPickupAt = null;
@@ -6965,6 +6989,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             reservationId,
             pickupWindow,
             storageStatus,
+            crateDwellMs: readFiniteNumberOrNull(updates.crateDwellMs) ?? storedCrateDwellMs,
+            crateCheckedOutAt: parseReservationIsoDate(updates.crateCheckedOutAt) ?? storedCrateCheckedOutAt,
             idempotentReplay,
           };
         });
@@ -6986,6 +7012,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             lastRescheduleRequestedAt: out.pickupWindow.lastRescheduleRequestedAt,
           },
           storageStatus: out.storageStatus,
+          crateDwellMs: out.crateDwellMs ?? null,
+          crateCheckedOutAt: out.crateCheckedOutAt ?? null,
           idempotentReplay: out.idempotentReplay,
         });
       } catch (error: unknown) {

@@ -7079,6 +7079,97 @@ test("reservations.pickupWindow records misses without bypassing the storage gra
   assert.equal(data.pickupWindowStatus, "missed");
 });
 
+test("reservations.pickupWindow staff_mark_completed computes crate dwell time from arrival", async () => {
+  const arrivedAtIso = "2026-02-20T18:00:00.000Z";
+  const state: MockDbState = {
+    reservations: {
+      "reservation-pickup-completed": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        arrivedAt: arrivedAtIso,
+        pickupWindow: {
+          status: "confirmed",
+          confirmedStart: "2026-02-21T17:00:00.000Z",
+          confirmedEnd: "2026-02-21T19:00:00.000Z",
+        },
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-completed",
+        action: "staff_mark_completed",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.pickupWindowStatus, "completed");
+  assert.ok(typeof data.crateDwellMs === "number");
+  assert.ok(Number(data.crateDwellMs) >= 0);
+  assert.ok(data.crateCheckedOutAt instanceof Date);
+});
+
+test("reservations.pickupWindow staff_mark_completed replays stored crate dwell metadata once completed", async () => {
+  const checkedOutAtIso = "2026-02-21T19:05:00.000Z";
+  const state: MockDbState = {
+    reservations: {
+      "reservation-pickup-completed-replay": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        arrivedAt: "2026-02-20T18:00:00.000Z",
+        crateDwellMs: 90 * 60 * 1000,
+        crateCheckedOutAt: checkedOutAtIso,
+        pickupWindow: {
+          status: "completed",
+          confirmedStart: "2026-02-21T17:00:00.000Z",
+          confirmedEnd: "2026-02-21T19:00:00.000Z",
+          confirmedAt: "2026-02-21T17:05:00.000Z",
+          completedAt: checkedOutAtIso,
+        },
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-completed-replay",
+        action: "staff_mark_completed",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.idempotentReplay, true);
+  assert.equal(data.pickupWindowStatus, "completed");
+  assert.equal(data.crateDwellMs, 90 * 60 * 1000);
+  assert.equal((data.crateCheckedOutAt as Date).toISOString(), checkedOutAtIso);
+  const reservationRow = state.reservations?.["reservation-pickup-completed-replay"] as Record<string, unknown> | undefined;
+  assert.equal(reservationRow?.crateDwellMs, 90 * 60 * 1000);
+  assert.equal(reservationRow?.crateCheckedOutAt, checkedOutAtIso);
+});
+
 test("reservations.queueFairness records no-show evidence and updates policy penalty", async () => {
   const state: MockDbState = {
     reservations: {
@@ -7210,6 +7301,8 @@ test("reservations.list excludes cancelled by default and includes it when reque
       "reservation-open": {
         ownerUid: "owner-1",
         status: "REQUESTED",
+        crateDwellMs: 5400000,
+        crateCheckedOutAt: "2026-02-21T19:05:00.000Z",
         createdAt: { toMillis: () => 2 },
       },
       "reservation-cancelled": {
@@ -7234,6 +7327,8 @@ test("reservations.list excludes cancelled by default and includes it when reque
   const defaultRows = (((defaultBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
   assert.equal(defaultRows.length, 1);
   assert.equal(defaultRows[0]?.status, "REQUESTED");
+  assert.equal(defaultRows[0]?.crateDwellMs, 5400000);
+  assert.equal((defaultRows[0]?.crateCheckedOutAt as Date).toISOString(), "2026-02-21T19:05:00.000Z");
 
   const includeCancelledList = await invokeApiV1Route(
     state,
@@ -7596,6 +7691,11 @@ test("reservations.checkIn allows owner check-in by reservation id", async () =>
   const body = response.body as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.arrivalStatus, "arrived");
+  assert.equal(data.crateDwellMs, 0);
+  assert.equal(data.crateCheckedOutAt, null);
+  const reservationRow = state.reservations?.["reservation-checkin-owner"] as Record<string, unknown> | undefined;
+  assert.equal(reservationRow?.crateDwellMs, 0);
+  assert.equal(reservationRow?.crateCheckedOutAt, null);
 });
 
 test("reservations.checkIn rejects non-owner non-staff caller", async () => {

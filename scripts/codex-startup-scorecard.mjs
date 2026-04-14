@@ -412,37 +412,43 @@ function normalizeHistoryEntries(entries) {
       return null;
     })
     .filter(Boolean)
-    .map((entry) => ({
-      tsIso: clean(entry.tsIso || entry.generatedAt),
-      status: clean(entry.status || "fail"),
-      reasonCode: clean(entry.reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE),
-      continuityState: clean(entry.continuityState || "missing").toLowerCase(),
-      itemCount: Math.max(0, Math.round(Number(entry.itemCount || 0))),
-      contextSummary: clean(entry.contextSummary).slice(0, 300),
-      groundingReady:
-        entry.groundingReady === true ||
-        (Number(entry.itemCount || 0) > 0 && clean(entry.contextSummary).length > 0),
-      richContext: entry.richContext === true || Number(entry.itemCount || 0) >= 2,
-      fallbackOnly:
-        entry.fallbackOnly === true ||
-        (clean(entry.reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE) === STARTUP_REASON_CODES.OK &&
-          clean(entry.continuityState || "missing").toLowerCase() !== "ready"),
-      studioBrainReachable:
-        typeof entry.studioBrainReachable === "boolean" ? entry.studioBrainReachable : null,
-      studioBrainLatencyMs: toFiniteNumber(entry.studioBrainLatencyMs),
-      tokenState: clean(entry.tokenState || "unknown").toLowerCase(),
-      latencyMs: toFiniteNumber(entry.latencyMs),
-      latencyState: clean(entry.latencyState || "unknown"),
-      mcpBridgeOk: typeof entry.mcpBridgeOk === "boolean" ? entry.mcpBridgeOk : null,
-      mcpBridgeLatencyMs: toFiniteNumber(entry.mcpBridgeLatencyMs),
-      startupToolStatus: clean(entry.startupToolStatus || "unknown").toLowerCase(),
-      groundingLineEmitted: toNullableBoolean(entry.groundingLineEmitted),
-      groundingLineObserved: entry.groundingLineObserved === true,
-      repoReadsBeforeStartupContext: toFiniteNumber(entry.repoReadsBeforeStartupContext),
-      repoReadTelemetryObserved: entry.repoReadTelemetryObserved === true,
-      recoveryStep: clean(entry.recoveryStep),
-      error: clean(entry.error),
-    }))
+    .map((entry) => {
+      const itemCount = Math.max(0, Math.round(Number(entry.itemCount || 0)));
+      const contextSummary = clean(entry.contextSummary).slice(0, 300);
+      const storedGroundingReady = toNullableBoolean(entry.groundingReady);
+      const storedRichContext = toNullableBoolean(entry.richContext);
+
+      return {
+        tsIso: clean(entry.tsIso || entry.generatedAt),
+        status: clean(entry.status || "fail"),
+        reasonCode: clean(entry.reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE),
+        continuityState: clean(entry.continuityState || "missing").toLowerCase(),
+        itemCount,
+        contextSummary,
+        groundingReady:
+          storedGroundingReady ?? (itemCount > 0 && contextSummary.length > 0),
+        richContext: storedRichContext ?? itemCount >= 2,
+        fallbackOnly:
+          entry.fallbackOnly === true ||
+          (clean(entry.reasonCode || STARTUP_REASON_CODES.STARTUP_UNAVAILABLE) === STARTUP_REASON_CODES.OK &&
+            clean(entry.continuityState || "missing").toLowerCase() !== "ready"),
+        studioBrainReachable:
+          typeof entry.studioBrainReachable === "boolean" ? entry.studioBrainReachable : null,
+        studioBrainLatencyMs: toFiniteNumber(entry.studioBrainLatencyMs),
+        tokenState: clean(entry.tokenState || "unknown").toLowerCase(),
+        latencyMs: toFiniteNumber(entry.latencyMs),
+        latencyState: clean(entry.latencyState || "unknown"),
+        mcpBridgeOk: typeof entry.mcpBridgeOk === "boolean" ? entry.mcpBridgeOk : null,
+        mcpBridgeLatencyMs: toFiniteNumber(entry.mcpBridgeLatencyMs),
+        startupToolStatus: clean(entry.startupToolStatus || "unknown").toLowerCase(),
+        groundingLineEmitted: toNullableBoolean(entry.groundingLineEmitted),
+        groundingLineObserved: entry.groundingLineObserved === true,
+        repoReadsBeforeStartupContext: toFiniteNumber(entry.repoReadsBeforeStartupContext),
+        repoReadTelemetryObserved: entry.repoReadTelemetryObserved === true,
+        recoveryStep: clean(entry.recoveryStep),
+        error: clean(entry.error),
+      };
+    })
     .filter((entry) => toMs(entry.tsIso) != null);
 }
 

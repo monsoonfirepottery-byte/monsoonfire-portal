@@ -11,6 +11,7 @@ import {
   loadPortalAutomationEnv,
   resolvePortalAgentStaffCredentialsPath,
 } from "./lib/runtime-secrets.mjs";
+import { applyPortalVisualDiff } from "./lib/portal-visual-diff.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -35,6 +36,10 @@ function parseArgs(argv) {
     requireAuth: true,
     headless: true,
     asJson: false,
+    visualDiffMode: String(process.env.PORTAL_VISUAL_DIFF_MODE || "off").trim().toLowerCase(),
+    visualDiffBaselineRoot: String(process.env.PORTAL_VISUAL_DIFF_BASELINE_ROOT || "").trim(),
+    visualDiffOutputRoot: String(process.env.PORTAL_VISUAL_DIFF_OUTPUT_ROOT || "").trim(),
+    visualDiffPlanPath: String(process.env.PORTAL_VISUAL_DIFF_PLAN || "").trim(),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -107,6 +112,38 @@ function parseArgs(argv) {
     }
     if (arg === "--json") {
       options.asJson = true;
+      continue;
+    }
+    if (arg === "--visual-diff") {
+      options.visualDiffMode = "compare";
+      continue;
+    }
+    if (arg === "--visual-diff-mode") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-mode");
+      options.visualDiffMode = String(next).trim().toLowerCase();
+      index += 1;
+      continue;
+    }
+    if (arg === "--visual-diff-output-root") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-output-root");
+      options.visualDiffOutputRoot = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+    if (arg === "--visual-diff-baseline-root") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-baseline-root");
+      options.visualDiffBaselineRoot = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+    if (arg === "--visual-diff-plan") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-plan");
+      options.visualDiffPlanPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
       continue;
     }
   }
@@ -490,6 +527,7 @@ async function main() {
     checks: [],
     errors: [],
     artifacts: [],
+    screenshots: [],
     layout: {
       baseline: null,
       afterRefresh: null,
@@ -532,6 +570,7 @@ async function main() {
         label: "landing",
         path: await captureScreenshot(page, options.outputDir, "community-layout-01-landing.png"),
       });
+      summary.screenshots.push(summary.artifacts[summary.artifacts.length - 1]);
     });
 
     await check(summary, "authenticate", async () => {
@@ -584,6 +623,7 @@ async function main() {
         label: "community-initial",
         path: await captureScreenshot(page, options.outputDir, "community-layout-02-initial.png"),
       });
+      summary.screenshots.push(summary.artifacts[summary.artifacts.length - 1]);
     });
 
     await check(summary, "community sidebar layout remains stable after async refresh", async () => {
@@ -618,6 +658,7 @@ async function main() {
         label: "community-post-refresh",
         path: await captureScreenshot(page, options.outputDir, "community-layout-03-post-refresh.png"),
       });
+      summary.screenshots.push(summary.artifacts[summary.artifacts.length - 1]);
     });
 
     await context.close();
@@ -625,7 +666,18 @@ async function main() {
     await browser.close();
   }
 
-  summary.status = summary.checks.some((checkItem) => checkItem.status === "failed")
+  summary.visualDiff = await applyPortalVisualDiff({
+    scriptKey: "portal-community-layout-canary",
+    summary,
+    mode: options.visualDiffMode,
+    baselineRoot: options.visualDiffBaselineRoot || undefined,
+    outputRoot: options.visualDiffOutputRoot || undefined,
+    planPath: options.visualDiffPlanPath || undefined,
+  });
+
+  summary.status =
+    summary.checks.some((checkItem) => checkItem.status === "failed") ||
+    summary.visualDiff?.status === "failed"
     ? "failed"
     : "passed";
   summary.finishedAtIso = new Date().toISOString();

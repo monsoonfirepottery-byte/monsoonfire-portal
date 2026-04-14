@@ -129,6 +129,11 @@ test("rememberWithStudioBrain batches multiple saves through import and updates 
     const envelope = readJson(paths.continuityEnvelopePath, {});
     assert.equal(envelope.schema, "codex-continuity-envelope.v1");
     assert.equal(envelope.continuityState, "ready");
+    assert.equal(envelope.presentationProjectLane, "monsoonfire-portal");
+    assert.equal(envelope.threadScopedItemCount, 2);
+    assert.equal(envelope.startupSourceQuality, "thread-scoped-dominant");
+    assert.equal(envelope.laneSourceQuality, "thread-scoped-dominant");
+    assert.equal(envelope.startup.threadScopedItemCount, 2);
     assert.equal(
       String(envelope.bootstrapSummary || "").includes("route new thread memory writes"),
       true
@@ -136,6 +141,27 @@ test("rememberWithStudioBrain batches multiple saves through import and updates 
     assert.equal(Array.isArray(envelope.blockers), true);
     assert.equal(envelope.blockers[0].summary, "Blocker: old threads still have ad hoc memory write habits.");
     assert.equal(envelope.nextRecommendedAction, "Ship the home instruction update.");
+
+    const handoff = readJson(paths.handoffPath, {});
+    assert.equal(handoff.schema, "codex-handoff.v1");
+    assert.equal(
+      String(handoff.summary || "").includes("Decision: route new thread memory writes through studio_brain_remember."),
+      true
+    );
+
+    const bootstrapContext = readJson(paths.bootstrapContextJsonPath, {});
+    assert.equal(bootstrapContext.schema, "codex-startup-bootstrap-context.v1");
+    assert.equal(Array.isArray(bootstrapContext.items), true);
+    assert.equal(bootstrapContext.items.some((item) => item.source === "codex-handoff"), true);
+
+    const bootstrapMetadata = readJson(paths.bootstrapMetadataPath, {});
+    assert.equal(bootstrapMetadata.threadId, threadId);
+    assert.equal(bootstrapMetadata.startupGateSatisfiedBy, "validated-local-continuity");
+    assert.equal(bootstrapMetadata.continuityState, "ready");
+    assert.equal(bootstrapMetadata.presentationProjectLane, "monsoonfire-portal");
+    assert.equal(bootstrapMetadata.threadScopedItemCount, 2);
+    assert.equal(bootstrapMetadata.artifactPointers.handoffPath, paths.handoffPath);
+    assert.equal(bootstrapMetadata.artifactPointers.startupContextCachePath, paths.startupContextCachePath);
   } finally {
     cleanupThreadRuntime(threadId);
   }
@@ -208,6 +234,61 @@ test("rememberWithStudioBrain writes handoff artifacts and keeps request ids sta
     const audit = readJsonl(paths.writesJsonlPath);
     assert.equal(audit.length, 1);
     assert.equal(audit[0].requestId, calls[0].body.clientRequestId);
+  } finally {
+    cleanupThreadRuntime(threadId);
+  }
+});
+
+test("rememberWithStudioBrain prefers an explicit handoff over startup-eligible checkpoints when both are present", async () => {
+  const threadId = "remember-handoff-priority-test";
+  const paths = cleanupThreadRuntime(threadId);
+
+  try {
+    await rememberWithStudioBrain(
+      {
+        items: [
+          {
+            kind: "checkpoint",
+            content: "Checkpoint: startup guardrails landed.",
+            rememberForStartup: true,
+            metadata: {
+              activeGoal: "Finish the startup guardrail rollout.",
+              nextRecommendedAction: "Verify preflight.",
+            },
+          },
+          {
+            kind: "handoff",
+            content: "Handoff: verify the startup guardrails end to end.",
+            rememberForStartup: true,
+            metadata: {
+              activeGoal: "Verify the startup guardrails end to end.",
+              nextRecommendedAction: "Run codex-doctor and startup-preflight.",
+            },
+          },
+        ],
+      },
+      {
+        threadId,
+        cwd: "D:\\monsoonfire-portal",
+        threadTitle: "startup handoff priority",
+        firstUserMessage: "tighten startup guardrails",
+        requestJson: async () => ({
+          ok: true,
+          result: {
+            imported: 2,
+            failed: 0,
+            results: [
+              { index: 0, ok: true, id: "mem_req_priority_1" },
+              { index: 1, ok: true, id: "mem_req_priority_2" },
+            ],
+          },
+        }),
+      }
+    );
+
+    const handoff = readJson(paths.handoffPath, {});
+    assert.equal(handoff.summary, "Handoff: verify the startup guardrails end to end.");
+    assert.equal(handoff.activeGoal, "Verify the startup guardrails end to end.");
   } finally {
     cleanupThreadRuntime(threadId);
   }

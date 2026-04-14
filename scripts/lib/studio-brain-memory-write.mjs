@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  refreshLocalBootstrapArtifacts,
   codexHomePath,
   loadBootstrapArtifacts,
   normalizeContinuityEnvelope,
@@ -23,6 +24,7 @@ const REPO_ROOT = resolve(__dirname, "..", "..");
 const DEFAULT_TIMEOUT_MS = 10_000;
 const AUTH_REFRESH_MIN_INTERVAL_MS = 10_000;
 const DEFAULT_REPO_CREDENTIALS_PATH = resolve(REPO_ROOT, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_HOME_SECRETS_CREDENTIALS_PATH = resolve(homedir(), "secrets", "portal", "portal-agent-staff.json");
 const DEFAULT_HOME_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
 const REMEMBER_SOURCE_MAP = {
   fact: { source: "manual", status: "accepted", memoryType: "semantic" },
@@ -34,6 +36,7 @@ const REMEMBER_SOURCE_MAP = {
   checkpoint: { source: "codex-handoff", status: "accepted", memoryType: "episodic" },
 };
 const REMEMBER_KINDS = new Set(Object.keys(REMEMBER_SOURCE_MAP));
+const STARTUP_CONTINUITY_KINDS = new Set(["decision", "progress", "blocker", "handoff", "checkpoint"]);
 
 function clean(value) {
   return String(value ?? "").trim();
@@ -85,9 +88,45 @@ function shouldRejectSpeculative(content, metadata) {
   return /^(maybe|probably|i think|might|could be)\b/i.test(clean(content));
 }
 
+function isStartupContinuityWrite(write) {
+  return STARTUP_CONTINUITY_KINDS.has(clean(write?.kind).toLowerCase()) || write?.rememberForStartup === true;
+}
+
+function countStartupContinuityAuditRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).filter(
+    (row) => STARTUP_CONTINUITY_KINDS.has(clean(row?.kind).toLowerCase()) || row?.rememberedForStartup === true
+  ).length;
+}
+
+function inferThreadPresentationProjectLane(threadContext) {
+  return inferProjectLane({
+    text: `${clean(threadContext?.firstUserMessage)}\n${clean(threadContext?.threadTitle)}`,
+    title: clean(threadContext?.threadTitle),
+    path: clean(threadContext?.cwd),
+  });
+}
+
+function bootstrapThreadScopedItemCount(artifacts = {}) {
+  return Math.max(
+    0,
+    Math.round(
+      Number(
+        artifacts?.continuityEnvelope?.threadScopedItemCount ||
+          artifacts?.continuityEnvelope?.startup?.threadScopedItemCount ||
+          0
+      )
+    )
+  );
+}
+
 function resolveDefaultCredentialsPath(env = process.env) {
   const explicitPath = clean(env.PORTAL_AGENT_STAFF_CREDENTIALS);
-  const candidates = [explicitPath, DEFAULT_REPO_CREDENTIALS_PATH, DEFAULT_HOME_CREDENTIALS_PATH].filter(Boolean);
+  const candidates = [
+    explicitPath,
+    DEFAULT_REPO_CREDENTIALS_PATH,
+    DEFAULT_HOME_SECRETS_CREDENTIALS_PATH,
+    DEFAULT_HOME_CREDENTIALS_PATH,
+  ].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || DEFAULT_REPO_CREDENTIALS_PATH;
 }
 
@@ -411,6 +450,7 @@ function buildRememberRows(rawInput, { env = process.env, threadContext, capture
 
 function buildHandoffArtifact(row, threadContext) {
   const metadata = row.request.metadata && typeof row.request.metadata === "object" ? row.request.metadata : {};
+  const paths = runtimePathsForThread(clean(threadContext.threadId));
   const blockers = Array.isArray(metadata.blockers)
     ? metadata.blockers
     : clean(metadata.blocker)
@@ -439,8 +479,15 @@ function buildHandoffArtifact(row, threadContext) {
     workCompleted: clean(metadata.workCompleted || row.content),
     blockers,
     nextRecommendedAction: clean(metadata.nextRecommendedAction),
-    artifactPointers:
-      metadata.artifactPointers && typeof metadata.artifactPointers === "object" ? metadata.artifactPointers : {},
+    artifactPointers: {
+      ...(metadata.artifactPointers && typeof metadata.artifactPointers === "object" ? metadata.artifactPointers : {}),
+      continuityEnvelopePath: clean(paths.continuityEnvelopePath),
+      bootstrapContextPath: clean(paths.bootstrapContextJsonPath),
+      bootstrapMetadataPath: clean(paths.bootstrapMetadataPath),
+      handoffPath: clean(paths.handoffPath),
+      startupContextCachePath: clean(paths.startupContextCachePath),
+      writesJsonlPath: clean(paths.writesJsonlPath),
+    },
     parentRunId: clean(metadata.parentRunId || threadContext.bootstrapArtifacts?.handoff?.parentRunId),
     handoffOwner: clean(metadata.handoffOwner || metadata.owner || threadContext.bootstrapArtifacts?.handoff?.handoffOwner),
     sourceShellId: clean(metadata.sourceShellId || threadContext.bootstrapArtifacts?.handoff?.sourceShellId),
@@ -450,6 +497,37 @@ function buildHandoffArtifact(row, threadContext) {
     threadId: clean(threadContext.threadId),
     existing: threadContext.bootstrapArtifacts?.handoff,
   });
+}
+
+function handoffCandidatePriority(write) {
+  if (!write || typeof write !== "object") return 99;
+  if (write.kind === "handoff") return 0;
+  if (write.kind === "checkpoint") return 1;
+  if (write.kind === "progress") return 2;
+  if (write.kind === "decision") return 3;
+  return 99;
+}
+
+function isStartupHandoffCandidate(write) {
+  if (!write || typeof write !== "object") return false;
+  if (write.kind === "handoff") return true;
+  if (!["checkpoint", "progress", "decision"].includes(write.kind)) return false;
+  return write.rememberForStartup === true || write.request?.metadata?.startupEligible === true;
+}
+
+function selectBestHandoffCandidate(successfulWrites) {
+  return (Array.isArray(successfulWrites) ? successfulWrites : [])
+    .filter((write) => isStartupHandoffCandidate(write))
+    .sort((left, right) => {
+      const priorityDelta = handoffCandidatePriority(left) - handoffCandidatePriority(right);
+      if (priorityDelta !== 0) return priorityDelta;
+      const leftImportance = Number(left?.request?.importance ?? left?.importance ?? 0);
+      const rightImportance = Number(right?.request?.importance ?? right?.importance ?? 0);
+      if (Number.isFinite(leftImportance) && Number.isFinite(rightImportance) && rightImportance !== leftImportance) {
+        return rightImportance - leftImportance;
+      }
+      return Number(right?.index ?? 0) - Number(left?.index ?? 0);
+    })[0] || null;
 }
 
 function mergeSignals(existing, incoming, keyName) {
@@ -472,6 +550,54 @@ function updateContinuityEnvelope(threadId, threadContext, writes) {
     threadId,
     cwd: clean(threadContext.cwd),
   });
+  const bootstrapEnvelope = normalizeContinuityEnvelope(threadContext.bootstrapArtifacts?.continuityEnvelope, {
+    threadId,
+    cwd: clean(threadContext.cwd),
+  });
+  const bootstrapMetadata =
+    threadContext.bootstrapArtifacts?.metadata && typeof threadContext.bootstrapArtifacts.metadata === "object"
+      ? threadContext.bootstrapArtifacts.metadata
+      : {};
+  const startupRelevantWrites = writes.filter((write) => isStartupContinuityWrite(write));
+  const writeAuditRows = readJsonl(paths.writesJsonlPath);
+  const writePresentationProjectLane =
+    dedupeStrings(
+      startupRelevantWrites.map((write) =>
+        clean(write.projectLane || write.request?.metadata?.projectLane || write.request?.metadata?.presentationProjectLane)
+      ),
+      4
+    )[0] || "";
+  const effectivePresentationProjectLane = clean(
+    writePresentationProjectLane ||
+      bootstrapEnvelope.presentationProjectLane ||
+      next.presentationProjectLane ||
+      inferThreadPresentationProjectLane(threadContext)
+  );
+  const effectiveThreadScopedItemCount = Math.max(
+    0,
+    Math.round(Number(next.threadScopedItemCount || next.startup?.threadScopedItemCount || 0)),
+    bootstrapThreadScopedItemCount(threadContext.bootstrapArtifacts),
+    countStartupContinuityAuditRows(writeAuditRows),
+    startupRelevantWrites.length
+  );
+  const startupSatisfiedBy = clean(
+    next.startupSatisfiedBy ||
+      bootstrapMetadata.startupGateSatisfiedBy ||
+      bootstrapEnvelope.startupSatisfiedBy ||
+      bootstrapEnvelope.startup?.satisfiedBy
+  );
+
+  next.threadTitle = clean(threadContext.threadTitle || next.threadTitle);
+  next.firstUserMessage = clean(threadContext.firstUserMessage || next.firstUserMessage);
+  if (startupSatisfiedBy) {
+    next.startupSatisfiedBy = startupSatisfiedBy;
+  }
+  if (effectivePresentationProjectLane) {
+    next.presentationProjectLane = effectivePresentationProjectLane;
+  }
+  if (effectiveThreadScopedItemCount > 0) {
+    next.threadScopedItemCount = effectiveThreadScopedItemCount;
+  }
 
   for (const write of writes) {
     const metadata = write.request.metadata && typeof write.request.metadata === "object" ? write.request.metadata : {};
@@ -525,11 +651,70 @@ function updateContinuityEnvelope(threadId, threadContext, writes) {
     );
   }
 
+  if (next.continuityState === "ready" && effectiveThreadScopedItemCount > 0) {
+    next.fallbackOnly = false;
+    next.startupSourceQuality = "thread-scoped-dominant";
+    next.laneSourceQuality = "thread-scoped-dominant";
+  }
+
+  next.artifactPointers = {
+    ...(next.artifactPointers && typeof next.artifactPointers === "object" ? next.artifactPointers : {}),
+    continuityEnvelopePath: clean(paths.continuityEnvelopePath),
+    bootstrapContextPath: clean(paths.bootstrapContextJsonPath),
+    bootstrapMetadataPath: clean(paths.bootstrapMetadataPath),
+    handoffPath: clean(paths.handoffPath),
+    startupContextCachePath: clean(paths.startupContextCachePath),
+    writesJsonlPath: clean(paths.writesJsonlPath),
+  };
+  next.startup = {
+    ...(next.startup && typeof next.startup === "object" ? next.startup : {}),
+    ...(startupSatisfiedBy ? { satisfiedBy: startupSatisfiedBy } : {}),
+    ...(effectiveThreadScopedItemCount > 0 ? { threadScopedItemCount: effectiveThreadScopedItemCount } : {}),
+    ...(clean(next.startupSourceQuality) ? { startupSourceQuality: clean(next.startupSourceQuality) } : {}),
+    fallbackOnly: next.fallbackOnly === true,
+  };
+
   writeContinuityEnvelope(threadId, normalizeContinuityEnvelope(next, {
     threadId,
     cwd: clean(threadContext.cwd),
     existing,
   }));
+}
+
+function refreshBootstrapArtifacts(threadId, threadContext, successfulWrites) {
+  if (!threadId) return null;
+  const latestEnvelope = loadBootstrapArtifacts(threadId)?.continuityEnvelope || {};
+  const satisfiedBy = clean(
+    latestEnvelope.startupSatisfiedBy ||
+      latestEnvelope.startup?.satisfiedBy ||
+      threadContext.bootstrapArtifacts?.metadata?.startupGateSatisfiedBy ||
+      "validated-local-continuity"
+  );
+  const presentationProjectLane = clean(
+    latestEnvelope.presentationProjectLane || inferThreadPresentationProjectLane(threadContext)
+  );
+  const refreshed = refreshLocalBootstrapArtifacts({
+    threadId,
+    cwd: clean(threadContext.cwd),
+    threadTitle: clean(threadContext.threadTitle),
+    firstUserMessage: clean(threadContext.firstUserMessage),
+    metadata: {
+      startupGateSatisfiedBy: satisfiedBy,
+      continuityState: clean(latestEnvelope.continuityState || "ready"),
+      presentationProjectLane,
+      threadScopedItemCount: Math.max(
+        0,
+        Number(latestEnvelope.threadScopedItemCount || latestEnvelope.startup?.threadScopedItemCount || 0)
+      ),
+      startupSourceQuality: clean(
+        latestEnvelope.startupSourceQuality || latestEnvelope.laneSourceQuality || "thread-scoped-dominant"
+      ),
+      rememberedMemoryIds: dedupeStrings(successfulWrites.map((write) => clean(write.memoryId)), 24),
+      rememberedRequestIds: dedupeStrings(successfulWrites.map((write) => clean(write.clientRequestId)), 24),
+      rememberedKinds: dedupeStrings(successfulWrites.map((write) => clean(write.kind)), 12),
+    },
+  });
+  return refreshed;
 }
 
 function appendWriteAudit(threadId, threadContext, successfulWrites) {
@@ -570,12 +755,12 @@ function syncLocalArtifacts(threadContext, successfulWrites) {
   const threadId = clean(threadContext.threadId);
   if (!threadId || successfulWrites.length === 0) return;
   appendWriteAudit(threadId, threadContext, successfulWrites);
-  for (const write of successfulWrites) {
-    if (write.kind === "handoff") {
-      writeHandoffArtifact(threadId, buildHandoffArtifact(write, threadContext));
-    }
+  const handoffCandidate = selectBestHandoffCandidate(successfulWrites);
+  if (handoffCandidate) {
+    writeHandoffArtifact(threadId, buildHandoffArtifact(handoffCandidate, threadContext));
   }
   updateContinuityEnvelope(threadId, threadContext, successfulWrites);
+  refreshBootstrapArtifacts(threadId, threadContext, successfulWrites);
 }
 
 function parseRememberResponse(response, rememberRows) {

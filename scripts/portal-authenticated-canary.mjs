@@ -11,6 +11,7 @@ import {
   resolvePortalAgentStaffCredentialsPath,
 } from "./lib/runtime-secrets.mjs";
 import { mintStaffIdTokenFromPortalEnv } from "./lib/firebase-auth-token.mjs";
+import { applyPortalVisualDiff } from "./lib/portal-visual-diff.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -95,6 +96,10 @@ function parseArgs(argv) {
     minContrast: 4.2,
     feedbackPath: String(process.env.PORTAL_CANARY_FEEDBACK_PATH || "").trim(),
     asJson: false,
+    visualDiffMode: String(process.env.PORTAL_VISUAL_DIFF_MODE || "off").trim().toLowerCase(),
+    visualDiffBaselineRoot: String(process.env.PORTAL_VISUAL_DIFF_BASELINE_ROOT || "").trim(),
+    visualDiffOutputRoot: String(process.env.PORTAL_VISUAL_DIFF_OUTPUT_ROOT || "").trim(),
+    visualDiffPlanPath: String(process.env.PORTAL_VISUAL_DIFF_PLAN || "").trim(),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -267,6 +272,38 @@ function parseArgs(argv) {
 
     if (arg === "--json") {
       options.asJson = true;
+      continue;
+    }
+    if (arg === "--visual-diff") {
+      options.visualDiffMode = "compare";
+      continue;
+    }
+    if (arg === "--visual-diff-mode") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-mode");
+      options.visualDiffMode = String(next).trim().toLowerCase();
+      index += 1;
+      continue;
+    }
+    if (arg === "--visual-diff-output-root") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-output-root");
+      options.visualDiffOutputRoot = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+    if (arg === "--visual-diff-baseline-root") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-baseline-root");
+      options.visualDiffBaselineRoot = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+    if (arg === "--visual-diff-plan") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-plan");
+      options.visualDiffPlanPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
       continue;
     }
   }
@@ -2522,6 +2559,18 @@ async function run() {
 
   summary.finishedAtIso = new Date().toISOString();
   if (summary.checks.some((item) => item.status === "failed")) {
+    summary.status = "failed";
+  }
+
+  summary.visualDiff = await applyPortalVisualDiff({
+    scriptKey: "portal-authenticated-canary",
+    summary,
+    mode: options.visualDiffMode,
+    baselineRoot: options.visualDiffBaselineRoot || undefined,
+    outputRoot: options.visualDiffOutputRoot || undefined,
+    planPath: options.visualDiffPlanPath || undefined,
+  });
+  if (summary.visualDiff?.status === "failed") {
     summary.status = "failed";
   }
 

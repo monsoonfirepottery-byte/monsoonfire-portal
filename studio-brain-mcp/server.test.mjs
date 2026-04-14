@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -177,6 +177,46 @@ async function withBootstrapServer({ searchPayload = null, contextPayload = null
   }
 }
 
+async function withRememberCaptureServer(run) {
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if ((req.url || "").startsWith("/api/memory/capture") && req.method === "POST") {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      requests.push({
+        url: req.url || "",
+        method: req.method || "",
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, memory: { id: "mem-remember-1" } }));
+      return;
+    }
+
+    if ((req.url || "").startsWith("/healthz")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, service: "studio-brain", at: new Date().toISOString() }));
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, message: "Not found" }));
+  });
+
+  await new Promise((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    await run(baseUrl, requests);
+  } finally {
+    await new Promise((resolvePromise, reject) => {
+      server.close((error) => (error ? reject(error) : resolvePromise()));
+    });
+  }
+}
+
 async function withClient(envOverrides, run) {
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -218,8 +258,65 @@ test("studio-brain MCP advertises the canonical startup alias and preserves the 
 
         assert.equal(names.includes("studio_brain_startup_context"), true);
         assert.equal(names.includes("studio_brain_memory_context"), true);
+        assert.equal(names.includes("studio_brain_remember"), true);
       },
     );
+  } finally {
+    bootstrap.cleanup();
+  }
+});
+
+test("studio-brain remember writes a startup-linked handoff and refreshes local continuity artifacts", async () => {
+  const bootstrap = createBootstrapHome({
+    summary: "",
+    items: [],
+  });
+
+  try {
+    await withRememberCaptureServer(async (baseUrl, requests) => {
+      await withClient(
+        {
+          HOME: bootstrap.homeDir,
+          USERPROFILE: bootstrap.homeDir,
+          STUDIO_BRAIN_BOOTSTRAP_THREAD_ID: bootstrap.threadId,
+        },
+        async (client) => {
+          const result = await client.callTool({
+            name: "studio_brain_remember",
+            arguments: {
+              kind: "handoff",
+              content: "Handoff: expose the Studio Brain remember MCP tool and refresh startup continuity.",
+              rememberForStartup: true,
+              metadata: {
+                activeGoal: "Expose remember write path",
+                nextRecommendedAction: "Run codex-doctor and confirm remember tool availability.",
+              },
+              baseUrl,
+              timeoutMs: 2000,
+            },
+          });
+
+          assert.notEqual(result.isError, true);
+          assert.equal(result.structuredContent?.saved, 1);
+          assert.equal(result.structuredContent?.verified, true);
+          assert.equal(result.structuredContent?.threadLinked, true);
+          assert.equal(result.structuredContent?.threadId, bootstrap.threadId);
+        },
+      );
+
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0]?.url, "/api/memory/capture");
+      assert.equal(requests[0]?.body?.metadata?.threadId, bootstrap.threadId);
+      assert.equal(requests[0]?.body?.metadata?.rememberKind, "handoff");
+
+      const runtimeDir = resolve(bootstrap.homeDir, ".codex", "memory", "runtime", bootstrap.threadId);
+      const handoff = JSON.parse(readFileSync(resolve(runtimeDir, "handoff.json"), "utf8"));
+      const continuity = JSON.parse(readFileSync(resolve(runtimeDir, "continuity-envelope.json"), "utf8"));
+
+      assert.match(String(handoff.summary || ""), /remember MCP tool/i);
+      assert.equal(String(continuity.continuityState || "").toLowerCase(), "ready");
+      assert.match(String(continuity.nextRecommendedAction || ""), /codex-doctor/i);
+    });
   } finally {
     bootstrap.cleanup();
   }

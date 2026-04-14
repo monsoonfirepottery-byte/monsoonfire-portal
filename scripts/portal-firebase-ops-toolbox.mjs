@@ -6,6 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runResolved } from "./lib/command-runner.mjs";
+import { runFirestoreQueryShapeInspector } from "./firestore-query-shape-inspector.mjs";
 import { loadPortalAutomationEnv } from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,9 +75,12 @@ function parseArgs(argv) {
     asJson: false,
     strict: false,
     includeDeployPreflight: true,
+    includeQueryInspector: true,
     reportJsonPath: DEFAULT_REPORT_JSON,
     reportMarkdownPath: DEFAULT_REPORT_MARKDOWN,
     errorText: "",
+    inspectPaths: [],
+    inspectCollections: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -93,6 +97,10 @@ function parseArgs(argv) {
     }
     if (arg === "--skip-deploy-preflight") {
       options.includeDeployPreflight = false;
+      continue;
+    }
+    if (arg === "--skip-query-inspector") {
+      options.includeQueryInspector = false;
       continue;
     }
 
@@ -113,6 +121,16 @@ function parseArgs(argv) {
     }
     if (arg === "--error-text") {
       options.errorText = next;
+      index += 1;
+      continue;
+    }
+    if (arg === "--inspect-path") {
+      options.inspectPaths.push(resolve(process.cwd(), next));
+      index += 1;
+      continue;
+    }
+    if (arg === "--inspect-collection") {
+      options.inspectCollections.push(next);
       index += 1;
       continue;
     }
@@ -151,6 +169,63 @@ function summarizeCheck(run, { required = true, detail = "" } = {}) {
   };
 }
 
+function summarizeQueryInspector(queryInspection) {
+  const detailParts = [
+    `status=${queryInspection.status}`,
+    `scannedFiles=${queryInspection.scannedFiles}`,
+    `queryShapes=${queryInspection.queryShapes.length}`,
+    `findings=${queryInspection.findings.length}`,
+  ];
+  return {
+    label: "firestore query inspector",
+    required: false,
+    status: queryInspection.findings.length > 0 ? "warn" : "passed",
+    detail: detailParts.join(" "),
+    command: "node scripts/firestore-query-shape-inspector.mjs",
+  };
+}
+
+function classifyCheckSection(check) {
+  if (check.label === "credential health") return "localOrEmulator";
+  if (check.label === "firestore rules drift check" || check.label === "deploy preflight") {
+    return "cloudOrProduction";
+  }
+  return "repoStatic";
+}
+
+function buildSections(checks, { errorFindings, queryInspection }) {
+  const sections = {
+    repoStatic: {
+      label: "Repo-static findings",
+      checks: [],
+      findings: [],
+    },
+    localOrEmulator: {
+      label: "Local/operator checks",
+      checks: [],
+      findings: [],
+    },
+    cloudOrProduction: {
+      label: "Cloud/production checks",
+      checks: [],
+      findings: [],
+    },
+  };
+
+  for (const check of checks) {
+    sections[classifyCheckSection(check)].checks.push(check);
+  }
+
+  if (queryInspection) {
+    sections.repoStatic.findings.push(...queryInspection.findings);
+  }
+  if (errorFindings.length > 0) {
+    sections.localOrEmulator.findings.push(...errorFindings);
+  }
+
+  return sections;
+}
+
 function buildMarkdown(summary) {
   const lines = [
     "# Portal Firebase Ops Toolbox",
@@ -158,17 +233,32 @@ function buildMarkdown(summary) {
     `- generatedAt: ${summary.generatedAt}`,
     `- status: ${summary.status}`,
     "",
-    "## Checks",
-    ...summary.checks.map(
-      (check) =>
-        `- ${check.label}: ${check.status}${check.required ? "" : " (optional)"}${check.detail ? ` - ${check.detail}` : ""}`
-    ),
+    "## Sections",
   ];
 
-  if (summary.errorFindings.length > 0) {
-    lines.push("", "## Error Text Findings");
-    for (const finding of summary.errorFindings) {
-      lines.push(`- ${finding.code}: ${finding.summary} Next: ${finding.nextAction}`);
+  for (const section of Object.values(summary.sections)) {
+    lines.push("", `### ${section.label}`);
+    if (section.checks.length === 0) {
+      lines.push("- checks: none");
+    } else {
+      for (const check of section.checks) {
+        lines.push(`- ${check.label}: ${check.status}${check.required ? "" : " (optional)"}${check.detail ? ` - ${check.detail}` : ""}`);
+      }
+    }
+
+    if (section.findings.length === 0) {
+      lines.push("- findings: none");
+      continue;
+    }
+
+    for (const finding of section.findings) {
+      lines.push(`- ${finding.code}: ${finding.summary}`);
+      if (finding.file && finding.line) {
+        lines.push(`  source: ${finding.file}:${finding.line}`);
+      }
+      if (finding.nextAction) {
+        lines.push(`  next: ${finding.nextAction}`);
+      }
     }
   }
 
@@ -181,6 +271,16 @@ function buildMarkdown(summary) {
 
 export async function runPortalFirebaseOpsToolbox(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
+  const queryInspection = options.includeQueryInspector
+    ? await runFirestoreQueryShapeInspector([
+      ...options.inspectPaths.flatMap((path) => ["--path", path]),
+      ...options.inspectCollections.flatMap((collection) => ["--collection", collection]),
+      "--report-json",
+      resolve(repoRoot, "output", "qa", "portal-firebase-query-inspector.json"),
+      "--report-markdown",
+      resolve(repoRoot, "output", "qa", "portal-firebase-query-inspector.md"),
+    ])
+    : null;
 
   const runs = [
     runJsonScript("credential health", "scripts/credentials-health-check.mjs", [
@@ -211,6 +311,7 @@ export async function runPortalFirebaseOpsToolbox(argv = process.argv.slice(2)) 
   }
 
   const checks = [
+    ...(queryInspection ? [summarizeQueryInspector(queryInspection)] : []),
     summarizeCheck(runs[0], {
       required: true,
       detail: clean(runs[0].payload?.status ? `status=${runs[0].payload.status}` : runs[0].stderr),
@@ -234,18 +335,25 @@ export async function runPortalFirebaseOpsToolbox(argv = process.argv.slice(2)) 
   const errorFindings = inspectPortalFirebaseErrorText(options.errorText);
   const nextActions = [];
   for (const check of checks) {
-    if (check.status !== "failed") continue;
+    if (check.status !== "failed" && check.status !== "warn") continue;
     nextActions.push(`${check.label}: rerun ${check.command}`);
   }
   for (const finding of errorFindings) {
     nextActions.push(`${finding.code}: ${finding.nextAction}`);
   }
+  for (const finding of queryInspection?.findings || []) {
+    nextActions.push(`${finding.code}: ${finding.nextAction}`);
+  }
 
   const requiredFailure = checks.some((check) => check.required && check.status === "failed");
+  const warningPresent = checks.some((check) => check.status === "warn")
+    || errorFindings.length > 0;
   const summary = {
     generatedAt: new Date().toISOString(),
-    status: requiredFailure ? "failed" : "passed",
+    status: requiredFailure ? "failed" : warningPresent ? "warn" : "passed",
     checks,
+    sections: buildSections(checks, { errorFindings, queryInspection }),
+    queryInspection,
     errorFindings,
     nextActions,
     reportJsonPath: options.reportJsonPath,
@@ -266,6 +374,9 @@ export async function runPortalFirebaseOpsToolbox(argv = process.argv.slice(2)) 
     }
     for (const finding of errorFindings) {
       process.stdout.write(`- error finding ${finding.code}: ${finding.summary}\n`);
+    }
+    for (const finding of queryInspection?.findings || []) {
+      process.stdout.write(`- query finding ${finding.code}: ${finding.summary}\n`);
     }
     process.stdout.write(`report json: ${options.reportJsonPath}\n`);
     process.stdout.write(`report markdown: ${options.reportMarkdownPath}\n`);

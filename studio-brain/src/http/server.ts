@@ -30,6 +30,7 @@ import { lintCapabilityPolicy } from "../observability/policyLint";
 import { capabilityPolicyMetadata } from "../capabilities/policyMetadata";
 import type { PilotWriteExecutor } from "../capabilities/pilotWrite";
 import type { BackendHealthReport } from "../connectivity/healthcheck";
+import type { MemoryStats } from "../memory/contracts";
 import type { MemoryService } from "../memory/service";
 import { MemoryValidationError } from "../memory/service";
 import {
@@ -54,6 +55,7 @@ import { deriveControlTowerState, deriveRoomDetail } from "../controlTower/deriv
 import type {
   ControlTowerApprovalItem,
   ControlTowerEvent,
+  ControlTowerMemoryHealth,
   ControlTowerMemoryBrief,
   ControlTowerNextAction,
   ControlTowerStartupScorecard,
@@ -597,12 +599,218 @@ function buildMemoryActionNextMoves(
   }));
 }
 
+function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): ControlTowerMemoryHealth | null {
+  if (!stats) return null;
+
+  const coverage = {
+    rowsWithLattice: toBoundedInt(stats.lattice?.coverage.rowsWithLattice, 0, 0, 1_000_000),
+    totalRows: toBoundedInt(stats.lattice?.coverage.totalRows ?? stats.total, 0, 0, 1_000_000),
+    ratio: toNullableRatio(stats.lattice?.coverage.ratio),
+  };
+  const reviewBacklog = {
+    reviewNow: toBoundedInt(stats.reviewBacklog?.reviewNow ?? stats.lattice?.backlog.reviewNow, 0, 0, 1_000_000),
+    revalidate: toBoundedInt(stats.reviewBacklog?.revalidate ?? stats.lattice?.backlog.revalidate, 0, 0, 1_000_000),
+    resolveConflict: toBoundedInt(stats.reviewBacklog?.resolveConflict ?? stats.lattice?.backlog.resolveConflict, 0, 0, 1_000_000),
+    retire: toBoundedInt(stats.reviewBacklog?.retire ?? stats.lattice?.backlog.retire, 0, 0, 1_000_000),
+    folkloreRiskHigh: toBoundedInt(stats.reviewBacklog?.folkloreRiskHigh ?? stats.lattice?.backlog.folkloreRiskHigh, 0, 0, 1_000_000),
+  };
+  const conflictBacklog = {
+    contestedRows: toBoundedInt(stats.conflictBacklog?.contestedRows, 0, 0, 1_000_000),
+    hardConflicts: toBoundedInt(stats.conflictBacklog?.hardConflicts, 0, 0, 1_000_000),
+    quarantinedRows: toBoundedInt(stats.conflictBacklog?.quarantinedRows, 0, 0, 1_000_000),
+    conflictRecords: toBoundedInt(stats.conflictBacklog?.conflictRecords, 0, 0, 1_000_000),
+  };
+  const startupReadiness = {
+    startupEligibleRows: toBoundedInt(stats.startupReadiness?.startupEligibleRows, 0, 0, 1_000_000),
+    trustedStartupRows: toBoundedInt(stats.startupReadiness?.trustedStartupRows, 0, 0, 1_000_000),
+    handoffRows: toBoundedInt(stats.startupReadiness?.handoffRows, 0, 0, 1_000_000),
+    checkpointRows: toBoundedInt(stats.startupReadiness?.checkpointRows, 0, 0, 1_000_000),
+    fallbackRiskRows: toBoundedInt(stats.startupReadiness?.fallbackRiskRows, 0, 0, 1_000_000),
+  };
+  const secretExposureFindings = {
+    totalRows: toBoundedInt(stats.secretExposureFindings?.totalRows, 0, 0, 1_000_000),
+    redactedRows: toBoundedInt(stats.secretExposureFindings?.redactedRows, 0, 0, 1_000_000),
+    requiresReviewRows: toBoundedInt(stats.secretExposureFindings?.requiresReviewRows, 0, 0, 1_000_000),
+    canonicalBlockedRows: toBoundedInt(stats.secretExposureFindings?.canonicalBlockedRows, 0, 0, 1_000_000),
+    quarantinedRows: toBoundedInt(stats.secretExposureFindings?.quarantinedRows, 0, 0, 1_000_000),
+  };
+  const shadowMcpFindings = {
+    totalRows: toBoundedInt(stats.shadowMcpFindings?.totalRows, 0, 0, 1_000_000),
+    governedRows: toBoundedInt(stats.shadowMcpFindings?.governedRows, 0, 0, 1_000_000),
+    ungovernedRows: toBoundedInt(stats.shadowMcpFindings?.ungovernedRows, 0, 0, 1_000_000),
+    reviewRows: toBoundedInt(stats.shadowMcpFindings?.reviewRows, 0, 0, 1_000_000),
+    highRiskRows: toBoundedInt(stats.shadowMcpFindings?.highRiskRows, 0, 0, 1_000_000),
+  };
+
+  const criticalHighlights = dedupeTextList(
+    [
+      secretExposureFindings.canonicalBlockedRows > 0
+        ? `${secretExposureFindings.canonicalBlockedRows} secret-bearing memories are blocked from canonical promotion`
+        : "",
+      secretExposureFindings.quarantinedRows > 0
+        ? `${secretExposureFindings.quarantinedRows} secret-bearing memories remain quarantined`
+        : "",
+      shadowMcpFindings.highRiskRows > 0
+        ? `${shadowMcpFindings.highRiskRows} MCP memories are flagged high risk`
+        : "",
+      shadowMcpFindings.ungovernedRows > 0
+        ? `${shadowMcpFindings.ungovernedRows} MCP memories are missing governance registration`
+        : "",
+    ],
+    4,
+  );
+  const warningHighlights = dedupeTextList(
+    [
+      startupReadiness.fallbackRiskRows > 0
+        ? `${startupReadiness.fallbackRiskRows} startup memories still depend on fallback continuity`
+        : "",
+      reviewBacklog.resolveConflict > 0
+        ? `${reviewBacklog.resolveConflict} memory conflicts need resolution`
+        : "",
+      reviewBacklog.revalidate > 0
+        ? `${reviewBacklog.revalidate} stale memories need revalidation`
+        : "",
+      reviewBacklog.reviewNow > 0
+        ? `${reviewBacklog.reviewNow} memories are waiting for review`
+        : "",
+      reviewBacklog.folkloreRiskHigh > 0
+        ? `${reviewBacklog.folkloreRiskHigh} folklore-risk memories need verification`
+        : "",
+      conflictBacklog.hardConflicts > 0
+        ? `${conflictBacklog.hardConflicts} hard conflicts remain in the lattice`
+        : "",
+      coverage.totalRows > 0 && coverage.ratio != null && coverage.ratio < 0.95
+        ? `lattice coverage is ${Math.round(coverage.ratio * 100)}%`
+        : "",
+    ],
+    4,
+  );
+  const severity: ControlTowerMemoryHealth["severity"] =
+    criticalHighlights.length > 0
+      ? "critical"
+      : warningHighlights.length > 0 ||
+          startupReadiness.startupEligibleRows > startupReadiness.trustedStartupRows
+        ? "warning"
+        : "info";
+  const highlights = criticalHighlights.length > 0
+    ? criticalHighlights
+    : warningHighlights.length > 0
+      ? warningHighlights
+      : ["Memory trust signals are within the current launch thresholds."];
+  const summary =
+    severity === "critical"
+      ? clipText(`Memory launch trust needs immediate operator review: ${highlights.join("; ")}.`, 220)
+      : severity === "warning"
+        ? clipText(`Memory launch trust is degraded but recoverable: ${highlights.join("; ")}.`, 220)
+        : "Memory launch trust is healthy and startup coverage is within the current policy thresholds.";
+
+  return {
+    severity,
+    summary,
+    highlights,
+    coverage,
+    reviewBacklog,
+    conflictBacklog,
+    startupReadiness,
+    secretExposureFindings,
+    shadowMcpFindings,
+  };
+}
+
+function buildMemoryHealthAttention(memoryHealth: ControlTowerMemoryHealth | null): Array<{
+  id: string;
+  title: string;
+  why: string;
+  ageMinutes: number | null;
+  severity: "info" | "warning" | "critical";
+  actionLabel: string;
+  target: { type: "ops"; action: "memory" };
+}> {
+  if (!memoryHealth) return [];
+
+  const items = [
+    memoryHealth.secretExposureFindings.canonicalBlockedRows > 0 || memoryHealth.secretExposureFindings.quarantinedRows > 0
+      ? {
+          id: "attention:memory:secret-exposure",
+          title: "Secret-bearing memories need review",
+          why: clipText(memoryHealth.summary, 180),
+          ageMinutes: null,
+          severity: "critical" as const,
+          actionLabel: "Review memory",
+          target: { type: "ops" as const, action: "memory" as const },
+        }
+      : null,
+    memoryHealth.shadowMcpFindings.highRiskRows > 0 || memoryHealth.shadowMcpFindings.ungovernedRows > 0
+      ? {
+          id: "attention:memory:shadow-mcp",
+          title: "Shadow MCP memory needs governance review",
+          why: clipText(memoryHealth.summary, 180),
+          ageMinutes: null,
+          severity: memoryHealth.shadowMcpFindings.highRiskRows > 0 ? ("critical" as const) : ("warning" as const),
+          actionLabel: "Review memory",
+          target: { type: "ops" as const, action: "memory" as const },
+        }
+      : null,
+    memoryHealth.startupReadiness.fallbackRiskRows > 0 || memoryHealth.reviewBacklog.resolveConflict > 0
+      ? {
+          id: "attention:memory:startup-trust",
+          title: "Startup memory trust needs repair",
+          why: clipText(memoryHealth.summary, 180),
+          ageMinutes: null,
+          severity:
+            memoryHealth.startupReadiness.fallbackRiskRows > 0
+              ? ("warning" as const)
+              : ("info" as const),
+          actionLabel: "Review memory",
+          target: { type: "ops" as const, action: "memory" as const },
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+
+  return items.slice(0, 3);
+}
+
+function buildMemoryHealthNextMoves(memoryHealth: ControlTowerMemoryHealth | null): ControlTowerNextAction[] {
+  if (!memoryHealth || memoryHealth.severity === "info") return [];
+
+  const titles = dedupeTextList(
+    [
+      memoryHealth.secretExposureFindings.canonicalBlockedRows > 0 || memoryHealth.secretExposureFindings.quarantinedRows > 0
+        ? "Review quarantined secret-bearing memories"
+        : "",
+      memoryHealth.shadowMcpFindings.highRiskRows > 0 || memoryHealth.shadowMcpFindings.ungovernedRows > 0
+        ? "Audit MCP governance coverage in memory"
+        : "",
+      memoryHealth.startupReadiness.fallbackRiskRows > 0
+        ? "Promote trusted startup continuity memories"
+        : "",
+      memoryHealth.reviewBacklog.resolveConflict > 0 || memoryHealth.reviewBacklog.revalidate > 0
+        ? "Work the memory conflict and revalidation backlog"
+        : "",
+      memoryHealth.reviewBacklog.folkloreRiskHigh > 0
+        ? "Verify folklore-risk memories before launch"
+        : "",
+    ],
+    4,
+  );
+
+  return titles.map((title, index) => ({
+    id: `memory-health-next:${index}:${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    title,
+    why: clipText(memoryHealth.summary, 180),
+    ageMinutes: null,
+    actionLabel: "Review memory",
+    target: { type: "ops", action: "memory" },
+  }));
+}
+
 function enrichControlTowerState(
   state: ControlTowerState,
   syntheticEvents: ControlTowerEvent[],
   approvals: ControlTowerApprovalItem[],
   memoryBrief: ControlTowerMemoryBrief,
   startupScorecard: ControlTowerStartupScorecard | null,
+  memoryHealth: ControlTowerMemoryHealth | null,
 ): ControlTowerState {
   const mergedEvents = [...syntheticEvents, ...state.events]
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
@@ -619,24 +827,27 @@ function enrichControlTowerState(
       actionLabel: "Open approvals",
       target: approval.target,
     }));
+  const memoryAttention = buildMemoryHealthAttention(memoryHealth);
   const memoryNextMoves = buildMemoryActionNextMoves(memoryBrief, startupScorecard);
-  const mergedActions = dedupeNextActions([...memoryNextMoves, ...state.actions], 6);
+  const memoryHealthMoves = buildMemoryHealthNextMoves(memoryHealth);
+  const mergedActions = dedupeNextActions([...memoryHealthMoves, ...memoryNextMoves, ...state.actions], 6);
 
   return {
     ...state,
     approvals,
     memoryBrief,
     startupScorecard,
+    memoryHealth,
     events: mergedEvents,
     recentChanges: mergedEvents.slice(0, 6),
     actions: mergedActions,
     counts: {
       ...state.counts,
-      needsAttention: state.counts.needsAttention + approvalAttention.length,
+      needsAttention: state.counts.needsAttention + approvalAttention.length + memoryAttention.length,
     },
     overview: {
       ...state.overview,
-      needsAttention: [...approvalAttention, ...state.overview.needsAttention].slice(0, 6),
+      needsAttention: [...memoryAttention, ...approvalAttention, ...state.overview.needsAttention].slice(0, 6),
       goodNextMoves: mergedActions,
       recentEvents: mergedEvents.slice(0, 8),
     },
@@ -1194,6 +1405,15 @@ export function startHttpServer(params: {
     const initialState = deriveControlTowerState(raw, audits, { approvals });
     const memoryBrief = readControlTowerMemoryBrief(resolvedControlTowerRepoRoot, initialState.memoryBrief);
     const startupScorecard = readControlTowerStartupScorecard(resolvedControlTowerRepoRoot);
+    let memoryHealth: ControlTowerMemoryHealth | null = null;
+    if (memoryService) {
+      try {
+        memoryHealth = buildControlTowerMemoryHealth(await memoryService.stats({}));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`control tower memory health unavailable: ${message}`);
+      }
+    }
     const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals);
     const state = enrichControlTowerState(
       deriveControlTowerState(raw, audits, {
@@ -1204,6 +1424,7 @@ export function startHttpServer(params: {
       approvals,
       memoryBrief,
       startupScorecard,
+      memoryHealth,
     );
     return { raw, state, audits };
   };

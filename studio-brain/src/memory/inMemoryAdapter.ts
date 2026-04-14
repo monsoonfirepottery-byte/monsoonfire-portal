@@ -19,7 +19,23 @@ import type {
   MemoryStoreAdapter,
   MemoryUpsertInput,
 } from "./adapters";
-import type { MemoryLayer, MemoryLoopState, MemoryRecord, MemorySearchResult, MemoryStats, MemoryType } from "./contracts";
+import type {
+  MemoryEvidence,
+  MemoryCategory,
+  MemoryFreshnessStatus,
+  MemoryLayer,
+  MemoryLoopState,
+  MemoryOperationalStatus,
+  MemoryRedactionState,
+  MemoryRecord,
+  MemoryReviewAction,
+  MemorySearchResult,
+  MemorySourceClass,
+  MemoryStats,
+  MemoryTransitionEvent,
+  MemoryTruthStatus,
+  MemoryType,
+} from "./contracts";
 import { isAllowedMemoryLayer, normalizeMemoryLayer, normalizeMemoryLayerList } from "./layers";
 
 function clamp01(value: unknown, fallback = 0.5): number {
@@ -281,6 +297,93 @@ function statusBreakdown(rows: MemoryRecord[]): Array<{ status: MemoryRecord["st
     .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status));
 }
 
+function normalizeText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function normalizeMetadata(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function readLatticeValue(metadata: Record<string, unknown>, key: string): unknown {
+  const nested = normalizeMetadata(metadata.memoryLattice);
+  if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== "") return metadata[key];
+  if (nested[key] !== undefined && nested[key] !== null && nested[key] !== "") return nested[key];
+  return null;
+}
+
+function mapBreakdown<T extends string>(counts: Map<T, number>, key: string): Array<Record<string, unknown>> {
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({ [key]: value, count }))
+    .sort((left, right) => Number(right.count) - Number(left.count) || String(left[key]).localeCompare(String(right[key])));
+}
+
+function latticeBreakdown(rows: MemoryRecord[]): MemoryStats["lattice"] {
+  const byCategory = new Map<MemoryCategory, number>();
+  const byTruthStatus = new Map<MemoryTruthStatus, number>();
+  const byFreshnessStatus = new Map<MemoryFreshnessStatus, number>();
+  const byOperationalStatus = new Map<MemoryOperationalStatus, number>();
+  const byReviewAction = new Map<MemoryReviewAction, number>();
+  let rowsWithLattice = 0;
+  let reviewNow = 0;
+  let revalidate = 0;
+  let resolveConflict = 0;
+  let retire = 0;
+  let folkloreRiskHigh = 0;
+
+  for (const row of rows) {
+    const metadata = normalizeMetadata(row.metadata);
+    const category = normalizeText(readLatticeValue(metadata, "memoryCategory") ?? readLatticeValue(metadata, "category")) as MemoryCategory;
+    const truthStatus = normalizeText(readLatticeValue(metadata, "truthStatus")) as MemoryTruthStatus;
+    const freshnessStatus = normalizeText(readLatticeValue(metadata, "freshnessStatus")) as MemoryFreshnessStatus;
+    const operationalStatus = normalizeText(readLatticeValue(metadata, "operationalStatus")) as MemoryOperationalStatus;
+    const reviewAction = normalizeText(readLatticeValue(metadata, "reviewAction")) as MemoryReviewAction;
+    const folkloreRisk = Number(readLatticeValue(metadata, "folkloreRisk") ?? 0);
+    const hasLattice = Boolean(category || truthStatus || freshnessStatus || operationalStatus || reviewAction);
+    if (hasLattice) rowsWithLattice += 1;
+    if (category) byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
+    if (truthStatus) byTruthStatus.set(truthStatus, (byTruthStatus.get(truthStatus) ?? 0) + 1);
+    if (freshnessStatus) byFreshnessStatus.set(freshnessStatus, (byFreshnessStatus.get(freshnessStatus) ?? 0) + 1);
+    if (operationalStatus) byOperationalStatus.set(operationalStatus, (byOperationalStatus.get(operationalStatus) ?? 0) + 1);
+    if (reviewAction) {
+      byReviewAction.set(reviewAction, (byReviewAction.get(reviewAction) ?? 0) + 1);
+      if (reviewAction !== "none") reviewNow += 1;
+      if (reviewAction === "revalidate") revalidate += 1;
+      if (reviewAction === "resolve-conflict") resolveConflict += 1;
+      if (reviewAction === "retire") retire += 1;
+    }
+    if (Number.isFinite(folkloreRisk) && folkloreRisk >= 0.65) folkloreRiskHigh += 1;
+  }
+
+  return {
+    coverage: {
+      rowsWithLattice,
+      totalRows: rows.length,
+      ratio: rows.length > 0 ? Number((rowsWithLattice / rows.length).toFixed(3)) : 0,
+    },
+    byCategory: mapBreakdown(byCategory, "category") as Array<{ category: MemoryCategory; count: number }>,
+    byTruthStatus: mapBreakdown(byTruthStatus, "status") as Array<{ status: MemoryTruthStatus; count: number }>,
+    byFreshnessStatus: mapBreakdown(byFreshnessStatus, "status") as Array<{ status: MemoryFreshnessStatus; count: number }>,
+    byOperationalStatus: mapBreakdown(byOperationalStatus, "status") as Array<{ status: MemoryOperationalStatus; count: number }>,
+    byReviewAction: mapBreakdown(byReviewAction, "action") as Array<{ action: MemoryReviewAction; count: number }>,
+    backlog: {
+      reviewNow,
+      revalidate,
+      resolveConflict,
+      retire,
+      folkloreRiskHigh,
+    },
+  };
+}
+
+function readEvidenceFromRow(row: MemoryRecord): MemoryEvidence[] {
+  return Array.isArray(row.evidence) ? row.evidence : [];
+}
+
+function readTransitionsFromRow(row: MemoryRecord): MemoryTransitionEvent[] {
+  return Array.isArray(row.transitions) ? row.transitions : [];
+}
+
 function recencyScore(occurredAt: string | null, createdAt: string, memoryType: MemoryType): number {
   const timestamp = Date.parse(occurredAt || createdAt);
   if (!Number.isFinite(timestamp)) return 0.5;
@@ -307,6 +410,10 @@ function normalizeRecord(input: MemoryUpsertInput): MemoryRecord {
     memoryLayer: normalizeMemoryLayer(input.memoryLayer, "episodic"),
     sourceConfidence: clamp01(input.sourceConfidence),
     importance: clamp01(input.importance),
+    evidence: Array.isArray(input.evidence) ? input.evidence.map((entry) => ({ ...entry, supportsMemoryIds: [...entry.supportsMemoryIds], metadata: normalizeMetadata(entry.metadata) })) : [],
+    transitions: Array.isArray(input.transitionEvents)
+      ? input.transitionEvents.map((entry) => ({ ...entry, evidenceIds: [...entry.evidenceIds], metadata: normalizeMetadata(entry.metadata) }))
+      : [],
   };
 }
 
@@ -366,11 +473,69 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       return rightTime - leftTime;
     });
 
-  const stats = (tenantId: string | null | undefined): MemoryStats => {
-    const rows = toArray().filter((row) => (tenantId === undefined ? true : row.tenantId === tenantId));
+  const stats = (tenantId: string | null | undefined, rowsOverride?: MemoryRecord[]): MemoryStats => {
+    const rows =
+      rowsOverride ??
+      toArray().filter((row) => (tenantId === undefined ? true : row.tenantId === tenantId));
     const bySourceMap = new Map<string, number>();
     for (const row of rows) {
       bySourceMap.set(row.source, (bySourceMap.get(row.source) ?? 0) + 1);
+    }
+    const lattice = latticeBreakdown(rows);
+    let contestedRows = 0;
+    let hardConflicts = 0;
+    let quarantinedRows = 0;
+    let conflictRecords = 0;
+    let startupEligibleRows = 0;
+    let trustedStartupRows = 0;
+    let handoffRows = 0;
+    let checkpointRows = 0;
+    let fallbackRiskRows = 0;
+    let redactedRows = 0;
+    let requiresReviewRows = 0;
+    let canonicalBlockedRows = 0;
+    let secretQuarantinedRows = 0;
+    let governedMcpRows = 0;
+    let ungovernedMcpRows = 0;
+    let shadowMcpReviewRows = 0;
+    let highRiskShadowMcpRows = 0;
+    for (const row of rows) {
+      const metadata = normalizeMetadata(row.metadata);
+      const category = normalizeText(readLatticeValue(metadata, "memoryCategory") ?? readLatticeValue(metadata, "category"));
+      const truthStatus = normalizeText(readLatticeValue(metadata, "truthStatus"));
+      const operationalStatus = normalizeText(readLatticeValue(metadata, "operationalStatus"));
+      const conflictSeverity = normalizeText(readLatticeValue(metadata, "conflictSeverity"));
+      const sourceClass = normalizeText(readLatticeValue(metadata, "sourceClass")) as MemorySourceClass;
+      const redactionState = normalizeText(metadata.redactionState ?? readLatticeValue(metadata, "redactionState")) as MemoryRedactionState;
+      const startupEligible = metadata.startupEligible === true || metadata.rememberForStartup === true;
+      const secretExposure = normalizeMetadata(metadata.secretExposure);
+      const mcpGovernance = normalizeMetadata(metadata.mcpGovernance);
+      const evidenceCount = readEvidenceFromRow(row).length;
+      if (truthStatus === "contradicted" || operationalStatus === "quarantined") contestedRows += 1;
+      if (conflictSeverity === "hard") hardConflicts += 1;
+      if (operationalStatus === "quarantined") quarantinedRows += 1;
+      if (category === "conflict-record") conflictRecords += 1;
+      if (startupEligible) {
+        startupEligibleRows += 1;
+        if ((truthStatus === "trusted" || truthStatus === "verified") && operationalStatus === "active") {
+          trustedStartupRows += 1;
+        }
+        if (!evidenceCount && row.status !== "accepted") fallbackRiskRows += 1;
+      }
+      if (String(metadata.rememberKind ?? "").trim().toLowerCase() === "handoff") handoffRows += 1;
+      if (String(metadata.rememberKind ?? "").trim().toLowerCase() === "checkpoint") checkpointRows += 1;
+      if (redactionState === "redacted" || redactionState === "verified-redacted") redactedRows += 1;
+      if (redactionState === "requires-review") requiresReviewRows += 1;
+      if (secretExposure.canonicalPromotionBlocked === true) canonicalBlockedRows += 1;
+      if (secretExposure.quarantined === true) secretQuarantinedRows += 1;
+      if (sourceClass === "mcp-tool" || Object.keys(mcpGovernance).length > 0) {
+        if (normalizeText(mcpGovernance.approvalState)) governedMcpRows += 1;
+        else ungovernedMcpRows += 1;
+        if (mcpGovernance.shadowRisk === true) shadowMcpReviewRows += 1;
+        if (mcpGovernance.shadowRisk === true && normalizeText(mcpGovernance.approvalState) !== "approved") {
+          highRiskShadowMcpRows += 1;
+        }
+      }
     }
     return {
       total: rows.length,
@@ -380,6 +545,35 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
         .sort((left, right) => right.count - left.count),
       byLayer: layerBreakdown(rows),
       byStatus: statusBreakdown(rows),
+      lattice,
+      reviewBacklog: lattice?.backlog,
+      conflictBacklog: {
+        contestedRows,
+        hardConflicts,
+        quarantinedRows,
+        conflictRecords,
+      },
+      startupReadiness: {
+        startupEligibleRows,
+        trustedStartupRows,
+        handoffRows,
+        checkpointRows,
+        fallbackRiskRows,
+      },
+      secretExposureFindings: {
+        totalRows: rows.length,
+        redactedRows,
+        requiresReviewRows,
+        canonicalBlockedRows,
+        quarantinedRows: secretQuarantinedRows,
+      },
+      shadowMcpFindings: {
+        totalRows: governedMcpRows + ungovernedMcpRows,
+        governedRows: governedMcpRows,
+        ungovernedRows: ungovernedMcpRows,
+        reviewRows: shadowMcpReviewRows,
+        highRiskRows: highRiskShadowMcpRows,
+      },
     };
   };
 
@@ -388,10 +582,28 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       const existing = records.get(input.id);
       const next = normalizeRecord(input);
       if (existing) {
+        const mergedEvidence = new Map<string, MemoryEvidence>();
+        for (const entry of [...readEvidenceFromRow(existing), ...readEvidenceFromRow(next)]) {
+          mergedEvidence.set(entry.evidenceId, {
+            ...entry,
+            supportsMemoryIds: [...entry.supportsMemoryIds],
+            metadata: normalizeMetadata(entry.metadata),
+          });
+        }
+        const mergedTransitions = new Map<string, MemoryTransitionEvent>();
+        for (const entry of [...readTransitionsFromRow(existing), ...readTransitionsFromRow(next)]) {
+          mergedTransitions.set(entry.transitionId, {
+            ...entry,
+            evidenceIds: [...entry.evidenceIds],
+            metadata: normalizeMetadata(entry.metadata),
+          });
+        }
         records.set(input.id, {
           ...next,
           createdAt: existing.createdAt,
           occurredAt: existing.occurredAt && next.occurredAt ? (existing.occurredAt < next.occurredAt ? existing.occurredAt : next.occurredAt) : existing.occurredAt || next.occurredAt,
+          evidence: Array.from(mergedEvidence.values()),
+          transitions: Array.from(mergedTransitions.values()).sort((left, right) => left.at.localeCompare(right.at)),
         });
       } else {
         records.set(next.id, next);
@@ -479,19 +691,7 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       const rows = toArray()
         .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
         .filter((row) => isAllowedMemoryLayer(row.memoryLayer, normalizeMemoryLayerList(input.layerAllowlist), normalizeMemoryLayerList(input.layerDenylist)));
-      const bySourceMap = new Map<string, number>();
-      for (const row of rows) {
-        bySourceMap.set(row.source, (bySourceMap.get(row.source) ?? 0) + 1);
-      }
-      return {
-        total: rows.length,
-        lastCapturedAt: rows.length ? rows[0].createdAt : null,
-        bySource: Array.from(bySourceMap.entries())
-          .map(([source, count]) => ({ source, count }))
-          .sort((left, right) => right.count - left.count),
-        byLayer: layerBreakdown(rows),
-        byStatus: statusBreakdown(rows),
-      };
+      return stats(input.tenantId, rows);
     },
 
     async indexSignals(input) {

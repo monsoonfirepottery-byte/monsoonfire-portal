@@ -649,6 +649,49 @@ test("memory endpoints capture, search, recent, stats, and import", async () => 
     assert.equal(capturePayload.ok, true);
     assert.ok(capturePayload.memory.id.startsWith("mem_"));
 
+    const startupHandoff = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Handoff: verify startup continuity before launch.",
+        source: "codex-handoff",
+        metadata: {
+          rememberKind: "handoff",
+          startupEligible: true,
+          threadId: "thread-http-memory-stats",
+          threadEvidence: "explicit",
+        },
+      }),
+    });
+    assert.equal(startupHandoff.status, 201);
+
+    const secretCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content:
+          "Operator note: Authorization: Bearer test-redaction-token",
+        source: "manual",
+      }),
+    });
+    assert.equal(secretCapture.status, 201);
+
+    const shadowMcpCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Connector result: MCP surfaced a repo sync status from an unapproved server.",
+        source: "mcp-tool:repo-sync",
+        metadata: {
+          mcpGovernance: {
+            approvalState: "pending",
+            shadowRisk: true,
+          },
+        },
+      }),
+    });
+    assert.equal(shadowMcpCapture.status, 201);
+
     const searched = await fetch(`${baseUrl}/api/memory/search`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
@@ -676,11 +719,21 @@ test("memory endpoints capture, search, recent, stats, and import", async () => 
     assert.equal(stats.status, 200);
     const statsPayload = (await stats.json()) as {
       ok: boolean;
-      stats: { total: number; bySource: Array<{ source: string; count: number }> };
+      stats: {
+        total: number;
+        bySource: Array<{ source: string; count: number }>;
+        startupReadiness?: { startupEligibleRows: number; handoffRows: number };
+        secretExposureFindings?: { canonicalBlockedRows: number };
+        shadowMcpFindings?: { highRiskRows: number };
+      };
     };
     assert.equal(statsPayload.ok, true);
     assert.ok(statsPayload.stats.total >= 1);
     assert.ok(statsPayload.stats.bySource.some((entry) => entry.source === "manual"));
+    assert.equal((statsPayload.stats.startupReadiness?.startupEligibleRows ?? 0) >= 1, true);
+    assert.equal((statsPayload.stats.startupReadiness?.handoffRows ?? 0) >= 1, true);
+    assert.equal((statsPayload.stats.secretExposureFindings?.canonicalBlockedRows ?? 0) >= 1, true);
+    assert.equal((statsPayload.stats.shadowMcpFindings?.highRiskRows ?? 0) >= 1, true);
 
     const context = await fetch(`${baseUrl}/api/memory/context`, {
       method: "POST",
@@ -2569,6 +2622,49 @@ test("control tower state routes derive browser-friendly room and service data",
         controlTowerRunner: runner,
       },
       async (baseUrl) => {
+        const startupHandoff = await fetch(`${baseUrl}/api/memory/capture`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({
+            content: "Handoff: verify startup continuity before launch.",
+            source: "codex-handoff",
+            metadata: {
+              rememberKind: "handoff",
+              startupEligible: true,
+              threadId: "thread-control-tower-memory-health",
+              threadEvidence: "explicit",
+            },
+          }),
+        });
+        assert.equal(startupHandoff.status, 201);
+
+        const secretCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({
+            content:
+              "Operator note: Authorization: Bearer test-redaction-token",
+            source: "manual",
+          }),
+        });
+        assert.equal(secretCapture.status, 201);
+
+        const shadowMcpCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({
+            content: "Connector result: MCP surfaced a repo sync status from an unapproved server.",
+            source: "mcp-tool:repo-sync",
+            metadata: {
+              mcpGovernance: {
+                approvalState: "pending",
+                shadowRisk: true,
+              },
+            },
+          }),
+        });
+        assert.equal(shadowMcpCapture.status, 201);
+
         const response = await fetch(`${baseUrl}/api/control-tower/state`, {
           headers: { authorization: "Bearer test-staff" },
         });
@@ -2576,7 +2672,11 @@ test("control tower state routes derive browser-friendly room and service data",
         const payload = (await response.json()) as {
           ok: boolean;
           state: {
-            overview: { activeRooms: Array<{ id: string }>; needsAttention: unknown[]; goodNextMoves: Array<{ title: string }> };
+            overview: {
+              activeRooms: Array<{ id: string }>;
+              needsAttention: Array<{ title: string }>;
+              goodNextMoves: Array<{ title: string }>;
+            };
             pinnedItems: Array<{ title: string }>;
             services: Array<{ id: string; health: string }>;
             board: Array<{ owner: string; task: string }>;
@@ -2596,6 +2696,14 @@ test("control tower state routes derive browser-friendly room and service data",
               metrics: { readyRate: number | null; groundingReadyRate: number | null; blockedContinuityRate: number | null; p95LatencyMs: number | null };
               supportingSignals: { toolcalls: { telemetryCoverageRate: number | null } };
               coverage: { gaps: string[] };
+            } | null;
+            memoryHealth: {
+              severity: string;
+              reviewBacklog: { reviewNow: number };
+              startupReadiness: { startupEligibleRows: number; handoffRows: number };
+              secretExposureFindings: { canonicalBlockedRows: number };
+              shadowMcpFindings: { highRiskRows: number };
+              highlights: string[];
             } | null;
             recentChanges: Array<{ type: string; sourceAction: string | null }>;
           };
@@ -2626,11 +2734,32 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal(payload.state.startupScorecard?.metrics.p95LatencyMs, 950);
         assert.equal(payload.state.startupScorecard?.supportingSignals.toolcalls.telemetryCoverageRate, 0.86);
         assert.equal(payload.state.startupScorecard?.coverage.gaps.length, 1);
+        assert.equal(payload.state.memoryHealth?.severity, "critical");
+        assert.equal((payload.state.memoryHealth?.startupReadiness.startupEligibleRows ?? 0) >= 1, true);
+        assert.equal((payload.state.memoryHealth?.startupReadiness.handoffRows ?? 0) >= 1, true);
+        assert.equal((payload.state.memoryHealth?.secretExposureFindings.canonicalBlockedRows ?? 0) >= 1, true);
+        assert.equal((payload.state.memoryHealth?.shadowMcpFindings.highRiskRows ?? 0) >= 1, true);
+        assert.equal(
+          (payload.state.memoryHealth?.highlights ?? []).some((entry) => /secret-bearing memories/i.test(entry)),
+          true,
+        );
         assert.equal(
           payload.state.overview.goodNextMoves.some((entry) =>
             /promoted approval summary memory/i.test(entry.title)
           ),
           false,
+        );
+        assert.equal(
+          payload.state.overview.goodNextMoves.some((entry) =>
+            /audit mcp governance coverage in memory|review quarantined secret-bearing memories/i.test(entry.title)
+          ),
+          true,
+        );
+        assert.equal(
+          payload.state.overview.needsAttention.some((entry) =>
+            /secret-bearing memories need review|shadow mcp memory needs governance review/i.test(entry.title)
+          ),
+          true,
         );
         assert.ok(payload.state.recentChanges.some((entry) => entry.type === "memory.promoted"));
         assert.ok(payload.state.recentChanges.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));

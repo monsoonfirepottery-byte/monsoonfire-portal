@@ -1,10 +1,12 @@
 import type {
+  MemoryEvidence,
   MemoryLoopState,
   MemoryRecord,
   MemorySearchResult,
   MemoryStats,
   MemoryLayer,
   MemoryStatus,
+  MemoryTransitionEvent,
   MemoryType,
   RetrievalMode,
 } from "./contracts";
@@ -30,6 +32,8 @@ export type MemoryUpsertInput = {
   fingerprint: string | null;
   embeddingModel: string | null;
   embeddingVersion: number;
+  evidence?: MemoryEvidence[];
+  transitionEvents?: MemoryTransitionEvent[];
 };
 
 export type MemorySearchInput = {

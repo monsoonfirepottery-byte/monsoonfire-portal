@@ -26,6 +26,7 @@ const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
 const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;
 const DEFAULT_MARK_READ_RETRY_COUNT = 1;
 const DEFAULT_CANARY_AUTH_MODE = "auto";
+const DASHBOARD_HEADING_PATTERN = /(Your studio at a glance|Your studio dashboard|Dashboard)/i;
 const THEME_SWEEP_TARGETS = ["light", "dark", "mono"];
 const NAV_DOCK_SWEEP_TARGETS = [
   {
@@ -1416,6 +1417,10 @@ async function ensureTheme(page, targetTheme) {
   }
 }
 
+async function waitForDashboardHeading(page) {
+  await page.getByRole("heading", { name: DASHBOARD_HEADING_PATTERN }).first().waitFor({ timeout: 30000 });
+}
+
 async function waitForAuthReady(page) {
   const signOut = page.getByRole("button", { name: /^Sign out$/i }).first();
   const signedOutCard = page.locator(".signed-out-card");
@@ -2182,10 +2187,7 @@ async function run() {
       await check(summary, "dashboard piece click-through opens my pieces detail", async () => {
         try {
           await clickNavItem(page, "Dashboard", true);
-          await page
-            .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
-            .first()
-            .waitFor({ timeout: 30000 });
+          await waitForDashboardHeading(page);
 
           let openedFromDashboard = false;
           let routeUsed = "sidebar-nav";
@@ -2470,10 +2472,7 @@ async function run() {
           label: "Dashboard",
           navigate: async () => {
             await clickNavItem(page, "Dashboard", true);
-            await page
-              .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
-              .first()
-              .waitFor({ timeout: 30000 });
+            await waitForDashboardHeading(page);
           },
         },
         {

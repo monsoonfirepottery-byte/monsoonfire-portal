@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, resolve } from "node:path";
 import dotenv from "dotenv";
 import { z } from "zod";
 
@@ -12,6 +15,9 @@ const PLACEHOLDER_MATCHERS = [
   /\$\{[^}]+\}/,
 ];
 
+const STUDIO_BRAIN_ROOT = resolve(__dirname, "..", "..");
+const REPO_ROOT = resolve(STUDIO_BRAIN_ROOT, "..");
+
 const RUNTIME_ENFORCED_SENSITIVE_VARS = new Set([
   "STUDIO_BRAIN_ADMIN_TOKEN",
   "STUDIO_BRAIN_OPENAI_API_KEY",
@@ -19,6 +25,14 @@ const RUNTIME_ENFORCED_SENSITIVE_VARS = new Set([
   "STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY",
   "STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY",
   "STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN",
+  "STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ADMIN_TOKEN",
   "PGPASSWORD",
   "REDIS_PASSWORD",
 ]);
@@ -136,6 +150,59 @@ const EnvSchema = z.object({
   STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: BoolFromString.default(false),
   STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: BoolFromString.default(true),
   STUDIO_BRAIN_FUNCTIONS_BASE_URL: z.string().default("https://us-central1-monsoonfire-portal.cloudfunctions.net"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: BoolFromString.default(false),
+  STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC: BoolFromString.default(true),
+  STUDIO_BRAIN_SUPPORT_EMAIL_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(5 * 60 * 1000),
+  STUDIO_BRAIN_SUPPORT_EMAIL_INITIAL_DELAY_MS: z.coerce.number().int().min(0).max(300_000).default(15_000),
+  STUDIO_BRAIN_SUPPORT_EMAIL_JITTER_MS: z.coerce.number().int().min(0).max(300_000).default(30_000),
+  STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX: z.string().default("support@monsoonfire.com"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: z.enum(["gmail", "namecheap_private_email"]).default("gmail"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_USER_ID: z.string().default("me"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_QUERY: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_LABEL_IDS: CsvFromString.default(() => []),
+  STUDIO_BRAIN_SUPPORT_EMAIL_MAX_MESSAGES: z.coerce.number().int().min(1).max(100).default(25),
+  STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_BASE_MS: z.coerce.number().int().min(5_000).max(3_600_000).default(30_000),
+  STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_MAX_MS: z.coerce.number().int().min(5_000).max(7_200_000).default(30 * 60 * 1000),
+  STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE: z.enum(["env", "application_default"]).default("env"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CREDENTIALS_PATH: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST: z.string().default("mail.privateemail.com"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_PORT: z.coerce.number().int().min(1).max(65535).default(993),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_SECURE: BoolFromString.default(true),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST: z.string().default("mail.privateemail.com"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_SECURE: BoolFromString.default(true),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER: z.string().default("INBOX"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IGNORE_TLS_ERRORS: BoolFromString.default(false),
+  STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FROM_NAME: z.string().default("Ember at Monsoon Fire"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: z.enum(["shared", "separate", "disabled"]).default("shared"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_USER_ID: z.string().default("me"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE: z.enum(["env", "application_default"]).default("env"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CREDENTIALS_PATH: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ROUTE: z.string().default("apiV1/v1/support.requests.ingestEmail"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: z.enum(["env", "portal_automation"]).default("env"),
+  STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ADMIN_TOKEN: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_ENV_PATH: z.string().default(""),
+  STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_CREDENTIALS_PATH: z.string().default(""),
+  STUDIO_BRAIN_KILN_ENABLED: BoolFromString.default(false),
+  STUDIO_BRAIN_KILN_IMPORT_MAX_BYTES: z.coerce.number().int().min(1_024).max(100_000_000).default(5 * 1024 * 1024),
+  STUDIO_BRAIN_KILN_WATCH_ENABLED: BoolFromString.default(false),
+  STUDIO_BRAIN_KILN_WATCH_DIR: z.string().default("./output/studio-brain/kiln-watch"),
+  STUDIO_BRAIN_KILN_WATCH_INTERVAL_MS: z.coerce.number().int().min(10_000).max(86_400_000).default(5 * 60 * 1000),
+  STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS: z.coerce.number().int().min(0).max(300_000).default(15_000),
+  STUDIO_BRAIN_KILN_WATCH_JITTER_MS: z.coerce.number().int().min(0).max(300_000).default(30_000),
+  STUDIO_BRAIN_KILN_ENABLE_SUPPORTED_WRITES: BoolFromString.default(false),
+  STUDIO_BRAIN_KILNAID_SESSION_PATH: z.string().default(""),
   STUDIO_BRAIN_DEFAULT_TENANT_ID: z.string().default("monsoonfire-main"),
   STUDIO_BRAIN_ALLOWED_TENANT_IDS: z.string().default("monsoonfire-main"),
   STUDIO_BRAIN_MEMORY_INGEST_ENABLED: BoolFromString.default(false),
@@ -176,6 +243,42 @@ export type BrainEnv = z.infer<typeof EnvSchema>;
 
 function hasPlaceholderValue(value: string): boolean {
   return PLACEHOLDER_MATCHERS.some((pattern) => pattern.test(value));
+}
+
+function resolveConfiguredPath(pathValue: string, baseDir: string): string {
+  const raw = pathValue.trim();
+  if (!raw) return "";
+  return isAbsolute(raw) ? raw : resolve(baseDir, raw);
+}
+
+function resolveSupportEmailApplicationDefaultPath(env: BrainEnv): string {
+  const explicit = resolveConfiguredPath(env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CREDENTIALS_PATH, STUDIO_BRAIN_ROOT);
+  if (explicit) return explicit;
+  const appData = String(process.env.APPDATA ?? "").trim();
+  if (appData) {
+    return resolve(appData, "gcloud", "application_default_credentials.json");
+  }
+  return resolve(homedir(), ".config", "gcloud", "application_default_credentials.json");
+}
+
+function resolveSupportEmailReplyApplicationDefaultPath(env: BrainEnv): string {
+  const explicit = resolveConfiguredPath(env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CREDENTIALS_PATH, STUDIO_BRAIN_ROOT);
+  if (explicit) return explicit;
+  const appData = String(process.env.APPDATA ?? "").trim();
+  if (appData) {
+    return resolve(appData, "gcloud", "application_default_credentials.json");
+  }
+  return resolve(homedir(), ".config", "gcloud", "application_default_credentials.json");
+}
+
+function resolveSupportEmailPortalEnvPath(env: BrainEnv): string {
+  const explicit = resolveConfiguredPath(env.STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_ENV_PATH, REPO_ROOT);
+  const candidates = [
+    explicit,
+    resolve(REPO_ROOT, "secrets", "portal", "portal-automation.env"),
+    resolve(homedir(), "secrets", "portal", "portal-automation.env"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) ?? explicit ?? "";
 }
 
 function validateConnectivityConfig(env: BrainEnv): string[] {
@@ -229,6 +332,119 @@ function validateConnectivityConfig(env: BrainEnv): string[] {
   if (env.STUDIO_BRAIN_MEMORY_INGEST_ENABLED) {
     if (!env.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET || env.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET.trim().length === 0) {
       errors.push("STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET is required when STUDIO_BRAIN_MEMORY_INGEST_ENABLED=true");
+    }
+  }
+
+  if (env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED) {
+    if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX.trim()) {
+      errors.push("STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX is required when support email sync is enabled");
+    }
+    if (env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER === "gmail") {
+      if (env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE === "application_default") {
+        const credentialPath = resolveSupportEmailApplicationDefaultPath(env);
+        if (!existsSync(credentialPath)) {
+          errors.push(
+            `STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE=application_default requires a credential file at ${credentialPath}`
+          );
+        }
+      } else {
+        if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID.trim()) {
+          errors.push("STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID is required when support email provider is gmail");
+        }
+        if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET.trim()) {
+          errors.push(
+            "STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET is required when support email provider is gmail"
+          );
+        }
+        if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN.trim()) {
+          errors.push(
+            "STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN is required when support email provider is gmail"
+          );
+        }
+      }
+    } else {
+      if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST.trim()) {
+        errors.push(
+          "STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST is required when support email provider is namecheap_private_email"
+        );
+      }
+      if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST.trim()) {
+        errors.push(
+          "STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST is required when support email provider is namecheap_private_email"
+        );
+      }
+      if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME.trim()) {
+        errors.push(
+          "STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME is required when support email provider is namecheap_private_email"
+        );
+      }
+      if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD.trim()) {
+        errors.push(
+          "STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD is required when support email provider is namecheap_private_email"
+        );
+      }
+      if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER.trim()) {
+        errors.push(
+          "STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER is required when support email provider is namecheap_private_email"
+        );
+      }
+    }
+    if (env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE === "separate") {
+      if (env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER === "gmail") {
+        if (env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE === "application_default") {
+          const credentialPath = resolveSupportEmailReplyApplicationDefaultPath(env);
+          if (!existsSync(credentialPath)) {
+            errors.push(
+              `STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE=application_default requires a credential file at ${credentialPath}`
+            );
+          }
+        } else {
+          if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID.trim()) {
+            errors.push("STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID is required when reply mode is separate");
+          }
+          if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET.trim()) {
+            errors.push(
+              "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET is required when reply mode is separate"
+            );
+          }
+          if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN.trim()) {
+            errors.push(
+              "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN is required when reply mode is separate"
+            );
+          }
+        }
+      } else {
+        if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME.trim()) {
+          errors.push(
+            "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME is required when provider is namecheap_private_email and reply mode is separate"
+          );
+        }
+        if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD.trim()) {
+          errors.push(
+            "STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD is required when provider is namecheap_private_email and reply mode is separate"
+          );
+        }
+      }
+    }
+    if (env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE === "portal_automation") {
+      const portalEnvPath = resolveSupportEmailPortalEnvPath(env);
+      if (!portalEnvPath || !existsSync(portalEnvPath)) {
+        errors.push(
+          "STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE=portal_automation requires a readable portal automation env file."
+        );
+      }
+    } else if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN.trim()) {
+      errors.push("STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN is required when support email sync is enabled");
+    }
+    if (!env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ROUTE.trim()) {
+      errors.push("STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ROUTE is required when support email sync is enabled");
+    }
+    assertUrl(env.STUDIO_BRAIN_FUNCTIONS_BASE_URL, "STUDIO_BRAIN_FUNCTIONS_BASE_URL");
+  }
+
+  if (env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED) {
+    if (!env.STUDIO_BRAIN_KILN_WATCH_DIR.trim()) {
+      errors.push("STUDIO_BRAIN_KILN_WATCH_DIR is required when kiln watch ingestion is enabled");
     }
   }
 
@@ -298,6 +514,65 @@ export function redactEnvForLogs(env: BrainEnv): Record<string, string | number 
     STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: env.STUDIO_BRAIN_ENABLE_WRITE_EXECUTION,
     STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: env.STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES,
     STUDIO_BRAIN_FUNCTIONS_BASE_URL: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL,
+    STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED,
+    STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC: env.STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC,
+    STUDIO_BRAIN_SUPPORT_EMAIL_SYNC_INTERVAL_MS: env.STUDIO_BRAIN_SUPPORT_EMAIL_SYNC_INTERVAL_MS,
+    STUDIO_BRAIN_SUPPORT_EMAIL_INITIAL_DELAY_MS: env.STUDIO_BRAIN_SUPPORT_EMAIL_INITIAL_DELAY_MS,
+    STUDIO_BRAIN_SUPPORT_EMAIL_JITTER_MS: env.STUDIO_BRAIN_SUPPORT_EMAIL_JITTER_MS,
+    STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX: env.STUDIO_BRAIN_SUPPORT_EMAIL_MAILBOX,
+    STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER,
+    STUDIO_BRAIN_SUPPORT_EMAIL_USER_ID: env.STUDIO_BRAIN_SUPPORT_EMAIL_USER_ID,
+    STUDIO_BRAIN_SUPPORT_EMAIL_QUERY: env.STUDIO_BRAIN_SUPPORT_EMAIL_QUERY || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_LABEL_IDS: env.STUDIO_BRAIN_SUPPORT_EMAIL_LABEL_IDS.join(","),
+    STUDIO_BRAIN_SUPPORT_EMAIL_MAX_MESSAGES: env.STUDIO_BRAIN_SUPPORT_EMAIL_MAX_MESSAGES,
+    STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_BASE_MS: env.STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_BASE_MS,
+    STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_MAX_MS: env.STUDIO_BRAIN_SUPPORT_EMAIL_BACKOFF_MAX_MS,
+    STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CREDENTIALS_PATH: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CREDENTIALS_PATH || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: env.STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_HOST,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_PORT: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_PORT,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_SECURE: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IMAP_SECURE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_HOST,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_PORT: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_PORT,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_SECURE: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_SMTP_SECURE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FOLDER,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IGNORE_TLS_ERRORS:
+      env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_IGNORE_TLS_ERRORS,
+    STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FROM_NAME: env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_FROM_NAME || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_USER_ID: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_USER_ID,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CREDENTIALS_PATH:
+      env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CREDENTIALS_PATH || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID: env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET:
+      env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN:
+      env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME:
+      env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD:
+      env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ROUTE: env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ROUTE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE,
+    STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ADMIN_TOKEN: env.STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_ADMIN_TOKEN ? "[set]" : null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_ENV_PATH: env.STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_ENV_PATH || null,
+    STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_CREDENTIALS_PATH: env.STUDIO_BRAIN_SUPPORT_EMAIL_PORTAL_CREDENTIALS_PATH || null,
+    STUDIO_BRAIN_KILN_ENABLED: env.STUDIO_BRAIN_KILN_ENABLED,
+    STUDIO_BRAIN_KILN_IMPORT_MAX_BYTES: env.STUDIO_BRAIN_KILN_IMPORT_MAX_BYTES,
+    STUDIO_BRAIN_KILN_WATCH_ENABLED: env.STUDIO_BRAIN_KILN_WATCH_ENABLED,
+    STUDIO_BRAIN_KILN_WATCH_DIR: env.STUDIO_BRAIN_KILN_WATCH_DIR,
+    STUDIO_BRAIN_KILN_WATCH_INTERVAL_MS: env.STUDIO_BRAIN_KILN_WATCH_INTERVAL_MS,
+    STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS: env.STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS,
+    STUDIO_BRAIN_KILN_WATCH_JITTER_MS: env.STUDIO_BRAIN_KILN_WATCH_JITTER_MS,
+    STUDIO_BRAIN_KILN_ENABLE_SUPPORTED_WRITES: env.STUDIO_BRAIN_KILN_ENABLE_SUPPORTED_WRITES,
+    STUDIO_BRAIN_KILNAID_SESSION_PATH: env.STUDIO_BRAIN_KILNAID_SESSION_PATH || null,
     STUDIO_BRAIN_DEFAULT_TENANT_ID: env.STUDIO_BRAIN_DEFAULT_TENANT_ID,
     STUDIO_BRAIN_ALLOWED_TENANT_IDS: env.STUDIO_BRAIN_ALLOWED_TENANT_IDS,
     STUDIO_BRAIN_MEMORY_INGEST_ENABLED: env.STUDIO_BRAIN_MEMORY_INGEST_ENABLED,

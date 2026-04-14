@@ -1,0 +1,9 @@
+# SYNTHETIC-GENESIS-LOG version=1 format=event-heavy
+META: displayName=Studio Electric Diagnostics; manufacturer=L&L; kilnModel=eQ2827; controllerModel=Genesis; firmwareVersion=2.0.9; serialNumber=LL-2827-009; macAddress=AA:BB:CC:DD:EE:09; zoneCount=3; thermocoupleType=K; wifiConfigured=true
+RUN: programName=Long Hold Validation; programType=test; coneTarget=5; speed=medium; startTime=2026-04-12T09:00:00.000Z; status=error; currentSegment=6; totalSegments=8; finalSetPoint=2160
+EVENT: ts=2026-04-12T09:00:00.000Z; eventType=run_started; severity=info
+EVENT: ts=2026-04-12T12:20:00.000Z; eventType=hold_added; severity=info; addedMinutes=30
+EVENT: ts=2026-04-12T14:10:00.000Z; eventType=diagnostic_snapshot; severity=info; relayCycles=8421
+EVENT: ts=2026-04-12T15:02:00.000Z; eventType=error_code; severity=critical; code=TC_OPEN
+TELEMETRY: ts=2026-04-12T10:00:00.000Z; tempPrimary=1320; tempZone1=1309; tempZone2=1326; tempZone3=1335; setPoint=1350; segment=3; percentPower1=78; percentPower2=80; percentPower3=81; boardTemp=52
+TELEMETRY: ts=2026-04-12T14:30:00.000Z; tempPrimary=2142; tempZone1=2105; tempZone2=2140; tempZone3=2170; setPoint=2160; segment=6; percentPower1=61; percentPower2=64; percentPower3=67; boardTemp=68

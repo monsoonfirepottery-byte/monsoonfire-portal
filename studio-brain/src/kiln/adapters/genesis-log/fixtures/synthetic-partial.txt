@@ -1,0 +1,5 @@
+# SYNTHETIC-GENESIS-LOG version=1 format=partial
+META: displayName=Studio Electric Partial; controllerModel=Genesis; zoneCount=3
+RUN: programName=Unknown Recovery; status=firing
+EVENT: eventType=diagnostic_snapshot; severity=warning
+TELEMETRY: tempPrimary=812; tempZone1=790; tempZone2=805; tempZone3=840; setPoint=900; segment=2

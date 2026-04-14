@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { getAuth } from "firebase-admin/auth";
 import { getApps, initializeApp } from "firebase-admin/app";
 import type { Logger } from "../config/logger";
+import type { ArtifactStore } from "../connectivity/artifactStore";
 import type { EventStore, StateStore } from "../stores/interfaces";
 import { renderDashboard } from "./dashboard";
 import { checkPgConnection } from "../db/postgres";
@@ -30,8 +31,24 @@ import { lintCapabilityPolicy } from "../observability/policyLint";
 import { capabilityPolicyMetadata } from "../capabilities/policyMetadata";
 import type { PilotWriteExecutor } from "../capabilities/pilotWrite";
 import type { BackendHealthReport } from "../connectivity/healthcheck";
+import type { MemoryStats } from "../memory/contracts";
 import type { MemoryService } from "../memory/service";
+import type { KilnObservationProvider } from "../kiln/adapters/kilnaid/types";
+import { firingQueueStates } from "../kiln/domain/model";
+import type { KilnStore } from "../kiln/store";
+import { importGenesisArtifact } from "../kiln/services/artifacts";
+import { recordOperatorAction } from "../kiln/services/manualEvents";
+import { createFiringRun } from "../kiln/services/orchestration";
+import { buildFiringRunDetail, buildKilnDetail, buildKilnOverview } from "../kiln/services/overview";
+import { renderKilnCommandPage } from "../kiln/ui/renderKilnCommandPage";
+import type { SupportOpsStore } from "../supportOps/store";
 import { MemoryValidationError } from "../memory/service";
+import {
+  buildEmberMemoryScope,
+  buildEmberMemberSubject,
+  buildEmberPatternSubject,
+  buildEmberRunId,
+} from "../supportOps/service";
 import {
   DEFAULT_HOST_USER as DEFAULT_CONTROL_TOWER_HOST_USER,
   DEFAULT_ROOT_SESSION as DEFAULT_CONTROL_TOWER_ROOT_SESSION,
@@ -54,11 +71,13 @@ import { deriveControlTowerState, deriveRoomDetail } from "../controlTower/deriv
 import type {
   ControlTowerApprovalItem,
   ControlTowerEvent,
+  ControlTowerMemoryHealth,
   ControlTowerMemoryBrief,
   ControlTowerNextAction,
   ControlTowerStartupScorecard,
   ControlTowerState,
 } from "../controlTower/types";
+import { draftDiscordSupportReply, getSupportAgentProfile } from "../supportOps/discord";
 
 const CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"] as const;
 const CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"] as const;
@@ -597,12 +616,237 @@ function buildMemoryActionNextMoves(
   }));
 }
 
+function buildControlTowerMemoryHealth(stats: MemoryStats | null | undefined): ControlTowerMemoryHealth | null {
+  if (!stats) return null;
+
+  const coverage = {
+    rowsWithLattice: toBoundedInt(stats.lattice?.coverage.rowsWithLattice, 0, 0, 1_000_000),
+    totalRows: toBoundedInt(stats.lattice?.coverage.totalRows ?? stats.total, 0, 0, 1_000_000),
+    ratio: toNullableRatio(stats.lattice?.coverage.ratio),
+  };
+  const reviewBacklog = {
+    reviewNow: toBoundedInt(stats.reviewBacklog?.reviewNow ?? stats.lattice?.backlog.reviewNow, 0, 0, 1_000_000),
+    revalidate: toBoundedInt(stats.reviewBacklog?.revalidate ?? stats.lattice?.backlog.revalidate, 0, 0, 1_000_000),
+    resolveConflict: toBoundedInt(stats.reviewBacklog?.resolveConflict ?? stats.lattice?.backlog.resolveConflict, 0, 0, 1_000_000),
+    retire: toBoundedInt(stats.reviewBacklog?.retire ?? stats.lattice?.backlog.retire, 0, 0, 1_000_000),
+    folkloreRiskHigh: toBoundedInt(stats.reviewBacklog?.folkloreRiskHigh ?? stats.lattice?.backlog.folkloreRiskHigh, 0, 0, 1_000_000),
+  };
+  const openReviewCases = toBoundedInt(stats.openReviewCases, 0, 0, 1_000_000);
+  const verificationFailures24h = toBoundedInt(stats.verificationFailures24h, 0, 0, 1_000_000);
+  const emberPromotionBacklog = toBoundedInt(stats.emberPromotionBacklog, 0, 0, 1_000_000);
+  const conflictBacklog = {
+    contestedRows: toBoundedInt(stats.conflictBacklog?.contestedRows, 0, 0, 1_000_000),
+    hardConflicts: toBoundedInt(stats.conflictBacklog?.hardConflicts, 0, 0, 1_000_000),
+    quarantinedRows: toBoundedInt(stats.conflictBacklog?.quarantinedRows, 0, 0, 1_000_000),
+    conflictRecords: toBoundedInt(stats.conflictBacklog?.conflictRecords, 0, 0, 1_000_000),
+    retrievalShadowedRows: toBoundedInt(stats.conflictBacklog?.retrievalShadowedRows, 0, 0, 1_000_000),
+  };
+  const startupReadiness = {
+    startupEligibleRows: toBoundedInt(stats.startupReadiness?.startupEligibleRows, 0, 0, 1_000_000),
+    trustedStartupRows: toBoundedInt(stats.startupReadiness?.trustedStartupRows, 0, 0, 1_000_000),
+    handoffRows: toBoundedInt(stats.startupReadiness?.handoffRows, 0, 0, 1_000_000),
+    checkpointRows: toBoundedInt(stats.startupReadiness?.checkpointRows, 0, 0, 1_000_000),
+    fallbackRiskRows: toBoundedInt(stats.startupReadiness?.fallbackRiskRows, 0, 0, 1_000_000),
+  };
+  const secretExposureFindings = {
+    totalRows: toBoundedInt(stats.secretExposureFindings?.totalRows, 0, 0, 1_000_000),
+    redactedRows: toBoundedInt(stats.secretExposureFindings?.redactedRows, 0, 0, 1_000_000),
+    requiresReviewRows: toBoundedInt(stats.secretExposureFindings?.requiresReviewRows, 0, 0, 1_000_000),
+    canonicalBlockedRows: toBoundedInt(stats.secretExposureFindings?.canonicalBlockedRows, 0, 0, 1_000_000),
+    quarantinedRows: toBoundedInt(stats.secretExposureFindings?.quarantinedRows, 0, 0, 1_000_000),
+  };
+  const shadowMcpFindings = {
+    totalRows: toBoundedInt(stats.shadowMcpFindings?.totalRows, 0, 0, 1_000_000),
+    governedRows: toBoundedInt(stats.shadowMcpFindings?.governedRows, 0, 0, 1_000_000),
+    ungovernedRows: toBoundedInt(stats.shadowMcpFindings?.ungovernedRows, 0, 0, 1_000_000),
+    reviewRows: toBoundedInt(stats.shadowMcpFindings?.reviewRows, 0, 0, 1_000_000),
+    highRiskRows: toBoundedInt(stats.shadowMcpFindings?.highRiskRows, 0, 0, 1_000_000),
+  };
+
+  const criticalHighlights = dedupeTextList(
+    [
+      secretExposureFindings.canonicalBlockedRows > 0
+        ? `${secretExposureFindings.canonicalBlockedRows} secret-bearing memories are blocked from canonical promotion`
+        : "",
+      secretExposureFindings.quarantinedRows > 0
+        ? `${secretExposureFindings.quarantinedRows} secret-bearing memories remain quarantined`
+        : "",
+      shadowMcpFindings.highRiskRows > 0
+        ? `${shadowMcpFindings.highRiskRows} MCP memories are flagged high risk`
+        : "",
+      shadowMcpFindings.ungovernedRows > 0
+        ? `${shadowMcpFindings.ungovernedRows} MCP memories are missing governance registration`
+        : "",
+    ],
+    4,
+  );
+  const warningHighlights = dedupeTextList(
+    [
+      startupReadiness.fallbackRiskRows > 0
+        ? `${startupReadiness.fallbackRiskRows} startup memories still depend on fallback continuity`
+        : "",
+      reviewBacklog.resolveConflict > 0
+        ? `${reviewBacklog.resolveConflict} memory conflicts need resolution`
+        : "",
+      reviewBacklog.revalidate > 0
+        ? `${reviewBacklog.revalidate} stale memories need revalidation`
+        : "",
+      reviewBacklog.reviewNow > 0
+        ? `${reviewBacklog.reviewNow} memories are waiting for review`
+        : "",
+      openReviewCases > 0
+        ? `${openReviewCases} memory review cases are open`
+        : "",
+      verificationFailures24h > 0
+        ? `${verificationFailures24h} verification runs failed in the last 24 hours`
+        : "",
+      emberPromotionBacklog > 0
+        ? `${emberPromotionBacklog} Ember guidance promotions are waiting for review`
+        : "",
+      reviewBacklog.folkloreRiskHigh > 0
+        ? `${reviewBacklog.folkloreRiskHigh} folklore-risk memories need verification`
+        : "",
+      conflictBacklog.hardConflicts > 0
+        ? `${conflictBacklog.hardConflicts} hard conflicts remain in the lattice`
+        : "",
+      conflictBacklog.retrievalShadowedRows > 0
+        ? `${conflictBacklog.retrievalShadowedRows} memories are being shadowed by hard conflict retrieval rules`
+        : "",
+      coverage.totalRows > 0 && coverage.ratio != null && coverage.ratio < 0.95
+        ? `lattice coverage is ${Math.round(coverage.ratio * 100)}%`
+        : "",
+    ],
+    4,
+  );
+  const severity: ControlTowerMemoryHealth["severity"] =
+    criticalHighlights.length > 0
+      ? "critical"
+      : warningHighlights.length > 0 ||
+          startupReadiness.startupEligibleRows > startupReadiness.trustedStartupRows
+        ? "warning"
+        : "info";
+  const highlights = criticalHighlights.length > 0
+    ? criticalHighlights
+    : warningHighlights.length > 0
+      ? warningHighlights
+      : ["Memory trust signals are within the current launch thresholds."];
+  const summary =
+    severity === "critical"
+      ? clipText(`Memory launch trust needs immediate operator review: ${highlights.join("; ")}.`, 220)
+      : severity === "warning"
+        ? clipText(`Memory launch trust is degraded but recoverable: ${highlights.join("; ")}.`, 220)
+        : "Memory launch trust is healthy and startup coverage is within the current policy thresholds.";
+
+  return {
+    severity,
+    summary,
+    highlights,
+    coverage,
+    reviewBacklog,
+    openReviewCases,
+    verificationFailures24h,
+    emberPromotionBacklog,
+    conflictBacklog,
+    startupReadiness,
+    secretExposureFindings,
+    shadowMcpFindings,
+  };
+}
+
+function buildMemoryHealthAttention(memoryHealth: ControlTowerMemoryHealth | null): Array<{
+  id: string;
+  title: string;
+  why: string;
+  ageMinutes: number | null;
+  severity: "info" | "warning" | "critical";
+  actionLabel: string;
+  target: { type: "ops"; action: "memory" };
+}> {
+  if (!memoryHealth) return [];
+
+  const items = [
+    memoryHealth.secretExposureFindings.canonicalBlockedRows > 0 || memoryHealth.secretExposureFindings.quarantinedRows > 0
+      ? {
+          id: "attention:memory:secret-exposure",
+          title: "Secret-bearing memories need review",
+          why: clipText(memoryHealth.summary, 180),
+          ageMinutes: null,
+          severity: "critical" as const,
+          actionLabel: "Review memory",
+          target: { type: "ops" as const, action: "memory" as const },
+        }
+      : null,
+    memoryHealth.shadowMcpFindings.highRiskRows > 0 || memoryHealth.shadowMcpFindings.ungovernedRows > 0
+      ? {
+          id: "attention:memory:shadow-mcp",
+          title: "Shadow MCP memory needs governance review",
+          why: clipText(memoryHealth.summary, 180),
+          ageMinutes: null,
+          severity: memoryHealth.shadowMcpFindings.highRiskRows > 0 ? ("critical" as const) : ("warning" as const),
+          actionLabel: "Review memory",
+          target: { type: "ops" as const, action: "memory" as const },
+        }
+      : null,
+    memoryHealth.startupReadiness.fallbackRiskRows > 0 || memoryHealth.reviewBacklog.resolveConflict > 0
+      ? {
+          id: "attention:memory:startup-trust",
+          title: "Startup memory trust needs repair",
+          why: clipText(memoryHealth.summary, 180),
+          ageMinutes: null,
+          severity:
+            memoryHealth.startupReadiness.fallbackRiskRows > 0
+              ? ("warning" as const)
+              : ("info" as const),
+          actionLabel: "Review memory",
+          target: { type: "ops" as const, action: "memory" as const },
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+
+  return items.slice(0, 3);
+}
+
+function buildMemoryHealthNextMoves(memoryHealth: ControlTowerMemoryHealth | null): ControlTowerNextAction[] {
+  if (!memoryHealth || memoryHealth.severity === "info") return [];
+
+  const titles = dedupeTextList(
+    [
+      memoryHealth.secretExposureFindings.canonicalBlockedRows > 0 || memoryHealth.secretExposureFindings.quarantinedRows > 0
+        ? "Review quarantined secret-bearing memories"
+        : "",
+      memoryHealth.shadowMcpFindings.highRiskRows > 0 || memoryHealth.shadowMcpFindings.ungovernedRows > 0
+        ? "Audit MCP governance coverage in memory"
+        : "",
+      memoryHealth.startupReadiness.fallbackRiskRows > 0
+        ? "Promote trusted startup continuity memories"
+        : "",
+      memoryHealth.reviewBacklog.resolveConflict > 0 || memoryHealth.reviewBacklog.revalidate > 0
+        ? "Work the memory conflict and revalidation backlog"
+        : "",
+      memoryHealth.reviewBacklog.folkloreRiskHigh > 0
+        ? "Verify folklore-risk memories before launch"
+        : "",
+    ],
+    4,
+  );
+
+  return titles.map((title, index) => ({
+    id: `memory-health-next:${index}:${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    title,
+    why: clipText(memoryHealth.summary, 180),
+    ageMinutes: null,
+    actionLabel: "Review memory",
+    target: { type: "ops", action: "memory" },
+  }));
+}
+
 function enrichControlTowerState(
   state: ControlTowerState,
   syntheticEvents: ControlTowerEvent[],
   approvals: ControlTowerApprovalItem[],
   memoryBrief: ControlTowerMemoryBrief,
   startupScorecard: ControlTowerStartupScorecard | null,
+  memoryHealth: ControlTowerMemoryHealth | null,
 ): ControlTowerState {
   const mergedEvents = [...syntheticEvents, ...state.events]
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
@@ -619,24 +863,27 @@ function enrichControlTowerState(
       actionLabel: "Open approvals",
       target: approval.target,
     }));
+  const memoryAttention = buildMemoryHealthAttention(memoryHealth);
   const memoryNextMoves = buildMemoryActionNextMoves(memoryBrief, startupScorecard);
-  const mergedActions = dedupeNextActions([...memoryNextMoves, ...state.actions], 6);
+  const memoryHealthMoves = buildMemoryHealthNextMoves(memoryHealth);
+  const mergedActions = dedupeNextActions([...memoryHealthMoves, ...memoryNextMoves, ...state.actions], 6);
 
   return {
     ...state,
     approvals,
     memoryBrief,
     startupScorecard,
+    memoryHealth,
     events: mergedEvents,
     recentChanges: mergedEvents.slice(0, 6),
     actions: mergedActions,
     counts: {
       ...state.counts,
-      needsAttention: state.counts.needsAttention + approvalAttention.length,
+      needsAttention: state.counts.needsAttention + approvalAttention.length + memoryAttention.length,
     },
     overview: {
       ...state.overview,
-      needsAttention: [...approvalAttention, ...state.overview.needsAttention].slice(0, 6),
+      needsAttention: [...memoryAttention, ...approvalAttention, ...state.overview.needsAttention].slice(0, 6),
       goodNextMoves: mergedActions,
       recentEvents: mergedEvents.slice(0, 8),
     },
@@ -968,6 +1215,21 @@ async function readRawBody(req: http.IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+async function readRawBodyLimited(req: http.IncomingMessage, maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBytes) {
+      throw new Error(`Request body exceeds ${maxBytes} bytes.`);
+    }
+    chunks.push(buffer);
+  }
+  if (!chunks.length) return "";
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 function parseJsonBody(raw: string): Record<string, unknown> {
   if (!raw.trim()) return {};
   const parsed = JSON.parse(raw) as unknown;
@@ -1106,6 +1368,12 @@ export function startHttpServer(params: {
   logger: Logger;
   stateStore: StateStore;
   eventStore: EventStore;
+  artifactStore?: ArtifactStore | null;
+  kilnStore?: KilnStore | null;
+  kilnEnabled?: boolean;
+  kilnImportMaxBytes?: number;
+  kilnEnableSupportedWrites?: boolean;
+  kilnObservationProvider?: KilnObservationProvider | null;
   requireFreshSnapshotForReady?: boolean;
   readyMaxSnapshotAgeMinutes?: number;
   pgCheck?: () => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
@@ -1121,6 +1389,7 @@ export function startHttpServer(params: {
   endpointRateLimits?: Partial<EndpointRateLimitConfig>;
   abuseQuotaStore?: QuotaStore;
   pilotWriteExecutor?: PilotWriteExecutor | null;
+  supportOpsStore?: SupportOpsStore | null;
   controlTowerRepoRoot?: string;
   controlTowerRootSession?: string;
   controlTowerHostUser?: string;
@@ -1133,6 +1402,12 @@ export function startHttpServer(params: {
     logger,
     stateStore,
     eventStore,
+    artifactStore = null,
+    kilnStore = null,
+    kilnEnabled = false,
+    kilnImportMaxBytes = 5 * 1024 * 1024,
+    kilnEnableSupportedWrites = false,
+    kilnObservationProvider = null,
     requireFreshSnapshotForReady = false,
     readyMaxSnapshotAgeMinutes = 240,
     pgCheck = checkPgConnection,
@@ -1148,12 +1423,14 @@ export function startHttpServer(params: {
     endpointRateLimits,
     abuseQuotaStore = new InMemoryQuotaStore(),
     pilotWriteExecutor = null,
+    supportOpsStore = null,
     controlTowerRepoRoot,
     controlTowerRootSession = DEFAULT_CONTROL_TOWER_ROOT_SESSION,
     controlTowerHostUser = DEFAULT_CONTROL_TOWER_HOST_USER,
     controlTowerSshHostAlias,
     controlTowerRunner,
   } = params;
+  const resolvedKilnImportMaxBytes = Math.max(4_096, kilnImportMaxBytes);
   const rateLimits: EndpointRateLimitConfig = {
     createProposalPerMinute: Math.max(1, endpointRateLimits?.createProposalPerMinute ?? 20),
     executeProposalPerMinute: Math.max(1, endpointRateLimits?.executeProposalPerMinute ?? 20),
@@ -1194,6 +1471,15 @@ export function startHttpServer(params: {
     const initialState = deriveControlTowerState(raw, audits, { approvals });
     const memoryBrief = readControlTowerMemoryBrief(resolvedControlTowerRepoRoot, initialState.memoryBrief);
     const startupScorecard = readControlTowerStartupScorecard(resolvedControlTowerRepoRoot);
+    let memoryHealth: ControlTowerMemoryHealth | null = null;
+    if (memoryService) {
+      try {
+        memoryHealth = buildControlTowerMemoryHealth(await memoryService.stats({}));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`control tower memory health unavailable: ${message}`);
+      }
+    }
     const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals);
     const state = enrichControlTowerState(
       deriveControlTowerState(raw, audits, {
@@ -1204,6 +1490,7 @@ export function startHttpServer(params: {
       approvals,
       memoryBrief,
       startupScorecard,
+      memoryHealth,
     );
     return { raw, state, audits };
   };
@@ -1517,6 +1804,26 @@ export function startHttpServer(params: {
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
+  };
+  const assertKilnAccess = (req: http.IncomingMessage) =>
+    assertCapabilityAuth(req, { requireAdminToken: false });
+  const kilnProviderSupport = () => kilnObservationProvider?.describeSupport() ?? null;
+  const ensureKilnRuntime = (): { ok: true } | { ok: false; message: string } => {
+    if (!kilnEnabled) {
+      return { ok: false, message: "Kiln overlay is disabled." };
+    }
+    if (!kilnStore) {
+      return { ok: false, message: "Kiln store is unavailable." };
+    }
+    return { ok: true };
+  };
+  const ensureKilnArtifacts = (): { ok: true } | { ok: false; message: string } => {
+    const runtime = ensureKilnRuntime();
+    if (!runtime.ok) return runtime;
+    if (!artifactStore) {
+      return { ok: false, message: "Kiln artifact store is unavailable." };
+    }
+    return { ok: true };
   };
 
   const server = http.createServer(async (req, res) => {
@@ -2538,6 +2845,136 @@ export function startHttpServer(params: {
         return;
       }
 
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/review-cases") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+          const statuses = [
+            ...url.searchParams.getAll("status"),
+            ...url.searchParams.getAll("statuses"),
+            ...toStringList(url.searchParams.get("status")?.split(",") ?? []),
+          ];
+          const caseTypes = [
+            ...url.searchParams.getAll("caseType"),
+            ...url.searchParams.getAll("caseTypes"),
+            ...toStringList(url.searchParams.get("caseType")?.split(",") ?? []),
+          ];
+          const scopePrefixes = [
+            ...url.searchParams.getAll("scopePrefix"),
+            ...url.searchParams.getAll("scopePrefixes"),
+          ].map((value) => value.trim()).filter(Boolean);
+          const linkedMemoryIds = [
+            ...url.searchParams.getAll("linkedMemoryId"),
+            ...url.searchParams.getAll("linkedMemoryIds"),
+          ].map((value) => value.trim()).filter(Boolean);
+          const rows = await memoryService.listReviewCases({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            statuses,
+            caseTypes,
+            scopePrefixes,
+            linkedMemoryIds,
+            limit: Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.trunc(limitRaw), 200)) : 50,
+          });
+          const latestVerificationRuns = memoryService.listVerificationRuns
+            ? await Promise.all(rows.map((row) => memoryService.listVerificationRuns({ tenantId: row.tenantId ?? undefined, caseId: row.id, limit: 1 })))
+            : [];
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({
+            ok: true,
+            rows,
+            latestVerificationRuns: latestVerificationRuns.flatMap((entry) => entry).slice(0, rows.length),
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      const memoryReviewCaseActionMatch = memoryService && method === "POST"
+        ? url.pathname.match(/^\/api\/memory\/review-cases\/([^/]+)\/actions$/)
+        : null;
+      if (memoryService && memoryReviewCaseActionMatch) {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = toObjectRecord(await readJsonBody(req));
+          const result = await memoryService.reviewCaseAction({
+            ...payload,
+            id: decodeURIComponent(memoryReviewCaseActionMatch[1] ?? ""),
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, ...result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      const memoryReviewCaseMatch = memoryService && method === "GET"
+        ? url.pathname.match(/^\/api\/memory\/review-cases\/([^/]+)$/)
+        : null;
+      if (memoryService && memoryReviewCaseMatch) {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const reviewCase = await memoryService.getReviewCase({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            id: decodeURIComponent(memoryReviewCaseMatch[1] ?? ""),
+          });
+          if (!reviewCase) {
+            statusCode = 404;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Memory review case not found." }));
+            return;
+          }
+          const verificationRuns = memoryService.listVerificationRuns
+            ? await memoryService.listVerificationRuns({
+                tenantId: reviewCase.tenantId ?? undefined,
+                caseId: reviewCase.id,
+                limit: 10,
+              })
+            : [];
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, reviewCase, verificationRuns }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
       if (memoryService && method === "GET" && url.pathname === "/api/memory/pressure") {
         const auth = await assertCapabilityAuth(req);
         if (!auth.ok) {
@@ -3474,6 +3911,200 @@ export function startHttpServer(params: {
             connectors: await capabilityRuntime.listConnectorHealth(),
           })
         );
+        return;
+      }
+
+      if (supportOpsStore && method === "GET" && url.pathname === "/api/support-ops/queue") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const limitRaw = Number(url.searchParams.get("limit") ?? "20");
+        const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 100)) : 20;
+        const recentCases = await supportOpsStore.listRecentCases(limit);
+        let casesWithReviewLinks = recentCases;
+        if (memoryService) {
+          const linkedCaseMap = new Map<string, string[]>();
+          for (const row of recentCases) {
+            const scope = toTrimmedString(row.emberMemoryScope ?? "");
+            if (!scope) continue;
+            try {
+              const reviewCases = await memoryService.listReviewCases({
+                tenantId: undefined,
+                statuses: ["open", "in-progress"],
+                scopePrefixes: [scope],
+                limit: 8,
+              });
+              if (reviewCases.length > 0) {
+                linkedCaseMap.set(row.supportRequestId, reviewCases.map((entry) => entry.id));
+              }
+            } catch {
+              // best-effort memory linkage
+            }
+          }
+          casesWithReviewLinks = recentCases.map((row) => ({
+            ...row,
+            linkedMemoryReviewCaseIds: linkedCaseMap.get(row.supportRequestId) ?? row.linkedMemoryReviewCaseIds ?? [],
+          }));
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            summary: await supportOpsStore.getQueueSummary(),
+            recentCases: casesWithReviewLinks,
+          })
+        );
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/support-ops/persona") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, persona: getSupportAgentProfile() }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/support-ops/discord/respond") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const body = toObjectRecord(await readJsonBody(req));
+        try {
+          const draftInput = {
+            channelId: toTrimmedString(body.channelId),
+            threadId: toTrimmedString(body.threadId) || null,
+            messageId: toTrimmedString(body.messageId) || null,
+            guildId: toTrimmedString(body.guildId) || null,
+            senderId: toTrimmedString(body.senderId) || null,
+            senderName: toTrimmedString(body.senderName) || null,
+            senderEmail: toTrimmedString(body.senderEmail) || null,
+            question: toTrimmedString(body.question),
+            receivedAt: toTrimmedString(body.receivedAt) || null,
+          };
+          let draft = await draftDiscordSupportReply(draftInput);
+          if (memoryService) {
+            let emberContextSummary: string | null = null;
+            try {
+              const emberContext = await memoryService.context({
+                agentId: "ember-support",
+                runId: buildEmberRunId("discord", draft.conversationKey),
+                query: draftInput.question,
+                useMode: "planning",
+                includeTenantFallback: true,
+                layerAllowlist: ["working", "episodic", "canonical"],
+                maxItems: 4,
+                maxChars: 1_200,
+              });
+              emberContextSummary = toTrimmedString(emberContext.summary) || null;
+            } catch {
+              emberContextSummary = null;
+            }
+            if (emberContextSummary) {
+              draft = await draftDiscordSupportReply(draftInput, {
+                emberContextSummary,
+              });
+            }
+            const confusionState =
+              /\b(overwhelmed|lost|embarrassed)\b/i.test(draftInput.question)
+                ? "overwhelmed"
+                : /\b(frustrated|upset|annoyed|still waiting)\b/i.test(draftInput.question)
+                  ? "frustrated"
+                  : /\b(sorry|apolog(?:y|ize|ies)|my bad)\b/i.test(draftInput.question)
+                    ? "apologetic"
+                    : /\b(confused|not sure|timing|delay|any chance|can i|could i|would it be okay)\b/i.test(draftInput.question)
+                      ? "uncertain"
+                      : /\b(thank you|thanks|appreciate)\b/i.test(draftInput.question)
+                        ? "grateful"
+                        : "none";
+            const confusionReason = confusionState === "none" ? null : `discord-${confusionState}`;
+            try {
+              await memoryService.capture({
+                agentId: "ember-support",
+                runId: buildEmberRunId("discord", draft.conversationKey),
+                source: "support:discord:working",
+                tags: [
+                  "ember-support",
+                  "discord",
+                  "working",
+                  draft.policySlug ?? "general-support",
+                  confusionState,
+                ].filter(Boolean),
+                memoryLayer: "working",
+                memoryType: "working",
+                memoryCategory: "observation",
+                sourceConfidence: 0.62,
+                importance: draft.humanReviewRequired ? 0.82 : 0.68,
+                content: [
+                  `Discord support thread for ${draftInput.senderName || draftInput.senderEmail || draftInput.senderId || "unknown member"}.`,
+                  `Latest ask: ${draftInput.question}`,
+                  emberContextSummary ? `Existing Ember context: ${emberContextSummary}` : "",
+                  `Support summary: ${draft.supportSummary}`,
+                  `Next safe step: ${draft.humanReviewRequired ? "human review required" : "reply drafted for safe Discord follow-up"}`,
+                ].filter(Boolean).join(" "),
+                metadata: {
+                  scope: buildEmberMemoryScope("discord", draft.conversationKey),
+                  subjectKey: buildEmberMemberSubject(draftInput.senderEmail || draftInput.senderId || draftInput.senderName),
+                  relatedSubjects: [buildEmberPatternSubject(draft.policySlug ?? "general-support")],
+                  emberMemoryScope: buildEmberMemoryScope("discord", draft.conversationKey),
+                  conversationKey: draft.conversationKey,
+                  confusionState,
+                  confusionReason,
+                  humanHandoff: draft.humanReviewRequired,
+                  nextRecommendedAction: draft.humanReviewRequired ? "Escalate to human support review." : "Use the drafted Discord response as the next safe step.",
+                  supportSummary: draft.supportSummary,
+                  emberSummary: emberContextSummary ?? draft.supportSummary,
+                  startupEligible: false,
+                },
+              });
+            } catch {
+              // best-effort Ember working memory capture for Discord drafts
+            }
+          }
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, draft }));
+        } catch (error) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: false,
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+        return;
+      }
+
+      if (supportOpsStore && method === "GET" && url.pathname === "/api/support-ops/dead-letters") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const limitRaw = Number(url.searchParams.get("limit") ?? "20");
+        const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 100)) : 20;
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows: await supportOpsStore.listDeadLetters(limit) }));
         return;
       }
 
@@ -5367,6 +5998,416 @@ export function startHttpServer(params: {
         statusCode = reset ? 200 : 404;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
         res.end(JSON.stringify({ ok: reset, bucket }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/kiln/overview") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const overview = await buildKilnOverview(kilnStore!, {
+          enableSupportedWrites: kilnEnableSupportedWrites,
+          providerSupport: kilnProviderSupport(),
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, overview }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/kiln/kilns") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const [kilns, overview] = await Promise.all([
+          kilnStore!.listKilns(),
+          buildKilnOverview(kilnStore!, {
+            enableSupportedWrites: kilnEnableSupportedWrites,
+            providerSupport: kilnProviderSupport(),
+          }),
+        ]);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, kilns, overview: overview.kilns }));
+        return;
+      }
+
+      const kilnDetailMatch = url.pathname.match(/^\/api\/kiln\/kilns\/([^/]+)$/);
+      if (method === "GET" && kilnDetailMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const kilnId = decodeURIComponent(kilnDetailMatch[1]);
+        const detail = await buildKilnDetail(kilnStore!, kilnId);
+        if (!detail.kiln) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Kiln not found." }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, detail }));
+        return;
+      }
+
+      const kilnRunMatch = url.pathname.match(/^\/api\/kiln\/runs\/([^/]+)$/);
+      if (method === "GET" && kilnRunMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const runId = decodeURIComponent(kilnRunMatch[1]);
+        const detail = await buildFiringRunDetail(kilnStore!, runId);
+        if (!detail.run) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Firing run not found." }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, detail }));
+        return;
+      }
+
+      const kilnArtifactContentMatch = url.pathname.match(/^\/api\/kiln\/artifacts\/([^/]+)\/content$/);
+      if (method === "GET" && kilnArtifactContentMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnArtifacts();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const artifactId = decodeURIComponent(kilnArtifactContentMatch[1]);
+        const artifact = await kilnStore!.getArtifactRecord(artifactId);
+        if (!artifact) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Artifact not found." }));
+          return;
+        }
+        const content = await artifactStore!.get(artifact.storageKey);
+        if (!content) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Artifact content not found." }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(
+          statusCode,
+          withSecurityHeaders({
+            "content-type": artifact.contentType || "application/octet-stream",
+            "content-length": String(content.byteLength),
+            "content-disposition": `inline; filename="${artifact.filename.replaceAll("\"", "")}"`,
+            ...corsHeaders,
+            "x-request-id": requestId,
+          }),
+        );
+        res.end(content);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/kiln/imports/genesis") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnArtifacts();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        try {
+          const raw = await readRawBodyLimited(req, Math.ceil(resolvedKilnImportMaxBytes * 1.6) + 8_192);
+          const body = parseJsonBody(raw);
+          const filename = toTrimmedString(body.filename);
+          const contentBase64 = typeof body.contentBase64 === "string" ? body.contentBase64.trim() : "";
+          if (!filename || !contentBase64) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "filename and contentBase64 are required." }));
+            return;
+          }
+          const content = Buffer.from(contentBase64, "base64");
+          if (content.byteLength === 0) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "contentBase64 did not decode to a non-empty artifact." }));
+            return;
+          }
+          if (content.byteLength > resolvedKilnImportMaxBytes) {
+            statusCode = 413;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: `Decoded artifact exceeds ${resolvedKilnImportMaxBytes} bytes.` }));
+            return;
+          }
+          const result = await importGenesisArtifact({
+            artifactStore: artifactStore!,
+            kilnStore: kilnStore!,
+            providerSupport: kilnProviderSupport(),
+            kilnId: toTrimmedString(body.kilnId) || null,
+            filename,
+            contentType: toTrimmedString(body.contentType) || null,
+            content,
+            observedAt: toTrimmedString(body.observedAt) || null,
+            sourceLabel: toTrimmedString(body.sourceLabel) || "manual_upload",
+            source: "manual_upload",
+          });
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          statusCode = /exceeds \d+ bytes/i.test(message) ? 413 : 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/kiln/operator-actions") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(req);
+          const kilnId = toTrimmedString(body.kilnId);
+          const actionType = toTrimmedString(body.actionType);
+          if (!kilnId || !actionType) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "kilnId and actionType are required." }));
+            return;
+          }
+          const result = await recordOperatorAction(kilnStore!, {
+            kilnId,
+            firingRunId: toTrimmedString(body.firingRunId) || null,
+            actionType,
+            requestedBy: auth.principal?.uid ?? "staff:unknown",
+            confirmedBy: toTrimmedString(body.confirmedBy) || auth.principal?.uid || null,
+            checklistJson: toObjectRecord(body.checklistJson),
+            notes: toTrimmedString(body.notes) || null,
+            completedAt: toTrimmedString(body.completedAt) || null,
+            enableSupportedWrites: kilnEnableSupportedWrites,
+          });
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/kiln/runs") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const kilnId = toTrimmedString(body.kilnId);
+        if (!kilnId) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "kilnId is required." }));
+          return;
+        }
+        const queueStateRaw = toTrimmedString(body.queueState);
+        if (queueStateRaw && !firingQueueStates.includes(queueStateRaw as (typeof firingQueueStates)[number])) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Unsupported queueState: ${queueStateRaw}` }));
+          return;
+        }
+        const run = await createFiringRun(kilnStore!, {
+          kilnId,
+          requestedBy: auth.principal?.uid ?? "staff:unknown",
+          programName: toTrimmedString(body.programName) || null,
+          programType: toTrimmedString(body.programType) || null,
+          coneTarget: toTrimmedString(body.coneTarget) || null,
+          speed: toTrimmedString(body.speed) || null,
+          firmwareVersion: toTrimmedString(body.firmwareVersion) || null,
+          queueState: queueStateRaw ? (queueStateRaw as (typeof firingQueueStates)[number]) : undefined,
+          linkedPortalRefs: {
+            batchIds: Array.isArray(body.batchIds) ? body.batchIds.map((entry) => String(entry)).filter(Boolean) : [],
+            pieceIds: Array.isArray(body.pieceIds) ? body.pieceIds.map((entry) => String(entry)).filter(Boolean) : [],
+            reservationIds: Array.isArray(body.reservationIds) ? body.reservationIds.map((entry) => String(entry)).filter(Boolean) : [],
+            portalFiringId: toTrimmedString(body.portalFiringId) || null,
+          },
+        });
+        statusCode = 201;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, run }));
+        return;
+      }
+
+      const kilnAckMatch = url.pathname.match(/^\/api\/kiln\/runs\/([^/]+)\/ack$/);
+      if (method === "POST" && kilnAckMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const runId = decodeURIComponent(kilnAckMatch[1]);
+        const run = await kilnStore!.getFiringRun(runId);
+        if (!run) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Firing run not found." }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(req);
+          const actionType = toTrimmedString(body.actionType);
+          if (!actionType) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "actionType is required." }));
+            return;
+          }
+          const result = await recordOperatorAction(kilnStore!, {
+            kilnId: run.kilnId,
+            firingRunId: run.id,
+            actionType,
+            requestedBy: auth.principal?.uid ?? "staff:unknown",
+            confirmedBy: toTrimmedString(body.confirmedBy) || auth.principal?.uid || null,
+            checklistJson: toObjectRecord(body.checklistJson),
+            notes: toTrimmedString(body.notes) || null,
+            completedAt: toTrimmedString(body.completedAt) || null,
+            enableSupportedWrites: kilnEnableSupportedWrites,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/kiln-command") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const overview = await buildKilnOverview(kilnStore!, {
+          enableSupportedWrites: kilnEnableSupportedWrites,
+          providerSupport: kilnProviderSupport(),
+        });
+        const kilnDetails = await Promise.all(
+          overview.kilns.map((kiln) => buildKilnDetail(kilnStore!, kiln.kilnId)),
+        );
+        const html = renderKilnCommandPage({
+          generatedAt: new Date().toISOString(),
+          overview,
+          kilnDetails,
+          uploadMaxBytes: resolvedKilnImportMaxBytes,
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+        res.end(html);
         return;
       }
 

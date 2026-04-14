@@ -2,10 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startHttpServer } from "./server";
+import type { ArtifactStore } from "../connectivity/artifactStore";
+import { defaultCapabilitySet, type Kiln } from "../kiln/domain/model";
+import { MemoryKilnStore } from "../kiln/memoryStore";
+import { importGenesisArtifact } from "../kiln/services/artifacts";
+import { recordOperatorAction } from "../kiln/services/manualEvents";
+import { createFiringRun } from "../kiln/services/orchestration";
 import { MemoryEventStore, MemoryStateStore } from "../stores/memoryStores";
 import { CapabilityRuntime, defaultCapabilities } from "../capabilities/runtime";
 import { createInMemoryMemoryStoreAdapter } from "../memory/inMemoryAdapter";
@@ -18,6 +24,52 @@ const logger = {
   warn: () => {},
   error: () => {},
 };
+
+function createMemoryArtifactStore(): ArtifactStore {
+  const objects = new Map<string, Buffer>();
+  return {
+    async put(key, data) {
+      objects.set(key, Buffer.from(data));
+    },
+    async get(key) {
+      return objects.get(key) ?? null;
+    },
+    async list(prefix = "") {
+      return [...objects.keys()].filter((entry) => entry.startsWith(prefix));
+    },
+    async healthcheck() {
+      return { ok: true, latencyMs: 0 };
+    },
+  };
+}
+
+function readKilnFixture(name: string): Buffer {
+  return readFileSync(join(__dirname, "..", "..", "src", "kiln", "adapters", "genesis-log", "fixtures", name));
+}
+
+function buildKiln(overrides: Partial<Kiln> = {}): Kiln {
+  return {
+    id: "kiln_test",
+    displayName: "Studio Electric",
+    manufacturer: "L&L / Bartlett",
+    kilnModel: "eQ2827",
+    controllerModel: "Genesis",
+    controllerFamily: "bartlett_genesis",
+    firmwareVersion: "2.1.4",
+    serialNumber: "serial-1",
+    macAddress: "AA:BB:CC:DD:EE:01",
+    zoneCount: 3,
+    thermocoupleType: "K",
+    output4Role: "vent",
+    wifiConfigured: true,
+    notes: null,
+    capabilitiesDetected: defaultCapabilitySet(),
+    riskFlags: [],
+    lastSeenAt: "2026-04-14T12:00:00.000Z",
+    currentRunId: null,
+    ...overrides,
+  };
+}
 
 function buildIngestHeaders(secret: string, payload: Record<string, unknown>, timestampSeconds: number = Math.trunc(Date.now() / 1000)): Record<string, string> {
   const raw = JSON.stringify(payload);
@@ -632,6 +684,263 @@ test("overseer discord endpoint returns latest delivery payload", async () => {
   });
 });
 
+test("support persona endpoint returns Ember profile", async () => {
+  await withServer({}, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/support-ops/persona`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      persona: {
+        displayName: string;
+        fromName: string;
+        avatarAssetPath: string;
+        startup: {
+          operatingMode: string;
+          fileReferences: string[];
+          profileCard: { badge: string };
+        };
+      };
+    };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.persona.displayName, "Ember");
+    assert.equal(payload.persona.fromName, "Ember at Monsoon Fire");
+    assert.equal(payload.persona.avatarAssetPath, "/support-agent/ember-avatar.svg");
+    assert.equal(payload.persona.startup.operatingMode, "hybrid_warm_touch");
+    assert.equal(
+      payload.persona.startup.fileReferences[1],
+      "config/studiobrain/agents/ember/system-prompt.md",
+    );
+    assert.match(payload.persona.startup.profileCard.badge, /policy-governed/i);
+  });
+});
+
+test("support discord respond endpoint drafts a safe Ember reply", async () => {
+  await withServer({}, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/support-ops/discord/respond`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-staff",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        channelId: "channel-1",
+        senderName: "Betsy",
+        question: "Could I do 8 PM instead or porch drop-off if that is easier?",
+      }),
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      draft: { persona: { displayName: string }; policySlug: string | null; reply: string; replyMode: string };
+    };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.draft.persona.displayName, "Ember");
+    assert.equal(payload.draft.policySlug, "firing-scheduling");
+    assert.equal(payload.draft.replyMode, "template");
+    assert.match(payload.draft.reply, /same-day pickup is not guaranteed/i);
+  });
+});
+
+test("memory review endpoints list, fetch, and act on review cases", async () => {
+  await withServer({}, async (baseUrl) => {
+    await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Decision: startup continuity auth drift is resolved.",
+        source: "manual",
+        tags: ["decision"],
+        memoryCategory: "decision",
+        metadata: {
+          subjectKey: "startup-continuity-auth-drift",
+          loopState: "resolved",
+        },
+      }),
+    });
+    await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Decision: startup continuity auth drift is still open.",
+        source: "manual",
+        tags: ["decision"],
+        memoryCategory: "decision",
+        metadata: {
+          subjectKey: "startup-continuity-auth-drift",
+          loopState: "open-loop",
+        },
+      }),
+    });
+
+    const listResponse = await fetch(`${baseUrl}/api/memory/review-cases`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(listResponse.status, 200);
+    const listPayload = (await listResponse.json()) as {
+      ok: boolean;
+      rows: Array<{ id: string; caseType: string; primaryMemoryId: string | null; linkedMemoryIds: string[] }>;
+      latestVerificationRuns: Array<{ caseId: string | null }>;
+    };
+    assert.equal(listPayload.ok, true);
+    assert.equal(listPayload.rows.length >= 1, true);
+    assert.equal(listPayload.rows[0].caseType, "resolve-conflict");
+    assert.equal(listPayload.latestVerificationRuns.length >= 1, true);
+
+    const caseId = listPayload.rows[0].id;
+    const getResponse = await fetch(`${baseUrl}/api/memory/review-cases/${encodeURIComponent(caseId)}`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(getResponse.status, 200);
+    const getPayload = (await getResponse.json()) as {
+      ok: boolean;
+      reviewCase: { id: string; recommendedActions: string[] };
+      verificationRuns: Array<{ id: string }>;
+    };
+    assert.equal(getPayload.ok, true);
+    assert.equal(getPayload.reviewCase.id, caseId);
+    assert.equal(getPayload.reviewCase.recommendedActions.includes("verify_now"), true);
+
+    const actionResponse = await fetch(`${baseUrl}/api/memory/review-cases/${encodeURIComponent(caseId)}/actions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-staff",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "verify_now",
+        actorId: "staff-test-uid",
+        selectedMemoryId: listPayload.rows[0].primaryMemoryId,
+      }),
+    });
+    assert.equal(actionResponse.status, 200);
+    const actionPayload = (await actionResponse.json()) as {
+      ok: boolean;
+      reviewCase: { id: string; status: string };
+    };
+    assert.equal(actionPayload.ok, true);
+    assert.equal(actionPayload.reviewCase.id, caseId);
+    assert.equal(actionPayload.reviewCase.status === "in-progress" || actionPayload.reviewCase.status === "resolved", true);
+  });
+});
+
+test("support queue endpoint returns Ember review link metadata", async () => {
+  const memoryService = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "monsoonfire-main",
+    defaultAgentId: "test-agent",
+    defaultRunId: "test-run",
+  });
+  await memoryService.capture({
+    content: "Stale Ember timing guidance for pickup wording needs revalidation.",
+    source: "manual",
+    memoryCategory: "procedure",
+    occurredAt: "2025-01-10T00:00:00.000Z",
+    metadata: {
+      scope: "run:ember-support:email:support-conversation-case-1",
+      subjectKey: "ember:pattern:firing-scheduling",
+    },
+  });
+
+  const supportOpsStore = {
+    async getMailboxState() { return null; },
+    async saveMailboxState() {},
+    async hasProcessedMessage() { return false; },
+    async saveMessageRecord() {},
+    async getCaseSnapshot() { return null; },
+    async saveCaseSnapshot() {},
+    async listRecentCases(): Promise<import("../supportOps/types").SupportCaseSnapshot[]> {
+      return [{
+        supportRequestId: "support-case-1",
+        provider: "namecheap_private_email",
+        mailbox: "support@monsoonfire.com",
+        conversationKey: "support-conversation-case-1",
+        sourceThreadId: "thread-1",
+        sourceThreadIds: ["thread-1"],
+        sourceMessageId: "msg-1",
+        latestSourceMessageId: "msg-1",
+        threadDriftFlag: false,
+        senderEmail: "member@example.com",
+        senderVerifiedUid: null,
+        subject: "Pickup timing question",
+        decision: "staff_review",
+        riskState: "clear",
+        riskReasons: [],
+        automationState: "staff_review",
+        queueBucket: "staff_review",
+        unread: true,
+        memberCareState: "due",
+        memberCareReason: "pickup_coordination",
+        lastCareTouchAt: null,
+        careTouchCount: 0,
+        lastOperatorActionAt: null,
+        nextRecommendedAction: "Review timing details and reply warmly.",
+        supportSummary: "Member is confused about pickup timing.",
+        emberMemoryScope: "run:ember-support:email:support-conversation-case-1",
+        emberSummary: "Pickup timing confusion.",
+        confusionState: "uncertain",
+        confusionReason: "timing-or-clarification",
+        humanHandoff: true,
+        linkedMemoryReviewCaseIds: [],
+        policyResolution: {
+          intentId: null,
+          policySlug: "firing-scheduling",
+          policyVersion: "2026-04-14",
+          discrepancyFlag: false,
+          escalationReason: null,
+          matchedTerms: ["pickup", "timing"],
+          requiredSignals: [],
+          missingSignals: [],
+          allowedLowRiskActions: ["reply_with_ready_window"],
+          blockedActions: [],
+          replyTemplate: "Thanks for checking. We will confirm once your work is ready.",
+          difficultProcessGuidance: [],
+          practiceEvidenceIds: [],
+          practiceEvidence: [],
+          warmTouchPlaybook: null,
+        },
+        replyDraft: null,
+        proposalId: null,
+        proposalCapabilityId: null,
+        lastReceivedAt: "2026-04-14T12:00:00.000Z",
+        updatedAt: "2026-04-14T12:05:00.000Z",
+        rawSnapshot: {},
+      }];
+    },
+    async getQueueSummary() {
+      return {
+        unread: 1,
+        awaitingInfo: 0,
+        awaitingApproval: 0,
+        securityHold: 0,
+        staffReview: 1,
+        warmTouchesDue: 1,
+        splitThreadSuspects: 0,
+        totalOpen: 1,
+        oldestOpenAt: "2026-04-14T12:00:00.000Z",
+        slaAging: { fresh: 1, warning: 0, overdue: 0 },
+      };
+    },
+    async addDeadLetter() { throw new Error("not used"); },
+    async listDeadLetters() { return []; },
+  };
+
+  await withServer({ memoryService, supportOpsStore }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/support-ops/queue?limit=5`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      recentCases: Array<{ emberMemoryScope: string | null; linkedMemoryReviewCaseIds?: string[] }>;
+    };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.recentCases[0].emberMemoryScope, "run:ember-support:email:support-conversation-case-1");
+    assert.equal((payload.recentCases[0].linkedMemoryReviewCaseIds?.length ?? 0) >= 1, true);
+  });
+});
+
 test("memory endpoints capture, search, recent, stats, and import", async () => {
   await withServer({}, async (baseUrl) => {
     const captured = await fetch(`${baseUrl}/api/memory/capture`, {
@@ -648,6 +957,49 @@ test("memory endpoints capture, search, recent, stats, and import", async () => 
     const capturePayload = (await captured.json()) as { ok: boolean; memory: { id: string } };
     assert.equal(capturePayload.ok, true);
     assert.ok(capturePayload.memory.id.startsWith("mem_"));
+
+    const startupHandoff = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Handoff: verify startup continuity before launch.",
+        source: "codex-handoff",
+        metadata: {
+          rememberKind: "handoff",
+          startupEligible: true,
+          threadId: "thread-http-memory-stats",
+          threadEvidence: "explicit",
+        },
+      }),
+    });
+    assert.equal(startupHandoff.status, 201);
+
+    const secretCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content:
+          "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.signature-value-0987654321",
+        source: "manual",
+      }),
+    });
+    assert.equal(secretCapture.status, 201);
+
+    const shadowMcpCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Connector result: MCP surfaced a repo sync status from an unapproved server.",
+        source: "mcp-tool:repo-sync",
+        metadata: {
+          mcpGovernance: {
+            approvalState: "pending",
+            shadowRisk: true,
+          },
+        },
+      }),
+    });
+    assert.equal(shadowMcpCapture.status, 201);
 
     const searched = await fetch(`${baseUrl}/api/memory/search`, {
       method: "POST",
@@ -676,11 +1028,21 @@ test("memory endpoints capture, search, recent, stats, and import", async () => 
     assert.equal(stats.status, 200);
     const statsPayload = (await stats.json()) as {
       ok: boolean;
-      stats: { total: number; bySource: Array<{ source: string; count: number }> };
+      stats: {
+        total: number;
+        bySource: Array<{ source: string; count: number }>;
+        startupReadiness?: { startupEligibleRows: number; handoffRows: number };
+        secretExposureFindings?: { canonicalBlockedRows: number };
+        shadowMcpFindings?: { highRiskRows: number };
+      };
     };
     assert.equal(statsPayload.ok, true);
     assert.ok(statsPayload.stats.total >= 1);
     assert.ok(statsPayload.stats.bySource.some((entry) => entry.source === "manual"));
+    assert.equal((statsPayload.stats.startupReadiness?.startupEligibleRows ?? 0) >= 1, true);
+    assert.equal((statsPayload.stats.startupReadiness?.handoffRows ?? 0) >= 1, true);
+    assert.equal((statsPayload.stats.secretExposureFindings?.canonicalBlockedRows ?? 0) >= 1, true);
+    assert.equal((statsPayload.stats.shadowMcpFindings?.highRiskRows ?? 0) >= 1, true);
 
     const context = await fetch(`${baseUrl}/api/memory/context`, {
       method: "POST",
@@ -2569,6 +2931,49 @@ test("control tower state routes derive browser-friendly room and service data",
         controlTowerRunner: runner,
       },
       async (baseUrl) => {
+        const startupHandoff = await fetch(`${baseUrl}/api/memory/capture`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({
+            content: "Handoff: verify startup continuity before launch.",
+            source: "codex-handoff",
+            metadata: {
+              rememberKind: "handoff",
+              startupEligible: true,
+              threadId: "thread-control-tower-memory-health",
+              threadEvidence: "explicit",
+            },
+          }),
+        });
+        assert.equal(startupHandoff.status, 201);
+
+        const secretCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({
+            content:
+              "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.signature-value-1122334455",
+            source: "manual",
+          }),
+        });
+        assert.equal(secretCapture.status, 201);
+
+        const shadowMcpCapture = await fetch(`${baseUrl}/api/memory/capture`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({
+            content: "Connector result: MCP surfaced a repo sync status from an unapproved server.",
+            source: "mcp-tool:repo-sync",
+            metadata: {
+              mcpGovernance: {
+                approvalState: "pending",
+                shadowRisk: true,
+              },
+            },
+          }),
+        });
+        assert.equal(shadowMcpCapture.status, 201);
+
         const response = await fetch(`${baseUrl}/api/control-tower/state`, {
           headers: { authorization: "Bearer test-staff" },
         });
@@ -2576,7 +2981,11 @@ test("control tower state routes derive browser-friendly room and service data",
         const payload = (await response.json()) as {
           ok: boolean;
           state: {
-            overview: { activeRooms: Array<{ id: string }>; needsAttention: unknown[]; goodNextMoves: Array<{ title: string }> };
+            overview: {
+              activeRooms: Array<{ id: string }>;
+              needsAttention: Array<{ title: string }>;
+              goodNextMoves: Array<{ title: string }>;
+            };
             pinnedItems: Array<{ title: string }>;
             services: Array<{ id: string; health: string }>;
             board: Array<{ owner: string; task: string }>;
@@ -2596,6 +3005,15 @@ test("control tower state routes derive browser-friendly room and service data",
               metrics: { readyRate: number | null; groundingReadyRate: number | null; blockedContinuityRate: number | null; p95LatencyMs: number | null };
               supportingSignals: { toolcalls: { telemetryCoverageRate: number | null } };
               coverage: { gaps: string[] };
+            } | null;
+            memoryHealth: {
+              severity: string;
+              reviewBacklog: { reviewNow: number };
+              conflictBacklog: { retrievalShadowedRows: number };
+              startupReadiness: { startupEligibleRows: number; handoffRows: number };
+              secretExposureFindings: { canonicalBlockedRows: number };
+              shadowMcpFindings: { highRiskRows: number };
+              highlights: string[];
             } | null;
             recentChanges: Array<{ type: string; sourceAction: string | null }>;
           };
@@ -2626,11 +3044,38 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal(payload.state.startupScorecard?.metrics.p95LatencyMs, 950);
         assert.equal(payload.state.startupScorecard?.supportingSignals.toolcalls.telemetryCoverageRate, 0.86);
         assert.equal(payload.state.startupScorecard?.coverage.gaps.length, 1);
+        assert.equal(payload.state.memoryHealth?.severity, "critical");
+        assert.equal((payload.state.memoryHealth?.startupReadiness.startupEligibleRows ?? 0) >= 1, true);
+        assert.equal((payload.state.memoryHealth?.startupReadiness.handoffRows ?? 0) >= 1, true);
+        assert.equal((payload.state.memoryHealth?.secretExposureFindings.canonicalBlockedRows ?? 0) >= 1, true);
+        assert.equal((payload.state.memoryHealth?.shadowMcpFindings.highRiskRows ?? 0) >= 1, true);
+        assert.equal(
+          Object.prototype.hasOwnProperty.call(payload.state.memoryHealth?.conflictBacklog ?? {}, "retrievalShadowedRows"),
+          true,
+        );
+        assert.equal(
+          (payload.state.memoryHealth?.highlights ?? []).some((entry) =>
+            /secret-bearing memories|shadowed by hard conflict retrieval rules/i.test(entry)
+          ),
+          true,
+        );
         assert.equal(
           payload.state.overview.goodNextMoves.some((entry) =>
             /promoted approval summary memory/i.test(entry.title)
           ),
           false,
+        );
+        assert.equal(
+          payload.state.overview.goodNextMoves.some((entry) =>
+            /audit mcp governance coverage in memory|review quarantined secret-bearing memories/i.test(entry.title)
+          ),
+          true,
+        );
+        assert.equal(
+          payload.state.overview.needsAttention.some((entry) =>
+            /secret-bearing memories need review|shadow mcp memory needs governance review/i.test(entry.title)
+          ),
+          true,
         );
         assert.ok(payload.state.recentChanges.some((entry) => entry.type === "memory.promoted"));
         assert.ok(payload.state.recentChanges.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));
@@ -2652,6 +3097,211 @@ test("control tower state routes derive browser-friendly room and service data",
   } finally {
     fixture.cleanup();
   }
+});
+
+test("kiln endpoints require staff auth", async () => {
+  const kilnStore = new MemoryKilnStore();
+  await kilnStore.upsertKiln(buildKiln());
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore: createMemoryArtifactStore(),
+    },
+    async (baseUrl) => {
+      const unauth = await fetch(`${baseUrl}/api/kiln/overview`);
+      assert.equal(unauth.status, 401);
+
+      const nonStaff = await fetch(`${baseUrl}/kiln-command`, {
+        headers: { authorization: "Bearer test-member" },
+      });
+      assert.equal(nonStaff.status, 401);
+    },
+  );
+});
+
+test("kiln upload, detail, and artifact download routes preserve observed evidence", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  const content = readKilnFixture("synthetic-single-zone.txt");
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+    },
+    async (baseUrl) => {
+      const upload = await fetch(`${baseUrl}/api/kiln/imports/genesis`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: "synthetic-single-zone.txt",
+          contentBase64: content.toString("base64"),
+          observedAt: "2026-04-14T12:00:00.000Z",
+          sourceLabel: "test-upload",
+        }),
+      });
+      assert.equal(upload.status, 201);
+      const uploadPayload = (await upload.json()) as {
+        ok: boolean;
+        result: {
+          kiln: { id: string };
+          firingRun: { id: string };
+          artifact: { id: string };
+        };
+      };
+      assert.equal(uploadPayload.ok, true);
+
+      const kilnDetail = await fetch(
+        `${baseUrl}/api/kiln/kilns/${encodeURIComponent(uploadPayload.result.kiln.id)}`,
+        { headers: { authorization: "Bearer test-staff" } },
+      );
+      assert.equal(kilnDetail.status, 200);
+
+      const runDetail = await fetch(
+        `${baseUrl}/api/kiln/runs/${encodeURIComponent(uploadPayload.result.firingRun.id)}`,
+        { headers: { authorization: "Bearer test-staff" } },
+      );
+      assert.equal(runDetail.status, 200);
+      const runPayload = (await runDetail.json()) as {
+        ok: boolean;
+        detail: { telemetry: Array<{ tempPrimary: number | null }> };
+      };
+      assert.equal(runPayload.ok, true);
+      assert.equal(runPayload.detail.telemetry.length, 2);
+
+      const artifactResponse = await fetch(
+        `${baseUrl}/api/kiln/artifacts/${encodeURIComponent(uploadPayload.result.artifact.id)}/content`,
+        { headers: { authorization: "Bearer test-staff" } },
+      );
+      assert.equal(artifactResponse.status, 200);
+      assert.equal(await artifactResponse.text(), content.toString("utf8"));
+    },
+  );
+});
+
+test("kiln upload enforces decoded artifact byte limits", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  const baseContent = readKilnFixture("synthetic-single-zone.txt");
+  const content = Buffer.concat(Array.from({ length: 32 }, () => baseContent));
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+      kilnImportMaxBytes: 4_096,
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/kiln/imports/genesis`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: "too-large.txt",
+          contentBase64: content.toString("base64"),
+        }),
+      });
+      assert.equal(response.status, 413);
+      const payload = (await response.json()) as { ok: boolean; message: string };
+      assert.equal(payload.ok, false);
+      assert.match(payload.message, /exceeds/i);
+    },
+  );
+});
+
+test("kiln command page keeps control posture honest for human-triggered starts", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  await kilnStore.upsertKiln(buildKiln());
+  const run = await createFiringRun(kilnStore, {
+    kilnId: "kiln_test",
+    requestedBy: "staff-test-uid",
+    programName: "Cone 6 Glaze",
+    queueState: "ready_for_start",
+  });
+  await recordOperatorAction(kilnStore, {
+    kilnId: run.kilnId,
+    firingRunId: run.id,
+    actionType: "loaded_kiln",
+    requestedBy: "staff-test-uid",
+    enableSupportedWrites: false,
+  });
+  await recordOperatorAction(kilnStore, {
+    kilnId: run.kilnId,
+    firingRunId: run.id,
+    actionType: "verified_clearance",
+    requestedBy: "staff-test-uid",
+    enableSupportedWrites: false,
+  });
+  await recordOperatorAction(kilnStore, {
+    kilnId: run.kilnId,
+    firingRunId: run.id,
+    actionType: "pressed_start",
+    requestedBy: "staff-test-uid",
+    confirmedBy: "staff-test-uid",
+    enableSupportedWrites: false,
+  });
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/kiln-command`, {
+        headers: { authorization: "Bearer test-staff" },
+      });
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      assert.match(html, /Genesis remains the control authority/i);
+      assert.match(html, /Human-triggered/);
+      assert.doesNotMatch(html, /Supported write path/);
+    },
+  );
+});
+
+test("kiln overview reflects imported telemetry and honest observed posture", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  await importGenesisArtifact({
+    artifactStore,
+    kilnStore,
+    filename: "synthetic-three-zone.txt",
+    content: readKilnFixture("synthetic-three-zone.txt"),
+    source: "manual_upload",
+  });
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/kiln/overview`, {
+        headers: { authorization: "Bearer test-staff" },
+      });
+      assert.equal(response.status, 200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        overview: { kilns: Array<{ controlPosture: string; currentTemp: number | null }> };
+      };
+      assert.equal(payload.ok, true);
+      assert.equal(payload.overview.kilns.length, 1);
+      assert.equal(payload.overview.kilns[0]?.controlPosture, "Observed only");
+      assert.equal(payload.overview.kilns[0]?.currentTemp, 2231);
+    },
+  );
 });
 
 test("control tower promotes memory next moves only when startup quality is degraded", async () => {

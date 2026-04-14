@@ -70,6 +70,15 @@ vi.mock("../api/functionsClient", () => ({
   safeJsonStringify: JSON.stringify,
 }));
 
+vi.mock("../utils/functionsBaseUrl", () => ({
+  resolveFunctionsBaseUrlResolution: () => ({
+    baseUrl: "http://127.0.0.1:5001/monsoonfire-portal/us-central1/apiV1",
+    configured: false,
+    enabled: true,
+    reason: "",
+  }),
+}));
+
 vi.mock("./staff/CockpitModule", () => ({
   default: ({
     cockpitOpsContent,
@@ -86,9 +95,20 @@ vi.mock("./staff/CockpitModule", () => ({
 }));
 
 vi.mock("./staff/CockpitOpsPanel", () => ({
-  default: ({ operationsContent, cockpitTab }: { cockpitTab: string; operationsContent: ReactNode }) => (
+  default: ({
+    operationsContent,
+    reservationNotificationPolicyContent,
+    cockpitTab,
+  }: {
+    cockpitTab: string;
+    operationsContent: ReactNode;
+    reservationNotificationPolicyContent?: ReactNode;
+  }) => (
     <div data-testid="cockpit-ops-panel">
       <div data-testid="cockpit-current-tab">{cockpitTab}</div>
+      {reservationNotificationPolicyContent ? (
+        <div data-testid="cockpit-reservation-policy">{reservationNotificationPolicyContent}</div>
+      ) : null}
       {operationsContent}
     </div>
   ),
@@ -493,5 +513,49 @@ describe("StaffView cockpit routing", () => {
       expect(screen.getByTestId("cockpit-current-tab").textContent).toBe("finance");
     });
     expect(screen.queryByTestId("staff-module-commerce")).toBeNull();
+  });
+
+  it("renders reservation notification policy defaults in safe mode on the cockpit platform tab", async () => {
+    window.history.replaceState({}, "", "/staff/cockpit/platform");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+        forceCockpitWorkspace
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cockpit-current-tab").textContent).toBe("platform");
+    });
+
+    expect(await screen.findByText("Reservation notification policy")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules."
+      )
+    ).toBeTruthy();
+
+    const pickupReadyNotice = screen.getByLabelText("Pickup-ready notice") as HTMLInputElement;
+    const pickupReminders = screen.getByLabelText("Pickup reminders") as HTMLInputElement;
+    const reminderMode = screen.getByLabelText("Reminder timing mode") as HTMLSelectElement;
+    const saveButton = screen.getByRole("button", { name: "Save notification policy" }) as HTMLButtonElement;
+
+    expect(pickupReadyNotice.checked).toBe(true);
+    expect(pickupReadyNotice.disabled).toBe(true);
+    expect(pickupReminders.checked).toBe(true);
+    expect(pickupReminders.disabled).toBe(true);
+    expect(reminderMode.value).toBe("storage_window_ratio");
+    expect(reminderMode.disabled).toBe(true);
+    expect(screen.getByDisplayValue("336, 420, 462")).toBeTruthy();
+    expect(screen.getByLabelText("Pickup-window closing reminder")).toBeTruthy();
+    expect(screen.getByLabelText("Closing reminder lead time (hours)").getAttribute("value")).toBe("24");
+    expect(screen.getByLabelText("First delay follow-up (hours)").getAttribute("value")).toBe("12");
+    expect(screen.getByLabelText("Repeat delay follow-up every (hours)").getAttribute("value")).toBe("24");
+    expect(saveButton.disabled).toBe(true);
   });
 });

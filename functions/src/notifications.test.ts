@@ -261,6 +261,48 @@ test("runReservationStorageHoldEvaluation leaves reservations untouched before t
   assert.equal(reservation.storageStatus, "active");
 });
 
+test("runReservationStorageHoldEvaluation supports fixed-hour pickup reminder policy overrides", async () => {
+  const state: MockDbState = {
+    notificationSettings: {
+      reservationPolicy: {
+        pickupReminderEnabled: true,
+        pickupReminderMode: "fixed_hours",
+        pickupReminderHours: [168],
+        delayFollowUpEnabled: true,
+        delayFollowUpInitialHours: 12,
+        delayFollowUpRepeatHours: 24,
+      },
+    },
+    reservations: {
+      "reservation-one-week-reminder": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        estimatedHalfShelves: 2,
+        readyForPickupAt: shared.Timestamp.fromDate(new Date("2026-03-01T00:00:00.000Z")),
+        storageStatus: "active",
+        pickupReminderCount: 0,
+        storageNoticeHistory: [],
+        storageBilling: storageSeed("2026-03-01T00:00:00.000Z", 2),
+        pickupWindow: {
+          status: "open",
+        },
+      },
+    },
+  };
+
+  const summary = await withMockFirestore(state, () =>
+    runReservationStorageHoldEvaluation(
+      shared.Timestamp.fromDate(new Date("2026-03-08T00:00:00.000Z"))
+    )
+  );
+
+  assert.equal(summary.reminderJobs, 1);
+  const reservation = state.reservations["reservation-one-week-reminder"] as Record<string, unknown>;
+  assert.equal(reservation.pickupReminderCount, 1);
+  assert.equal(reservation.storageStatus, "reminder_pending");
+});
+
 test("runReservationStorageHoldEvaluation sends the shifted reminders and starts billing at grace cutoff", async () => {
   const state: MockDbState = {
     reservations: {

@@ -1,0 +1,38 @@
+{
+  "variant": "variant_A",
+  "assembly_type": "single_part",
+  "notes": "Single-part spring clip label with lower back pads to keep the sign face parallel to the crate wall.",
+  "print_orientation": "Print front face down so the saddle roof bridges across the crate-wall channel.",
+  "recommended_material": "PETG preferred; PLA acceptable for light duty.",
+  "parts": [
+    {
+      "name": "variant_A",
+      "stl": "variant_A.stl",
+      "step": "variant_A.step",
+      "watertight": true,
+      "components": 1,
+      "volume_mm3": 24712.672,
+      "faces": 9264,
+      "vertices": 4634,
+      "bounds_mm": [
+        [
+          -47.0,
+          -32.0,
+          -6.599999904632568
+        ],
+        [
+          47.0,
+          32.0,
+          4.699999809265137
+        ]
+      ],
+      "previews": {
+        "front_svg": "variant_A_front.svg",
+        "iso_svg": "variant_A_iso.svg",
+        "iso_png": "variant_A_iso.png",
+        "rear_iso_svg": "variant_A_rear_iso.svg",
+        "rear_iso_png": "variant_A_rear_iso.png"
+      }
+    }
+  ]
+}

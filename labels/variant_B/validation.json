@@ -1,0 +1,67 @@
+{
+  "variant": "variant_B",
+  "assembly_type": "two_part_assembly",
+  "notes": "Replaceable cartridge system with front retention rails and a separate printable insert.",
+  "print_orientation": "Print both parts face down; the insert drops into the rail set from the top after printing.",
+  "recommended_material": "PETG frame plus PLA or PETG inserts depending on swap frequency.",
+  "parts": [
+    {
+      "name": "variant_B_frame",
+      "stl": "variant_B_frame.stl",
+      "step": "variant_B_frame.step",
+      "watertight": true,
+      "components": 1,
+      "volume_mm3": 25255.755,
+      "faces": 828,
+      "vertices": 416,
+      "bounds_mm": [
+        [
+          -49.0,
+          -34.0,
+          -6.599999904632568
+        ],
+        [
+          49.0,
+          34.0,
+          4.800000190734863
+        ]
+      ],
+      "previews": {
+        "front_svg": "variant_B_frame_front.svg",
+        "iso_svg": "variant_B_frame_iso.svg",
+        "iso_png": "variant_B_frame_iso.png",
+        "rear_iso_svg": "variant_B_frame_rear_iso.svg",
+        "rear_iso_png": "variant_B_frame_rear_iso.png"
+      }
+    },
+    {
+      "name": "variant_B_insert",
+      "stl": "variant_B_insert.stl",
+      "step": "variant_B_insert.step",
+      "watertight": true,
+      "components": 1,
+      "volume_mm3": 7781.951,
+      "faces": 2984,
+      "vertices": 1494,
+      "bounds_mm": [
+        [
+          -41.599998474121094,
+          -26.200000762939453,
+          0.0
+        ],
+        [
+          41.599998474121094,
+          31.100000381469727,
+          2.700000047683716
+        ]
+      ],
+      "previews": {
+        "front_svg": "variant_B_insert_front.svg",
+        "iso_svg": "variant_B_insert_iso.svg",
+        "iso_png": "variant_B_insert_iso.png",
+        "rear_iso_svg": "variant_B_insert_rear_iso.svg",
+        "rear_iso_png": "variant_B_insert_rear_iso.png"
+      }
+    }
+  ]
+}

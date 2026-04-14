@@ -42,10 +42,12 @@ SUPPORT_PATHS = (
     REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_CONTROL_TOWER_V2.md",
     REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_HOST_ACCESS.md",
     REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_HOST_STACK.md",
+    REPO_ROOT / "scripts" / "install-studiobrain-bambu-cli.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-healthcheck.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-monitoring.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-ops-stack.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-portal-bridge.sh",
+    REPO_ROOT / "scripts" / "studiobrain-bambu-cli.sh",
     REPO_ROOT / "scripts" / "studiobrain-cockpit.mjs",
     REPO_ROOT / "scripts" / "studiobrain-control-tower-proxy.mjs",
     REPO_ROOT / "scripts" / "studiobrain-host-access.py",
@@ -133,6 +135,18 @@ def build_remote_cockpit_command(env: dict[str, str], *script_args: str) -> str:
         f"cd {shlex.quote(REMOTE_PARENT)} && "
         f"{env_prefix} node ./scripts/studiobrain-cockpit.mjs {quoted_args}"
     )
+
+
+def build_remote_host_user_command(env: dict[str, str], inner_command: str) -> str:
+    host_user = str(env.get("STUDIO_BRAIN_DEPLOY_USER", "wuff")).strip() or "wuff"
+    return f"runuser -u {shlex.quote(host_user)} -- bash -lc {shlex.quote(inner_command)}"
+
+
+def build_remote_bambu_command(env: dict[str, str], *script_args: str) -> str:
+    quoted_args = " ".join(shlex.quote(str(value)) for value in script_args if str(value or "").strip())
+    wrapper_path = f"{REMOTE_PARENT}/scripts/studiobrain-bambu-cli.sh"
+    inner_command = f"cd {shlex.quote(REMOTE_PARENT)} && {shlex.quote(wrapper_path)} {quoted_args}".strip()
+    return build_remote_host_user_command(env, inner_command)
 
 
 def resolve_namecheap_tunnel_settings() -> dict[str, object]:
@@ -319,6 +333,135 @@ def command_install_stack(args: argparse.Namespace) -> dict[str, object]:
     finally:
         if ssh is not None:
             ssh.close()
+
+
+def run_remote_bambu(
+    env: dict[str, str],
+    *,
+    timeout: int,
+    sync_support: bool = True,
+    script_args: tuple[str, ...],
+) -> dict[str, object]:
+    ssh = None
+    try:
+        ssh, auth = connect_studiobrain_ssh(env, timeout=timeout)
+        synced = None
+        if sync_support:
+            synced = upload_repo_support_paths(
+                ssh,
+                repo_root=REPO_ROOT,
+                remote_parent=REMOTE_PARENT,
+                local_paths=SUPPORT_PATHS,
+                timeout=timeout,
+            )
+        command = build_remote_bambu_command(env, *script_args)
+        out, err, code = sudo_ssh_exec(ssh, command, env=env, timeout=max(timeout, 900))
+        payload: dict[str, object] = {
+            "ok": code == 0,
+            "auth": auth,
+            "exitCode": code,
+            "stdout": out.strip(),
+            "stderr": err.strip(),
+        }
+        stdout_text = str(payload["stdout"]).strip()
+        if stdout_text:
+            try:
+                payload["parsed"] = json.loads(stdout_text)
+            except json.JSONDecodeError:
+                pass
+        if synced is not None:
+            payload["synced"] = synced
+        return payload
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
+def command_bambu_install(args: argparse.Namespace) -> dict[str, object]:
+    env = load_env()
+    ssh = None
+    try:
+        ssh, auth = connect_studiobrain_ssh(env, timeout=args.timeout)
+        synced = upload_repo_support_paths(
+            ssh,
+            repo_root=REPO_ROOT,
+            remote_parent=REMOTE_PARENT,
+            local_paths=SUPPORT_PATHS,
+            timeout=args.timeout,
+        )
+        host_user = str(env.get("STUDIO_BRAIN_DEPLOY_USER", "wuff")).strip() or "wuff"
+        install_command = (
+            f"cd {shlex.quote(REMOTE_PARENT)} && "
+            f"STUDIO_BRAIN_REMOTE_PARENT={shlex.quote(REMOTE_PARENT)} "
+            f"STUDIO_BRAIN_DEPLOY_USER={shlex.quote(host_user)} "
+            "bash ./scripts/install-studiobrain-bambu-cli.sh"
+        )
+        install_out, install_err, install_code = sudo_ssh_exec(
+            ssh,
+            install_command,
+            env=env,
+            timeout=max(args.timeout, 1800),
+        )
+        payload: dict[str, object] = {
+            "ok": install_code == 0,
+            "auth": auth,
+            "synced": synced,
+            "exitCode": install_code,
+            "stdout": install_out.strip(),
+            "stderr": install_err.strip(),
+        }
+        if install_code == 0:
+            payload["status"] = run_remote_bambu(
+                env,
+                timeout=max(args.timeout, 120),
+                sync_support=False,
+                script_args=("status", "--json"),
+            )
+        return payload
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
+def command_bambu_status(args: argparse.Namespace) -> dict[str, object]:
+    env = load_env()
+    return run_remote_bambu(
+        env,
+        timeout=max(args.timeout, 120),
+        script_args=("status", "--json"),
+    )
+
+
+def command_bambu_smoke(args: argparse.Namespace) -> dict[str, object]:
+    env = load_env()
+    script_args = ["smoke", "--json"]
+    if args.output_dir:
+        script_args.extend(["--output-dir", args.output_dir])
+    if args.keep_output:
+        script_args.append("--keep-output")
+    return run_remote_bambu(
+        env,
+        timeout=max(args.timeout, 1800),
+        script_args=tuple(script_args),
+    )
+
+
+def command_bambu_run(args: argparse.Namespace) -> dict[str, object]:
+    env = load_env()
+    bambu_args = list(args.bambu_args or [])
+    if bambu_args and bambu_args[0] == "--":
+        bambu_args = bambu_args[1:]
+    if not bambu_args:
+        return {"ok": False, "error": "bambu-run requires at least one argument after '--'"}
+    return run_remote_bambu(
+        env,
+        timeout=max(args.timeout, 1800),
+        script_args=tuple(["run", *bambu_args]),
+    )
 
 
 def command_deploy_runtime(args: argparse.Namespace) -> dict[str, object]:
@@ -867,6 +1010,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inspect the Studio Brain browser bridge and portal-host tunnel probe.",
     )
     portal_bridge_status_parser.set_defaults(handler=command_portal_bridge_status)
+
+    bambu_install_parser = subparsers.add_parser(
+        "bambu-install",
+        help="Install the pinned Bambu Studio Linux CLI on the Studio Brain host.",
+    )
+    bambu_install_parser.set_defaults(handler=command_bambu_install)
+
+    bambu_status_parser = subparsers.add_parser(
+        "bambu-status",
+        help="Report the installed Bambu Studio CLI state on the Studio Brain host.",
+    )
+    bambu_status_parser.set_defaults(handler=command_bambu_status)
+
+    bambu_smoke_parser = subparsers.add_parser(
+        "bambu-smoke",
+        help="Run a headless Bambu Studio smoke slice on the Studio Brain host.",
+    )
+    bambu_smoke_parser.add_argument("--output-dir", help="Optional remote directory for smoke outputs.")
+    bambu_smoke_parser.add_argument(
+        "--keep-output",
+        action="store_true",
+        help="Keep smoke-slice artifacts instead of deleting them after a successful run.",
+    )
+    bambu_smoke_parser.set_defaults(handler=command_bambu_smoke)
+
+    bambu_run_parser = subparsers.add_parser(
+        "bambu-run",
+        help="Run arbitrary Bambu Studio CLI arguments on the Studio Brain host.",
+    )
+    bambu_run_parser.add_argument(
+        "bambu_args",
+        nargs=argparse.REMAINDER,
+        help="Arguments passed through to studiobrain-bambu-cli.sh run",
+    )
+    bambu_run_parser.set_defaults(handler=command_bambu_run)
 
     browser_url_parser = subparsers.add_parser(
         "browser-url",

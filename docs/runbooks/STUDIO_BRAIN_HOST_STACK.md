@@ -16,6 +16,8 @@ Use this runbook for the broader Studio Brain host-control stack that sits behin
 - `tmux` with a tracked Studio Brain session layout
 - `mosh` plus the default UDP firewall range
 - `ansible` on the Ubuntu host so the host can provision itself predictably
+- the base CUPS print stack (`cups`, `cups-client`, `cups-filters`) with the scheduler enabled
+- the pinned Bambu Studio Linux CLI wrapper for headless fabrication and slicing workflows
 - the repo-backed monitoring sidecars under `config/studiobrain/monitoring`:
   - `netdata`
   - `uptime-kuma`
@@ -41,6 +43,9 @@ npm run studio:ops:tmux:ensure
 npm run studio:ops:tmux:attach:cmd
 npm run studio:ops:cockpit:state
 npm run studio:ops:session:list
+npm run studio:ops:bambu:install
+npm run studio:ops:bambu:status
+npm run studio:ops:bambu:smoke
 ```
 
 Primary daily operator surface:
@@ -77,9 +82,12 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
 ## Notes
 
 - The wrapper syncs only the tracked ops support files into the live host checkout, which avoids stomping unrelated dirty work on the host.
+- `studio:ops:bambu:install` installs a pinned Bambu Studio Linux AppImage on the host, extracts it under `/opt/studiobrain/bambu-studio`, and links the repo-backed wrapper to `/usr/local/bin/studiobrain-bambu-cli`.
+- `studio:ops:bambu:status` and `studio:ops:bambu:smoke` use the repo-backed wrapper on the host, which defaults to `xvfb-run` when the host is headless.
+- The current pin is `v02.05.02.51` because the official 2.5.2 beta release notes call out a fix for a CLI segmentation fault, which matters more here than MakerWorld beta upload compatibility.
 - `deploy-runtime` calls [`scripts/deploy-studio-brain-host.py`](./STUDIO_BRAIN_HOST_DEPLOY.md) from the current checkout, which is the repo-backed way to clear live runtime and integrity drift on the host.
 - `install-stack` uses the existing SSH key path, escalates with the stored sudo password, and then runs the tracked Ansible playbook locally on the Ubuntu host.
-- `install-stack` refreshes the tracked monitoring stack and the periodic backup/disk/healthcheck timers, so `studio:ops:install` is the repo-backed way to reconcile those host resources after the runtime is current.
+- `install-stack` refreshes the tracked monitoring stack, the base CUPS print stack, and the periodic backup/disk/healthcheck timers, so `studio:ops:install` is the repo-backed way to reconcile those host resources after the runtime is current.
 - `reconcile` is the normal merge/deploy sync cycle: full runtime deploy first, then stack install, then a fresh status snapshot.
 - `status` now reports the remote checkout branch, head commit, and tracked dirty-file count under `workspace` so stale host branches are visible before they become integrity noise.
 - `scripts/install-studiobrain-healthcheck.sh` now installs the backup, disk-alert, healthcheck, and reboot-watch timers as one tracked bundle. The reboot watcher checks `/var/run/reboot-required` every 15 minutes and sends at most one Discord update per UTC day, only when the reboot-required state has changed, which is safer for the encrypted Studio Brain host than unattended auto-reboots.
@@ -88,6 +96,7 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
   - Uptime Kuma sqlite data and generated admin credentials stay host-local and are not committed
 - Legacy host-only `studiobrain-maintenance` and `studiobrain-fan-guardian` services are intentionally retired. If they show up again, treat that as drift rather than supported infrastructure.
 - Direct access is intentionally narrowed to SSH, fail2ban, tmux recovery, and the tracked browser bridge. Tailscale and Teleport are retired and the installer now removes them if they drift back onto the host.
+- The base host stack now gets CUPS queueing primitives by default; vendor-specific Star and SNBC printer drivers still need to be staged separately when the physical printers are introduced.
 - The tmux helper now creates a recovery-first layout:
   - `control`: browser-first recovery guide
   - `brain`: working shell in `studio-brain/`

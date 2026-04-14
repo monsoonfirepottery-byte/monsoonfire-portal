@@ -1,0 +1,183 @@
+[
+  {
+    "variant": "variant_A",
+    "assembly_type": "single_part",
+    "notes": "Single-part spring clip label with lower back pads to keep the sign face parallel to the crate wall.",
+    "print_orientation": "Print front face down so the saddle roof bridges across the crate-wall channel.",
+    "recommended_material": "PETG preferred; PLA acceptable for light duty.",
+    "parts": [
+      {
+        "name": "variant_A",
+        "stl": "variant_A.stl",
+        "step": "variant_A.step",
+        "watertight": true,
+        "components": 1,
+        "volume_mm3": 24712.672,
+        "faces": 9264,
+        "vertices": 4634,
+        "bounds_mm": [
+          [
+            -47.0,
+            -32.0,
+            -6.599999904632568
+          ],
+          [
+            47.0,
+            32.0,
+            4.699999809265137
+          ]
+        ],
+        "previews": {
+          "front_svg": "variant_A_front.svg",
+          "iso_svg": "variant_A_iso.svg",
+          "iso_png": "variant_A_iso.png",
+          "rear_iso_svg": "variant_A_rear_iso.svg",
+          "rear_iso_png": "variant_A_rear_iso.png"
+        }
+      }
+    ]
+  },
+  {
+    "variant": "variant_B",
+    "assembly_type": "two_part_assembly",
+    "notes": "Replaceable cartridge system with front retention rails and a separate printable insert.",
+    "print_orientation": "Print both parts face down; the insert drops into the rail set from the top after printing.",
+    "recommended_material": "PETG frame plus PLA or PETG inserts depending on swap frequency.",
+    "parts": [
+      {
+        "name": "variant_B_frame",
+        "stl": "variant_B_frame.stl",
+        "step": "variant_B_frame.step",
+        "watertight": true,
+        "components": 1,
+        "volume_mm3": 25255.755,
+        "faces": 828,
+        "vertices": 416,
+        "bounds_mm": [
+          [
+            -49.0,
+            -34.0,
+            -6.599999904632568
+          ],
+          [
+            49.0,
+            34.0,
+            4.800000190734863
+          ]
+        ],
+        "previews": {
+          "front_svg": "variant_B_frame_front.svg",
+          "iso_svg": "variant_B_frame_iso.svg",
+          "iso_png": "variant_B_frame_iso.png",
+          "rear_iso_svg": "variant_B_frame_rear_iso.svg",
+          "rear_iso_png": "variant_B_frame_rear_iso.png"
+        }
+      },
+      {
+        "name": "variant_B_insert",
+        "stl": "variant_B_insert.stl",
+        "step": "variant_B_insert.step",
+        "watertight": true,
+        "components": 1,
+        "volume_mm3": 7781.951,
+        "faces": 2984,
+        "vertices": 1494,
+        "bounds_mm": [
+          [
+            -41.599998474121094,
+            -26.200000762939453,
+            0.0
+          ],
+          [
+            41.599998474121094,
+            31.100000381469727,
+            2.700000047683716
+          ]
+        ],
+        "previews": {
+          "front_svg": "variant_B_insert_front.svg",
+          "iso_svg": "variant_B_insert_iso.svg",
+          "iso_png": "variant_B_insert_iso.png",
+          "rear_iso_svg": "variant_B_insert_rear_iso.svg",
+          "rear_iso_png": "variant_B_insert_rear_iso.png"
+        }
+      }
+    ]
+  },
+  {
+    "variant": "variant_C",
+    "assembly_type": "single_part",
+    "notes": "Double-sided hanging tag with a full outside panel and smaller inside QR panel tied together by one saddle body.",
+    "print_orientation": "Print the larger front face down; the bridge spans only the wall slot so it remains support-free.",
+    "recommended_material": "PETG strongly recommended for repeated hanging and handling.",
+    "parts": [
+      {
+        "name": "variant_C",
+        "stl": "variant_C.stl",
+        "step": "variant_C.step",
+        "watertight": true,
+        "components": 1,
+        "volume_mm3": 29546.595,
+        "faces": 6302,
+        "vertices": 3153,
+        "bounds_mm": [
+          [
+            -43.0,
+            -37.0,
+            -8.199999809265137
+          ],
+          [
+            43.0,
+            25.0,
+            4.599999904632568
+          ]
+        ],
+        "previews": {
+          "front_svg": "variant_C_front.svg",
+          "iso_svg": "variant_C_iso.svg",
+          "iso_png": "variant_C_iso.png",
+          "rear_iso_svg": "variant_C_rear_iso.svg",
+          "rear_iso_png": "variant_C_rear_iso.png"
+        }
+      }
+    ]
+  },
+  {
+    "variant": "variant_D",
+    "assembly_type": "single_part",
+    "notes": "Heavy-duty block with deeper QR protection, a thicker saddle clip, and rear reinforcement pads.",
+    "print_orientation": "Print front face down; the heavy saddle remains printable because the channel roof bridges under 5 mm.",
+    "recommended_material": "PETG or ABS/ASA if the tags will live in hotter, rougher studio conditions.",
+    "parts": [
+      {
+        "name": "variant_D",
+        "stl": "variant_D.stl",
+        "step": "variant_D.step",
+        "watertight": true,
+        "components": 1,
+        "volume_mm3": 46238.509,
+        "faces": 4122,
+        "vertices": 2063,
+        "bounds_mm": [
+          [
+            -52.0,
+            -36.0,
+            -7.800000190734863
+          ],
+          [
+            52.0,
+            36.0,
+            6.400000095367432
+          ]
+        ],
+        "previews": {
+          "front_svg": "variant_D_front.svg",
+          "iso_svg": "variant_D_iso.svg",
+          "iso_png": "variant_D_iso.png",
+          "rear_iso_svg": "variant_D_rear_iso.svg",
+          "rear_iso_png": "variant_D_rear_iso.png"
+        }
+      }
+    ]
+  }
+]

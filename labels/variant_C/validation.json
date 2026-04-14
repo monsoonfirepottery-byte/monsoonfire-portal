@@ -1,0 +1,38 @@
+{
+  "variant": "variant_C",
+  "assembly_type": "single_part",
+  "notes": "Double-sided hanging tag with a full outside panel and smaller inside QR panel tied together by one saddle body.",
+  "print_orientation": "Print the larger front face down; the bridge spans only the wall slot so it remains support-free.",
+  "recommended_material": "PETG strongly recommended for repeated hanging and handling.",
+  "parts": [
+    {
+      "name": "variant_C",
+      "stl": "variant_C.stl",
+      "step": "variant_C.step",
+      "watertight": true,
+      "components": 1,
+      "volume_mm3": 29546.595,
+      "faces": 6302,
+      "vertices": 3153,
+      "bounds_mm": [
+        [
+          -43.0,
+          -37.0,
+          -8.199999809265137
+        ],
+        [
+          43.0,
+          25.0,
+          4.599999904632568
+        ]
+      ],
+      "previews": {
+        "front_svg": "variant_C_front.svg",
+        "iso_svg": "variant_C_iso.svg",
+        "iso_png": "variant_C_iso.png",
+        "rear_iso_svg": "variant_C_rear_iso.svg",
+        "rear_iso_png": "variant_C_rear_iso.png"
+      }
+    }
+  ]
+}

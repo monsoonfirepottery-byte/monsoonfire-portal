@@ -12,8 +12,9 @@ const budgets = [
   { prefix: "vendor-firebase-core-", maxBytes: 80_000 },
   // Member reservations stays lazy-loaded, but it now carries booking feedback and inventory-aware UI.
   { prefix: "StudioReservationsView-", maxBytes: 40_000 },
-  // Ware check-in remains its own lazy route after the reservation flow split.
-  { prefix: "WareCheckInView-", maxBytes: 100_000 },
+  // Ware check-in remains its own lazy route after the reservation flow split,
+  // and the current queue + storage guardrails baseline now lands just over 100 kB.
+  { prefix: "WareCheckInView-", maxBytes: 101_000 },
   // Kiln launch stays lazy-loaded, but the seven-day timeline calendar adds its own route payload.
   { prefix: "KilnLaunchView-", maxBytes: 30_000 },
   // Staff stays lazy-loaded, but the task-first home, promoted message workflows,
@@ -37,9 +38,10 @@ const requiredRouteChunks = [
 ];
 // Total budgets re-baselined after the StaffView lazy split, dependency refresh,
 // kiln queue timeline route, client-facing My Pieces redesign, portal handoff
-// attribution path, Studio Brain control tower actionability bridge, and
-// reservation notification policy controls while keeping future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_813_000;
+// attribution path, Studio Brain control tower actionability bridge, reservation
+// notification policy controls, and the current live-surface trust tranche while
+// keeping future regressions visible.
+const MAX_TOTAL_JS_BYTES = 1_820_000;
 const MAX_TOTAL_CSS_BYTES = 292_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

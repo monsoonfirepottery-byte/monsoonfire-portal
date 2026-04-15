@@ -292,7 +292,7 @@ test("memory capture redacts secret-bearing content, quarantines it, and emits a
 
   const captured = await service.capture({
     content:
-      "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature-value-1234567890",
+      "Operator note: Authorization: Bearer test-redaction-token",
     source: "manual",
     clientRequestId: "secret-capture-1",
   });
@@ -360,7 +360,7 @@ test("memory stats surface startup, secret, and shadow MCP launch findings", asy
   });
   await service.capture({
     content:
-      "Operator note: Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.signature-value-0987654321",
+      "Operator note: Authorization: Bearer launch-redaction-token",
     source: "manual",
     clientRequestId: "launch-secret",
   });

@@ -320,6 +320,9 @@ export type ControlTowerMemoryHealth = {
     retire: number;
     folkloreRiskHigh: number;
   };
+  openReviewCases: number;
+  verificationFailures24h: number;
+  emberPromotionBacklog: number;
   conflictBacklog: {
     contestedRows: number;
     hardConflicts: number;

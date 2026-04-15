@@ -1,4 +1,8 @@
 import type {
+  MemoryReviewCaseListInput,
+  MemoryReviewCaseUpsertInput,
+  MemoryVerificationRunListInput,
+  MemoryVerificationRunUpsertInput,
   MemoryLoopActionIdempotencyClaimInput,
   MemoryLoopActionIdempotencyClaimResult,
   MemoryLoopActionIdempotencyLookupInput,
@@ -28,6 +32,10 @@ import type {
   MemoryOperationalStatus,
   MemoryRedactionState,
   MemoryRecord,
+  MemoryReviewCase,
+  MemoryReviewCaseAction,
+  MemoryReviewCaseStatus,
+  MemoryReviewCaseType,
   MemoryReviewAction,
   MemorySearchResult,
   MemorySourceClass,
@@ -35,6 +43,10 @@ import type {
   MemoryTransitionEvent,
   MemoryTruthStatus,
   MemoryType,
+  MemoryVerificationResultStatus,
+  MemoryVerificationRun,
+  MemoryVerifierKind,
+  MemoryVerificationTrigger,
 } from "./contracts";
 import { isAllowedMemoryLayer, normalizeMemoryLayer, normalizeMemoryLayerList } from "./layers";
 
@@ -48,6 +60,17 @@ function clampLimit(value: unknown, fallback = 24): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(1, Math.min(200, Math.trunc(numeric)));
+}
+
+function parseDate(value: unknown): string {
+  const parsed = new Date(String(value ?? ""));
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
+}
+
+function parseNullableDate(value: unknown): string | null {
+  if (!value) return null;
+  const parsed = new Date(String(value));
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
 function normalizeTenantScope(tenantId: string | null | undefined): string {
@@ -155,6 +178,73 @@ function normalizeLoopFeedbackAction(value: unknown): MemoryLoopFeedbackAction {
   return "ack";
 }
 
+function normalizeReviewCaseType(value: unknown): MemoryReviewCaseType {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "resolve-conflict" || raw === "retire" || raw === "promote-guidance") return raw;
+  return "revalidate";
+}
+
+function normalizeReviewCaseStatus(value: unknown): MemoryReviewCaseStatus {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "in-progress" || raw === "resolved" || raw === "dismissed") return raw;
+  return "open";
+}
+
+function normalizeReviewCaseAction(value: unknown): MemoryReviewCaseAction {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "verify_now" ||
+    raw === "accept_winner" ||
+    raw === "keep_quarantined" ||
+    raw === "retire_memory" ||
+    raw === "dismiss_case" ||
+    raw === "promote_guidance" ||
+    raw === "reject_promotion"
+  ) {
+    return raw;
+  }
+  return "verify_now";
+}
+
+function normalizeVerifierKind(value: unknown): MemoryVerifierKind {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "repo-head" ||
+    raw === "runtime-check" ||
+    raw === "startup-instruction" ||
+    raw === "support-policy" ||
+    raw === "support-outcome" ||
+    raw === "operator-attested"
+  ) {
+    return raw;
+  }
+  return "operator-attested";
+}
+
+function normalizeVerificationTrigger(value: unknown): MemoryVerificationTrigger {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw === "capture-conflict" ||
+    raw === "operational-read" ||
+    raw === "safety-read" ||
+    raw === "review-action" ||
+    raw === "startup-pack-change" ||
+    raw === "repo-diff" ||
+    raw === "support-case-resolved" ||
+    raw === "weekly-maintenance" ||
+    raw === "manual"
+  ) {
+    return raw;
+  }
+  return "manual";
+}
+
+function normalizeVerificationResultStatus(value: unknown): MemoryVerificationResultStatus {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "passed" || raw === "failed" || raw === "needs-review" || raw === "skipped") return raw;
+  return "needs-review";
+}
+
 function normalizeRelationType(value: unknown): string {
   const relationType = String(value ?? "")
     .trim()
@@ -241,6 +331,9 @@ type InMemoryLoopActionIdempotencyEntry = {
   createdAt: string;
   lastSeenAt: string;
 };
+
+type InMemoryReviewCase = MemoryReviewCase;
+type InMemoryVerificationRun = MemoryVerificationRun;
 
 function edgeKey(edge: InMemoryEdge): string {
   return [edge.tenantScope, edge.sourceId, edge.targetId, edge.relationType].join("|");
@@ -452,6 +545,67 @@ function normalizeRecord(input: MemoryUpsertInput): MemoryRecord {
   };
 }
 
+function cloneReviewCase(row: InMemoryReviewCase): MemoryReviewCase {
+  return {
+    ...row,
+    linkedMemoryIds: [...row.linkedMemoryIds],
+    reasonCodes: [...row.reasonCodes],
+    recommendedActions: [...row.recommendedActions],
+    metadata: normalizeMetadata(row.metadata),
+  };
+}
+
+function normalizeReviewCase(input: MemoryReviewCaseUpsertInput, existing?: InMemoryReviewCase | null): InMemoryReviewCase {
+  return {
+    id: input.id,
+    tenantId: input.tenantId ?? null,
+    caseType: normalizeReviewCaseType(input.caseType),
+    status: normalizeReviewCaseStatus(input.status),
+    scope: normalizeText(input.scope) || null,
+    primaryMemoryId: normalizeText(input.primaryMemoryId) || null,
+    linkedMemoryIds: normalizeIdList(input.linkedMemoryIds, 64),
+    priority: clamp01(input.priority, existing?.priority ?? 0.5),
+    reasonCodes: readStringList(input.reasonCodes, 24),
+    recommendedActions: Array.from(
+      new Set((input.recommendedActions ?? []).map((entry) => normalizeReviewCaseAction(entry)).filter(Boolean))
+    ).slice(0, 8),
+    owner: normalizeText(input.owner) || null,
+    resolution: normalizeText(input.resolution) || null,
+    lastVerificationRunId: normalizeText(input.lastVerificationRunId) || null,
+    openedAt: existing?.openedAt ?? parseDate(input.openedAt ?? new Date().toISOString()),
+    updatedAt: parseDate(input.updatedAt ?? new Date().toISOString()),
+    resolvedAt: parseNullableDate(input.resolvedAt),
+    metadata: normalizeMetadata(input.metadata),
+  };
+}
+
+function cloneVerificationRun(row: InMemoryVerificationRun): MemoryVerificationRun {
+  return {
+    ...row,
+    requestSnapshot: normalizeMetadata(row.requestSnapshot),
+    evidenceIds: [...row.evidenceIds],
+    metadata: normalizeMetadata(row.metadata),
+  };
+}
+
+function normalizeVerificationRun(input: MemoryVerificationRunUpsertInput): InMemoryVerificationRun {
+  return {
+    id: input.id,
+    tenantId: input.tenantId ?? null,
+    caseId: normalizeText(input.caseId) || null,
+    targetMemoryId: normalizeText(input.targetMemoryId) || null,
+    verifierKind: normalizeVerifierKind(input.verifierKind),
+    trigger: normalizeVerificationTrigger(input.trigger),
+    requestSnapshot: normalizeMetadata(input.requestSnapshot),
+    resultStatus: normalizeVerificationResultStatus(input.resultStatus),
+    resultSummary: normalizeText(input.resultSummary) || null,
+    evidenceIds: normalizeIdList(input.evidenceIds, 64),
+    startedAt: parseDate(input.startedAt),
+    finishedAt: parseNullableDate(input.finishedAt),
+    metadata: normalizeMetadata(input.metadata),
+  };
+}
+
 function scoreRecord(
   row: MemoryRecord,
   query: string,
@@ -490,6 +644,8 @@ function scoreRecord(
 
 export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
   const records = new Map<string, MemoryRecord>();
+  const reviewCases = new Map<string, InMemoryReviewCase>();
+  const verificationRuns = new Map<string, InMemoryVerificationRun>();
   const relationEdges = new Map<string, InMemoryEdge>();
   const entities = new Map<string, InMemoryEntity>();
   const patterns = new Map<string, InMemoryPattern>();
@@ -517,6 +673,21 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       bySourceMap.set(row.source, (bySourceMap.get(row.source) ?? 0) + 1);
     }
     const lattice = latticeBreakdown(rows);
+    const reviewCaseRows = Array.from(reviewCases.values()).filter((row) => (tenantId === undefined ? true : row.tenantId === tenantId));
+    const verificationRunRows = Array.from(verificationRuns.values()).filter((row) =>
+      tenantId === undefined ? true : row.tenantId === tenantId
+    );
+    const openReviewCases = reviewCaseRows.filter(
+      (row) => row.status === "open" || row.status === "in-progress"
+    ).length;
+    const emberPromotionBacklog = reviewCaseRows.filter(
+      (row) => row.caseType === "promote-guidance" && (row.status === "open" || row.status === "in-progress")
+    ).length;
+    const verificationFailures24h = verificationRunRows.filter((row) => {
+      if (row.resultStatus !== "failed") return false;
+      const anchor = Date.parse(row.finishedAt || row.startedAt || "");
+      return Number.isFinite(anchor) && anchor >= Date.now() - 24 * 60 * 60 * 1000;
+    }).length;
     let contestedRows = 0;
     let hardConflicts = 0;
     let quarantinedRows = 0;
@@ -583,6 +754,9 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
       byStatus: statusBreakdown(rows),
       lattice,
       reviewBacklog: lattice?.backlog,
+      openReviewCases,
+      verificationFailures24h,
+      emberPromotionBacklog,
       conflictBacklog: {
         contestedRows,
         hardConflicts,
@@ -729,6 +903,64 @@ export function createInMemoryMemoryStoreAdapter(): MemoryStoreAdapter {
         .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
         .filter((row) => isAllowedMemoryLayer(row.memoryLayer, normalizeMemoryLayerList(input.layerAllowlist), normalizeMemoryLayerList(input.layerDenylist)));
       return stats(input.tenantId, rows);
+    },
+
+    async upsertReviewCase(input): Promise<MemoryReviewCase> {
+      const existing = reviewCases.get(input.id) ?? null;
+      const next = normalizeReviewCase(input, existing);
+      reviewCases.set(next.id, next);
+      return cloneReviewCase(next);
+    },
+
+    async getReviewCaseById(input): Promise<MemoryReviewCase | null> {
+      const row = reviewCases.get(String(input.id ?? "").trim());
+      if (!row) return null;
+      if (input.tenantId !== undefined && row.tenantId !== input.tenantId) return null;
+      return cloneReviewCase(row);
+    },
+
+    async listReviewCases(input): Promise<MemoryReviewCase[]> {
+      const statuses = new Set((input.statuses ?? []).map((entry) => normalizeReviewCaseStatus(entry)));
+      const caseTypes = new Set((input.caseTypes ?? []).map((entry) => normalizeReviewCaseType(entry)));
+      const scopePrefixes = readStringList(input.scopePrefixes, 32).map((entry) => entry.toLowerCase());
+      const linkedMemoryIds = new Set(normalizeIdList(input.linkedMemoryIds, 64));
+      return Array.from(reviewCases.values())
+        .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
+        .filter((row) => (statuses.size > 0 ? statuses.has(row.status) : true))
+        .filter((row) => (caseTypes.size > 0 ? caseTypes.has(row.caseType) : true))
+        .filter((row) =>
+          scopePrefixes.length > 0
+            ? scopePrefixes.some((prefix) => (row.scope ?? "").toLowerCase().startsWith(prefix))
+            : true
+        )
+        .filter((row) =>
+          linkedMemoryIds.size > 0 ? row.linkedMemoryIds.some((memoryId) => linkedMemoryIds.has(memoryId)) : true
+        )
+        .sort((left, right) => right.priority - left.priority || right.updatedAt.localeCompare(left.updatedAt))
+        .slice(0, Math.max(1, Math.min(input.limit ?? 50, 200)))
+        .map((row) => cloneReviewCase(row));
+    },
+
+    async upsertVerificationRun(input): Promise<MemoryVerificationRun> {
+      const next = normalizeVerificationRun(input);
+      verificationRuns.set(next.id, next);
+      return cloneVerificationRun(next);
+    },
+
+    async listVerificationRuns(input): Promise<MemoryVerificationRun[]> {
+      return Array.from(verificationRuns.values())
+        .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
+        .filter((row) => (input.caseId !== undefined ? row.caseId === (normalizeText(input.caseId) || null) : true))
+        .filter((row) =>
+          input.targetMemoryId !== undefined ? row.targetMemoryId === (normalizeText(input.targetMemoryId) || null) : true
+        )
+        .sort((left, right) => {
+          const rightTime = Date.parse(right.finishedAt || right.startedAt || "") || 0;
+          const leftTime = Date.parse(left.finishedAt || left.startedAt || "") || 0;
+          return rightTime - leftTime || right.startedAt.localeCompare(left.startedAt);
+        })
+        .slice(0, Math.max(1, Math.min(input.limit ?? 50, 200)))
+        .map((row) => cloneVerificationRun(row));
     },
 
     async indexSignals(input) {

@@ -191,6 +191,88 @@ type PolicyState = {
   exemptions: PolicyExemption[];
 };
 
+type SupportQueueSummary = {
+  unread: number;
+  awaitingInfo: number;
+  awaitingApproval: number;
+  securityHold: number;
+  staffReview: number;
+  warmTouchesDue: number;
+  splitThreadSuspects: number;
+  totalOpen: number;
+  oldestOpenAt: string | null;
+  slaAging: {
+    fresh: number;
+    warning: number;
+    overdue: number;
+  };
+};
+
+type SupportCaseRow = {
+  supportRequestId: string;
+  conversationKey: string;
+  senderEmail: string | null;
+  subject: string;
+  decision: "auto_reply" | "ask_missing_info" | "staff_review" | "proposal_required" | "security_hold";
+  riskState: "clear" | "possible_security_risk" | "high_risk";
+  automationState: string;
+  queueBucket: "unread" | "awaiting_info" | "awaiting_approval" | "security_hold" | "staff_review" | "resolved";
+  threadDriftFlag: boolean;
+  memberCareState: "none" | "due" | "drafted" | "sent" | "staff_follow_up";
+  memberCareReason: "pickup_coordination" | "delay_reassurance" | "apology" | "gratitude" | "clarification" | null;
+  lastCareTouchAt: string | null;
+  nextRecommendedAction: string | null;
+  supportSummary: string | null;
+  emberMemoryScope: string | null;
+  emberSummary: string | null;
+  confusionState: "none" | "apologetic" | "uncertain" | "frustrated" | "grateful" | "overwhelmed";
+  confusionReason: string | null;
+  humanHandoff: boolean;
+  linkedMemoryReviewCaseIds?: string[];
+  policyResolution: {
+    policySlug: string | null;
+  };
+  proposalId: string | null;
+  proposalCapabilityId: string | null;
+  lastReceivedAt: string;
+};
+
+type MemoryVerificationRunRow = {
+  id: string;
+  caseId: string | null;
+  verifierKind: string;
+  trigger: string;
+  resultStatus: "passed" | "failed" | "needs-review" | "skipped";
+  resultSummary: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
+type MemoryReviewCaseRow = {
+  id: string;
+  caseType: "resolve-conflict" | "revalidate" | "retire" | "promote-guidance";
+  status: "open" | "in-progress" | "resolved" | "dismissed";
+  scope: string | null;
+  primaryMemoryId: string | null;
+  linkedMemoryIds: string[];
+  priority: number;
+  reasonCodes: string[];
+  recommendedActions: Array<
+    "verify_now" | "accept_winner" | "keep_quarantined" | "retire_memory" | "dismiss_case" | "promote_guidance" | "reject_promotion"
+  >;
+  lastVerificationRunId: string | null;
+  updatedAt: string;
+  resolution: string | null;
+};
+
+type SupportDeadLetter = {
+  id: string;
+  messageId: string | null;
+  mailbox: string;
+  errorMessage: string;
+  createdAt: string;
+};
+
 const NO_BASE_URL_MESSAGE = "Studio Brain is not configured for this browser host.";
 
 function when(iso: string | undefined): string {
@@ -226,6 +308,11 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
   const [scorecard, setScorecard] = useState<Scorecard | null>(null);
   const [policyLint, setPolicyLint] = useState<PolicyLintStatus | null>(null);
   const [opsAuditRows, setOpsAuditRows] = useState<OpsAuditEvent[]>([]);
+  const [supportQueueSummary, setSupportQueueSummary] = useState<SupportQueueSummary | null>(null);
+  const [supportCaseRows, setSupportCaseRows] = useState<SupportCaseRow[]>([]);
+  const [supportDeadLetterRows, setSupportDeadLetterRows] = useState<SupportDeadLetter[]>([]);
+  const [memoryReviewCaseRows, setMemoryReviewCaseRows] = useState<MemoryReviewCaseRow[]>([]);
+  const [memoryVerificationRuns, setMemoryVerificationRuns] = useState<MemoryVerificationRunRow[]>([]);
   const [tenantContext, setTenantContext] = useState("monsoonfire-main");
   const [capabilityId, setCapabilityId] = useState("firestore.batch.close");
   const [rationale, setRationale] = useState("Close this batch after final QA pass completes.");
@@ -315,7 +402,23 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
     if (auditActionPrefix.trim()) auditParams.set("actionPrefix", auditActionPrefix.trim());
     if (auditActorFilter.trim()) auditParams.set("actorId", auditActorFilter.trim());
     if (auditApprovalFilter.trim()) auditParams.set("approvalState", auditApprovalFilter.trim());
-    const [capResp, quotaResp, auditResp, delegationResp, recommendationResp, marketingResp, financeResp, intakeResp, rateLimitResp, scorecardResp, lintResp, opsAuditResp] = await Promise.all([
+    const [
+      capResp,
+      quotaResp,
+      auditResp,
+      delegationResp,
+      recommendationResp,
+      marketingResp,
+      financeResp,
+      intakeResp,
+      rateLimitResp,
+      scorecardResp,
+      lintResp,
+      opsAuditResp,
+      supportQueueResp,
+      memoryReviewResp,
+      supportDeadLettersResp,
+    ] = await Promise.all([
       fetchJson<{ capabilities?: Capability[]; proposals?: Proposal[]; policy?: PolicyState; connectors?: ConnectorHealthRow[] }>("/api/capabilities", {
         method: "GET",
       }),
@@ -352,6 +455,15 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       fetchJson<{ rows?: OpsAuditEvent[] }>(`/api/ops/audit?limit=50`, {
         method: "GET",
       }),
+      fetchJson<{ summary?: SupportQueueSummary; recentCases?: SupportCaseRow[] }>(`/api/support-ops/queue?limit=20`, {
+        method: "GET",
+      }),
+      fetchJson<{ rows?: MemoryReviewCaseRow[]; latestVerificationRuns?: MemoryVerificationRunRow[] }>(`/api/memory/review-cases?limit=20`, {
+        method: "GET",
+      }),
+      fetchJson<{ rows?: SupportDeadLetter[] }>(`/api/support-ops/dead-letters?limit=10`, {
+        method: "GET",
+      }),
     ]);
     setCapabilities(Array.isArray(capResp.capabilities) ? capResp.capabilities : []);
     setProposals(Array.isArray(capResp.proposals) ? capResp.proposals : []);
@@ -371,6 +483,11 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       violations: Array.isArray(lintResp.violations) ? lintResp.violations : [],
     });
     setOpsAuditRows(Array.isArray(opsAuditResp.rows) ? opsAuditResp.rows : []);
+    setSupportQueueSummary(supportQueueResp.summary ?? null);
+    setSupportCaseRows(Array.isArray(supportQueueResp.recentCases) ? supportQueueResp.recentCases : []);
+    setMemoryReviewCaseRows(Array.isArray(memoryReviewResp.rows) ? memoryReviewResp.rows : []);
+    setMemoryVerificationRuns(Array.isArray(memoryReviewResp.latestVerificationRuns) ? memoryReviewResp.latestVerificationRuns : []);
+    setSupportDeadLetterRows(Array.isArray(supportDeadLettersResp.rows) ? supportDeadLettersResp.rows : []);
     if (capResp.policy) {
       setPolicy({
         killSwitch: capResp.policy.killSwitch ?? { enabled: false, updatedAt: null, updatedBy: null, rationale: null },
@@ -386,6 +503,10 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
   }, [active, disabledByToken, auditActionPrefix, auditActorFilter, auditApprovalFilter, studioBrainBaseUrl]);
 
   const capabilityById = useMemo(() => new Map(capabilities.map((row) => [row.id, row])), [capabilities]);
+  const latestVerificationRunByCaseId = useMemo(
+    () => new Map(memoryVerificationRuns.filter((row) => row.caseId).map((row) => [row.caseId as string, row])),
+    [memoryVerificationRuns],
+  );
   const filteredProposals = useMemo(() => {
     const now = Date.now();
     return proposals.filter((row) => {
@@ -515,6 +636,163 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           ) : (
             <div className="staff-note">No policy lint violations.</div>
           )}
+        </>
+      ) : null}
+
+      {supportQueueSummary ? (
+        <>
+          <div className="staff-subtitle">Support ops queue</div>
+          <div className="staff-kpi-grid">
+            <div className="staff-kpi"><span>Unread</span><strong>{supportQueueSummary.unread}</strong></div>
+            <div className="staff-kpi"><span>Awaiting info</span><strong>{supportQueueSummary.awaitingInfo}</strong></div>
+            <div className="staff-kpi"><span>Awaiting approval</span><strong>{supportQueueSummary.awaitingApproval}</strong></div>
+            <div className="staff-kpi"><span>Security hold</span><strong>{supportQueueSummary.securityHold}</strong></div>
+            <div className="staff-kpi"><span>Staff review</span><strong>{supportQueueSummary.staffReview}</strong></div>
+            <div className="staff-kpi"><span>Warm touches due</span><strong>{supportQueueSummary.warmTouchesDue}</strong></div>
+            <div className="staff-kpi"><span>Split thread suspects</span><strong>{supportQueueSummary.splitThreadSuspects}</strong></div>
+            <div className="staff-kpi"><span>Oldest open</span><strong>{when(supportQueueSummary.oldestOpenAt ?? undefined)}</strong></div>
+            <div className="staff-kpi"><span>SLA fresh</span><strong>{supportQueueSummary.slaAging.fresh}</strong></div>
+            <div className="staff-kpi"><span>SLA warning</span><strong>{supportQueueSummary.slaAging.warning}</strong></div>
+            <div className="staff-kpi"><span>SLA overdue</span><strong>{supportQueueSummary.slaAging.overdue}</strong></div>
+          </div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>Received</th><th>Case</th><th>Queue</th><th>Care</th><th>Risk</th><th>Decision</th><th>Policy</th></tr></thead>
+              <tbody>
+                {supportCaseRows.length === 0 ? (
+                  <tr><td colSpan={7}>No support-op cases mirrored yet.</td></tr>
+                ) : (
+                  supportCaseRows.map((row) => (
+                    <tr key={row.supportRequestId}>
+                      <td>{when(row.lastReceivedAt)}</td>
+                      <td>
+                        <code>{row.supportRequestId}</code>
+                        <div className="staff-mini">{row.subject}</div>
+                        {row.senderEmail ? <div className="staff-mini">{row.senderEmail}</div> : null}
+                        {row.supportSummary ? <div className="staff-mini">{row.supportSummary}</div> : null}
+                        {row.emberSummary ? <div className="staff-mini">Ember: {row.emberSummary}</div> : null}
+                        {row.emberMemoryScope ? <div className="staff-mini"><code>{row.emberMemoryScope}</code></div> : null}
+                        {row.threadDriftFlag ? <div className="staff-mini">Thread drift suspect</div> : null}
+                        {row.linkedMemoryReviewCaseIds && row.linkedMemoryReviewCaseIds.length > 0 ? (
+                          <div className="staff-mini">Memory reviews: {row.linkedMemoryReviewCaseIds.join(", ")}</div>
+                        ) : null}
+                      </td>
+                      <td>{row.queueBucket}</td>
+                      <td>
+                        {row.memberCareState}
+                        {row.memberCareReason ? <div className="staff-mini">{row.memberCareReason.replaceAll("_", " ")}</div> : null}
+                        {row.lastCareTouchAt ? <div className="staff-mini">Last touch {when(row.lastCareTouchAt)}</div> : null}
+                      </td>
+                      <td>
+                        {row.riskState}
+                        {row.confusionState !== "none" ? <div className="staff-mini">Confusion: {row.confusionState}</div> : null}
+                        {row.confusionReason ? <div className="staff-mini">{row.confusionReason}</div> : null}
+                        {row.humanHandoff ? <div className="staff-mini">Human handoff</div> : null}
+                      </td>
+                      <td>
+                        {row.decision}
+                        <div className="staff-mini">{row.automationState}</div>
+                        {row.proposalId ? <div className="staff-mini">Proposal: {row.proposalId}</div> : null}
+                        {row.nextRecommendedAction ? <div className="staff-mini">{row.nextRecommendedAction}</div> : null}
+                      </td>
+                      <td>{row.policyResolution?.policySlug ?? "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="staff-subtitle">Memory review</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>Updated</th><th>Case</th><th>Scope</th><th>Linked memories</th><th>Verifier</th><th>Actions</th></tr></thead>
+              <tbody>
+                {memoryReviewCaseRows.length === 0 ? (
+                  <tr><td colSpan={6}>No open memory review cases.</td></tr>
+                ) : (
+                  memoryReviewCaseRows.map((row) => {
+                    const verification = latestVerificationRunByCaseId.get(row.id);
+                    return (
+                      <tr key={row.id}>
+                        <td>{when(row.updatedAt)}</td>
+                        <td>
+                          <code>{row.id}</code>
+                          <div className="staff-mini">{row.caseType}</div>
+                          <div className="staff-mini">{row.status}</div>
+                          {row.resolution ? <div className="staff-mini">{row.resolution}</div> : null}
+                        </td>
+                        <td>{row.scope ?? "-"}</td>
+                        <td>
+                          <div className="staff-mini">{row.primaryMemoryId ?? "-"}</div>
+                          <div className="staff-mini">{row.linkedMemoryIds.join(", ") || "-"}</div>
+                          {row.reasonCodes.length > 0 ? <div className="staff-mini">{row.reasonCodes.join(", ")}</div> : null}
+                        </td>
+                        <td>
+                          {verification ? (
+                            <>
+                              <div>{verification.resultStatus}</div>
+                              <div className="staff-mini">{verification.verifierKind}</div>
+                              {verification.resultSummary ? <div className="staff-mini">{verification.resultSummary}</div> : null}
+                            </>
+                          ) : (
+                            row.lastVerificationRunId ?? "-"
+                          )}
+                        </td>
+                        <td>
+                          <div className="staff-actions-row" style={{ flexWrap: "wrap" }}>
+                            {row.recommendedActions.slice(0, 3).map((action) => (
+                              <button
+                                key={`${row.id}-${action}`}
+                                type="button"
+                                className="btn btn-secondary"
+                                disabled={Boolean(busy) || disabledByToken}
+                                onClick={() =>
+                                  void run(`memory-review:${action}`, async () => {
+                                    await fetchJson(`/api/memory/review-cases/${encodeURIComponent(row.id)}/actions`, {
+                                      method: "POST",
+                                      body: JSON.stringify({
+                                        action,
+                                        actorId: user.uid,
+                                        selectedMemoryId: row.primaryMemoryId ?? row.linkedMemoryIds[0] ?? undefined,
+                                      }),
+                                    });
+                                    await loadAll();
+                                    setStatus(`Memory review ${action} applied.`);
+                                  })
+                                }
+                              >
+                                {action.replaceAll("_", " ")}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="staff-subtitle">Support dead letters</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>At</th><th>Mailbox</th><th>Message</th><th>Error</th></tr></thead>
+              <tbody>
+                {supportDeadLetterRows.length === 0 ? (
+                  <tr><td colSpan={4}>No support dead letters.</td></tr>
+                ) : (
+                  supportDeadLetterRows.map((row) => (
+                    <tr key={row.id}>
+                      <td>{when(row.createdAt)}</td>
+                      <td>{row.mailbox}</td>
+                      <td><code>{row.messageId ?? row.id}</code></td>
+                      <td>{row.errorMessage}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </>
       ) : null}
 

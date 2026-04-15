@@ -1,0 +1,7 @@
+# GENESIS_SYNTHETIC_VARIANT version=2
+META|displayName=Studio Electric Variant|manufacturer=L&L|kilnModel=e28T|controllerModel=Genesis 2.0|firmwareVersion=2.3.0|serialNumber=LL-28T-023|macAddress=AA:BB:CC:DD:EE:23|zoneCount=2|thermocoupleType=K|output4Role=alarm|wifiConfigured=true
+RUN|programName=Cone 04 Fast Bisque|programType=bisque|coneTarget=04|speed=fast|startTime=2026-04-13T07:00:00.000Z|status=complete|currentSegment=8|totalSegments=8|finalSetPoint=1945|maxTemp=1952|endTime=2026-04-13T16:00:00.000Z
+EVENT|ts=2026-04-13T07:00:00.000Z|type=run_started|severity=info
+EVENT|ts=2026-04-13T11:05:00.000Z|type=diagnostic_snapshot|severity=info|relayState=watch
+TELEMETRY|ts=2026-04-13T09:30:00.000Z|tempPrimary=980|tempZone1=972|tempZone2=991|setPoint=1010|segment=3|percentPower1=82|percentPower2=84|boardTemp=49
+TELEMETRY|ts=2026-04-13T15:00:00.000Z|tempPrimary=1943|tempZone1=1931|tempZone2=1951|setPoint=1945|segment=8|percentPower1=14|percentPower2=12|boardTemp=58

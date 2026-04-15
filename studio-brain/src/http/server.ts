@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { getAuth } from "firebase-admin/auth";
 import { getApps, initializeApp } from "firebase-admin/app";
 import type { Logger } from "../config/logger";
+import type { ArtifactStore } from "../connectivity/artifactStore";
 import type { EventStore, StateStore } from "../stores/interfaces";
 import { renderDashboard } from "./dashboard";
 import { checkPgConnection } from "../db/postgres";
@@ -32,6 +33,14 @@ import type { PilotWriteExecutor } from "../capabilities/pilotWrite";
 import type { BackendHealthReport } from "../connectivity/healthcheck";
 import type { MemoryStats } from "../memory/contracts";
 import type { MemoryService } from "../memory/service";
+import type { KilnObservationProvider } from "../kiln/adapters/kilnaid/types";
+import { firingQueueStates } from "../kiln/domain/model";
+import type { KilnStore } from "../kiln/store";
+import { importGenesisArtifact } from "../kiln/services/artifacts";
+import { recordOperatorAction } from "../kiln/services/manualEvents";
+import { createFiringRun } from "../kiln/services/orchestration";
+import { buildFiringRunDetail, buildKilnDetail, buildKilnOverview } from "../kiln/services/overview";
+import { renderKilnCommandPage } from "../kiln/ui/renderKilnCommandPage";
 import { MemoryValidationError } from "../memory/service";
 import {
   DEFAULT_HOST_USER as DEFAULT_CONTROL_TOWER_HOST_USER,
@@ -1183,6 +1192,21 @@ async function readRawBody(req: http.IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+async function readRawBodyLimited(req: http.IncomingMessage, maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBytes) {
+      throw new Error(`Request body exceeds ${maxBytes} bytes.`);
+    }
+    chunks.push(buffer);
+  }
+  if (!chunks.length) return "";
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 function parseJsonBody(raw: string): Record<string, unknown> {
   if (!raw.trim()) return {};
   const parsed = JSON.parse(raw) as unknown;
@@ -1321,6 +1345,12 @@ export function startHttpServer(params: {
   logger: Logger;
   stateStore: StateStore;
   eventStore: EventStore;
+  artifactStore?: ArtifactStore | null;
+  kilnStore?: KilnStore | null;
+  kilnEnabled?: boolean;
+  kilnImportMaxBytes?: number;
+  kilnEnableSupportedWrites?: boolean;
+  kilnObservationProvider?: KilnObservationProvider | null;
   requireFreshSnapshotForReady?: boolean;
   readyMaxSnapshotAgeMinutes?: number;
   pgCheck?: () => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
@@ -1348,6 +1378,12 @@ export function startHttpServer(params: {
     logger,
     stateStore,
     eventStore,
+    artifactStore = null,
+    kilnStore = null,
+    kilnEnabled = false,
+    kilnImportMaxBytes = 5 * 1024 * 1024,
+    kilnEnableSupportedWrites = false,
+    kilnObservationProvider = null,
     requireFreshSnapshotForReady = false,
     readyMaxSnapshotAgeMinutes = 240,
     pgCheck = checkPgConnection,
@@ -1369,6 +1405,7 @@ export function startHttpServer(params: {
     controlTowerSshHostAlias,
     controlTowerRunner,
   } = params;
+  const resolvedKilnImportMaxBytes = Math.max(4_096, kilnImportMaxBytes);
   const rateLimits: EndpointRateLimitConfig = {
     createProposalPerMinute: Math.max(1, endpointRateLimits?.createProposalPerMinute ?? 20),
     executeProposalPerMinute: Math.max(1, endpointRateLimits?.executeProposalPerMinute ?? 20),
@@ -1742,6 +1779,26 @@ export function startHttpServer(params: {
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
+  };
+  const assertKilnAccess = (req: http.IncomingMessage) =>
+    assertCapabilityAuth(req, { requireAdminToken: false });
+  const kilnProviderSupport = () => kilnObservationProvider?.describeSupport() ?? null;
+  const ensureKilnRuntime = (): { ok: true } | { ok: false; message: string } => {
+    if (!kilnEnabled) {
+      return { ok: false, message: "Kiln overlay is disabled." };
+    }
+    if (!kilnStore) {
+      return { ok: false, message: "Kiln store is unavailable." };
+    }
+    return { ok: true };
+  };
+  const ensureKilnArtifacts = (): { ok: true } | { ok: false; message: string } => {
+    const runtime = ensureKilnRuntime();
+    if (!runtime.ok) return runtime;
+    if (!artifactStore) {
+      return { ok: false, message: "Kiln artifact store is unavailable." };
+    }
+    return { ok: true };
   };
 
   const server = http.createServer(async (req, res) => {
@@ -5592,6 +5649,416 @@ export function startHttpServer(params: {
         statusCode = reset ? 200 : 404;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
         res.end(JSON.stringify({ ok: reset, bucket }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/kiln/overview") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const overview = await buildKilnOverview(kilnStore!, {
+          enableSupportedWrites: kilnEnableSupportedWrites,
+          providerSupport: kilnProviderSupport(),
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, overview }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/kiln/kilns") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const [kilns, overview] = await Promise.all([
+          kilnStore!.listKilns(),
+          buildKilnOverview(kilnStore!, {
+            enableSupportedWrites: kilnEnableSupportedWrites,
+            providerSupport: kilnProviderSupport(),
+          }),
+        ]);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, kilns, overview: overview.kilns }));
+        return;
+      }
+
+      const kilnDetailMatch = url.pathname.match(/^\/api\/kiln\/kilns\/([^/]+)$/);
+      if (method === "GET" && kilnDetailMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const kilnId = decodeURIComponent(kilnDetailMatch[1]);
+        const detail = await buildKilnDetail(kilnStore!, kilnId);
+        if (!detail.kiln) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Kiln not found." }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, detail }));
+        return;
+      }
+
+      const kilnRunMatch = url.pathname.match(/^\/api\/kiln\/runs\/([^/]+)$/);
+      if (method === "GET" && kilnRunMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const runId = decodeURIComponent(kilnRunMatch[1]);
+        const detail = await buildFiringRunDetail(kilnStore!, runId);
+        if (!detail.run) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Firing run not found." }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, detail }));
+        return;
+      }
+
+      const kilnArtifactContentMatch = url.pathname.match(/^\/api\/kiln\/artifacts\/([^/]+)\/content$/);
+      if (method === "GET" && kilnArtifactContentMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnArtifacts();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const artifactId = decodeURIComponent(kilnArtifactContentMatch[1]);
+        const artifact = await kilnStore!.getArtifactRecord(artifactId);
+        if (!artifact) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Artifact not found." }));
+          return;
+        }
+        const content = await artifactStore!.get(artifact.storageKey);
+        if (!content) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Artifact content not found." }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(
+          statusCode,
+          withSecurityHeaders({
+            "content-type": artifact.contentType || "application/octet-stream",
+            "content-length": String(content.byteLength),
+            "content-disposition": `inline; filename="${artifact.filename.replaceAll("\"", "")}"`,
+            ...corsHeaders,
+            "x-request-id": requestId,
+          }),
+        );
+        res.end(content);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/kiln/imports/genesis") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnArtifacts();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        try {
+          const raw = await readRawBodyLimited(req, Math.ceil(resolvedKilnImportMaxBytes * 1.6) + 8_192);
+          const body = parseJsonBody(raw);
+          const filename = toTrimmedString(body.filename);
+          const contentBase64 = typeof body.contentBase64 === "string" ? body.contentBase64.trim() : "";
+          if (!filename || !contentBase64) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "filename and contentBase64 are required." }));
+            return;
+          }
+          const content = Buffer.from(contentBase64, "base64");
+          if (content.byteLength === 0) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "contentBase64 did not decode to a non-empty artifact." }));
+            return;
+          }
+          if (content.byteLength > resolvedKilnImportMaxBytes) {
+            statusCode = 413;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: `Decoded artifact exceeds ${resolvedKilnImportMaxBytes} bytes.` }));
+            return;
+          }
+          const result = await importGenesisArtifact({
+            artifactStore: artifactStore!,
+            kilnStore: kilnStore!,
+            providerSupport: kilnProviderSupport(),
+            kilnId: toTrimmedString(body.kilnId) || null,
+            filename,
+            contentType: toTrimmedString(body.contentType) || null,
+            content,
+            observedAt: toTrimmedString(body.observedAt) || null,
+            sourceLabel: toTrimmedString(body.sourceLabel) || "manual_upload",
+            source: "manual_upload",
+          });
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          statusCode = /exceeds \d+ bytes/i.test(message) ? 413 : 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/kiln/operator-actions") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(req);
+          const kilnId = toTrimmedString(body.kilnId);
+          const actionType = toTrimmedString(body.actionType);
+          if (!kilnId || !actionType) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "kilnId and actionType are required." }));
+            return;
+          }
+          const result = await recordOperatorAction(kilnStore!, {
+            kilnId,
+            firingRunId: toTrimmedString(body.firingRunId) || null,
+            actionType,
+            requestedBy: auth.principal?.uid ?? "staff:unknown",
+            confirmedBy: toTrimmedString(body.confirmedBy) || auth.principal?.uid || null,
+            checklistJson: toObjectRecord(body.checklistJson),
+            notes: toTrimmedString(body.notes) || null,
+            completedAt: toTrimmedString(body.completedAt) || null,
+            enableSupportedWrites: kilnEnableSupportedWrites,
+          });
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/kiln/runs") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const kilnId = toTrimmedString(body.kilnId);
+        if (!kilnId) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "kilnId is required." }));
+          return;
+        }
+        const queueStateRaw = toTrimmedString(body.queueState);
+        if (queueStateRaw && !firingQueueStates.includes(queueStateRaw as (typeof firingQueueStates)[number])) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Unsupported queueState: ${queueStateRaw}` }));
+          return;
+        }
+        const run = await createFiringRun(kilnStore!, {
+          kilnId,
+          requestedBy: auth.principal?.uid ?? "staff:unknown",
+          programName: toTrimmedString(body.programName) || null,
+          programType: toTrimmedString(body.programType) || null,
+          coneTarget: toTrimmedString(body.coneTarget) || null,
+          speed: toTrimmedString(body.speed) || null,
+          firmwareVersion: toTrimmedString(body.firmwareVersion) || null,
+          queueState: queueStateRaw ? (queueStateRaw as (typeof firingQueueStates)[number]) : undefined,
+          linkedPortalRefs: {
+            batchIds: Array.isArray(body.batchIds) ? body.batchIds.map((entry) => String(entry)).filter(Boolean) : [],
+            pieceIds: Array.isArray(body.pieceIds) ? body.pieceIds.map((entry) => String(entry)).filter(Boolean) : [],
+            reservationIds: Array.isArray(body.reservationIds) ? body.reservationIds.map((entry) => String(entry)).filter(Boolean) : [],
+            portalFiringId: toTrimmedString(body.portalFiringId) || null,
+          },
+        });
+        statusCode = 201;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, run }));
+        return;
+      }
+
+      const kilnAckMatch = url.pathname.match(/^\/api\/kiln\/runs\/([^/]+)\/ack$/);
+      if (method === "POST" && kilnAckMatch) {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const runId = decodeURIComponent(kilnAckMatch[1]);
+        const run = await kilnStore!.getFiringRun(runId);
+        if (!run) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Firing run not found." }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(req);
+          const actionType = toTrimmedString(body.actionType);
+          if (!actionType) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "actionType is required." }));
+            return;
+          }
+          const result = await recordOperatorAction(kilnStore!, {
+            kilnId: run.kilnId,
+            firingRunId: run.id,
+            actionType,
+            requestedBy: auth.principal?.uid ?? "staff:unknown",
+            confirmedBy: toTrimmedString(body.confirmedBy) || auth.principal?.uid || null,
+            checklistJson: toObjectRecord(body.checklistJson),
+            notes: toTrimmedString(body.notes) || null,
+            completedAt: toTrimmedString(body.completedAt) || null,
+            enableSupportedWrites: kilnEnableSupportedWrites,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/kiln-command") {
+        const auth = await assertKilnAccess(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: runtime.message }));
+          return;
+        }
+        const overview = await buildKilnOverview(kilnStore!, {
+          enableSupportedWrites: kilnEnableSupportedWrites,
+          providerSupport: kilnProviderSupport(),
+        });
+        const kilnDetails = await Promise.all(
+          overview.kilns.map((kiln) => buildKilnDetail(kilnStore!, kiln.kilnId)),
+        );
+        const html = renderKilnCommandPage({
+          generatedAt: new Date().toISOString(),
+          overview,
+          kilnDetails,
+          uploadMaxBytes: resolvedKilnImportMaxBytes,
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+        res.end(html);
         return;
       }
 

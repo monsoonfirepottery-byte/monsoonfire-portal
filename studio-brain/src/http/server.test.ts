@@ -2,10 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startHttpServer } from "./server";
+import type { ArtifactStore } from "../connectivity/artifactStore";
+import { defaultCapabilitySet, type Kiln } from "../kiln/domain/model";
+import { MemoryKilnStore } from "../kiln/memoryStore";
+import { importGenesisArtifact } from "../kiln/services/artifacts";
+import { recordOperatorAction } from "../kiln/services/manualEvents";
+import { createFiringRun } from "../kiln/services/orchestration";
 import { MemoryEventStore, MemoryStateStore } from "../stores/memoryStores";
 import { CapabilityRuntime, defaultCapabilities } from "../capabilities/runtime";
 import { createInMemoryMemoryStoreAdapter } from "../memory/inMemoryAdapter";
@@ -18,6 +24,52 @@ const logger = {
   warn: () => {},
   error: () => {},
 };
+
+function createMemoryArtifactStore(): ArtifactStore {
+  const objects = new Map<string, Buffer>();
+  return {
+    async put(key, data) {
+      objects.set(key, Buffer.from(data));
+    },
+    async get(key) {
+      return objects.get(key) ?? null;
+    },
+    async list(prefix = "") {
+      return [...objects.keys()].filter((entry) => entry.startsWith(prefix));
+    },
+    async healthcheck() {
+      return { ok: true, latencyMs: 0 };
+    },
+  };
+}
+
+function readKilnFixture(name: string): Buffer {
+  return readFileSync(join(__dirname, "..", "..", "src", "kiln", "adapters", "genesis-log", "fixtures", name));
+}
+
+function buildKiln(overrides: Partial<Kiln> = {}): Kiln {
+  return {
+    id: "kiln_test",
+    displayName: "Studio Electric",
+    manufacturer: "L&L / Bartlett",
+    kilnModel: "eQ2827",
+    controllerModel: "Genesis",
+    controllerFamily: "bartlett_genesis",
+    firmwareVersion: "2.1.4",
+    serialNumber: "serial-1",
+    macAddress: "AA:BB:CC:DD:EE:01",
+    zoneCount: 3,
+    thermocoupleType: "K",
+    output4Role: "vent",
+    wifiConfigured: true,
+    notes: null,
+    capabilitiesDetected: defaultCapabilitySet(),
+    riskFlags: [],
+    lastSeenAt: "2026-04-14T12:00:00.000Z",
+    currentRunId: null,
+    ...overrides,
+  };
+}
 
 function buildIngestHeaders(secret: string, payload: Record<string, unknown>, timestampSeconds: number = Math.trunc(Date.now() / 1000)): Record<string, string> {
   const raw = JSON.stringify(payload);
@@ -2788,6 +2840,211 @@ test("control tower state routes derive browser-friendly room and service data",
   } finally {
     fixture.cleanup();
   }
+});
+
+test("kiln endpoints require staff auth", async () => {
+  const kilnStore = new MemoryKilnStore();
+  await kilnStore.upsertKiln(buildKiln());
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore: createMemoryArtifactStore(),
+    },
+    async (baseUrl) => {
+      const unauth = await fetch(`${baseUrl}/api/kiln/overview`);
+      assert.equal(unauth.status, 401);
+
+      const nonStaff = await fetch(`${baseUrl}/kiln-command`, {
+        headers: { authorization: "Bearer test-member" },
+      });
+      assert.equal(nonStaff.status, 401);
+    },
+  );
+});
+
+test("kiln upload, detail, and artifact download routes preserve observed evidence", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  const content = readKilnFixture("synthetic-single-zone.txt");
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+    },
+    async (baseUrl) => {
+      const upload = await fetch(`${baseUrl}/api/kiln/imports/genesis`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: "synthetic-single-zone.txt",
+          contentBase64: content.toString("base64"),
+          observedAt: "2026-04-14T12:00:00.000Z",
+          sourceLabel: "test-upload",
+        }),
+      });
+      assert.equal(upload.status, 201);
+      const uploadPayload = (await upload.json()) as {
+        ok: boolean;
+        result: {
+          kiln: { id: string };
+          firingRun: { id: string };
+          artifact: { id: string };
+        };
+      };
+      assert.equal(uploadPayload.ok, true);
+
+      const kilnDetail = await fetch(
+        `${baseUrl}/api/kiln/kilns/${encodeURIComponent(uploadPayload.result.kiln.id)}`,
+        { headers: { authorization: "Bearer test-staff" } },
+      );
+      assert.equal(kilnDetail.status, 200);
+
+      const runDetail = await fetch(
+        `${baseUrl}/api/kiln/runs/${encodeURIComponent(uploadPayload.result.firingRun.id)}`,
+        { headers: { authorization: "Bearer test-staff" } },
+      );
+      assert.equal(runDetail.status, 200);
+      const runPayload = (await runDetail.json()) as {
+        ok: boolean;
+        detail: { telemetry: Array<{ tempPrimary: number | null }> };
+      };
+      assert.equal(runPayload.ok, true);
+      assert.equal(runPayload.detail.telemetry.length, 2);
+
+      const artifactResponse = await fetch(
+        `${baseUrl}/api/kiln/artifacts/${encodeURIComponent(uploadPayload.result.artifact.id)}/content`,
+        { headers: { authorization: "Bearer test-staff" } },
+      );
+      assert.equal(artifactResponse.status, 200);
+      assert.equal(await artifactResponse.text(), content.toString("utf8"));
+    },
+  );
+});
+
+test("kiln upload enforces decoded artifact byte limits", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  const baseContent = readKilnFixture("synthetic-single-zone.txt");
+  const content = Buffer.concat(Array.from({ length: 32 }, () => baseContent));
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+      kilnImportMaxBytes: 4_096,
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/kiln/imports/genesis`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: "too-large.txt",
+          contentBase64: content.toString("base64"),
+        }),
+      });
+      assert.equal(response.status, 413);
+      const payload = (await response.json()) as { ok: boolean; message: string };
+      assert.equal(payload.ok, false);
+      assert.match(payload.message, /exceeds/i);
+    },
+  );
+});
+
+test("kiln command page keeps control posture honest for human-triggered starts", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  await kilnStore.upsertKiln(buildKiln());
+  const run = await createFiringRun(kilnStore, {
+    kilnId: "kiln_test",
+    requestedBy: "staff-test-uid",
+    programName: "Cone 6 Glaze",
+    queueState: "ready_for_start",
+  });
+  await recordOperatorAction(kilnStore, {
+    kilnId: run.kilnId,
+    firingRunId: run.id,
+    actionType: "loaded_kiln",
+    requestedBy: "staff-test-uid",
+    enableSupportedWrites: false,
+  });
+  await recordOperatorAction(kilnStore, {
+    kilnId: run.kilnId,
+    firingRunId: run.id,
+    actionType: "verified_clearance",
+    requestedBy: "staff-test-uid",
+    enableSupportedWrites: false,
+  });
+  await recordOperatorAction(kilnStore, {
+    kilnId: run.kilnId,
+    firingRunId: run.id,
+    actionType: "pressed_start",
+    requestedBy: "staff-test-uid",
+    confirmedBy: "staff-test-uid",
+    enableSupportedWrites: false,
+  });
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/kiln-command`, {
+        headers: { authorization: "Bearer test-staff" },
+      });
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      assert.match(html, /Genesis remains the control authority/i);
+      assert.match(html, /Human-triggered/);
+      assert.doesNotMatch(html, /Supported write path/);
+    },
+  );
+});
+
+test("kiln overview reflects imported telemetry and honest observed posture", async () => {
+  const kilnStore = new MemoryKilnStore();
+  const artifactStore = createMemoryArtifactStore();
+  await importGenesisArtifact({
+    artifactStore,
+    kilnStore,
+    filename: "synthetic-three-zone.txt",
+    content: readKilnFixture("synthetic-three-zone.txt"),
+    source: "manual_upload",
+  });
+
+  await withServer(
+    {
+      kilnEnabled: true,
+      kilnStore,
+      artifactStore,
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/kiln/overview`, {
+        headers: { authorization: "Bearer test-staff" },
+      });
+      assert.equal(response.status, 200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        overview: { kilns: Array<{ controlPosture: string; currentTemp: number | null }> };
+      };
+      assert.equal(payload.ok, true);
+      assert.equal(payload.overview.kilns.length, 1);
+      assert.equal(payload.overview.kilns[0]?.controlPosture, "Observed only");
+      assert.equal(payload.overview.kilns[0]?.currentTemp, 2231);
+    },
+  );
 });
 
 test("control tower promotes memory next moves only when startup quality is degraded", async () => {

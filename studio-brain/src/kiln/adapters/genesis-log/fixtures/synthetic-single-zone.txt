@@ -1,0 +1,6 @@
+# SYNTHETIC-GENESIS-LOG version=1 format=single-zone
+META: displayName=Studio Electric; manufacturer=L&L; kilnModel=eQ2827; controllerModel=Genesis; firmwareVersion=2.1.4; serialNumber=LL-2827-001; macAddress=AA:BB:CC:DD:EE:01; zoneCount=1; thermocoupleType=K; output4Role=vent; wifiConfigured=true
+RUN: programName=Bisque Cone 06; programType=bisque; coneTarget=06; speed=medium; startTime=2026-04-10T15:00:00.000Z; status=firing; currentSegment=3; totalSegments=8; finalSetPoint=1835
+EVENT: ts=2026-04-10T15:00:00.000Z; eventType=run_started; severity=info
+TELEMETRY: ts=2026-04-10T15:10:00.000Z; tempPrimary=412; setPoint=600; segment=1; percentPower1=100
+TELEMETRY: ts=2026-04-10T16:10:00.000Z; tempPrimary=1284; setPoint=1330; segment=3; percentPower1=72

@@ -1,0 +1,7 @@
+# SYNTHETIC-GENESIS-LOG version=1 format=three-zone
+META: displayName=Studio Electric West; manufacturer=L&L; kilnModel=eQ2827; controllerModel=Genesis; firmwareVersion=2.1.4; serialNumber=LL-2827-003; macAddress=AA:BB:CC:DD:EE:03; zoneCount=3; thermocoupleType=K; output4Role=vent; wifiConfigured=true
+RUN: programName=Cone 6 Glaze; programType=glaze; coneTarget=6; speed=slow; startTime=2026-04-11T08:00:00.000Z; status=cooling; currentSegment=7; totalSegments=8; finalSetPoint=2232; maxTemp=2238; endTime=2026-04-11T18:00:00.000Z
+EVENT: ts=2026-04-11T08:00:00.000Z; eventType=run_started; severity=info
+EVENT: ts=2026-04-11T12:00:00.000Z; eventType=diagnostic_snapshot; severity=info; relayState=ok
+TELEMETRY: ts=2026-04-11T10:00:00.000Z; tempPrimary=1450; tempZone1=1442; tempZone2=1451; tempZone3=1465; setPoint=1490; segment=4; percentPower1=86; percentPower2=84; percentPower3=89; boardTemp=54
+TELEMETRY: ts=2026-04-11T14:00:00.000Z; tempPrimary=2231; tempZone1=2222; tempZone2=2236; tempZone3=2244; setPoint=2232; segment=7; percentPower1=23; percentPower2=19; percentPower3=27; boardTemp=61

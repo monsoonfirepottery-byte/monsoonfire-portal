@@ -9,7 +9,7 @@ import { createVectorStore, type VectorStore } from "./connectivity/vectorStore"
 import { PruneResult, pruneOldRows } from "./db/maintenance";
 import { PostgresEventStore } from "./stores/postgresEventStore";
 import { PostgresStateStore } from "./stores/postgresStateStore";
-import { JobRunner } from "./jobs/runner";
+import { JobRunner, type JobHandler } from "./jobs/runner";
 import { computeStudioStateJob } from "./jobs/studioStateJob";
 import { startHttpServer } from "./http/server";
 import { CapabilityRuntime, defaultCapabilities } from "./capabilities/runtime";
@@ -27,6 +27,9 @@ import { createMemoryService } from "./memory/service";
 import { createPostgresMemoryStoreAdapter } from "./memory/postgresAdapter";
 import { createEmbeddingAdapterFromEnv } from "./memory/embedding";
 import { acquireProcessLock, type ProcessLockHandle } from "./runtime/processLock";
+import { createKilnAidReadOnlyProvider } from "./kiln/adapters/kilnaid/provider";
+import { PostgresKilnStore } from "./kiln/postgresStore";
+import { scanGenesisWatchFolder } from "./kiln/services/artifacts";
 
 function parseArtifactPort(endpoint: string, fallback: number): number {
   try {
@@ -65,6 +68,22 @@ async function main(): Promise<void> {
     totalFailures: 0,
     consecutiveFailures: 0,
     lastFailureMessage: null as string | null,
+  };
+  const kilnWatchState = {
+    enabled: env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED,
+    watchDir: env.STUDIO_BRAIN_KILN_WATCH_DIR || null,
+    intervalMs: env.STUDIO_BRAIN_KILN_WATCH_INTERVAL_MS,
+    jitterMs: env.STUDIO_BRAIN_KILN_WATCH_JITTER_MS,
+    initialDelayMs: env.STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS,
+    nextRunAt: null as string | null,
+    lastRunStartedAt: null as string | null,
+    lastRunCompletedAt: null as string | null,
+    lastRunDurationMs: null as number | null,
+    totalRuns: 0,
+    totalFailures: 0,
+    consecutiveFailures: 0,
+    lastFailureMessage: null as string | null,
+    lastSummary: null as string | null,
   };
 
   logger.info("studio_brain_boot", {
@@ -216,6 +235,8 @@ async function main(): Promise<void> {
 
   const stateStore = new PostgresStateStore();
   const eventStore = new PostgresEventStore();
+  const kilnStore = env.STUDIO_BRAIN_KILN_ENABLED ? new PostgresKilnStore() : null;
+  const kilnObservationProvider = createKilnAidReadOnlyProvider(env.STUDIO_BRAIN_KILNAID_SESSION_PATH || null);
   const connectorRegistry = new ConnectorRegistry(
     [
       new HubitatConnector(async (path) => {
@@ -234,16 +255,16 @@ async function main(): Promise<void> {
     new PostgresPolicyStore(),
     connectorRegistry
   );
-
+  const jobHandlers: Record<string, JobHandler> = {
+    computeStudioState: computeStudioStateJob,
+  };
   const runner = new JobRunner(
     {
       stateStore,
       eventStore,
       logger,
     },
-    {
-      computeStudioState: computeStudioStateJob,
-    }
+    jobHandlers
   );
 
   const runCompute = async (trigger: "startup" | "scheduled"): Promise<void> => {
@@ -267,9 +288,47 @@ async function main(): Promise<void> {
       schedulerState.lastRunDurationMs = Date.now() - startedAtMs;
     }
   };
+  const runKilnWatch = async (trigger: "startup" | "scheduled"): Promise<void> => {
+    if (!kilnStore || !env.STUDIO_BRAIN_KILN_ENABLED || !env.STUDIO_BRAIN_KILN_WATCH_ENABLED) return;
+    const watchDir = String(env.STUDIO_BRAIN_KILN_WATCH_DIR || "").trim();
+    if (!watchDir) return;
+    const startedAtMs = Date.now();
+    kilnWatchState.lastRunStartedAt = new Date(startedAtMs).toISOString();
+    kilnWatchState.totalRuns += 1;
+    try {
+      const result = await scanGenesisWatchFolder({
+        watchDir,
+        artifactStore,
+        kilnStore,
+        providerSupport: kilnObservationProvider.describeSupport(),
+      });
+      kilnWatchState.consecutiveFailures = 0;
+      kilnWatchState.lastFailureMessage = null;
+      kilnWatchState.lastSummary = `imported=${result.imported} skipped=${result.skipped}`;
+      logger.info("kiln_watch_completed", {
+        trigger,
+        imported: result.imported,
+        skipped: result.skipped,
+      });
+    } catch (error) {
+      kilnWatchState.totalFailures += 1;
+      kilnWatchState.consecutiveFailures += 1;
+      kilnWatchState.lastFailureMessage = error instanceof Error ? error.message : String(error);
+      logger.error("kiln_watch_failed", {
+        trigger,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      kilnWatchState.lastRunCompletedAt = new Date().toISOString();
+      kilnWatchState.lastRunDurationMs = Date.now() - startedAtMs;
+    }
+  };
 
   if (env.STUDIO_BRAIN_ENABLE_STARTUP_COMPUTE) {
     await runCompute("startup");
+  }
+  if (env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED) {
+    await runKilnWatch("startup");
   }
 
   const runPrune = async (trigger: "startup" | "scheduled"): Promise<void> => {
@@ -289,6 +348,7 @@ async function main(): Promise<void> {
   };
 
   let timer: NodeJS.Timeout | null = null;
+  let kilnWatchTimer: NodeJS.Timeout | null = null;
   let pruneInterval: NodeJS.Timeout | null = null;
   let shuttingDown = false;
 
@@ -332,6 +392,11 @@ async function main(): Promise<void> {
         run: async () => skillRegistry.healthcheck(),
       },
       {
+        label: "kilnaid_provider",
+        enabled: env.STUDIO_BRAIN_KILN_ENABLED,
+        run: async () => kilnObservationProvider.health(),
+      },
+      {
         label: "skill_sandbox",
         enabled: env.STUDIO_BRAIN_SKILL_SANDBOX_ENABLED,
         run: async () => {
@@ -364,6 +429,7 @@ async function main(): Promise<void> {
     getRuntimeStatus: () => ({
       startedAt: runtimeStartedAt,
       scheduler: { ...schedulerState },
+      kilnWatch: { ...kilnWatchState },
       retention: {
         enabled: env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE,
         retentionDays: env.STUDIO_BRAIN_RETENTION_DAYS,
@@ -372,6 +438,7 @@ async function main(): Promise<void> {
     }),
     getRuntimeMetrics: () => ({
       scheduler: { ...schedulerState },
+      kilnWatch: { ...kilnWatchState },
       retention: {
         enabled: env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE,
         retentionDays: env.STUDIO_BRAIN_RETENTION_DAYS,
@@ -398,6 +465,12 @@ async function main(): Promise<void> {
     pilotWriteExecutor: env.STUDIO_BRAIN_ENABLE_WRITE_EXECUTION
       ? createPilotWriteExecutor({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })
       : null,
+    artifactStore,
+    kilnStore,
+    kilnEnabled: env.STUDIO_BRAIN_KILN_ENABLED,
+    kilnImportMaxBytes: env.STUDIO_BRAIN_KILN_IMPORT_MAX_BYTES,
+    kilnEnableSupportedWrites: env.STUDIO_BRAIN_KILN_ENABLE_SUPPORTED_WRITES,
+    kilnObservationProvider,
   });
 
   const scheduleNext = (delayMs: number): void => {
@@ -415,6 +488,23 @@ async function main(): Promise<void> {
       timer.unref();
     }
   };
+  const scheduleKilnWatchNext = (delayMs: number): void => {
+    if (!kilnStore || !env.STUDIO_BRAIN_KILN_ENABLED || !env.STUDIO_BRAIN_KILN_WATCH_ENABLED || shuttingDown) return;
+    const jitterMs =
+      env.STUDIO_BRAIN_KILN_WATCH_JITTER_MS > 0
+        ? Math.floor(Math.random() * (env.STUDIO_BRAIN_KILN_WATCH_JITTER_MS + 1))
+        : 0;
+    const effectiveDelayMs = delayMs + jitterMs;
+    kilnWatchState.nextRunAt = new Date(Date.now() + effectiveDelayMs).toISOString();
+    kilnWatchTimer = setTimeout(async () => {
+      kilnWatchState.nextRunAt = null;
+      await runKilnWatch("scheduled");
+      scheduleKilnWatchNext(env.STUDIO_BRAIN_KILN_WATCH_INTERVAL_MS);
+    }, effectiveDelayMs);
+    if (typeof kilnWatchTimer.unref === "function") {
+      kilnWatchTimer.unref();
+    }
+  };
 
   const firstDelayMs =
     env.STUDIO_BRAIN_JOB_INITIAL_DELAY_MS > 0
@@ -424,6 +514,14 @@ async function main(): Promise<void> {
         : 0;
 
   scheduleNext(firstDelayMs);
+
+  if (kilnStore && env.STUDIO_BRAIN_KILN_ENABLED && env.STUDIO_BRAIN_KILN_WATCH_ENABLED) {
+    const firstKilnDelayMs =
+      env.STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS > 0
+        ? env.STUDIO_BRAIN_KILN_WATCH_INITIAL_DELAY_MS
+        : env.STUDIO_BRAIN_KILN_WATCH_INTERVAL_MS;
+    scheduleKilnWatchNext(firstKilnDelayMs);
+  }
 
   if (env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE) {
     await runPrune("startup");
@@ -444,6 +542,10 @@ async function main(): Promise<void> {
     if (timer) {
       clearTimeout(timer);
       timer = null;
+    }
+    if (kilnWatchTimer) {
+      clearTimeout(kilnWatchTimer);
+      kilnWatchTimer = null;
     }
     if (pruneInterval) {
       clearInterval(pruneInterval);

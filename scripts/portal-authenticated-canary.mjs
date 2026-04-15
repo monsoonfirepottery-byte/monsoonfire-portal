@@ -12,6 +12,7 @@ import {
 } from "./lib/runtime-secrets.mjs";
 import { mintStaffIdTokenFromPortalEnv } from "./lib/firebase-auth-token.mjs";
 import { applyPortalVisualDiff } from "./lib/portal-visual-diff.mjs";
+import { classifyMyPiecesEmptyStates } from "./lib/portal-authenticated-canary-state.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -1133,7 +1134,7 @@ async function assertNoHorizontalOverflow(page, label) {
 }
 
 async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
-  return page.evaluate(({ patterns }) => {
+  const snapshot = await page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
     const isVisible = (node) => {
@@ -1153,12 +1154,10 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
         .filter(Boolean);
 
     const emptyStates = visibleText(".empty-state");
-    const nonLoadingEmptyStates = emptyStates.filter((text) => !/^Loading pieces\.\.\.$/i.test(text));
     const inlineAlerts = visibleText(".inline-alert");
     const headings = visibleText("h1, h2, h3");
 
     const piecesFailedMessage = inlineAlerts.find((text) => /^Pieces failed:/i.test(text)) || "";
-    const bodyText = textOf(document.body);
 
     const countVisible = (selector) =>
       Array.from(document.querySelectorAll(selector)).filter((node) => isVisible(node)).length;
@@ -1178,38 +1177,38 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
       /^Open history piece\b/i,
     ]);
 
-    const customPatterns = Array.isArray(patterns)
-      ? patterns
-          .map((item) => String(item || "").trim().toLowerCase())
-          .filter(Boolean)
-          .slice(0, 20)
-      : [];
-
-    const hasRecognizedEmptyGuidance = nonLoadingEmptyStates.some((text) =>
-      /(No pieces yet|Nothing currently in flight|Nothing is currently in progress|Everything currently loaded already has feedback|Your first completed pieces will land here|first firing journey starts|No pieces in this view|No pieces found|No results)/i.test(
-        text
-      )
-    );
-    const hasCustomEmptyStateGuidance = nonLoadingEmptyStates.some((text) => {
-      const lower = text.toLowerCase();
-      return customPatterns.some((pattern) => lower.includes(pattern));
-    });
-
     return {
-      myPiecesHeadingVisible: headings.some((text) => /^My Pieces$/i.test(text)),
-      sectionHeadingCount: headings.filter((text) => /^(Pieces in progress|Needs rating|History)$/i.test(text)).length,
+      headings,
+      emptyStates,
       rowCount: countVisible(".piece-row, .my-pieces-list-row, .my-pieces-carousel-slide"),
       pieceThumbCount: countVisible(".piece-thumb, .my-piece-still"),
       detailTitleCount: countVisible(".detail-title, #piece-detail-title"),
       viewDetailsCount,
-      loadingVisible: emptyStates.some((text) => /^Loading pieces\.\.\.$/i.test(text)),
-      nonLoadingEmptyStateCount: nonLoadingEmptyStates.length,
-      nonLoadingEmptyStates: nonLoadingEmptyStates.slice(0, 3),
-      hasRecognizedEmptyGuidance: hasRecognizedEmptyGuidance || hasCustomEmptyStateGuidance,
       piecesFailedMessage,
-      permissionDenied: /Missing or insufficient permissions\./i.test(bodyText),
+      permissionDenied: /Missing or insufficient permissions\./i.test(textOf(document.body)),
     };
-  }, { patterns: extraEmptyStatePatterns });
+  });
+  const emptyStateSummary = classifyMyPiecesEmptyStates(
+    snapshot.emptyStates,
+    extraEmptyStatePatterns
+  );
+
+  return {
+    myPiecesHeadingVisible: snapshot.headings.some((text) => /^My Pieces$/i.test(text)),
+    sectionHeadingCount: snapshot.headings.filter((text) =>
+      /^(Pieces in progress|Needs rating|History)$/i.test(text)
+    ).length,
+    rowCount: snapshot.rowCount,
+    pieceThumbCount: snapshot.pieceThumbCount,
+    detailTitleCount: snapshot.detailTitleCount,
+    viewDetailsCount: snapshot.viewDetailsCount,
+    loadingVisible: emptyStateSummary.loadingVisible,
+    nonLoadingEmptyStateCount: emptyStateSummary.nonLoadingEmptyStateCount,
+    nonLoadingEmptyStates: emptyStateSummary.nonLoadingEmptyStates.slice(0, 3),
+    hasRecognizedEmptyGuidance: emptyStateSummary.hasRecognizedEmptyGuidance,
+    piecesFailedMessage: snapshot.piecesFailedMessage,
+    permissionDenied: snapshot.permissionDenied,
+  };
 }
 
 async function waitForMyPiecesReadyState(page, timeoutMs = DEFAULT_MY_PIECES_READY_TIMEOUT_MS, extraEmptyStatePatterns = []) {

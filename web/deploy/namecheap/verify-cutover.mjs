@@ -12,6 +12,7 @@ const DEFAULT_WELL_KNOWN_PATH = "/.well-known/apple-app-site-association";
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_PROTECTED_FUNCTION = "listMaterialsProducts";
 const DEFAULT_ID_TOKEN_ENV = "PORTAL_CUTOVER_ID_TOKEN";
+const EXPECTED_COOP_HEADER = "same-origin-allow-popups";
 const FIREBASE_COMPILED_KEY_REGEX = /AIza[0-9A-Za-z_-]{20,}/g;
 const FIREBASE_MISSING_KEY_TOKEN = "MISSING_VITE_FIREBASE_API_KEY";
 
@@ -135,6 +136,8 @@ async function runVerify(parsed) {
 
   checkHeaders("rootCache", root, root.path, failures, passes, warnings);
   checkHeaders("deepCache", deep, deep.path, failures, passes, warnings);
+  checkCoopHeader("rootCoop", root, root.path, failures, passes);
+  checkCoopHeader("deepCoop", deep, deep.path, failures, passes);
 
   const protectedFunctionCheck = {
     required: requireProtectedCheck,
@@ -374,6 +377,23 @@ function checkHeaders(name, result, path, failures, passes, warnings) {
   }
 }
 
+function checkCoopHeader(name, result, path, failures, passes) {
+  if (!result || !result.ok) {
+    failures.push(`${name} skipped due upstream failure (${path})`);
+    return;
+  }
+
+  const coop = (result.crossOriginOpenerPolicy || "").trim().toLowerCase();
+  if (coop === EXPECTED_COOP_HEADER) {
+    passes.push(name);
+    return;
+  }
+
+  failures.push(
+    `${name} missing expected Cross-Origin-Opener-Policy header (${path} -> ${result.crossOriginOpenerPolicy || "<missing>"})`
+  );
+}
+
 function isShortHtmlCacheHeader(rawHeader) {
   const header = rawHeader.toLowerCase();
   if (header.includes("no-cache") || header.includes("no-store") || header.includes("max-age=0")) {
@@ -403,6 +423,7 @@ async function requestWithTimeout({ url, timeoutMs, method = "GET", headers = {}
     ok: false,
     body: "",
     cacheControl: "",
+    crossOriginOpenerPolicy: "",
     error: "",
   };
 
@@ -421,6 +442,7 @@ async function requestWithTimeout({ url, timeoutMs, method = "GET", headers = {}
     result.status = response.status;
     result.ok = response.ok;
     result.cacheControl = response.headers.get("cache-control") || "";
+    result.crossOriginOpenerPolicy = response.headers.get("cross-origin-opener-policy") || "";
     result.body = await response.text();
     return result;
   } catch (error) {

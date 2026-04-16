@@ -34,5 +34,8 @@
   # Root-level compatibility chunks should never be cached.
   Header set Cache-Control "no-store, max-age=0" env=ROOT_COMPAT_CHUNK
 
+  # OAuth popup flows need to retain an opener reference for cross-origin auth windows.
+  Header set Cross-Origin-Opener-Policy "same-origin-allow-popups" env=MF_HTML_CACHE
+
   Header set Cache-Control "no-cache" env=MF_HTML_CACHE
 </IfModule>

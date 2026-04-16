@@ -136,6 +136,7 @@ node ./scripts/portal-playwright-smoke.mjs --base-url https://staging.example.co
   - Request failures for critical Studio Brain/function endpoints (including request timeouts and net errors).
 - `authPopupWarnings`:
   - `Cross-Origin-Opener-Policy` messages from Firebase popup auth; these are recorded as notes and are non-blocking.
+  - If the portal already serves `Cross-Origin-Opener-Policy: same-origin-allow-popups`, repeated Chrome warnings can still originate from report-only headers on upstream Google auth pages.
 - `critical response warnings`:
   - `5xx` responses on critical endpoints.
 

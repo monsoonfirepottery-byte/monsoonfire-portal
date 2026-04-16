@@ -2439,7 +2439,7 @@ const run = async () => {
       }
       if (summary.network.authPopupWarnings.length > 0) {
         summary.notes.push(
-          "Auth popup warnings were observed (Cross-Origin-Opener-Policy). This is expected if OAuth popup flow is exercised in browser."
+          "Auth popup warnings were observed (Cross-Origin-Opener-Policy). These are non-blocking; if the portal already serves same-origin-allow-popups they may still come from upstream Google auth pages."
         );
       }
       if (summary.network.runtimeWarnings.length > 0) {

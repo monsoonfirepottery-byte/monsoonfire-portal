@@ -7371,7 +7371,7 @@ test("notifications.markRead marks owner notification as read", async () => {
 
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const body = response.body as Record<string, unknown>;
-  const data = ((body.data ?? {}) as Record<string, unknown>) ?? {};
+  const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.ownerUid, "owner-1");
   assert.equal(data.notificationId, "notification-1");
 });
@@ -7422,7 +7422,7 @@ test("notifications.markRead is idempotent when notification is already missing"
 
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const body = response.body as Record<string, unknown>;
-  const data = ((body.data ?? {}) as Record<string, unknown>) ?? {};
+  const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.ownerUid, "owner-1");
   assert.equal(data.notificationId, "notification-missing");
   assert.equal(data.notificationMissing, true);

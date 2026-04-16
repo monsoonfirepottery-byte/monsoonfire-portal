@@ -888,7 +888,7 @@ export default function DashboardView({
           </div>
           <div className="hero-actions">
             <button className="btn btn-primary" onClick={onOpenKilnRentals}>
-              Kiln rentals
+              Firing Services
             </button>
             <button className="btn btn-ghost" onClick={onOpenStudioResources}>
               Studio &amp; resources

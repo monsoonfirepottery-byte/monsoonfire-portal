@@ -56,7 +56,7 @@ type EventsFeedResponse = {
 type ScopeOption = { key: string; label: string; description: string };
 
 const SCOPE_OPTIONS: ScopeOption[] = [
-  { key: "batches:read", label: "Batches (read)", description: "Read your kiln rental batches and high-level status." },
+  { key: "batches:read", label: "Batches (read)", description: "Read your firing service batches and high-level status." },
   { key: "timeline:read", label: "Timeline (read)", description: "Read batch timeline events." },
   { key: "firings:read", label: "Firings (read)", description: "Read the studio firing schedule." },
   { key: "pieces:read", label: "Pieces (read)", description: "Read your pieces (future)." },

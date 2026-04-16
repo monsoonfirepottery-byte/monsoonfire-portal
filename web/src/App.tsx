@@ -197,7 +197,7 @@ const NAV_BOTTOM_ITEMS: NavItem[] = [
 const NAV_SECTIONS: NavSection[] = [
   {
     key: "kilnRentals",
-    title: "Kiln Rentals",
+    title: "Firing Services",
     items: [
       { key: "kilnRentals", label: "Overview" },
       { key: "wareCheckIn", label: "Ware Check-in" },
@@ -346,7 +346,7 @@ const NAV_LABELS: Record<NavKey, string> = {
   integrations: "Integrations",
   pieces: "My Pieces",
   kiln: "Firings",
-  kilnRentals: "Kiln Rentals",
+  kilnRentals: "Firing Services",
   kilnLaunch: "View the Queues",
   reservations: "Reservations",
   wareCheckIn: "Ware Check-in",

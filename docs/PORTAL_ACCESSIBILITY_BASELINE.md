@@ -7,14 +7,14 @@
 ## Priority user journeys
 1. Sign in/out and profile access.
 2. Dashboard navigation and primary action chips.
-3. Kiln rentals flow (check-in, queues, firings).
+3. Firing Services flow (check-in, queues, firings).
 4. Community reporting flow and moderation receipts.
 5. Staff console critical operations (reports, events, agent ops).
 
 ## Release gate (minimum)
 - Keyboard-only pass on core portal routes:
   - Dashboard
-  - Kiln Rentals overview + check-in
+  - Firing Services overview + check-in
   - Community
   - Profile
   - Staff (for staff users)

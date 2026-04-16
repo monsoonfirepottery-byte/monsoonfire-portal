@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import ControlTowerCommandPalette, { type ControlTowerPaletteItem } from "./controlTower/ControlTowerCommandPalette";
 import ControlTowerRoomDrawer from "./controlTower/ControlTowerRoomDrawer";
 import {
   clearStoredStudioBrainBaseUrlOverride,
@@ -8,7 +7,6 @@ import {
   setStoredStudioBrainBaseUrlOverride,
 } from "../../utils/studioBrain";
 import {
-  ackControlTowerOverseer,
   fetchControlTowerRoom,
   fetchControlTowerState,
   getStudioBrainControlTowerResolution,
@@ -16,7 +14,6 @@ import {
   sendControlTowerInstruction,
   sendPartnerCheckinAction,
   setControlTowerRoomPinned,
-  spawnControlTowerRoom,
   subscribeControlTowerEvents,
   updatePartnerOpenLoopStatus,
   type ControlTowerActionTarget,
@@ -236,7 +233,6 @@ export default function StudioBrainControlTowerModule({
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [streamStatus, setStreamStatus] = useState<"connecting" | "live" | "fallback">("connecting");
-  const [paletteOpen, setPaletteOpen] = useState(false);
   const servicesRef = useRef<HTMLElement | null>(null);
   const eventsRef = useRef<HTMLElement | null>(null);
   const partnerRef = useRef<HTMLElement | null>(null);
@@ -352,18 +348,6 @@ export default function StudioBrainControlTowerModule({
     };
   }, [active, fetchOptions, isDisabled, loadState, resolution.baseUrl]);
 
-  useEffect(() => {
-    if (!active) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [active]);
-
   const runAction = useCallback(async (key: string, action: () => Promise<void>) => {
     if (busyKey) return;
     setBusyKey(key);
@@ -471,17 +455,6 @@ export default function StudioBrainControlTowerModule({
     [fetchOptions, loadState, runAction],
   );
 
-  const handleAckOverseer = useCallback(
-    async (note: string) => {
-      await runAction("ack-overseer", async () => {
-        await ackControlTowerOverseer(note, fetchOptions);
-        setStatusMessage("Overseer acknowledgement recorded.");
-        await loadState({ silent: true });
-      });
-    },
-    [fetchOptions, loadState, runAction],
-  );
-
   const handlePartnerCommand = useCallback(
     async (
       action: "ack" | "snooze" | "pause" | "redirect" | "why_this" | "continue",
@@ -510,36 +483,6 @@ export default function StudioBrainControlTowerModule({
           note: payload?.note,
         });
         setStatusMessage(payload?.successMessage || `Updated ${loopId} to ${status}.`);
-        await loadState({ silent: true });
-      });
-    },
-    [fetchOptions, loadState, runAction],
-  );
-
-  const handleSpawnRoom = useCallback(
-    async (draft: {
-      name: string;
-      group: string;
-      summary: string;
-      objective: string;
-      tool: string;
-      cwd: string;
-    }) => {
-      await runAction("spawn-room", async () => {
-        await spawnControlTowerRoom(
-          {
-            name: draft.name,
-            group: draft.group,
-            room: draft.group,
-            summary: draft.summary,
-            objective: draft.objective,
-            tool: draft.tool,
-            cwd: draft.cwd,
-          },
-          fetchOptions,
-        );
-        setPaletteOpen(false);
-        setStatusMessage(`Created room ${draft.name}.`);
         await loadState({ silent: true });
       });
     },
@@ -577,98 +520,6 @@ export default function StudioBrainControlTowerModule({
   const primaryPartnerLoop = partner?.openLoops.find((loop) => loop.status === "open") ?? partner?.openLoops[0] ?? null;
   const memoryActionRows = useMemo(() => getMemoryActionRows(state), [state]);
   const memoryActionsQuiet = memoryActionRows.length === 0;
-
-  const paletteItems = useMemo<ControlTowerPaletteItem[]>(() => {
-    const items: ControlTowerPaletteItem[] = [
-      {
-        id: "palette:refresh",
-        title: "Refresh Control Tower",
-        detail: "Pull the latest rooms, services, and incident state into the browser.",
-        meta: "Tower action",
-        actionLabel: "Refresh",
-        keywords: ["refresh", "reload", "sync", "state"],
-        onSelect: () => void loadState(),
-      },
-      {
-        id: "palette:ack-overseer",
-        title: "Acknowledge the latest overseer run",
-        detail: "Record that the latest overseer recommendation was reviewed in the browser shell.",
-        meta: "Overseer action",
-        actionLabel: "Ack overseer",
-        keywords: ["ack", "overseer", "review", "incident"],
-        tone: "warn",
-        onSelect: () => void handleAckOverseer("Reviewed in Control Tower and queued follow-up."),
-      },
-      {
-        id: "palette:services",
-        title: "Jump to services",
-        detail: "Review health, impact, and safe service actions.",
-        meta: "Services section",
-        actionLabel: "Open services",
-        keywords: ["services", "relay", "status", "restart", "health"],
-        onSelect: jumpToServices,
-      },
-      {
-        id: "palette:events",
-        title: "Jump to recent events",
-        detail: "Open the incident and operator timeline instead of scrolling for it.",
-        meta: "Events section",
-        actionLabel: "Open events",
-        keywords: ["events", "timeline", "incidents", "acks", "alerts"],
-        onSelect: jumpToEvents,
-      },
-      {
-        id: "palette:admin",
-        title: "Open advanced admin",
-        detail: "Leave the operator shell and move into the deeper Studio Brain admin surface.",
-        meta: "Advanced administration",
-        actionLabel: "Open admin",
-        keywords: ["admin", "system", "advanced", "governance"],
-        onSelect: () => onNavigateTarget("system"),
-      },
-    ];
-
-    (state?.overview.needsAttention ?? []).forEach((item) => {
-      items.push({
-        id: `palette:attention:${item.id}`,
-        title: item.title,
-        detail: item.why,
-        meta: `Needs attention · ${formatRelativeAge(item.ageMinutes)}`,
-        actionLabel: item.actionLabel,
-        keywords: [item.severity, "attention", item.actionLabel],
-        tone: toneClass(item.severity),
-        onSelect: () => handleActionTarget(item.target),
-      });
-    });
-
-    (state?.overview.activeRooms ?? []).forEach((room) => {
-      items.push({
-        id: `palette:room:${room.id}`,
-        title: `Open ${room.name}`,
-        detail: room.objective || room.summary,
-        meta: `${room.project} · ${room.status} · ${formatRelativeAge(room.ageMinutes)}`,
-        actionLabel: "Inspect room",
-        keywords: [room.name, room.project, room.status, room.tool, ...(room.sessionNames ?? [])],
-        tone: room.isEscalated ? "warn" : room.status === "blocked" ? "danger" : "neutral",
-        onSelect: () => void openRoom(room.id),
-      });
-    });
-
-    (state?.services ?? []).forEach((service) => {
-      items.push({
-        id: `palette:service:${service.id}`,
-        title: `Review ${service.label}`,
-        detail: service.summary,
-        meta: `${service.health} · ${service.impact}`,
-        actionLabel: "Inspect service",
-        keywords: [service.id, service.label, service.health, "service"],
-        tone: toneClass(service.health),
-        onSelect: jumpToServices,
-      });
-    });
-
-    return items;
-  }, [handleAckOverseer, handleActionTarget, jumpToEvents, jumpToServices, loadState, onNavigateTarget, openRoom, state]);
 
   if (isDisabled) {
     return (
@@ -752,9 +603,6 @@ export default function StudioBrainControlTowerModule({
           <div className="control-tower-hero-actions">
             <button type="button" className="btn btn-secondary" onClick={() => void loadState()}>
               {loading ? "Refreshing..." : "Refresh"}
-            </button>
-            <button type="button" className="btn btn-primary" onClick={() => setPaletteOpen(true)}>
-              Command palette
             </button>
             <button type="button" className="btn btn-ghost" onClick={jumpToServices}>
               Services
@@ -1463,16 +1311,6 @@ export default function StudioBrainControlTowerModule({
           </div>
         </section>
       </section>
-
-      {paletteOpen ? (
-        <ControlTowerCommandPalette
-          open
-          busy={Boolean(busyKey)}
-          items={paletteItems}
-          onClose={() => setPaletteOpen(false)}
-          onSpawnRoom={(draft) => handleSpawnRoom(draft)}
-        />
-      ) : null}
 
       {selectedRoomId && roomDetail ? (
         <ControlTowerRoomDrawer

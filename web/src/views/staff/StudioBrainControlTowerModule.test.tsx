@@ -778,56 +778,6 @@ describe("StudioBrainControlTowerModule", () => {
     expect(resolutionSpy).toHaveBeenCalled();
   });
 
-  it("uses the command palette as a searchable launcher for rooms", async () => {
-    vi.spyOn(controlTowerUtils, "subscribeControlTowerEvents").mockReturnValue(() => undefined);
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = new URL(String(input));
-      const method = (init?.method ?? "GET").toUpperCase();
-
-      if (method === "GET" && url.pathname === "/api/control-tower/state") {
-        return new Response(JSON.stringify(createStatePayload()), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-
-      if (method === "GET" && url.pathname === "/api/control-tower/rooms/portal") {
-        return new Response(JSON.stringify(createRoomPayload()), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    });
-
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    render(
-      <StudioBrainControlTowerModule
-        user={createUser()}
-        active={true}
-        disabled={false}
-        adminToken=""
-        onNavigateTarget={() => undefined}
-      />,
-    );
-
-    expect(await screen.findByText("30-second operator plane")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Command palette" }));
-    fireEvent.change(screen.getByPlaceholderText(/Try portal, relay/i), {
-      target: { value: "portal" },
-    });
-
-    fireEvent.click(await screen.findByRole("button", { name: /Open portal/i }));
-
-    expect(await screen.findByRole("dialog", { name: "portal details" })).toBeTruthy();
-  });
-
   it("stops fallback polling once the stream is live", async () => {
     vi.useFakeTimers();
     vi.spyOn(controlTowerUtils, "getStudioBrainControlTowerResolution").mockReturnValue({

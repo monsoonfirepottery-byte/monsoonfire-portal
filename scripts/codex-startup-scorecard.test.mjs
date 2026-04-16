@@ -139,6 +139,8 @@ test("computeStartupScorecardReport measures startup quality and highlights cove
   assert.equal(report.trends.passRateDelta, -0.5);
   assert.equal(report.supportingSignals.interactionLog.source, "lifecycle-memory");
   assert.equal(report.coverage.interactionSignalSource, "lifecycle-memory");
+  assert.equal(report.launcherCoverage.liveStartupSamples, 0);
+  assert.equal(report.launcherCoverage.trustworthy, false);
   assert.equal(
     report.coverage.gaps.includes(
       "Launcher-level startup toolcall telemetry is absent; this report relies on scorecard history samples instead."
@@ -199,6 +201,7 @@ test("computeStartupScorecardReport preserves stored historical grounding and ri
   assert.equal(report.window.current.sampleCount, 2);
   assert.equal(report.metrics.groundingReadyRate, 0.5);
   assert.equal(report.metrics.richContextRate, 1);
+  assert.equal(report.launcherCoverage.trustworthy, false);
 });
 
 test("computeStartupScorecardReport scores Grounding compliance and pre-start repo-read telemetry from startup toolcalls", () => {
@@ -243,7 +246,7 @@ test("computeStartupScorecardReport scores Grounding compliance and pre-start re
     toolcallEntries: [
       {
         tsIso: "2026-04-03T10:00:01.000Z",
-        tool: "codex-startup-preflight",
+        tool: "codex-desktop",
         action: "startup-bootstrap",
         ok: true,
         errorType: null,
@@ -276,6 +279,8 @@ test("computeStartupScorecardReport scores Grounding compliance and pre-start re
   });
 
   assert.equal(report.supportingSignals.toolcalls.startupEntries, 2);
+  assert.equal(report.launcherCoverage.liveStartupSamples, 2);
+  assert.equal(report.launcherCoverage.trustworthy, false);
   assert.equal(report.supportingSignals.toolcalls.groundingObservedEntries, 2);
   assert.equal(report.supportingSignals.toolcalls.groundingLineComplianceRate, 0.5);
   assert.equal(report.supportingSignals.toolcalls.preStartupRepoReadObservedEntries, 2);
@@ -302,4 +307,91 @@ test("computeStartupScorecardReport scores Grounding compliance and pre-start re
     ),
     true,
   );
+});
+
+test("computeStartupScorecardReport marks launcher coverage trustworthy once five live samples exist", () => {
+  const toolcallEntries = Array.from({ length: 5 }, (_, index) => ({
+    tsIso: `2026-04-04T1${index}:00:01.000Z`,
+    tool: "codex-shell",
+    action: "startup-bootstrap",
+    ok: true,
+    errorType: null,
+    errorMessage: null,
+    context: {
+      startup: {
+        startupToolStatus: "called",
+        groundingLineEmitted: true,
+        repoReadsBeforeStartupContext: 0,
+      },
+    },
+  }));
+
+  const report = computeStartupScorecardReport({
+    generatedAtIso: "2026-04-04T18:00:00.000Z",
+    windowHours: 24,
+    latestSample: {
+      tsIso: "2026-04-04T18:00:00.000Z",
+      status: "pass",
+      reasonCode: "ok",
+      continuityState: "ready",
+      itemCount: 4,
+      contextSummary: "Goal, blocker, and next action loaded.",
+      groundingReady: true,
+      richContext: true,
+      fallbackOnly: false,
+      tokenState: "fresh",
+      latencyMs: 700,
+      latencyState: "healthy",
+      mcpBridgeOk: true,
+    },
+    historySamples: [],
+    toolcallEntries,
+    interactionEntries: [],
+  });
+
+  assert.equal(report.launcherCoverage.liveStartupSamples, 5);
+  assert.equal(report.launcherCoverage.trustworthy, true);
+});
+
+test("computeStartupScorecardReport counts codex-desktop live observations toward launcher coverage", () => {
+  const report = computeStartupScorecardReport({
+    generatedAtIso: "2026-04-05T18:00:00.000Z",
+    windowHours: 24,
+    latestSample: {
+      tsIso: "2026-04-05T18:00:00.000Z",
+      status: "pass",
+      reasonCode: "ok",
+      continuityState: "ready",
+      itemCount: 2,
+      contextSummary: "Goal loaded.",
+      groundingReady: true,
+      richContext: true,
+      fallbackOnly: false,
+      tokenState: "fresh",
+      latencyMs: 400,
+      latencyState: "healthy",
+      mcpBridgeOk: true,
+    },
+    historySamples: [],
+    toolcallEntries: [
+      {
+        tsIso: "2026-04-05T17:00:01.000Z",
+        tool: "codex-desktop",
+        action: "startup-bootstrap",
+        ok: true,
+        context: {
+          startup: {
+            observationKey: "desktop-live-1",
+            startupToolStatus: "called",
+            groundingLineEmitted: true,
+            repoReadsBeforeStartupContext: 0,
+          },
+        },
+      },
+    ],
+    interactionEntries: [],
+  });
+
+  assert.equal(report.supportingSignals.toolcalls.liveStartupEntries, 1);
+  assert.equal(report.launcherCoverage.liveStartupSamples, 1);
 });

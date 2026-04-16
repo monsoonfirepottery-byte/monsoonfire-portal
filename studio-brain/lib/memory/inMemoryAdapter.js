@@ -14,6 +14,16 @@ function clampLimit(value, fallback = 24) {
         return fallback;
     return Math.max(1, Math.min(200, Math.trunc(numeric)));
 }
+function parseDate(value) {
+    const parsed = new Date(String(value ?? ""));
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
+}
+function parseNullableDate(value) {
+    if (!value)
+        return null;
+    const parsed = new Date(String(value));
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
 function normalizeTenantScope(tenantId) {
     return String(tenantId ?? "");
 }
@@ -111,6 +121,64 @@ function normalizeLoopFeedbackAction(value) {
     }
     return "ack";
 }
+function normalizeReviewCaseType(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "resolve-conflict" || raw === "retire" || raw === "promote-guidance")
+        return raw;
+    return "revalidate";
+}
+function normalizeReviewCaseStatus(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "in-progress" || raw === "resolved" || raw === "dismissed")
+        return raw;
+    return "open";
+}
+function normalizeReviewCaseAction(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "verify_now" ||
+        raw === "accept_winner" ||
+        raw === "keep_quarantined" ||
+        raw === "retire_memory" ||
+        raw === "dismiss_case" ||
+        raw === "promote_guidance" ||
+        raw === "reject_promotion") {
+        return raw;
+    }
+    return "verify_now";
+}
+function normalizeVerifierKind(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "repo-head" ||
+        raw === "runtime-check" ||
+        raw === "startup-instruction" ||
+        raw === "support-policy" ||
+        raw === "support-outcome" ||
+        raw === "operator-attested") {
+        return raw;
+    }
+    return "operator-attested";
+}
+function normalizeVerificationTrigger(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "capture-conflict" ||
+        raw === "operational-read" ||
+        raw === "safety-read" ||
+        raw === "review-action" ||
+        raw === "startup-pack-change" ||
+        raw === "repo-diff" ||
+        raw === "support-case-resolved" ||
+        raw === "weekly-maintenance" ||
+        raw === "manual") {
+        return raw;
+    }
+    return "manual";
+}
+function normalizeVerificationResultStatus(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "passed" || raw === "failed" || raw === "needs-review" || raw === "skipped")
+        return raw;
+    return "needs-review";
+}
 function normalizeRelationType(value) {
     const relationType = String(value ?? "")
         .trim()
@@ -183,6 +251,133 @@ function statusBreakdown(rows) {
         .map(([status, count]) => ({ status, count }))
         .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status));
 }
+function normalizeText(value) {
+    return String(value ?? "").trim();
+}
+function normalizeMetadata(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function readStringList(value, maxItems = 32) {
+    const queue = Array.isArray(value) ? [...value] : value === undefined || value === null ? [] : [value];
+    const out = [];
+    const seen = new Set();
+    while (queue.length > 0 && out.length < maxItems) {
+        const next = queue.shift();
+        if (Array.isArray(next)) {
+            queue.unshift(...next);
+            continue;
+        }
+        const normalized = String(next ?? "").trim();
+        if (!normalized || seen.has(normalized))
+            continue;
+        seen.add(normalized);
+        out.push(normalized);
+    }
+    return out;
+}
+function readLatticeValue(metadata, key) {
+    const nested = normalizeMetadata(metadata.memoryLattice);
+    if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== "")
+        return metadata[key];
+    if (nested[key] !== undefined && nested[key] !== null && nested[key] !== "")
+        return nested[key];
+    return null;
+}
+function mapBreakdown(counts, key) {
+    return Array.from(counts.entries())
+        .map(([value, count]) => ({ [key]: value, count }))
+        .sort((left, right) => Number(right.count) - Number(left.count) || String(left[key]).localeCompare(String(right[key])));
+}
+function projectedConflictLinkedIds(rows) {
+    const rowIds = new Set(rows.map((row) => row.id));
+    const linked = new Set();
+    for (const row of rows) {
+        const metadata = normalizeMetadata(row.metadata);
+        const category = normalizeText(readLatticeValue(metadata, "memoryCategory") ?? readLatticeValue(metadata, "category"));
+        const conflictSeverity = normalizeText(readLatticeValue(metadata, "conflictSeverity"));
+        const operationalStatus = normalizeText(readLatticeValue(metadata, "operationalStatus"));
+        if (category !== "conflict-record" || conflictSeverity !== "hard")
+            continue;
+        if (operationalStatus === "archived" || operationalStatus === "deprecated" || operationalStatus === "retired")
+            continue;
+        for (const linkedId of readStringList(readLatticeValue(metadata, "conflictingMemoryIds"), 32)) {
+            if (rowIds.has(linkedId))
+                linked.add(linkedId);
+        }
+    }
+    return linked;
+}
+function latticeBreakdown(rows) {
+    const byCategory = new Map();
+    const byTruthStatus = new Map();
+    const byFreshnessStatus = new Map();
+    const byOperationalStatus = new Map();
+    const byReviewAction = new Map();
+    let rowsWithLattice = 0;
+    let reviewNow = 0;
+    let revalidate = 0;
+    let resolveConflict = 0;
+    let retire = 0;
+    let folkloreRiskHigh = 0;
+    for (const row of rows) {
+        const metadata = normalizeMetadata(row.metadata);
+        const category = normalizeText(readLatticeValue(metadata, "memoryCategory") ?? readLatticeValue(metadata, "category"));
+        const truthStatus = normalizeText(readLatticeValue(metadata, "truthStatus"));
+        const freshnessStatus = normalizeText(readLatticeValue(metadata, "freshnessStatus"));
+        const operationalStatus = normalizeText(readLatticeValue(metadata, "operationalStatus"));
+        const reviewAction = normalizeText(readLatticeValue(metadata, "reviewAction"));
+        const folkloreRisk = Number(readLatticeValue(metadata, "folkloreRisk") ?? 0);
+        const hasLattice = Boolean(category || truthStatus || freshnessStatus || operationalStatus || reviewAction);
+        if (hasLattice)
+            rowsWithLattice += 1;
+        if (category)
+            byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
+        if (truthStatus)
+            byTruthStatus.set(truthStatus, (byTruthStatus.get(truthStatus) ?? 0) + 1);
+        if (freshnessStatus)
+            byFreshnessStatus.set(freshnessStatus, (byFreshnessStatus.get(freshnessStatus) ?? 0) + 1);
+        if (operationalStatus)
+            byOperationalStatus.set(operationalStatus, (byOperationalStatus.get(operationalStatus) ?? 0) + 1);
+        if (reviewAction) {
+            byReviewAction.set(reviewAction, (byReviewAction.get(reviewAction) ?? 0) + 1);
+            if (reviewAction !== "none")
+                reviewNow += 1;
+            if (reviewAction === "revalidate")
+                revalidate += 1;
+            if (reviewAction === "resolve-conflict")
+                resolveConflict += 1;
+            if (reviewAction === "retire")
+                retire += 1;
+        }
+        if (Number.isFinite(folkloreRisk) && folkloreRisk >= 0.65)
+            folkloreRiskHigh += 1;
+    }
+    return {
+        coverage: {
+            rowsWithLattice,
+            totalRows: rows.length,
+            ratio: rows.length > 0 ? Number((rowsWithLattice / rows.length).toFixed(3)) : 0,
+        },
+        byCategory: mapBreakdown(byCategory, "category"),
+        byTruthStatus: mapBreakdown(byTruthStatus, "status"),
+        byFreshnessStatus: mapBreakdown(byFreshnessStatus, "status"),
+        byOperationalStatus: mapBreakdown(byOperationalStatus, "status"),
+        byReviewAction: mapBreakdown(byReviewAction, "action"),
+        backlog: {
+            reviewNow,
+            revalidate,
+            resolveConflict,
+            retire,
+            folkloreRiskHigh,
+        },
+    };
+}
+function readEvidenceFromRow(row) {
+    return Array.isArray(row.evidence) ? row.evidence : [];
+}
+function readTransitionsFromRow(row) {
+    return Array.isArray(row.transitions) ? row.transitions : [];
+}
 function recencyScore(occurredAt, createdAt, memoryType) {
     const timestamp = Date.parse(occurredAt || createdAt);
     if (!Number.isFinite(timestamp))
@@ -209,6 +404,65 @@ function normalizeRecord(input) {
         memoryLayer: (0, layers_1.normalizeMemoryLayer)(input.memoryLayer, "episodic"),
         sourceConfidence: clamp01(input.sourceConfidence),
         importance: clamp01(input.importance),
+        evidence: Array.isArray(input.evidence) ? input.evidence.map((entry) => ({ ...entry, supportsMemoryIds: [...entry.supportsMemoryIds], metadata: normalizeMetadata(entry.metadata) })) : [],
+        transitions: Array.isArray(input.transitionEvents)
+            ? input.transitionEvents.map((entry) => ({ ...entry, evidenceIds: [...entry.evidenceIds], metadata: normalizeMetadata(entry.metadata) }))
+            : [],
+    };
+}
+function cloneReviewCase(row) {
+    return {
+        ...row,
+        linkedMemoryIds: [...row.linkedMemoryIds],
+        reasonCodes: [...row.reasonCodes],
+        recommendedActions: [...row.recommendedActions],
+        metadata: normalizeMetadata(row.metadata),
+    };
+}
+function normalizeReviewCase(input, existing) {
+    return {
+        id: input.id,
+        tenantId: input.tenantId ?? null,
+        caseType: normalizeReviewCaseType(input.caseType),
+        status: normalizeReviewCaseStatus(input.status),
+        scope: normalizeText(input.scope) || null,
+        primaryMemoryId: normalizeText(input.primaryMemoryId) || null,
+        linkedMemoryIds: normalizeIdList(input.linkedMemoryIds, 64),
+        priority: clamp01(input.priority, existing?.priority ?? 0.5),
+        reasonCodes: readStringList(input.reasonCodes, 24),
+        recommendedActions: Array.from(new Set((input.recommendedActions ?? []).map((entry) => normalizeReviewCaseAction(entry)).filter(Boolean))).slice(0, 8),
+        owner: normalizeText(input.owner) || null,
+        resolution: normalizeText(input.resolution) || null,
+        lastVerificationRunId: normalizeText(input.lastVerificationRunId) || null,
+        openedAt: existing?.openedAt ?? parseDate(input.openedAt ?? new Date().toISOString()),
+        updatedAt: parseDate(input.updatedAt ?? new Date().toISOString()),
+        resolvedAt: parseNullableDate(input.resolvedAt),
+        metadata: normalizeMetadata(input.metadata),
+    };
+}
+function cloneVerificationRun(row) {
+    return {
+        ...row,
+        requestSnapshot: normalizeMetadata(row.requestSnapshot),
+        evidenceIds: [...row.evidenceIds],
+        metadata: normalizeMetadata(row.metadata),
+    };
+}
+function normalizeVerificationRun(input) {
+    return {
+        id: input.id,
+        tenantId: input.tenantId ?? null,
+        caseId: normalizeText(input.caseId) || null,
+        targetMemoryId: normalizeText(input.targetMemoryId) || null,
+        verifierKind: normalizeVerifierKind(input.verifierKind),
+        trigger: normalizeVerificationTrigger(input.trigger),
+        requestSnapshot: normalizeMetadata(input.requestSnapshot),
+        resultStatus: normalizeVerificationResultStatus(input.resultStatus),
+        resultSummary: normalizeText(input.resultSummary) || null,
+        evidenceIds: normalizeIdList(input.evidenceIds, 64),
+        startedAt: parseDate(input.startedAt),
+        finishedAt: parseNullableDate(input.finishedAt),
+        metadata: normalizeMetadata(input.metadata),
     };
 }
 function scoreRecord(row, query, options) {
@@ -245,6 +499,8 @@ function scoreRecord(row, query, options) {
 }
 function createInMemoryMemoryStoreAdapter() {
     const records = new Map();
+    const reviewCases = new Map();
+    const verificationRuns = new Map();
     const relationEdges = new Map();
     const entities = new Map();
     const patterns = new Map();
@@ -260,12 +516,94 @@ function createInMemoryMemoryStoreAdapter() {
         const rightTime = Date.parse(right.occurredAt || right.createdAt);
         return rightTime - leftTime;
     });
-    const stats = (tenantId) => {
-        const rows = toArray().filter((row) => (tenantId === undefined ? true : row.tenantId === tenantId));
+    const stats = (tenantId, rowsOverride) => {
+        const rows = rowsOverride ??
+            toArray().filter((row) => (tenantId === undefined ? true : row.tenantId === tenantId));
         const bySourceMap = new Map();
         for (const row of rows) {
             bySourceMap.set(row.source, (bySourceMap.get(row.source) ?? 0) + 1);
         }
+        const lattice = latticeBreakdown(rows);
+        const reviewCaseRows = Array.from(reviewCases.values()).filter((row) => (tenantId === undefined ? true : row.tenantId === tenantId));
+        const verificationRunRows = Array.from(verificationRuns.values()).filter((row) => tenantId === undefined ? true : row.tenantId === tenantId);
+        const openReviewCases = reviewCaseRows.filter((row) => row.status === "open" || row.status === "in-progress").length;
+        const emberPromotionBacklog = reviewCaseRows.filter((row) => row.caseType === "promote-guidance" && (row.status === "open" || row.status === "in-progress")).length;
+        const verificationFailures24h = verificationRunRows.filter((row) => {
+            if (row.resultStatus !== "failed")
+                return false;
+            const anchor = Date.parse(row.finishedAt || row.startedAt || "");
+            return Number.isFinite(anchor) && anchor >= Date.now() - 24 * 60 * 60 * 1000;
+        }).length;
+        let contestedRows = 0;
+        let hardConflicts = 0;
+        let quarantinedRows = 0;
+        let conflictRecords = 0;
+        let startupEligibleRows = 0;
+        let trustedStartupRows = 0;
+        let handoffRows = 0;
+        let checkpointRows = 0;
+        let fallbackRiskRows = 0;
+        let redactedRows = 0;
+        let requiresReviewRows = 0;
+        let canonicalBlockedRows = 0;
+        let secretQuarantinedRows = 0;
+        let governedMcpRows = 0;
+        let ungovernedMcpRows = 0;
+        let shadowMcpReviewRows = 0;
+        let highRiskShadowMcpRows = 0;
+        for (const row of rows) {
+            const metadata = normalizeMetadata(row.metadata);
+            const category = normalizeText(readLatticeValue(metadata, "memoryCategory") ?? readLatticeValue(metadata, "category"));
+            const truthStatus = normalizeText(readLatticeValue(metadata, "truthStatus"));
+            const operationalStatus = normalizeText(readLatticeValue(metadata, "operationalStatus"));
+            const conflictSeverity = normalizeText(readLatticeValue(metadata, "conflictSeverity"));
+            const sourceClass = normalizeText(readLatticeValue(metadata, "sourceClass"));
+            const redactionState = normalizeText(metadata.redactionState ?? readLatticeValue(metadata, "redactionState"));
+            const startupEligible = metadata.startupEligible === true || metadata.rememberForStartup === true;
+            const secretExposure = normalizeMetadata(metadata.secretExposure);
+            const mcpGovernance = normalizeMetadata(metadata.mcpGovernance);
+            const evidenceCount = readEvidenceFromRow(row).length;
+            if (truthStatus === "contradicted" || operationalStatus === "quarantined")
+                contestedRows += 1;
+            if (conflictSeverity === "hard")
+                hardConflicts += 1;
+            if (operationalStatus === "quarantined")
+                quarantinedRows += 1;
+            if (category === "conflict-record")
+                conflictRecords += 1;
+            if (startupEligible) {
+                startupEligibleRows += 1;
+                if ((truthStatus === "trusted" || truthStatus === "verified") && operationalStatus === "active") {
+                    trustedStartupRows += 1;
+                }
+                if (!evidenceCount && row.status !== "accepted")
+                    fallbackRiskRows += 1;
+            }
+            if (String(metadata.rememberKind ?? "").trim().toLowerCase() === "handoff")
+                handoffRows += 1;
+            if (String(metadata.rememberKind ?? "").trim().toLowerCase() === "checkpoint")
+                checkpointRows += 1;
+            if (redactionState === "redacted" || redactionState === "verified-redacted")
+                redactedRows += 1;
+            if (redactionState === "requires-review")
+                requiresReviewRows += 1;
+            if (secretExposure.canonicalPromotionBlocked === true)
+                canonicalBlockedRows += 1;
+            if (secretExposure.quarantined === true)
+                secretQuarantinedRows += 1;
+            if (sourceClass === "mcp-tool" || Object.keys(mcpGovernance).length > 0) {
+                if (normalizeText(mcpGovernance.approvalState))
+                    governedMcpRows += 1;
+                else
+                    ungovernedMcpRows += 1;
+                if (mcpGovernance.shadowRisk === true)
+                    shadowMcpReviewRows += 1;
+                if (mcpGovernance.shadowRisk === true && normalizeText(mcpGovernance.approvalState) !== "approved") {
+                    highRiskShadowMcpRows += 1;
+                }
+            }
+        }
+        const retrievalShadowedRows = projectedConflictLinkedIds(rows).size;
         return {
             total: rows.length,
             lastCapturedAt: rows.length ? rows[0].createdAt : null,
@@ -274,6 +612,39 @@ function createInMemoryMemoryStoreAdapter() {
                 .sort((left, right) => right.count - left.count),
             byLayer: layerBreakdown(rows),
             byStatus: statusBreakdown(rows),
+            lattice,
+            reviewBacklog: lattice?.backlog,
+            openReviewCases,
+            verificationFailures24h,
+            emberPromotionBacklog,
+            conflictBacklog: {
+                contestedRows,
+                hardConflicts,
+                quarantinedRows,
+                conflictRecords,
+                retrievalShadowedRows,
+            },
+            startupReadiness: {
+                startupEligibleRows,
+                trustedStartupRows,
+                handoffRows,
+                checkpointRows,
+                fallbackRiskRows,
+            },
+            secretExposureFindings: {
+                totalRows: rows.length,
+                redactedRows,
+                requiresReviewRows,
+                canonicalBlockedRows,
+                quarantinedRows: secretQuarantinedRows,
+            },
+            shadowMcpFindings: {
+                totalRows: governedMcpRows + ungovernedMcpRows,
+                governedRows: governedMcpRows,
+                ungovernedRows: ungovernedMcpRows,
+                reviewRows: shadowMcpReviewRows,
+                highRiskRows: highRiskShadowMcpRows,
+            },
         };
     };
     return {
@@ -281,10 +652,28 @@ function createInMemoryMemoryStoreAdapter() {
             const existing = records.get(input.id);
             const next = normalizeRecord(input);
             if (existing) {
+                const mergedEvidence = new Map();
+                for (const entry of [...readEvidenceFromRow(existing), ...readEvidenceFromRow(next)]) {
+                    mergedEvidence.set(entry.evidenceId, {
+                        ...entry,
+                        supportsMemoryIds: [...entry.supportsMemoryIds],
+                        metadata: normalizeMetadata(entry.metadata),
+                    });
+                }
+                const mergedTransitions = new Map();
+                for (const entry of [...readTransitionsFromRow(existing), ...readTransitionsFromRow(next)]) {
+                    mergedTransitions.set(entry.transitionId, {
+                        ...entry,
+                        evidenceIds: [...entry.evidenceIds],
+                        metadata: normalizeMetadata(entry.metadata),
+                    });
+                }
                 records.set(input.id, {
                     ...next,
                     createdAt: existing.createdAt,
                     occurredAt: existing.occurredAt && next.occurredAt ? (existing.occurredAt < next.occurredAt ? existing.occurredAt : next.occurredAt) : existing.occurredAt || next.occurredAt,
+                    evidence: Array.from(mergedEvidence.values()),
+                    transitions: Array.from(mergedTransitions.values()).sort((left, right) => left.at.localeCompare(right.at)),
                 });
             }
             else {
@@ -364,19 +753,56 @@ function createInMemoryMemoryStoreAdapter() {
             const rows = toArray()
                 .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
                 .filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, (0, layers_1.normalizeMemoryLayerList)(input.layerAllowlist), (0, layers_1.normalizeMemoryLayerList)(input.layerDenylist)));
-            const bySourceMap = new Map();
-            for (const row of rows) {
-                bySourceMap.set(row.source, (bySourceMap.get(row.source) ?? 0) + 1);
-            }
-            return {
-                total: rows.length,
-                lastCapturedAt: rows.length ? rows[0].createdAt : null,
-                bySource: Array.from(bySourceMap.entries())
-                    .map(([source, count]) => ({ source, count }))
-                    .sort((left, right) => right.count - left.count),
-                byLayer: layerBreakdown(rows),
-                byStatus: statusBreakdown(rows),
-            };
+            return stats(input.tenantId, rows);
+        },
+        async upsertReviewCase(input) {
+            const existing = reviewCases.get(input.id) ?? null;
+            const next = normalizeReviewCase(input, existing);
+            reviewCases.set(next.id, next);
+            return cloneReviewCase(next);
+        },
+        async getReviewCaseById(input) {
+            const row = reviewCases.get(String(input.id ?? "").trim());
+            if (!row)
+                return null;
+            if (input.tenantId !== undefined && row.tenantId !== input.tenantId)
+                return null;
+            return cloneReviewCase(row);
+        },
+        async listReviewCases(input) {
+            const statuses = new Set((input.statuses ?? []).map((entry) => normalizeReviewCaseStatus(entry)));
+            const caseTypes = new Set((input.caseTypes ?? []).map((entry) => normalizeReviewCaseType(entry)));
+            const scopePrefixes = readStringList(input.scopePrefixes, 32).map((entry) => entry.toLowerCase());
+            const linkedMemoryIds = new Set(normalizeIdList(input.linkedMemoryIds, 64));
+            return Array.from(reviewCases.values())
+                .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
+                .filter((row) => (statuses.size > 0 ? statuses.has(row.status) : true))
+                .filter((row) => (caseTypes.size > 0 ? caseTypes.has(row.caseType) : true))
+                .filter((row) => scopePrefixes.length > 0
+                ? scopePrefixes.some((prefix) => (row.scope ?? "").toLowerCase().startsWith(prefix))
+                : true)
+                .filter((row) => linkedMemoryIds.size > 0 ? row.linkedMemoryIds.some((memoryId) => linkedMemoryIds.has(memoryId)) : true)
+                .sort((left, right) => right.priority - left.priority || right.updatedAt.localeCompare(left.updatedAt))
+                .slice(0, Math.max(1, Math.min(input.limit ?? 50, 200)))
+                .map((row) => cloneReviewCase(row));
+        },
+        async upsertVerificationRun(input) {
+            const next = normalizeVerificationRun(input);
+            verificationRuns.set(next.id, next);
+            return cloneVerificationRun(next);
+        },
+        async listVerificationRuns(input) {
+            return Array.from(verificationRuns.values())
+                .filter((row) => (input.tenantId === undefined ? true : row.tenantId === input.tenantId))
+                .filter((row) => (input.caseId !== undefined ? row.caseId === (normalizeText(input.caseId) || null) : true))
+                .filter((row) => input.targetMemoryId !== undefined ? row.targetMemoryId === (normalizeText(input.targetMemoryId) || null) : true)
+                .sort((left, right) => {
+                const rightTime = Date.parse(right.finishedAt || right.startedAt || "") || 0;
+                const leftTime = Date.parse(left.finishedAt || left.startedAt || "") || 0;
+                return rightTime - leftTime || right.startedAt.localeCompare(left.startedAt);
+            })
+                .slice(0, Math.max(1, Math.min(input.limit ?? 50, 200)))
+                .map((row) => cloneVerificationRun(row));
         },
         async indexSignals(input) {
             const tenantScope = normalizeTenantScope(input.tenantId);

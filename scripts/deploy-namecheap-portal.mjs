@@ -15,8 +15,6 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
 const defaultPortalAutomationEnvPath = resolvePortalAutomationEnvPath();
 
-const portalEnvLoad = loadPortalAutomationEnv();
-
 const defaults = {
   server: process.env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
   port: Number.parseInt(process.env.WEBSITE_DEPLOY_PORT || "", 10) || 21098,
@@ -45,6 +43,11 @@ if (options.help) {
   printHelp();
   process.exit(0);
 }
+if (options.benchmarkProbe) {
+  emitBenchmarkProbe(options);
+  process.exit(0);
+}
+const portalEnvLoad = loadPortalAutomationEnv();
 
 const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
 const FIREBASE_PROJECT_ID = "monsoonfire-portal";
@@ -439,6 +442,14 @@ function parseArgs(argv) {
       parsed.noBuild = true;
       continue;
     }
+    if (arg === "--benchmark-probe") {
+      parsed.benchmarkProbe = true;
+      continue;
+    }
+    if (arg === "--json") {
+      parsed.json = true;
+      continue;
+    }
     if (arg === "--verify") {
       parsed.verify = true;
       continue;
@@ -526,6 +537,31 @@ function parseArgs(argv) {
     parsed.verifyArgs.push(arg);
   }
   return parsed;
+}
+
+function emitBenchmarkProbe(options) {
+  const payload = {
+    schema: "agent-tool-benchmark-probe.v1",
+    tool: "deploy-namecheap-portal",
+    status: "ok",
+    benchmarkProbe: true,
+    options: {
+      server: String(options.server || ""),
+      port: Number(options.port || 0),
+      remotePath: String(options.remotePath || ""),
+      portalUrl: String(options.portalUrl || ""),
+      verify: options.verify === true,
+      noBuild: options.noBuild === true,
+      preflight: options.preflight === true,
+      promotionGate: options.promotionGate === true,
+      autoRollback: options.autoRollback === true,
+    },
+  };
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  process.stdout.write(`benchmark-probe ok: ${payload.tool}\n`);
 }
 
 function ensureTrailingSlash(value) {
@@ -801,6 +837,8 @@ function printHelp() {
       "  --skip-rollback-verify     skip rollback verification\n" +
       "  --evidence-pack            generate deploy evidence pack (default)\n" +
       "  --skip-evidence-pack       skip deploy evidence pack generation\n" +
+      "  --benchmark-probe          parse deploy inputs and exit without running deploy steps\n" +
+      "  --json                     with --benchmark-probe, emit JSON instead of text\n" +
       "  --help                     show this help\n" +
       "\n" +
       "Env auto-load:\n" +

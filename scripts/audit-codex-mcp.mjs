@@ -13,7 +13,7 @@ const requiredProfiles = [
   'open_memory',
 ];
 const cloudflareManagedIds = ['cloudflare_docs', 'cloudflare_browser_rendering'];
-const topLevelEnabledAllowlist = new Set(['open_memory']);
+const topLevelEnabledAllowlist = new Set(['open_memory', 'studio-brain-memory']);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +31,7 @@ function parseTomlValue(rawValue) {
   return value;
 }
 
-function readCanonicalSetFromDocs(markdown) {
+export function readCanonicalSetFromDocs(markdown) {
   const sectionMatch = markdown.match(/## 3\) MCP & External Sources([\s\S]*?)(?:\n## \d+\)|$)/);
   if (!sectionMatch) {
     throw new Error('Could not find section "## 3) MCP & External Sources" in docs/SOURCE_OF_TRUTH_INDEX.md');
@@ -39,7 +39,7 @@ function readCanonicalSetFromDocs(markdown) {
 
   const sectionBody = sectionMatch[1];
   const canonical = new Set();
-  for (const match of sectionBody.matchAll(/mcp_servers\.([a-zA-Z0-9_]+)/g)) {
+  for (const match of sectionBody.matchAll(/mcp_servers\.([a-zA-Z0-9_-]+)/g)) {
     const key = match[1];
     const offset = (match.index ?? -1) + match[0].length;
     const hasWildcardSuffix = offset >= 0 && sectionBody[offset] === '*';
@@ -54,7 +54,21 @@ function readCanonicalSetFromDocs(markdown) {
   return canonical;
 }
 
-function parseCodexConfigToml(toml) {
+function parseTopLevelMcpTable(tablePath) {
+  const match = tablePath.match(/^mcp_servers\.(?:"([^"]+)"|([A-Za-z0-9_-]+))$/);
+  return match ? match[1] || match[2] || '' : '';
+}
+
+function parseProfileMcpTable(tablePath) {
+  const match = tablePath.match(/^profiles\.([^.]+)\.mcp_servers\.(?:"([^"]+)"|([A-Za-z0-9_-]+))$/);
+  if (!match) return null;
+  return {
+    profileName: match[1],
+    serverId: match[2] || match[3] || '',
+  };
+}
+
+export function parseCodexConfigToml(toml) {
   const topServers = new Map();
   const profileServers = new Map();
 
@@ -69,22 +83,22 @@ function parseCodexConfigToml(toml) {
     if (tableMatch) {
       const tablePath = tableMatch[1];
 
-      if (tablePath.startsWith('mcp_servers.')) {
-        const serverId = tablePath.slice('mcp_servers.'.length);
+      const topLevelServerId = parseTopLevelMcpTable(tablePath);
+      const profileMatch = parseProfileMcpTable(tablePath);
+
+      if (topLevelServerId) {
+        const serverId = topLevelServerId;
         current = { kind: 'top', serverId };
         if (!topServers.has(serverId)) topServers.set(serverId, {});
+      } else if (profileMatch) {
+        const profileName = profileMatch.profileName;
+        const serverId = profileMatch.serverId;
+        current = { kind: 'profile', profileName, serverId };
+        if (!profileServers.has(profileName)) profileServers.set(profileName, new Map());
+        const profileMap = profileServers.get(profileName);
+        if (!profileMap.has(serverId)) profileMap.set(serverId, {});
       } else {
-        const profileMatch = tablePath.match(/^profiles\.([^.]+)\.mcp_servers\.([^.]+)$/);
-        if (profileMatch) {
-          const profileName = profileMatch[1];
-          const serverId = profileMatch[2];
-          current = { kind: 'profile', profileName, serverId };
-          if (!profileServers.has(profileName)) profileServers.set(profileName, new Map());
-          const profileMap = profileServers.get(profileName);
-          if (!profileMap.has(serverId)) profileMap.set(serverId, {});
-        } else {
-          current = null;
-        }
+        current = null;
       }
       continue;
     }
@@ -121,7 +135,7 @@ function hasDeprecatedModelConfig(toml) {
   return hasLegacyProviders || hasLegacyModels;
 }
 
-function main() {
+export function main() {
   if (!fs.existsSync(docsPath)) {
     console.error('FAIL');
     console.error(`- Missing docs file: ${docsPath}`);
@@ -242,4 +256,7 @@ function main() {
   console.log(`- Config path: ${codexConfigPath}`);
 }
 
-main();
+const isMain = process.argv[1] ? path.resolve(process.argv[1]) === __filename : false;
+if (isMain) {
+  main();
+}

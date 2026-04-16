@@ -14,9 +14,11 @@ import {
   getStudioBrainControlTowerResolution,
   runControlTowerServiceAction,
   sendControlTowerInstruction,
+  sendPartnerCheckinAction,
   setControlTowerRoomPinned,
   spawnControlTowerRoom,
   subscribeControlTowerEvents,
+  updatePartnerOpenLoopStatus,
   type ControlTowerActionTarget,
   type ControlTowerRoomDetail,
   type ControlTowerServiceCard,
@@ -143,6 +145,23 @@ function actionabilityTone(status: string | null | undefined): "danger" | "warn"
   return "neutral";
 }
 
+function partnerInitiativeTone(
+  state: "quiet" | "monitoring" | "briefing" | "executing" | "cooldown" | "waiting_on_owner",
+): "danger" | "warn" | "ok" | "neutral" {
+  if (state === "waiting_on_owner") return "warn";
+  if (state === "executing") return "ok";
+  if (state === "cooldown") return "neutral";
+  if (state === "briefing") return "ok";
+  if (state === "monitoring") return "neutral";
+  return "neutral";
+}
+
+function openLoopTone(status: "open" | "delegated" | "paused" | "resolved"): "danger" | "warn" | "ok" | "neutral" {
+  if (status === "open") return "warn";
+  if (status === "resolved") return "ok";
+  return "neutral";
+}
+
 function shouldSurfaceMemoryActions(state: ControlTowerState | null): boolean {
   if (!state) return false;
   if (state.memoryBrief.continuityState !== "ready") return true;
@@ -220,6 +239,7 @@ export default function StudioBrainControlTowerModule({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const servicesRef = useRef<HTMLElement | null>(null);
   const eventsRef = useRef<HTMLElement | null>(null);
+  const partnerRef = useRef<HTMLElement | null>(null);
   const streamRefreshTimerRef = useRef<number | null>(null);
 
   const fetchOptions = useMemo(
@@ -377,6 +397,10 @@ export default function StudioBrainControlTowerModule({
         eventsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
+      if (target.action === "partner") {
+        partnerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       if (target.action === "approvals") {
         onNavigateTarget("system");
         return;
@@ -458,6 +482,40 @@ export default function StudioBrainControlTowerModule({
     [fetchOptions, loadState, runAction],
   );
 
+  const handlePartnerCommand = useCallback(
+    async (
+      action: "ack" | "snooze" | "pause" | "redirect" | "why_this" | "continue",
+      payload?: { note?: string; snoozeMinutes?: number; successMessage?: string },
+    ) => {
+      await runAction(`partner:${action}`, async () => {
+        await sendPartnerCheckinAction(action, fetchOptions, {
+          note: payload?.note,
+          snoozeMinutes: payload?.snoozeMinutes,
+        });
+        setStatusMessage(payload?.successMessage || `Chief-of-staff command "${action}" recorded.`);
+        await loadState({ silent: true });
+      });
+    },
+    [fetchOptions, loadState, runAction],
+  );
+
+  const handlePartnerOpenLoop = useCallback(
+    async (
+      loopId: string,
+      status: "delegated" | "paused" | "resolved",
+      payload?: { note?: string; successMessage?: string },
+    ) => {
+      await runAction(`partner-loop:${loopId}:${status}`, async () => {
+        await updatePartnerOpenLoopStatus(loopId, status, fetchOptions, {
+          note: payload?.note,
+        });
+        setStatusMessage(payload?.successMessage || `Updated ${loopId} to ${status}.`);
+        await loadState({ silent: true });
+      });
+    },
+    [fetchOptions, loadState, runAction],
+  );
+
   const handleSpawnRoom = useCallback(
     async (draft: {
       name: string;
@@ -515,6 +573,8 @@ export default function StudioBrainControlTowerModule({
     escalated: 0,
   };
   const startupScorecard = state?.startupScorecard ?? null;
+  const partner = state?.partner ?? null;
+  const primaryPartnerLoop = partner?.openLoops.find((loop) => loop.status === "open") ?? partner?.openLoops[0] ?? null;
   const memoryActionRows = useMemo(() => getMemoryActionRows(state), [state]);
   const memoryActionsQuiet = memoryActionRows.length === 0;
 
@@ -790,6 +850,12 @@ export default function StudioBrainControlTowerModule({
                     <strong>{row.next}</strong>
                   </div>
                 </div>
+                {row.contactReason || row.decisionNeeded ? (
+                  <div className="control-tower-memory-list">
+                    {row.contactReason ? <span>why contacted: {row.contactReason}</span> : null}
+                    {row.decisionNeeded ? <span>decision: {row.decisionNeeded}</span> : null}
+                  </div>
+                ) : null}
                 {row.roomId ? (
                   <div className="control-tower-next-footer">
                     <span>{row.sessionName || row.roomId}</span>
@@ -874,6 +940,7 @@ export default function StudioBrainControlTowerModule({
                     </div>
                     <h3>{room.objective}</h3>
                     <p>{room.summary}</p>
+                    {room.decisionNeeded ? <p>{`Decision needed: ${room.decisionNeeded}`}</p> : null}
                     <div className="control-tower-room-footer">
                       <span>{formatRelativeAge(room.ageMinutes)}</span>
                       <span>{room.sessionNames.length} lane{room.sessionNames.length === 1 ? "" : "s"}</span>
@@ -888,6 +955,152 @@ export default function StudioBrainControlTowerModule({
           </div>
 
           <aside className="control-tower-rail">
+            <section ref={partnerRef} className="card staff-console-card control-tower-section-card">
+              <div className="control-tower-section-header">
+                <div>
+                  <div className="control-tower-kicker">Partner</div>
+                  <h2>Chief of staff</h2>
+                  <p>Codex is the relationship shell; Control Tower stays the source of truth for what was verified, why you were interrupted, and the one decision needed next.</p>
+                </div>
+              </div>
+              <div className="control-tower-memory-stack">
+                <article className="control-tower-next-card">
+                  <div className="control-tower-title-row">
+                    <h3>{partner?.recommendedFocus || "No partner brief yet."}</h3>
+                    <span className={`pill control-tower-pill-${partnerInitiativeTone(partner?.initiativeState ?? "quiet")}`}>
+                      {partner?.initiativeState || "quiet"}
+                    </span>
+                  </div>
+                  <p>{partner?.summary || "Studio Brain will keep this quiet until there is a meaningful brief to deliver."}</p>
+                  <div className="control-tower-next-footer">
+                    <span>{partner?.persona.displayName || "Chief-of-staff partner"}</span>
+                    <span>{formatTimestamp(partner?.nextCheckInAt ?? null)}</span>
+                  </div>
+                </article>
+
+                <article className="control-tower-memory-card">
+                  <div className="control-tower-title-row">
+                    <h3>Why this contact</h3>
+                    <span className={`pill control-tower-pill-${partner?.needsOwnerDecision ? "warn" : "neutral"}`}>
+                      {partner?.needsOwnerDecision ? "decision waiting" : "bounded cadence"}
+                    </span>
+                  </div>
+                  <p>{partner?.contactReason || "No partner interruption is active right now."}</p>
+                  <div className="control-tower-memory-list">
+                    <span>single decision: {partner?.singleDecisionNeeded || "None right now."}</span>
+                    <span>last meaningful contact: {formatTimestamp(partner?.lastMeaningfulContactAt ?? null)}</span>
+                    <span>next check-in: {formatTimestamp(partner?.nextCheckInAt ?? null)}</span>
+                    <span>cooldown: {formatTimestamp(partner?.cooldownUntil ?? null)}</span>
+                  </div>
+                </article>
+
+                <article className="control-tower-memory-card">
+                  <div className="control-tower-title-row">
+                    <h3>Owner commands</h3>
+                    <span className="pill control-tower-pill-neutral">Codex thread controls</span>
+                  </div>
+                  <p>These commands update the chief-of-staff loop immediately without changing the underlying Control Tower evidence.</p>
+                  <div className="control-tower-partner-command-row">
+                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("ack", { successMessage: "Chief-of-staff nudge acknowledged." })}>
+                      Acknowledge
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("pause", { successMessage: "Chief-of-staff cadence paused for the current window." })}>
+                      Pause
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      onClick={() =>
+                        primaryPartnerLoop
+                          ? void handlePartnerOpenLoop(primaryPartnerLoop.id, "delegated", {
+                              note: "Redirected from Control Tower.",
+                              successMessage: "Primary open loop redirected.",
+                            })
+                          : void handlePartnerCommand("redirect", {
+                              note: "Redirected from Control Tower.",
+                              successMessage: "Chief-of-staff direction updated.",
+                            })
+                      }
+                    >
+                      Redirect
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
+                      Why this
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
+                      Continue
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("snooze", { snoozeMinutes: 120, successMessage: "Chief-of-staff nudges snoozed for 2 hours." })}>
+                      Snooze 2h
+                    </button>
+                  </div>
+                </article>
+
+                <article className="control-tower-memory-card">
+                  <h3>Verified context</h3>
+                  <div className="control-tower-memory-list">
+                    {(partner?.verifiedContext ?? []).slice(0, 4).map((row) => (
+                      <span key={row}>{row}</span>
+                    ))}
+                    {!(partner?.verifiedContext ?? []).length ? <span>No verified context has been promoted yet.</span> : null}
+                  </div>
+                </article>
+
+                <article className="control-tower-memory-card">
+                  <div className="control-tower-title-row">
+                    <h3>Open loops</h3>
+                    <span className="pill control-tower-pill-neutral">{partner?.openLoops.length ?? 0} tracked</span>
+                  </div>
+                  <div className="control-tower-partner-loop-list">
+                    {(partner?.openLoops ?? []).slice(0, 4).map((loop) => (
+                      <article key={loop.id} className="control-tower-partner-loop-card">
+                        <div className="control-tower-card-top">
+                          <div>
+                            <span className="control-tower-room-name">{loop.title}</span>
+                            <span className="control-tower-room-project">{loop.source}</span>
+                          </div>
+                          <span className={`pill control-tower-pill-${openLoopTone(loop.status)}`}>{loop.status}</span>
+                        </div>
+                        <p>{loop.summary}</p>
+                        <div className="control-tower-memory-list">
+                          <span>next: {loop.next}</span>
+                          <span>decision: {loop.decisionNeeded || "None"}</span>
+                          <span>updated: {formatTimestamp(loop.updatedAt)}</span>
+                        </div>
+                        <div className="control-tower-partner-loop-actions">
+                          <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerOpenLoop(loop.id, "delegated", { note: "Redirected from Control Tower.", successMessage: `${loop.title} redirected.` })}>
+                            Redirect
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerOpenLoop(loop.id, "paused", { note: "Paused from Control Tower.", successMessage: `${loop.title} paused.` })}>
+                            Pause loop
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerOpenLoop(loop.id, "resolved", { note: "Resolved from Control Tower.", successMessage: `${loop.title} resolved.` })}>
+                            Resolve
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    {!(partner?.openLoops ?? []).length ? <div className="staff-note staff-note-ok">No owner-facing open loops are active right now.</div> : null}
+                  </div>
+                </article>
+
+                <article className="control-tower-memory-card">
+                  <div className="control-tower-title-row">
+                    <h3>Partner programs</h3>
+                    <span className="pill control-tower-pill-neutral">{partner?.programs.length ?? 0} programs</span>
+                  </div>
+                  <div className="control-tower-memory-list">
+                    {(partner?.programs ?? []).slice(0, 5).map((program) => (
+                      <span key={program.id}>
+                        <strong>{program.label}:</strong> {program.trigger}
+                      </span>
+                    ))}
+                    {!(partner?.programs ?? []).length ? <span>Partner programs will appear once the latest brief is generated.</span> : null}
+                  </div>
+                </article>
+              </div>
+            </section>
+
             <section className="card staff-console-card control-tower-section-card">
               <div className="control-tower-section-header">
                 <div>

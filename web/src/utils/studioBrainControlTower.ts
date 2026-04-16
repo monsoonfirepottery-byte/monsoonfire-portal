@@ -69,6 +69,9 @@ export type ControlTowerBoardRow = {
   last_update: string | null;
   roomId: string | null;
   sessionName: string | null;
+  contactReason?: string | null;
+  verifiedContext?: string[];
+  decisionNeeded?: string | null;
 };
 
 export type ControlTowerChannelSummary = {
@@ -189,6 +192,88 @@ export type ControlTowerStartupScorecard = {
   recommendations: string[];
 };
 
+export type PartnerInitiativeState =
+  | "quiet"
+  | "monitoring"
+  | "briefing"
+  | "executing"
+  | "cooldown"
+  | "waiting_on_owner";
+
+export type PartnerOpenLoopStatus = "open" | "delegated" | "paused" | "resolved";
+export type PartnerCheckinAction = "ack" | "snooze" | "pause" | "redirect" | "why_this" | "continue";
+
+export type PartnerProgram = {
+  id: "daily_brief" | "open_loops_follow_up" | "exception_escalation" | "idle_time_momentum" | "weekly_reflection";
+  label: string;
+  trigger: string;
+  scope: string;
+  approvalGate: string;
+  escalationRule: string;
+  cooldown: string;
+  stopCondition: string;
+};
+
+export type PartnerOpenLoop = {
+  id: string;
+  title: string;
+  status: PartnerOpenLoopStatus;
+  summary: string;
+  next: string;
+  source: string;
+  updatedAt: string;
+  roomId: string | null;
+  sessionName: string | null;
+  decisionNeeded: string | null;
+  verifiedContext: string[];
+  evidence: string[];
+};
+
+export type PartnerBrief = {
+  schema: "studio-brain.partner-brief.v1";
+  generatedAt: string;
+  persona: {
+    id: string;
+    displayName: string;
+    relationshipModel: "chief_of_staff";
+    proactivity: "active";
+    primarySurface: "codex_desktop_thread";
+    sourceOfTruth: "control_tower";
+    toneTraits: string[];
+    summary: string;
+  };
+  summary: string;
+  initiativeState: PartnerInitiativeState;
+  lastMeaningfulContactAt: string | null;
+  nextCheckInAt: string | null;
+  cooldownUntil: string | null;
+  needsOwnerDecision: boolean;
+  contactReason: string;
+  verifiedContext: string[];
+  singleDecisionNeeded: string | null;
+  recommendedFocus: string;
+  dailyNote: string;
+  openLoops: PartnerOpenLoop[];
+  idleBudget: {
+    policy: "one_task_at_a_time";
+    maxConcurrentTasks: number;
+    maxAttemptsPerLoop: number;
+    rankedBacklog: string[];
+    verifyBeforeReport: boolean;
+    contactOnlyOnMeaningfulChange: boolean;
+  };
+  programs: PartnerProgram[];
+  collaborationCommands: Array<{
+    command: "pause" | "redirect" | "why this" | "continue";
+    description: string;
+  }>;
+  artifacts: {
+    latestBriefPath: string;
+    checkinsPath: string;
+    openLoopsPath: string;
+  };
+};
+
 export type ControlTowerRoomSummary = {
   id: string;
   name: string;
@@ -203,6 +288,9 @@ export type ControlTowerRoomSummary = {
   nextActions: ControlTowerNextAction[];
   sessionNames: string[];
   summary: string;
+  contactReason?: string | null;
+  verifiedContext?: string[];
+  decisionNeeded?: string | null;
 };
 
 export type ControlTowerServiceCard = {
@@ -271,6 +359,7 @@ export type ControlTowerState = {
   approvals: ControlTowerApprovalItem[];
   memoryBrief: ControlTowerMemoryBrief;
   startupScorecard: ControlTowerStartupScorecard | null;
+  partner: PartnerBrief | null;
   events: ControlTowerEvent[];
   recentChanges: ControlTowerEvent[];
   actions: ControlTowerNextAction[];
@@ -414,6 +503,14 @@ export async function fetchControlTowerState(options: FetchOptions): Promise<Con
   return payload.state;
 }
 
+export async function fetchControlTowerPartnerBrief(
+  options: FetchOptions,
+): Promise<{ partner: PartnerBrief | null; checkins: Array<{ action: PartnerCheckinAction; occurredAt: string; note: string | null }> }> {
+  return fetchControlTowerJson("/api/control-tower/partner/latest", options, {
+    method: "GET",
+  });
+}
+
 function parseSseBuffer(
   buffer: string,
   onEvent: (event: ControlTowerEvent) => void,
@@ -552,6 +649,36 @@ export async function ackControlTowerOverseer(note: string, options: FetchOption
   return fetchControlTowerJson("/api/control-tower/overseer/ack", options, {
     method: "POST",
     body: JSON.stringify({ note }),
+  });
+}
+
+export async function sendPartnerCheckinAction(
+  action: PartnerCheckinAction,
+  options: FetchOptions,
+  payload?: { note?: string; snoozeMinutes?: number },
+): Promise<{ ok: boolean; partner: PartnerBrief | null }> {
+  return fetchControlTowerJson("/api/control-tower/partner/checkins", options, {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      note: payload?.note,
+      snoozeMinutes: payload?.snoozeMinutes,
+    }),
+  });
+}
+
+export async function updatePartnerOpenLoopStatus(
+  loopId: string,
+  status: "delegated" | "paused" | "resolved",
+  options: FetchOptions,
+  payload?: { note?: string },
+): Promise<{ ok: boolean; partner: PartnerBrief | null; openLoop: PartnerOpenLoop | null }> {
+  return fetchControlTowerJson(`/api/control-tower/partner/open-loops/${encodeURIComponent(loopId)}`, options, {
+    method: "POST",
+    body: JSON.stringify({
+      status,
+      note: payload?.note,
+    }),
   });
 }
 

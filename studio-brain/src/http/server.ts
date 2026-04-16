@@ -78,6 +78,21 @@ import type {
   ControlTowerState,
 } from "../controlTower/types";
 import { draftDiscordSupportReply, getSupportAgentProfile } from "../supportOps/discord";
+import type { AgentRuntimeSummary, RunLedgerEvent } from "../agentRuntime/contracts";
+import {
+  appendAgentRuntimeEvent,
+  listAgentRuntimeSummaries,
+  readAgentRuntimeEvents,
+  readLatestAgentRuntimeSummary,
+  writeAgentRuntimeSummary,
+} from "../agentRuntime/files";
+import type { PartnerBrief, PartnerCheckinAction } from "../partner/contracts";
+import { readPartnerCheckins } from "../partner/files";
+import {
+  deriveAndPersistPartnerBrief,
+  recordPartnerCheckin,
+  updatePartnerOpenLoop,
+} from "../partner/service";
 
 const CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"] as const;
 const CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"] as const;
@@ -140,6 +155,21 @@ function toStringList(value: unknown, maxItems = 64): string[] {
     .map((entry) => toTrimmedString(entry))
     .filter(Boolean)
     .slice(0, Math.max(1, maxItems));
+}
+
+function isPartnerCheckinAction(value: unknown): value is PartnerCheckinAction {
+  return (
+    value === "ack"
+    || value === "snooze"
+    || value === "pause"
+    || value === "redirect"
+    || value === "why_this"
+    || value === "continue"
+  );
+}
+
+function isPartnerOpenLoopStatus(value: unknown): value is "delegated" | "paused" | "resolved" {
+  return value === "delegated" || value === "paused" || value === "resolved";
 }
 
 function readJsonFile<T>(path: string): T | null {
@@ -309,6 +339,7 @@ function readControlTowerStartupScorecard(repoRoot: string): ControlTowerStartup
   const supportingSignals = toObjectRecord(payload.supportingSignals);
   const toolcalls = toObjectRecord(supportingSignals.toolcalls);
   const coverage = toObjectRecord(payload.coverage);
+  const launcherCoverage = toObjectRecord(payload.launcherCoverage);
   const rubric = toObjectRecord(payload.rubric);
 
   return {
@@ -346,12 +377,55 @@ function readControlTowerStartupScorecard(repoRoot: string): ControlTowerStartup
     coverage: {
       gaps: toStringList(coverage.gaps, 8),
     },
+    launcherCoverage: {
+      liveStartupSamples: toBoundedInt(launcherCoverage.liveStartupSamples, 0, 0, 1_000_000),
+      requiredLiveStartupSamples: toBoundedInt(launcherCoverage.requiredLiveStartupSamples, 5, 1, 1_000_000),
+      trustworthy: toBooleanFlag(toTrimmedString(String(launcherCoverage.trustworthy ?? "")), false),
+    },
     rubric: {
       overallScore: toNullableNumber(rubric.overallScore),
       grade: toTrimmedString(rubric.grade) || "n/a",
     },
     recommendations: toStringList(payload.recommendations, 8),
   };
+}
+
+function buildAgentRuntimeAttention(agentRuntime: AgentRuntimeSummary | null): Array<{
+  id: string;
+  title: string;
+  why: string;
+  ageMinutes: number | null;
+  severity: "info" | "warning" | "critical";
+  actionLabel: string;
+  target: ControlTowerNextAction["target"];
+}> {
+  if (!agentRuntime) return [];
+  if (agentRuntime.status !== "blocked" && agentRuntime.status !== "failed") return [];
+  return [
+    {
+      id: `agent-runtime-attention:${agentRuntime.runId}`,
+      title: `Inspect ${agentRuntime.title}`,
+      why: clipText(agentRuntime.activeBlockers[0] || "The background runtime is blocked and needs an explicit next move.", 180),
+      ageMinutes: ageMinutesSince(agentRuntime.updatedAt),
+      severity: agentRuntime.status === "failed" ? "critical" : "warning",
+      actionLabel: "Inspect runtime",
+      target: { type: "ops", action: "agent-runtime" },
+    },
+  ];
+}
+
+function buildAgentRuntimeNextActions(agentRuntime: AgentRuntimeSummary | null): ControlTowerNextAction[] {
+  if (!agentRuntime) return [];
+  return [
+    {
+      id: `agent-runtime-next:${agentRuntime.runId}`,
+      title: clipText(agentRuntime.boardRow?.next || "Inspect background runtime", 120),
+      why: clipText(agentRuntime.activeBlockers[0] || agentRuntime.goal || "Background runtime state changed.", 180),
+      ageMinutes: ageMinutesSince(agentRuntime.updatedAt),
+      actionLabel: "Open runtime",
+      target: { type: "ops", action: "agent-runtime" },
+    },
+  ];
 }
 
 function buildControlTowerApprovals(
@@ -385,6 +459,7 @@ function buildControlTowerApprovals(
 function buildSyntheticControlTowerEvents(
   memoryBrief: ControlTowerMemoryBrief,
   approvals: ControlTowerApprovalItem[],
+  partner: PartnerBrief | null = null,
 ): ControlTowerEvent[] {
   const output: ControlTowerEvent[] = [];
 
@@ -487,6 +562,33 @@ function buildSyntheticControlTowerEvents(
       });
     });
 
+  if (partner) {
+    output.push({
+      id: `partner-brief:${partner.generatedAt}`,
+      at: partner.generatedAt,
+      kind: "operator",
+      type: "task.updated",
+      runId: null,
+      agentId: partner.persona.id,
+      channel: "codex",
+      occurredAt: partner.generatedAt,
+      severity: partner.needsOwnerDecision ? "warning" : "info",
+      title: partner.needsOwnerDecision ? "Chief-of-staff decision waiting" : "Chief-of-staff brief refreshed",
+      summary: clipText(partner.summary, 220),
+      actor: partner.persona.displayName,
+      roomId: partner.openLoops[0]?.roomId ?? null,
+      serviceId: null,
+      actionLabel: "Review partner brief",
+      sourceAction: "control_tower.partner_brief",
+      payload: {
+        initiativeState: partner.initiativeState,
+        needsOwnerDecision: partner.needsOwnerDecision,
+        nextCheckInAt: partner.nextCheckInAt,
+        recommendedFocus: partner.recommendedFocus,
+      },
+    });
+  }
+
   return output;
 }
 
@@ -542,6 +644,7 @@ function shouldSurfaceMemoryNextMoves(
   if (!startupScorecard) return false;
 
   if (toTrimmedString(startupScorecard.latest.sample.status).toLowerCase() !== "pass") return true;
+  if (startupScorecard.launcherCoverage.trustworthy !== true) return true;
   if (
     startupScorecard.metrics.readyRate != null &&
     startupScorecard.metrics.readyRate < 0.85
@@ -593,6 +696,9 @@ function buildMemoryActionNextMoves(
         : "",
       startupScorecard?.metrics.blockedContinuityRate != null && startupScorecard.metrics.blockedContinuityRate > 0.05
         ? `blocked continuity ${Math.round(startupScorecard.metrics.blockedContinuityRate * 100)}%`
+        : "",
+      startupScorecard && startupScorecard.launcherCoverage.trustworthy !== true
+        ? `live startup coverage ${startupScorecard.launcherCoverage.liveStartupSamples}/${startupScorecard.launcherCoverage.requiredLiveStartupSamples}`
         : "",
       toTrimmedString(memoryBrief.consolidation.actionabilityStatus).toLowerCase() &&
       toTrimmedString(memoryBrief.consolidation.actionabilityStatus).toLowerCase() !== "passed"
@@ -840,6 +946,118 @@ function buildMemoryHealthNextMoves(memoryHealth: ControlTowerMemoryHealth | nul
   }));
 }
 
+function buildPartnerAttention(partner: PartnerBrief | null): Array<{
+  id: string;
+  title: string;
+  why: string;
+  ageMinutes: number | null;
+  severity: "info" | "warning" | "critical";
+  actionLabel: string;
+  target: { type: "ops"; action: "partner" };
+}> {
+  if (!partner) return [];
+  if (partner.needsOwnerDecision) {
+    return [
+      {
+        id: "attention:partner:decision",
+        title: "Chief-of-staff decision waiting",
+        why: clipText(partner.summary, 180),
+        ageMinutes: null,
+        severity: "warning",
+        actionLabel: "Review partner brief",
+        target: { type: "ops", action: "partner" },
+      },
+    ];
+  }
+  if (partner.initiativeState === "cooldown") {
+    return [];
+  }
+  if ((partner.openLoops ?? []).some((entry) => entry.status === "open")) {
+    return [
+      {
+        id: "attention:partner:open-loop",
+        title: "Chief-of-staff open loop needs review",
+        why: clipText(partner.contactReason, 180),
+        ageMinutes: null,
+        severity: "info",
+        actionLabel: "Review partner brief",
+        target: { type: "ops", action: "partner" },
+      },
+    ];
+  }
+  return [];
+}
+
+function buildPartnerNextMoves(partner: PartnerBrief | null): ControlTowerNextAction[] {
+  if (!partner) return [];
+  const focus = clipText(partner.recommendedFocus || partner.contactReason, 160);
+  const actionLabel = partner.needsOwnerDecision ? "Review partner brief" : "Review cadence";
+  return [
+    {
+      id: "partner:review",
+      title: partner.needsOwnerDecision ? "Review chief-of-staff decision" : "Review chief-of-staff brief",
+      why: focus,
+      ageMinutes: null,
+      actionLabel,
+      target: { type: "ops", action: "partner" },
+    },
+  ];
+}
+
+function applyPartnerSignalsToRooms(
+  rooms: ControlTowerState["rooms"],
+  partner: PartnerBrief | null,
+): ControlTowerState["rooms"] {
+  if (!partner) return rooms;
+  const loopsByRoom = new Map<string, PartnerBrief["openLoops"][number]>();
+  for (const loop of partner.openLoops) {
+    if (!loop.roomId || loopsByRoom.has(loop.roomId)) continue;
+    loopsByRoom.set(loop.roomId, loop);
+  }
+  return rooms.map((room) => {
+    const loop = loopsByRoom.get(room.id);
+    if (!loop) return room;
+    return {
+      ...room,
+      contactReason: partner.contactReason,
+      verifiedContext: loop.verifiedContext,
+      decisionNeeded: loop.decisionNeeded,
+    };
+  });
+}
+
+function applyPartnerSignalsToBoard(
+  board: ControlTowerState["board"],
+  partner: PartnerBrief | null,
+): ControlTowerState["board"] {
+  if (!partner) return board;
+  const loopsByRoom = new Map<string, PartnerBrief["openLoops"][number]>();
+  for (const loop of partner.openLoops) {
+    if (!loop.roomId || loopsByRoom.has(loop.roomId)) continue;
+    loopsByRoom.set(loop.roomId, loop);
+  }
+  return board.map((row, index) => {
+    const loop = row.roomId ? loopsByRoom.get(row.roomId) : null;
+    if (loop) {
+      return {
+        ...row,
+        contactReason: partner.contactReason,
+        verifiedContext: loop.verifiedContext,
+        decisionNeeded: loop.decisionNeeded,
+      };
+    }
+    if (index === 0 && !row.roomId) {
+      return {
+        ...row,
+        contactReason: partner.contactReason,
+        verifiedContext: partner.verifiedContext,
+        decisionNeeded: partner.singleDecisionNeeded,
+      };
+    }
+    return row;
+  });
+}
+
 function enrichControlTowerState(
   state: ControlTowerState,
   syntheticEvents: ControlTowerEvent[],
@@ -847,6 +1065,8 @@ function enrichControlTowerState(
   memoryBrief: ControlTowerMemoryBrief,
   startupScorecard: ControlTowerStartupScorecard | null,
   memoryHealth: ControlTowerMemoryHealth | null,
+  agentRuntime: AgentRuntimeSummary | null,
+  partner: PartnerBrief | null,
 ): ControlTowerState {
   const mergedEvents = [...syntheticEvents, ...state.events]
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
@@ -864,26 +1084,60 @@ function enrichControlTowerState(
       target: approval.target,
     }));
   const memoryAttention = buildMemoryHealthAttention(memoryHealth);
+  const agentRuntimeAttention = buildAgentRuntimeAttention(agentRuntime);
+  const partnerAttention = buildPartnerAttention(partner);
   const memoryNextMoves = buildMemoryActionNextMoves(memoryBrief, startupScorecard);
   const memoryHealthMoves = buildMemoryHealthNextMoves(memoryHealth);
-  const mergedActions = dedupeNextActions([...memoryHealthMoves, ...memoryNextMoves, ...state.actions], 6);
+  const agentRuntimeMoves = buildAgentRuntimeNextActions(agentRuntime);
+  const partnerMoves = buildPartnerNextMoves(partner);
+  const mergedActions = dedupeNextActions(
+    [...partnerMoves, ...agentRuntimeMoves, ...memoryHealthMoves, ...memoryNextMoves, ...state.actions],
+    6,
+  );
+  const mergedBoard = agentRuntime?.boardRow
+    ? [
+        {
+          roomId: null,
+          sessionName: null,
+          ...agentRuntime.boardRow,
+        },
+        ...state.board.filter((row) => row.id !== agentRuntime.boardRow.id),
+      ].slice(0, 8)
+    : state.board;
+  const nextRooms = applyPartnerSignalsToRooms(state.rooms, partner);
+  const nextBoard = applyPartnerSignalsToBoard(mergedBoard, partner);
 
   return {
     ...state,
+    rooms: nextRooms,
     approvals,
     memoryBrief,
     startupScorecard,
     memoryHealth,
+    agentRuntime,
+    partner,
+    board: nextBoard,
     events: mergedEvents,
     recentChanges: mergedEvents.slice(0, 6),
     actions: mergedActions,
     counts: {
       ...state.counts,
-      needsAttention: state.counts.needsAttention + approvalAttention.length + memoryAttention.length,
+      needsAttention:
+        state.counts.needsAttention
+        + approvalAttention.length
+        + memoryAttention.length
+        + agentRuntimeAttention.length
+        + partnerAttention.length,
     },
     overview: {
       ...state.overview,
-      needsAttention: [...memoryAttention, ...approvalAttention, ...state.overview.needsAttention].slice(0, 6),
+      needsAttention: [
+        ...partnerAttention,
+        ...agentRuntimeAttention,
+        ...memoryAttention,
+        ...approvalAttention,
+        ...state.overview.needsAttention,
+      ].slice(0, 6),
       goodNextMoves: mergedActions,
       recentEvents: mergedEvents.slice(0, 8),
     },
@@ -1471,6 +1725,19 @@ export function startHttpServer(params: {
     const initialState = deriveControlTowerState(raw, audits, { approvals });
     const memoryBrief = readControlTowerMemoryBrief(resolvedControlTowerRepoRoot, initialState.memoryBrief);
     const startupScorecard = readControlTowerStartupScorecard(resolvedControlTowerRepoRoot);
+    const agentRuntime = readLatestAgentRuntimeSummary(resolvedControlTowerRepoRoot);
+    const stateWithMemory = deriveControlTowerState(raw, audits, {
+      approvals,
+      memoryBrief,
+    });
+    const partner = deriveAndPersistPartnerBrief({
+      repoRoot: resolvedControlTowerRepoRoot,
+      generatedAt: raw.generatedAt,
+      memoryBrief,
+      rooms: stateWithMemory.rooms,
+      approvals,
+      agentRuntime,
+    });
     let memoryHealth: ControlTowerMemoryHealth | null = null;
     if (memoryService) {
       try {
@@ -1480,17 +1747,16 @@ export function startHttpServer(params: {
         logger.warn(`control tower memory health unavailable: ${message}`);
       }
     }
-    const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals);
+    const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals, partner);
     const state = enrichControlTowerState(
-      deriveControlTowerState(raw, audits, {
-        approvals,
-        memoryBrief,
-      }),
+      stateWithMemory,
       syntheticEvents,
       approvals,
       memoryBrief,
       startupScorecard,
       memoryHealth,
+      agentRuntime,
+      partner,
     );
     return { raw, state, audits };
   };
@@ -1974,6 +2240,53 @@ export function startHttpServer(params: {
           statusCode = 201;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(JSON.stringify({ ok: true, memory }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/consolidate") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+
+        try {
+          const payload = toObjectRecord(await readJsonBody(req));
+          const result = await memoryService.consolidate(payload);
+          try {
+            await appendControlTowerAudit(
+              auth.principal,
+              "studio_brain.memory_consolidated",
+              "Memory consolidation executed via the Studio Brain HTTP control plane.",
+              {
+                endpoint: "/api/memory/consolidate",
+                mode: toTrimmedString(payload.mode) || "idle",
+                runId: toTrimmedString(payload.runId) || null,
+                tenantId: toTrimmedString(payload.tenantId) || null,
+                focusAreas: toStringList(payload.focusAreas, 12),
+                requestOrigin: toTrimmedString(payload.requestOrigin) || null,
+                requestedTransport: toTrimmedString(payload.requestedTransport) || null,
+                transport: toTrimmedString(payload.transport) || null,
+                status: toTrimmedString((result as Record<string, unknown>)?.status) || null,
+              },
+            );
+          } catch (auditError) {
+            logger.warn(
+              `memory consolidation audit append failed: ${auditError instanceof Error ? auditError.message : String(auditError)}`,
+            );
+          }
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const isValidation = error instanceof MemoryValidationError;
@@ -4467,6 +4780,102 @@ export function startHttpServer(params: {
         return;
       }
 
+      if (method === "GET" && url.pathname === "/api/control-tower/partner/latest") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const { state } = await readControlTowerSnapshot();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            partner: state.partner,
+            checkins: readPartnerCheckins(resolvedControlTowerRepoRoot, 24),
+          }),
+        );
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/control-tower/partner/brief") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const { state } = await readControlTowerSnapshot();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, partner: state.partner }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/agent-runtime/latest") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const summary = readLatestAgentRuntimeSummary(resolvedControlTowerRepoRoot);
+        const events = summary ? readAgentRuntimeEvents(resolvedControlTowerRepoRoot, summary.runId, 24) : [];
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, summary, events }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/agent-runtime/runs") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const limitRaw = Number(url.searchParams.get("limit") ?? "12");
+        const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 50)) : 12;
+        const runs = listAgentRuntimeSummaries(resolvedControlTowerRepoRoot, limit);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, runs }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/agent-runtime/events") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const event = body.event && typeof body.event === "object" ? (body.event as RunLedgerEvent) : null;
+        const summary = body.summary && typeof body.summary === "object" ? (body.summary as AgentRuntimeSummary) : null;
+        if (!event || !toTrimmedString(event.runId) || !toTrimmedString(event.type)) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "event.runId and event.type are required." }));
+          return;
+        }
+        appendAgentRuntimeEvent(resolvedControlTowerRepoRoot, event);
+        if (summary && toTrimmedString(summary.runId)) {
+          writeAgentRuntimeSummary(resolvedControlTowerRepoRoot, summary);
+        }
+        statusCode = 202;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, accepted: true, runId: event.runId }));
+        return;
+      }
+
       if (method === "GET" && url.pathname === "/api/control-tower/rooms") {
         const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
         if (!auth.ok) {
@@ -4621,6 +5030,110 @@ export function startHttpServer(params: {
           void pushSnapshot();
         }, CONTROL_TOWER_EVENT_STREAM_POLL_MS);
         void pushSnapshot();
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/control-tower/partner/checkins") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const snapshot = await readControlTowerSnapshot();
+        if (!snapshot.state.partner) {
+          statusCode = 503;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "partner brief is unavailable" }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const action = toTrimmedString(body.action);
+        if (!isPartnerCheckinAction(action)) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "action must be one of ack, snooze, pause, redirect, why_this, or continue." }));
+          return;
+        }
+        const partner = recordPartnerCheckin({
+          repoRoot: resolvedControlTowerRepoRoot,
+          brief: snapshot.state.partner,
+          actorId: auth.principal?.uid ?? "staff:unknown",
+          action,
+          note: toTrimmedString(body.note) || undefined,
+          snoozeMinutes: toNullableNumber(body.snoozeMinutes) ?? undefined,
+        });
+        await appendControlTowerAudit(
+          auth.principal,
+          "studio_ops.control_tower.partner_checkin",
+          `Recorded chief-of-staff command ${action}.`,
+          {
+            action,
+            note: toTrimmedString(body.note) || null,
+            snoozeMinutes: toNullableNumber(body.snoozeMinutes),
+          },
+        );
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, partner }));
+        return;
+      }
+
+      const controlTowerPartnerOpenLoopMatch =
+        method === "POST" ? url.pathname.match(/^\/api\/control-tower\/partner\/open-loops\/([^/]+)$/) : null;
+      if (controlTowerPartnerOpenLoopMatch) {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const snapshot = await readControlTowerSnapshot();
+        if (!snapshot.state.partner) {
+          statusCode = 503;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "partner brief is unavailable" }));
+          return;
+        }
+        const loopId = decodeURIComponent(controlTowerPartnerOpenLoopMatch[1] || "");
+        const body = await readJsonBody(req);
+        const status = toTrimmedString(body.status);
+        if (!isPartnerOpenLoopStatus(status)) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "status must be delegated, paused, or resolved." }));
+          return;
+        }
+        const loopExists = snapshot.state.partner.openLoops.some((entry) => entry.id === loopId);
+        if (!loopExists) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `open loop ${loopId} not found` }));
+          return;
+        }
+        const partner = updatePartnerOpenLoop({
+          repoRoot: resolvedControlTowerRepoRoot,
+          brief: snapshot.state.partner,
+          loopId,
+          status,
+          actorId: auth.principal?.uid ?? "staff:unknown",
+          note: toTrimmedString(body.note) || undefined,
+        });
+        await appendControlTowerAudit(
+          auth.principal,
+          "studio_ops.control_tower.partner_open_loop_updated",
+          `Marked ${loopId} as ${status}.`,
+          {
+            loopId,
+            status,
+            note: toTrimmedString(body.note) || null,
+          },
+        );
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, partner, openLoop: partner.openLoops.find((entry) => entry.id === loopId) ?? null }));
         return;
       }
 

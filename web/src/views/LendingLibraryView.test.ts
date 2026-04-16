@@ -70,7 +70,7 @@ describe("Lending library normalizers", () => {
     });
   });
 
-  it("uses an explicit pending placeholder for both pending-review and missing-cover items", () => {
+  it("shows stored cover art for member-facing pending-review items", () => {
     expect(
       resolveMemberLibraryCoverDisplay({
         title: "Pending Review",
@@ -79,12 +79,12 @@ describe("Lending library normalizers", () => {
         needsCoverReview: true,
       })
     ).toEqual({
-      kind: "placeholder",
-      label: "Cover pending",
-      accent: "Staff review",
-      ariaLabel: "Pending Review cover unavailable",
+      kind: "cover",
+      coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
     });
+  });
 
+  it("uses an explicit pending placeholder when no cover art exists yet", () => {
     expect(
       resolveMemberLibraryCoverDisplay({
         title: "Missing Cover",
@@ -101,6 +101,17 @@ describe("Lending library normalizers", () => {
   });
 
   it("derives member-facing pending badges from incomplete metadata signals", () => {
+    expect(
+      deriveMemberLibraryPendingBadges({
+        title: "ISBN 9780596007126",
+        source: "manual",
+        detailStatus: "sparse",
+        coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
+        coverQualityStatus: "needs_review",
+        needsCoverReview: true,
+      })
+    ).toEqual(["Details pending", "Staff finishing metadata"]);
+
     expect(
       deriveMemberLibraryPendingBadges({
         title: "ISBN 9780596007126",

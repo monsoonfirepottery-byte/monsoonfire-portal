@@ -47,7 +47,7 @@ Optional deep probe:
 | Area | Route/View | Smoke check | Functionality check | UX check |
 | --- | --- | --- | --- | --- |
 | Dashboard | `dashboard` | Hero and cards render | `Open My Pieces` and `Message the studio` nav actions work | Studio updates and chiplets are legible in all supported themes |
-| Kiln Rentals | `kilnRentals` | Overview card renders | Primary CTA opens check-in/queue flow | Queue labels readable on mobile and desktop |
+| Firing Services | `kilnRentals` | Overview card renders | Primary CTA opens check-in/queue flow | Queue labels readable on mobile and desktop |
 | Ware Check-in | `reservations` | Form renders | Submit-path validation + success path for shelf purchase, whole kiln, and community shelf (including two-step confirm/cancel) | Field errors are readable and anchored near inputs |
 | View the Queues | `kilnLaunch` | Queue lane loads | Filter/tab switches update content | Queue status colors and labels remain clear |
 | Firings | `kiln` | Schedule view renders | Refresh/filter controls update timeline | Timeline remains readable with no overlapping text |

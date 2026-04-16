@@ -1,18 +1,32 @@
 # Release Candidate Evidence Pack
 
-## Current RC Refresh (2026-03-18)
+## Current RC Refresh (2026-04-15)
 - Canonical launch-readiness entrypoint is [docs/RELEASE_COMMAND_CENTER.md](RELEASE_COMMAND_CENTER.md).
 - Portal and website are both live, and `main` currently has no open PRs.
 - RC exit remains a hard gate until notification reliability evidence, security rotation proof, and sign-off are all complete.
 - Current RC auth baseline is Google, Email/Password, Email Link, and Microsoft.
 - Facebook and Apple provider expansion are explicitly deferred from this RC unless business requirements change.
 - Feature-growth work outside deploy/cutover, auth readiness, smoke/promotion gates, accessibility guardrails, and analytics/policy parity is frozen out of this RC.
+- Fresh live evidence was captured on 2026-04-15 under:
+  - `output/playwright/portal/prod/portal-smoke-summary.json`
+  - `output/playwright/prod/smoke-summary.json`
+  - `output/playwright/prod-phase1-website/smoke-summary.json`
+  - `output/qa/portal-authenticated-canary-rc1.json`
+  - `output/qa/lighthouse-live-2026-04-15T16-38-08Z/`
+  - `docs/audits/live-surface-audit-2026-04-15.md`
 
-## Current blockers (2026-03-18)
+## Current blockers (2026-04-15)
+- `RC issue 1`: Google login auth on `https://portal.monsoonfire.com` does not cycle users cleanly back into the live portal session.
+  - User report is now backed by direct live evidence: the production Google sign-in handoff redirects through `https://monsoonfire-portal.firebaseapp.com/__/auth/handler`, and the live bundle does not contain `auth.monsoonfire.com`.
+  - A popup-first fallback mitigation is now deployed on the direct portal surface, but this remains a release-candidate auth blocker until operator verification shows a successful Google round-trip on the live portal.
 - Notification reliability evidence is still incomplete.
 - Security rotation proof is still incomplete.
 
 ## Build + CI Evidence
+- [x] Live portal public smoke pass (2026-04-15) -> `output/playwright/portal/prod/portal-smoke-summary.json`
+- [x] Live website public smoke pass (2026-04-15) -> `output/playwright/prod/smoke-summary.json`
+- [x] Live authenticated portal canary pass (2026-04-15) -> `output/qa/portal-authenticated-canary-rc1.json`
+- [x] Live Lighthouse sweep refreshed (2026-04-15) -> `output/qa/lighthouse-live-2026-04-15T16-38-08Z/`
 - [x] `Smoke Tests` workflow pass ([run 23268174209](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174209))
 - [x] `Lighthouse Audit` workflow pass ([run 23268174183](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174183))
 - [x] Local LHCI reproducibility pass (2026-02-22, sandbox-safe chrome flags)
@@ -35,7 +49,15 @@
 - [x] Functions cold-start profile snapshot captured (`npm run functions:profile:coldstart -- --runs 9`) -> `output/functions-coldstart-profile/latest.json`
 - [x] Alpha preflight script run (`node ./scripts/ps1-run.mjs scripts/alpha-preflight.ps1`) on head `62eba15dc593cb1c1422183e4d314238859dca51`
 
-## Current notes (2026-03-18)
+## Current notes (2026-04-15)
+- Live website smoke still passes structurally, but direct live HTML inspection shows the production website is serving legacy `monsoonfire.kilnfire.com` portal links on the main public pages.
+- The public website was redeployed later on 2026-04-15 with an explicit phase-aware handoff hold, so `monsoonfire.kilnfire.com` remains the intentional public website target until phase 2 cutover approval.
+- Live authenticated portal canary passed with refresh-token auth using the staff automation account, so current route/navigation regressions are concentrated at the public handoff and Google auth entry path rather than the internal portal shell.
+- Live Lighthouse scores on 2026-04-15 were:
+  - portal root: performance `66`, accessibility `100`, best practices `100`, SEO `91`
+  - website pages: performance `69-75`, accessibility `94-98`, best practices `100`, SEO `100`
+- The live Google sign-in click-through currently uses the Firebase app handler domain instead of the documented custom auth handler domain, which is the strongest concrete lead on the reported failed round-trip.
+- A live phase-1 website smoke run now verifies the intentional legacy handoff host on `https://monsoonfire.com` core pages via `output/playwright/prod-phase1-website/smoke-summary.json`.
 - The live portal cutover verifier now confirms `/.well-known/apple-app-site-association` returns `200` from `https://portal.monsoonfire.com`.
 - The website production smoke needed a smoke-runner selector refresh from `pricing` to `payments` to match the current support taxonomy.
 - Local website production smoke required a temporary `STUDIO_BRAIN_INTEGRITY_OVERRIDE` because the smoke runner is coupled to an unrelated Studio Brain integrity manifest; the website behavior itself passed once the unrelated guard was bypassed.

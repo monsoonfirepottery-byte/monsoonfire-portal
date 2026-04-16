@@ -88,16 +88,16 @@ async function openWareCheckin(page, clickTracked) {
 
   const sectionButton = page
     .locator("button.nav-section-title", {
-      hasText: new RegExp(`^${regexSafe("Kiln Rentals")}$`, "i"),
+      hasText: new RegExp(`^${regexSafe("Firing Services")}$`, "i"),
     })
     .first();
   if ((await sectionButton.count()) === 0) {
-    throw new Error("Ware check-in entry point unavailable (missing dashboard CTA and Kiln Rentals nav section).");
+    throw new Error("Ware check-in entry point unavailable (missing dashboard CTA and Firing Services nav section).");
   }
 
   const expanded = (await sectionButton.getAttribute("aria-expanded")) === "true";
   if (!expanded) {
-    await clickTracked(sectionButton, "Open Kiln Rentals nav section", { timeout: 12000 });
+    await clickTracked(sectionButton, "Open Firing Services nav section", { timeout: 12000 });
     await page.waitForTimeout(250);
   }
 
@@ -109,7 +109,7 @@ async function openWareCheckin(page, clickTracked) {
         .first()
     : page.getByRole("button", { name: /^Ware Check-in$/i }).first();
   if ((await wareCheckinButton.count()) === 0) {
-    throw new Error("Ware Check-in nav button not found under Kiln Rentals.");
+    throw new Error("Ware Check-in nav button not found under Firing Services.");
   }
   await clickTracked(wareCheckinButton, "Open ware check-in (nav)", { timeout: 12000 });
 }

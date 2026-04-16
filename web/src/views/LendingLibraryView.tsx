@@ -261,7 +261,7 @@ function formatAvailability(item: LibraryItem) {
 
 function renderMemberLibraryCover(item: LibraryItem) {
   const coverDisplay = resolveMemberLibraryCoverDisplay(item);
-  if (coverDisplay.kind === "approved") {
+  if (coverDisplay.kind === "cover") {
     return <img className="library-cover" src={coverDisplay.coverUrl} alt={item.title} />;
   }
   return (
@@ -337,6 +337,14 @@ function formatTechniqueLabel(raw: string): string {
   const cleaned = raw.trim();
   if (!cleaned) return "Technique";
   return capitalizeWords(cleaned);
+}
+
+function isPlaceholderLibraryBrowseTitle(value: unknown): boolean {
+  return typeof value === "string" && /^isbn\s+[0-9x-]+$/i.test(value.trim());
+}
+
+function shouldHideLibraryBrowsePlaceholder(item: Pick<LibraryItem, "title">): boolean {
+  return isPlaceholderLibraryBrowseTitle(item.title);
 }
 
 function inferLibraryNarrativeTag(item: LibraryItem): "Fiction" | "Non-fiction" | null {
@@ -1673,8 +1681,9 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   }, [reloadItems]);
 
   const buildDiscoveryRailsFromRows = useCallback((rows: LibraryItem[], limit: number): DiscoveryRail[] => {
+    const browseRows = rows.filter((entry) => !shouldHideLibraryBrowsePlaceholder(entry));
     const byTitle = (a: LibraryItem, b: LibraryItem) => normalizeLibraryToken(a.title).localeCompare(normalizeLibraryToken(b.title));
-    const staffPicks = rows
+    const staffPicks = browseRows
       .filter((entry) => entry.curation?.staffPick === true)
       .sort((a, b) => {
         const rankA = typeof a.curation?.shelfRank === "number" ? a.curation.shelfRank : Number.POSITIVE_INFINITY;
@@ -1683,21 +1692,21 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         return byTitle(a, b);
       })
       .slice(0, Math.min(limit, STAFF_PICKS_LIMIT));
-    const mostBorrowed = [...rows]
+    const mostBorrowed = [...browseRows]
       .sort((a, b) => {
         const delta = (b.borrowCount ?? 0) - (a.borrowCount ?? 0);
         if (delta !== 0) return delta;
         return byTitle(a, b);
       })
       .slice(0, limit);
-    const recentlyAdded = [...rows]
+    const recentlyAdded = [...browseRows]
       .sort((a, b) => {
         const delta = asMs(b.createdAt) - asMs(a.createdAt);
         if (delta !== 0) return delta;
         return byTitle(a, b);
       })
       .slice(0, limit);
-    const recentlyReviewed = [...rows]
+    const recentlyReviewed = [...browseRows]
       .sort((a, b) => {
         const delta = itemLastReviewedMs(b) - itemLastReviewedMs(a);
         if (delta !== 0) return delta;
@@ -1746,18 +1755,16 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           response.data?.data && typeof response.data.data === "object"
             ? response.data.data
             : response.data;
-        const staffPicks = readDiscoverySectionRows(payload?.staffPicks).map((row, index) =>
-          normalizeLibraryItem(safeString(row.id) ?? `staff-pick-${index + 1}`, row as Partial<LibraryItem>)
-        );
-        const mostBorrowed = readDiscoverySectionRows(payload?.mostBorrowed).map((row, index) =>
-          normalizeLibraryItem(safeString(row.id) ?? `most-borrowed-${index + 1}`, row as Partial<LibraryItem>)
-        );
-        const recentlyAdded = readDiscoverySectionRows(payload?.recentlyAdded).map((row, index) =>
-          normalizeLibraryItem(safeString(row.id) ?? `recently-added-${index + 1}`, row as Partial<LibraryItem>)
-        );
-        const recentlyReviewed = readDiscoverySectionRows(payload?.recentlyReviewed).map((row, index) =>
-          normalizeLibraryItem(safeString(row.id) ?? `recently-reviewed-${index + 1}`, row as Partial<LibraryItem>)
-        );
+        const normalizeDiscoveryRows = (sectionRows: Record<string, unknown>[], fallbackPrefix: string) =>
+          sectionRows
+            .map((row, index) =>
+              normalizeLibraryItem(safeString(row.id) ?? `${fallbackPrefix}-${index + 1}`, row as Partial<LibraryItem>)
+            )
+            .filter((item) => !shouldHideLibraryBrowsePlaceholder(item));
+        const staffPicks = normalizeDiscoveryRows(readDiscoverySectionRows(payload?.staffPicks), "staff-pick");
+        const mostBorrowed = normalizeDiscoveryRows(readDiscoverySectionRows(payload?.mostBorrowed), "most-borrowed");
+        const recentlyAdded = normalizeDiscoveryRows(readDiscoverySectionRows(payload?.recentlyAdded), "recently-added");
+        const recentlyReviewed = normalizeDiscoveryRows(readDiscoverySectionRows(payload?.recentlyReviewed), "recently-reviewed");
         featuredWorkshops = readDiscoverySectionRows(payload?.featuredWorkshops)
           .map((row, index) => normalizeWorkshopDiscoveryEvent(row, `featured-workshop-${index + 1}`))
           .slice(0, WORKSHOP_DISCOVERY_LIMIT);
@@ -2317,8 +2324,13 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     });
   }, [discoveryWorkshops, discoveryWorkshopSignalSummary, discoveryWorkshopsSource]);
 
+  const browseableItems = useMemo(
+    () => items.filter((item) => !shouldHideLibraryBrowsePlaceholder(item)),
+    [items],
+  );
+
   const filteredItems = useMemo(() => {
-    if (itemsSource === "api_v1") return items;
+    if (itemsSource === "api_v1") return browseableItems;
 
     const searchTerm = debouncedSearch.toLowerCase();
     const genreToken = normalizeLibraryToken(catalogFilters.genre);
@@ -2328,7 +2340,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     const ratingMin = catalogFilters.ratingMin;
     const ratingMax = catalogFilters.ratingMax;
 
-    const rows = items.filter((item) => {
+    const rows = browseableItems.filter((item) => {
       if (mediaTypes.size > 0 && !mediaTypes.has(normalizeLibraryToken(item.mediaType))) return false;
       if (genreToken) {
         const itemGenre = normalizeLibraryToken(item.genre || item.primaryGenre);
@@ -2391,7 +2403,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       return titleDelta;
     });
     return rows;
-  }, [catalogFilters, debouncedSearch, items, itemsSource]);
+  }, [browseableItems, catalogFilters, debouncedSearch, itemsSource]);
   const activeFilterCount = useMemo(
     () => countActiveCatalogFilters(catalogFilters, search),
     [catalogFilters, search],
@@ -2410,8 +2422,14 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const rails = discoveryRails;
   const selectedItem = useMemo(() => {
     if (!selectedItemId) return null;
-    if (selectedItemDetail?.id === selectedItemId) return selectedItemDetail;
-    return itemMap.get(selectedItemId) ?? discoveryItemMap.get(selectedItemId) ?? null;
+    const candidate =
+      selectedItemDetail?.id === selectedItemId
+        ? selectedItemDetail
+        : itemMap.get(selectedItemId) ?? discoveryItemMap.get(selectedItemId) ?? null;
+    if (candidate && shouldHideLibraryBrowsePlaceholder(candidate)) {
+      return null;
+    }
+    return candidate;
   }, [discoveryItemMap, itemMap, selectedItemDetail, selectedItemId]);
   const selectedItemSummary = useMemo(
     () => (selectedItem ? resolveLibrarySummaryText(selectedItem) : null),

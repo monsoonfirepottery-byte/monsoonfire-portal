@@ -17,7 +17,7 @@ export default function KilnRentalsView({
     <div className="page kiln-rentals-page">
       <div className="page-header">
         <div>
-          <h1>Kiln Rentals</h1>
+          <h1>Firing Services</h1>
         </div>
       </div>
 
@@ -55,7 +55,7 @@ export default function KilnRentalsView({
               src={flowImage840Png}
               srcSet={`${flowImage840Png} 840w, ${flowImage1200Png} 1200w`}
               sizes="(min-width: 901px) 420px, 92vw"
-              alt="Kiln rentals flow overview"
+              alt="Firing services flow overview"
               loading="lazy"
               decoding="async"
               fetchPriority="low"

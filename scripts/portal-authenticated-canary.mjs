@@ -2420,7 +2420,7 @@ async function run() {
       });
 
       await check(summary, "ware check-in page loads without check-in/index errors", async () => {
-        await clickNavSubItem(page, "Kiln Rentals", "Ware Check-in", true);
+        await clickNavSubItem(page, "Firing Services", "Ware Check-in", true);
         await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
 
         const listError = page.locator("text=/^Check-ins failed:/i").first();
@@ -2434,7 +2434,7 @@ async function run() {
       });
 
       await check(summary, "ware check-in optional sections stay collapsed by default and preserve values", async () => {
-        await clickNavSubItem(page, "Kiln Rentals", "Ware Check-in", true);
+        await clickNavSubItem(page, "Firing Services", "Ware Check-in", true);
         await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
         await verifyCheckInOptionalSections(page);
         await takeScreenshot(
@@ -2491,7 +2491,7 @@ async function run() {
         {
           label: "Ware Check-in",
           navigate: async () => {
-            await clickNavSubItem(page, "Kiln Rentals", "Ware Check-in", true);
+            await clickNavSubItem(page, "Firing Services", "Ware Check-in", true);
             await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
           },
         },

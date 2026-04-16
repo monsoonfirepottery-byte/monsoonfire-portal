@@ -97,16 +97,23 @@ export function resolveMemberApprovedLibraryCoverUrl(
   return item.coverQualityStatus === "approved" ? coverUrl : null;
 }
 
+function resolveMemberVisibleLibraryCoverUrl(
+  item: Pick<LibraryItem, "coverUrl">
+): string | null {
+  const coverUrl = str(item.coverUrl)?.trim() ?? "";
+  return coverUrl || null;
+}
+
 export function resolveMemberLibraryCoverDisplay(
   item: Pick<LibraryItem, "title" | "coverUrl" | "coverQualityStatus" | "needsCoverReview">
 ):
-  | { kind: "approved"; coverUrl: string }
+  | { kind: "cover"; coverUrl: string }
   | { kind: "placeholder"; label: string; accent: string; ariaLabel: string } {
-  const approvedCoverUrl = resolveMemberApprovedLibraryCoverUrl(item);
-  if (approvedCoverUrl) {
+  const visibleCoverUrl = resolveMemberVisibleLibraryCoverUrl(item);
+  if (visibleCoverUrl) {
     return {
-      kind: "approved",
-      coverUrl: approvedCoverUrl,
+      kind: "cover",
+      coverUrl: visibleCoverUrl,
     };
   }
   return {
@@ -121,7 +128,7 @@ export function deriveMemberLibraryPendingBadges(
   item: Pick<LibraryItem, "title" | "source" | "detailStatus" | "coverUrl" | "coverQualityStatus" | "needsCoverReview">
 ): string[] {
   const badges: string[] = [];
-  const coverMissing = !resolveMemberApprovedLibraryCoverUrl(item);
+  const coverMissing = !resolveMemberVisibleLibraryCoverUrl(item);
   if (coverMissing) badges.push("Cover pending");
   if (item.detailStatus === "enriching" || item.detailStatus === "sparse") badges.push("Details pending");
   if (item.source === "manual" && titleLooksManualPlaceholder(item.title)) badges.push("Staff finishing metadata");

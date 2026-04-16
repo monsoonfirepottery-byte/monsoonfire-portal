@@ -132,7 +132,13 @@ try {
   }
 
   const resolvedFirebaseApiKey = resolveFirebaseWebApiKey();
+  const resolvedFirebaseAuthDomain = resolveFirebaseAuthDomain();
   process.stdout.write(`Using Firebase Web API key source: ${resolvedFirebaseApiKey.source}\n`);
+  process.stdout.write(
+    resolvedFirebaseAuthDomain.domain
+      ? `Using Firebase Auth domain source: ${resolvedFirebaseAuthDomain.source} (${resolvedFirebaseAuthDomain.domain})\n`
+      : "Using Firebase Auth domain source: default web fallback\n"
+  );
 
   if (!options.noBuild) {
     run("npm", ["--prefix", "web", "run", "build"], {
@@ -140,6 +146,7 @@ try {
       env: {
         ...process.env,
         VITE_FIREBASE_API_KEY: resolvedFirebaseApiKey.key,
+        ...(resolvedFirebaseAuthDomain.domain ? { VITE_AUTH_DOMAIN: resolvedFirebaseAuthDomain.domain } : {}),
       },
     });
   }
@@ -715,6 +722,21 @@ function collectFiles(rootDir, includeFile) {
   }
 
   return files;
+}
+
+function resolveFirebaseAuthDomain() {
+  const envCandidates = [
+    ["PORTAL_AUTH_DOMAIN", process.env.PORTAL_AUTH_DOMAIN],
+    ["VITE_AUTH_DOMAIN", process.env.VITE_AUTH_DOMAIN],
+  ];
+  for (const [source, value] of envCandidates) {
+    const cleaned = String(value || "").trim();
+    if (cleaned) {
+      return { domain: cleaned, source };
+    }
+  }
+
+  return { domain: "", source: "default" };
 }
 
 function assertFirebaseApiKeyIsEmbedded(distDir) {

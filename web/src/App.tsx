@@ -33,6 +33,11 @@ import type { Announcement, DirectMessageThread, LiveUser } from "./types/messag
 import { toVoidHandler } from "./utils/toVoidHandler";
 import { identify, shortId, track } from "./lib/analytics";
 import {
+  shouldFallbackToRedirect,
+  shouldTryPopupFirst,
+  type AuthProviderId,
+} from "./lib/authProviderFlow";
+import {
   capturePortalEntryAttributionFromHref,
   clearPortalEntryAttribution,
   consumePortalTarget,
@@ -1805,20 +1810,18 @@ export default function App() {
     setUnreadNotifications(unread);
   }, [notifications]);
 
-  const handleProviderSignIn = async (
-    providerId: "google" | "apple" | "facebook" | "microsoft"
-  ) => {
+  const handleProviderSignIn = async (providerId: AuthProviderId) => {
     setAuthStatus("");
     setAuthBusy(true);
     track("auth_sign_in_start", {
       method: providerId,
     });
+    let provider: GoogleAuthProvider | FacebookAuthProvider | OAuthProvider | null = null;
     try {
       const persistenceMode = await ensureAuthPersistence();
       if (persistenceMode === "none") {
         setAuthStatus("This browser is limiting sign-in storage. We will try to keep this tab signed in.");
       }
-      let provider;
       switch (providerId) {
         case "google":
           provider = new GoogleAuthProvider();
@@ -1840,7 +1843,7 @@ export default function App() {
         default:
           return;
       }
-      if (!isAuthEmulator) {
+      if (!isAuthEmulator && !shouldTryPopupFirst(providerId)) {
         setAuthStatus("Continuing sign-in...");
         await signInWithRedirect(authClient, provider);
         return;
@@ -1857,6 +1860,15 @@ export default function App() {
         setAuthReady(true);
       }
     } catch (error: unknown) {
+      if (!isAuthEmulator && provider && shouldTryPopupFirst(providerId) && shouldFallbackToRedirect(error)) {
+        track("auth_sign_in_redirect_fallback", {
+          method: providerId,
+          reason: getErrorCode(error) || "popup_unavailable",
+        });
+        setAuthStatus("Popup blocked. Continuing sign-in...");
+        await signInWithRedirect(authClient, provider);
+        return;
+      }
       setAuthStatus(getErrorMessage(error) || "Sign-in failed. Please try again.");
     } finally {
       setAuthBusy(false);

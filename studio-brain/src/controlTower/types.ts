@@ -1,4 +1,6 @@
 import type { AuditEvent, OverseerRunRecord } from "../stores/interfaces";
+import type { AgentRuntimeSummary } from "../agentRuntime/contracts";
+import type { PartnerBrief } from "../partner/contracts";
 
 export type ControlTowerAgentStatus = "working" | "waiting" | "idle" | "parked" | "error";
 export type ControlTowerHealth = "healthy" | "waiting" | "error" | "neutral";
@@ -184,6 +186,9 @@ export type ControlTowerBoardRow = {
   last_update: string | null;
   roomId: string | null;
   sessionName: string | null;
+  contactReason?: string | null;
+  verifiedContext?: string[];
+  decisionNeeded?: string | null;
 };
 
 export type ControlTowerChannelSummary = {
@@ -297,6 +302,11 @@ export type ControlTowerStartupScorecard = {
   coverage: {
     gaps: string[];
   };
+  launcherCoverage: {
+    liveStartupSamples: number;
+    requiredLiveStartupSamples: number;
+    trustworthy: boolean;
+  };
   rubric: {
     overallScore: number | null;
     grade: string;
@@ -367,6 +377,9 @@ export type ControlTowerRoomSummary = {
   nextActions: ControlTowerNextAction[];
   sessionNames: string[];
   summary: string;
+  contactReason?: string | null;
+  verifiedContext?: string[];
+  decisionNeeded?: string | null;
 };
 
 export type ControlTowerRoomDetail = ControlTowerRoomSummary & {
@@ -427,6 +440,8 @@ export type ControlTowerState = {
   memoryBrief: ControlTowerMemoryBrief;
   startupScorecard: ControlTowerStartupScorecard | null;
   memoryHealth: ControlTowerMemoryHealth | null;
+  agentRuntime: AgentRuntimeSummary | null;
+  partner: PartnerBrief | null;
   events: ControlTowerEvent[];
   recentChanges: ControlTowerEvent[];
   actions: ControlTowerNextAction[];

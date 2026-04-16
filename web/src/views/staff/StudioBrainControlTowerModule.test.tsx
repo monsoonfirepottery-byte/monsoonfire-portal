@@ -131,6 +131,9 @@ function createStatePayload() {
           last_update: "2026-03-30T09:58:00.000Z",
           roomId: "portal",
           sessionName: "sb-room",
+          contactReason: "Studio Brain verified the portal lane and is asking for one owner decision before it keeps moving.",
+          verifiedContext: ["Portal lane needs direction.", "Operator direction is still pending."],
+          decisionNeeded: "Decide whether to keep the portal lane active or pause it.",
         },
       ],
       channels: [
@@ -252,6 +255,82 @@ function createStatePayload() {
         recommendations: [
           "Startup quality is within the current thresholds; keep collecting history so future regressions are easier to spot.",
         ],
+      },
+      partner: {
+        schema: "studio-brain.partner-brief.v1",
+        generatedAt: "2026-03-30T10:03:00.000Z",
+        persona: {
+          id: "wuff-chief-of-staff",
+          displayName: "Studio Brain Chief of Staff",
+          relationshipModel: "chief_of_staff",
+          proactivity: "active",
+          primarySurface: "codex_desktop_thread",
+          sourceOfTruth: "control_tower",
+          toneTraits: ["proactive", "concise", "initiative-taking", "not chatty"],
+          summary: "An owner-facing operating partner that keeps initiative bounded.",
+        },
+        summary: "Studio Brain verified the portal lane and is asking for one owner decision before it keeps moving.",
+        initiativeState: "waiting_on_owner",
+        lastMeaningfulContactAt: "2026-03-30T10:02:00.000Z",
+        nextCheckInAt: "2026-03-30T12:00:00.000Z",
+        cooldownUntil: null,
+        needsOwnerDecision: true,
+        contactReason: "Studio Brain verified the portal lane and is asking for one owner decision before it keeps moving.",
+        verifiedContext: [
+          "Portal issue is the main focus and the next safe move is inspection.",
+          "Operator direction is still pending.",
+          "Portal lane stayed active in the control tower.",
+        ],
+        singleDecisionNeeded: "Decide whether to keep the portal lane active or pause it.",
+        recommendedFocus: "Decide whether to keep the portal lane active or pause it.",
+        dailyNote: "Studio Brain is tracking 1 bounded open loop. Recommended focus: decide whether to keep the portal lane active or pause it.",
+        openLoops: [
+          {
+            id: "room:portal",
+            title: "Portal lane waiting on decision",
+            status: "open",
+            summary: "Portal room is waiting on a bounded operator decision.",
+            next: "Inspect portal",
+            source: "control-tower-room:portal",
+            updatedAt: "2026-03-30T09:58:00.000Z",
+            roomId: "portal",
+            sessionName: "sb-room",
+            decisionNeeded: "Decide whether to keep the portal lane active or pause it.",
+            verifiedContext: ["Portal lane needs direction.", "Portal lane stayed active in the control tower."],
+            evidence: ["monsoonfire-portal", "Codex", "sb-room"],
+          },
+        ],
+        idleBudget: {
+          policy: "one_task_at_a_time",
+          maxConcurrentTasks: 1,
+          maxAttemptsPerLoop: 2,
+          rankedBacklog: ["stale blocker cleanup", "unresolved review queues", "memory hygiene"],
+          verifyBeforeReport: true,
+          contactOnlyOnMeaningfulChange: true,
+        },
+        programs: [
+          {
+            id: "daily_brief",
+            label: "Daily Brief",
+            trigger: "Scheduled morning or first meaningful operator touchpoint of the day.",
+            scope: "Summarize real Control Tower state, open loops, and one recommended focus.",
+            approvalGate: "No approval required for summaries that do not trigger external writes.",
+            escalationRule: "Escalate only if the brief contains a blocker, approval, or drift that needs owner review.",
+            cooldown: "At most one full morning brief per day unless the state changes materially.",
+            stopCondition: "Stop after one bounded brief is delivered and recorded.",
+          },
+        ],
+        collaborationCommands: [
+          { command: "pause", description: "Quiet the chief-of-staff loop." },
+          { command: "redirect", description: "Redirect the current initiative without losing continuity." },
+          { command: "why this", description: "Ask why Studio Brain chose the current interruption." },
+          { command: "continue", description: "Resume the bounded loop with the current context." },
+        ],
+        artifacts: {
+          latestBriefPath: "output/studio-brain/partner/latest-brief.json",
+          checkinsPath: "output/studio-brain/partner/checkins.jsonl",
+          openLoopsPath: "output/studio-brain/partner/open-loops.json",
+        },
       },
       actions: [],
       overview: {
@@ -448,6 +527,10 @@ describe("StudioBrainControlTowerModule", () => {
     );
 
     expect(await screen.findByText("30-second operator plane")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Chief of staff" })).toBeTruthy();
+    expect(screen.getByText("Owner commands")).toBeTruthy();
+    expect(screen.getByText("Why this contact")).toBeTruthy();
+    expect(screen.getByText("Portal lane waiting on decision")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Continuity brief" })).toBeTruthy();
     expect(screen.getByText("Next memory actions")).toBeTruthy();
     expect(screen.getByText("Startup quality")).toBeTruthy();
@@ -554,6 +637,79 @@ describe("StudioBrainControlTowerModule", () => {
     expect(screen.getByText("Review and split the unknown mail-thread cluster before the next dream pass.")).toBeTruthy();
     expect(screen.getByText("blocked continuity: 25%")).toBeTruthy();
     expect(screen.getByText("avg pre-start repo reads: 2")).toBeTruthy();
+  });
+
+  it("sends chief-of-staff commands and open-loop updates through bounded partner routes", async () => {
+    vi.spyOn(controlTowerUtils, "subscribeControlTowerEvents").mockReturnValue(() => undefined);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = (init?.method ?? "GET").toUpperCase();
+
+      if (method === "GET" && url.pathname === "/api/control-tower/state") {
+        return new Response(JSON.stringify(createStatePayload()), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (method === "POST" && url.pathname === "/api/control-tower/partner/checkins") {
+        return new Response(JSON.stringify({ ok: true, partner: createStatePayload().state.partner }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (method === "POST" && url.pathname === "/api/control-tower/partner/open-loops/room%3Aportal") {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            partner: createStatePayload().state.partner,
+            openLoop: createStatePayload().state.partner.openLoops[0],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <StudioBrainControlTowerModule
+        user={createUser()}
+        active={true}
+        disabled={false}
+        adminToken=""
+        onNavigateTarget={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Chief of staff" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/control-tower/partner/checkins"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Redirect" })[0]);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/control-tower/partner/open-loops/room%3Aportal"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
   });
 
   it("accepts a runtime Studio Brain base URL override and loads the tower without a rebuild", async () => {

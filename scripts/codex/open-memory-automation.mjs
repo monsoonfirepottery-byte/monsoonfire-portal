@@ -1911,12 +1911,17 @@ export function buildMemoryBrief({
   const rowSummaryLines = sanitizeBriefLines(rowLines, 8);
   const continuityFallbackOnly =
     continuityState !== "ready" && reasonCode === STARTUP_REASON_CODES.OK;
+  const surfaceConsolidationAsBlocker = continuityState !== "ready" || continuityFallbackOnly;
   const consolidationSnapshot = resolveConsolidationSnapshot({
     consolidationArtifact,
     generatedAt,
     continuityState,
     continuityFallbackOnly,
   });
+  const validatedLocalFallback =
+    diagnostics?.fallbackUsed === true
+    && clean(diagnostics?.startupContextStage).toLowerCase() === "local-validated-short-circuit"
+    && diagnostics?.localContinuityValidated === true;
   const topActions = consolidationSnapshot.topActions;
   const goal =
     summaryLines[0]
@@ -1930,16 +1935,20 @@ export function buildMemoryBrief({
   } else if (continuityState !== "ready") {
     blockers.push(clean(error) || `Startup continuity is ${continuityState}.`);
   }
-  if (diagnostics?.fallbackUsed) {
+  if (diagnostics?.fallbackUsed && !validatedLocalFallback) {
     blockers.push(`Using fallback strategy: ${clean(diagnostics.fallbackStrategy || "local-fallback")}.`);
   }
   if (reasonCode && reasonCode !== STARTUP_REASON_CODES.OK && reasonCode !== STARTUP_REASON_CODES.EMPTY_CONTEXT) {
     blockers.push(`reasonCode=${reasonCode}`);
   }
-  if (consolidationSnapshot.blocker) {
+  if (surfaceConsolidationAsBlocker && consolidationSnapshot.blocker) {
     blockers.push(consolidationSnapshot.blocker);
   }
-  if (consolidationSnapshot.actionabilityStatus && consolidationSnapshot.actionabilityStatus !== "passed") {
+  if (
+    surfaceConsolidationAsBlocker
+    && consolidationSnapshot.actionabilityStatus
+    && consolidationSnapshot.actionabilityStatus !== "passed"
+  ) {
     blockers.push(`dreamActionability=${consolidationSnapshot.actionabilityStatus}`);
   }
 

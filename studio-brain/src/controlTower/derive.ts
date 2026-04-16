@@ -726,6 +726,8 @@ export function deriveControlTowerState(
     memoryBrief,
     startupScorecard: null,
     memoryHealth: null,
+    agentRuntime: null,
+    partner: null,
     events,
     recentChanges: events.slice(0, 6),
     actions,

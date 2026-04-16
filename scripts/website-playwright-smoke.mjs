@@ -68,6 +68,8 @@ const parseOptions = (argv) => {
     baseUrl: null,
     outputDir: defaultOutputRoot,
     expectedPortalHost: defaultExpectedPortalHost,
+    benchmarkProbe: false,
+    json: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -99,9 +101,36 @@ const parseOptions = (argv) => {
       i += 1;
       continue;
     }
+    if (arg === "--benchmark-probe") {
+      options.benchmarkProbe = true;
+      continue;
+    }
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
   }
 
   return options;
+};
+
+const emitBenchmarkProbe = (options) => {
+  const payload = {
+    schema: "agent-tool-benchmark-probe.v1",
+    tool: "website-playwright-smoke",
+    status: "ok",
+    benchmarkProbe: true,
+    options: {
+      baseUrl: options.baseUrl,
+      outputDir: options.outputDir,
+      expectedPortalHost: options.expectedPortalHost,
+    },
+  };
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  process.stdout.write(`benchmark-probe ok: ${payload.tool}\n`);
 };
 
 function assertStudioBrainContract() {
@@ -250,11 +279,14 @@ const assertPortalLinks = async (page, route, expectedPortalHost) => {
 };
 
 const run = async () => {
+  const options = parseOptions(process.argv.slice(2));
+  if (options.benchmarkProbe) {
+    emitBenchmarkProbe(options);
+    return;
+  }
   applyContractDefaults();
   assertStudioBrainContract();
   assertStudioBrainIntegrity();
-
-  const options = parseOptions(process.argv.slice(2));
   const outputRoot = options.outputDir;
   const expectedPortalHost = options.expectedPortalHost;
   let baseUrl = options.baseUrl || localBaseUrl;

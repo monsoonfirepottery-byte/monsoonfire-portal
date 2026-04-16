@@ -75,7 +75,7 @@ test("buildStartupContextPack filters generic consolidation blockers out of trus
   assert.deepEqual(pack.advisory, {});
 });
 
-test("buildMemoryBrief filters placeholder startup lines and reports unavailable consolidation truthfully", () => {
+test("buildMemoryBrief filters placeholder startup lines and keeps unavailable consolidation in advisory state when continuity is ready", () => {
   const brief = buildMemoryBrief({
     generatedAt: "2026-04-04T08:00:00.000Z",
     continuityState: "ready",
@@ -97,7 +97,7 @@ test("buildMemoryBrief filters placeholder startup lines and reports unavailable
   assert.equal(brief.consolidation.mode, "unavailable");
   assert.equal(brief.consolidation.status, "unavailable");
   assert.equal(brief.consolidation.actionabilityStatus, "repair");
-  assert.equal(brief.blockers.includes("Dream consolidation artifact is missing."), true);
+  assert.equal(brief.blockers.includes("Dream consolidation artifact is missing."), false);
 });
 
 test("buildMemoryBrief surfaces dream actionability and top actions from the consolidation artifact", () => {
@@ -136,6 +136,36 @@ test("buildMemoryBrief surfaces dream actionability and top actions from the con
     "Review and split the unknown mail-thread cluster before the next dream pass.",
   ]);
   assert.deepEqual(brief.recommendedNextActions.slice(0, 2), brief.consolidation.topActions);
+});
+
+test("buildMemoryBrief treats validated local short-circuit fallback as advisory instead of a blocker", () => {
+  const brief = buildMemoryBrief({
+    generatedAt: "2026-04-16T16:00:00.000Z",
+    continuityState: "ready",
+    contextSummary: "1. [codex-handoff] Resume the current trusted task.",
+    diagnostics: {
+      fallbackUsed: true,
+      fallbackStrategy: "local-bootstrap-artifacts",
+      startupContextStage: "local-validated-short-circuit",
+      localContinuityValidated: true,
+    },
+    consolidationArtifactOverride: {
+      mode: "idle",
+      status: "success",
+      summary: "Consolidation ran successfully.",
+      finishedAt: "2026-04-16T15:55:00.000Z",
+      nextRunAt: "2026-04-16T19:55:00.000Z",
+      actionabilityStatus: "passed",
+      topActions: ["Resume the current trusted task."],
+      promotionCount: 1,
+    },
+  });
+
+  assert.equal(
+    brief.blockers.some((entry) => entry.includes("Using fallback strategy: local-bootstrap-artifacts.")),
+    false,
+  );
+  assert.equal(brief.consolidation.actionabilityStatus, "passed");
 });
 
 test("buildMemoryBrief suppresses compaction trace noise in goal and recent decisions", () => {

@@ -7,6 +7,7 @@ import { dirname, resolve, relative } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { STARTUP_REASON_CODES } from "./lib/codex-startup-reliability.mjs";
+import { summarizeStartupObservationCoverage } from "./lib/codex-toolcall-governance.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -44,6 +45,7 @@ const TARGETS = Object.freeze({
   tokenFreshRateMin: 0.9,
   mcpBridgeFailureRateMax: 0.05,
 });
+const REQUIRED_LIVE_STARTUP_SAMPLES = 5;
 
 function printUsage() {
   process.stdout.write(
@@ -614,10 +616,16 @@ function summarizeToolcallSignals(entries, startMs) {
     const tsMs = toMs(entry?.tsIso);
     return tsMs != null && tsMs >= startMs;
   });
-  const startupEntries = inWindow.filter((entry) => {
-    if (!STARTUP_TOOL_NAMES.has(clean(entry.tool))) return false;
+  const startupCoverage = summarizeStartupObservationCoverage(inWindow);
+  const isEligibleStartupSignal = (entry) => {
     const startupTelemetry = getStartupTelemetry(entry);
-    return clean(entry.action).startsWith("startup") || Object.keys(startupTelemetry).length > 0;
+    return clean(entry?.action).startsWith("startup") || Object.keys(startupTelemetry).length > 0;
+  };
+  const startupEntries = startupCoverage.uniqueEntries.filter((entry) => {
+    return isEligibleStartupSignal(entry);
+  });
+  const liveStartupEntries = startupCoverage.uniqueLiveEntries.filter((entry) => {
+    return isEligibleStartupSignal(entry);
   });
   const failures = startupEntries.filter((entry) => entry.ok === false);
   const repeat = countRepeatFailureBursts(startupEntries);
@@ -636,6 +644,11 @@ function summarizeToolcallSignals(entries, startMs) {
   return {
     totalEntries: inWindow.length,
     startupEntries: startupEntries.length,
+    liveStartupEntries: liveStartupEntries.length,
+    rawStartupEntries: startupCoverage.rawStartupEntries,
+    liveRawRows: startupCoverage.liveRawRows,
+    syntheticRawRows: startupCoverage.syntheticRawRows,
+    duplicateObservationCount: startupCoverage.duplicateObservationCount,
     startupFailures: failures.length,
     startupFailureRate: startupEntries.length > 0 ? failures.length / startupEntries.length : null,
     startupToolStatusCounts: summarizeCounts(
@@ -749,10 +762,15 @@ function buildCoverageGaps({ currentMetrics, previousMetrics, toolcallSignals, i
   if (currentMetrics.sampleCount < 3) {
     gaps.push("Startup baseline is still thin; fewer than 3 samples exist in the current analysis window.");
   }
+  if (toolcallSignals.liveStartupEntries < REQUIRED_LIVE_STARTUP_SAMPLES) {
+    gaps.push(
+      `Live launcher startup coverage is still thin; ${toolcallSignals.liveStartupEntries}/${REQUIRED_LIVE_STARTUP_SAMPLES} startup toolcall sample(s) are available.`
+    );
+  }
   if (previousMetrics.sampleCount === 0) {
     gaps.push("No previous-window samples exist yet, so trend deltas are provisional.");
   }
-  if (toolcallSignals.startupEntries === 0) {
+  if (toolcallSignals.liveStartupEntries === 0) {
     gaps.push("Launcher-level startup toolcall telemetry is absent; this report relies on scorecard history samples instead.");
   }
   if (interactionSignals.entries === 0) {
@@ -796,6 +814,11 @@ function buildRecommendations({ latestSample, currentMetrics, toolcallSignals, i
   }
   if (toolcallSignals.repeatFailureBursts > 0 || interactionSignals.retryLoopMentions > 0) {
     recommendations.push("Review retry hygiene; repeated startup failure signatures are still appearing in the supporting telemetry.");
+  }
+  if (toolcallSignals.liveStartupEntries < REQUIRED_LIVE_STARTUP_SAMPLES) {
+    recommendations.push(
+      `Collect at least ${REQUIRED_LIVE_STARTUP_SAMPLES} live launcher startup samples before treating startup quality as trustworthy.`
+    );
   }
   if (
     Number.isFinite(toolcallSignals.groundingLineComplianceRate) &&
@@ -997,6 +1020,11 @@ export function computeStartupScorecardReport({
         ...interactionSignals,
       },
     },
+    launcherCoverage: {
+      liveStartupSamples: toolcallSignals.liveStartupEntries,
+      requiredLiveStartupSamples: REQUIRED_LIVE_STARTUP_SAMPLES,
+      trustworthy: toolcallSignals.liveStartupEntries >= REQUIRED_LIVE_STARTUP_SAMPLES,
+    },
     rubric: {
       dimensions: weightedDimensions,
       overallScore,
@@ -1027,6 +1055,7 @@ function buildMarkdown(report) {
   lines.push(`- Overall score: ${report.rubric.overallScore == null ? "n/a" : report.rubric.overallScore} (${report.rubric.grade})`);
   lines.push(`- Current samples: ${report.window.current.sampleCount}`);
   lines.push(`- Previous samples: ${report.window.previous.sampleCount}`);
+  lines.push(`- Live startup coverage: ${report.launcherCoverage.liveStartupSamples}/${report.launcherCoverage.requiredLiveStartupSamples} (${report.launcherCoverage.trustworthy ? "trustworthy" : "provisional"})`);
   lines.push("");
   lines.push("## Latest Startup");
   lines.push(`- Status: ${report.latest.sample.status}`);

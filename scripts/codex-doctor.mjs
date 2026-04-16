@@ -642,6 +642,21 @@ export async function runCodexDoctor({
     },
   );
 
+  const consolidateToolRegistered =
+    existsSync(studioBrainMcpServerPath) &&
+    readFileSync(studioBrainMcpServerPath, "utf8").includes('"studio_brain_memory_consolidate"');
+  checkCollector.push(
+    "codex-studio-brain-consolidate-surface",
+    consolidateToolRegistered ? "info" : "warning",
+    consolidateToolRegistered,
+    consolidateToolRegistered
+      ? "Studio Brain memory consolidation is registered in the MCP server and can execute on the host control plane."
+      : "Studio Brain memory consolidation is not registered in the MCP server.",
+    {
+      mcpServerPath: studioBrainMcpServerPath,
+    },
+  );
+
   const toolcallWindow = readCurrentToolcallWindow(repoRoot);
   const retryGovernorSignals = summarizeRetryGovernorSignals(toolcallWindow.entries);
   const operatorDragMetrics = buildOperatorDragMetrics(toolcallWindow.entries);

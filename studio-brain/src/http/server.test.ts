@@ -248,6 +248,7 @@ function createControlTowerFixture() {
   mkdirSync(join(root, "output", "studio-brain", "memory-brief"), { recursive: true });
   mkdirSync(join(root, "output", "studio-brain", "memory-consolidation"), { recursive: true });
   mkdirSync(join(root, "output", "qa"), { recursive: true });
+  mkdirSync(join(root, "output", "agent-runs", "run-background-1"), { recursive: true });
 
   writeFileSync(
     join(root, "output", "ops-cockpit", "agents", "sb-room.json"),
@@ -387,11 +388,152 @@ function createControlTowerFixture() {
         coverage: {
           gaps: ["Startup transcript telemetry is only partially captured; 86% of startup entries carried both Grounding and repo-read signals."],
         },
+        launcherCoverage: {
+          liveStartupSamples: 7,
+          requiredLiveStartupSamples: 5,
+          trustworthy: true,
+        },
         rubric: {
           overallScore: 98,
           grade: "A",
         },
         recommendations: ["Startup quality is within the current thresholds; keep collecting history so future regressions are easier to spot."],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  writeFileSync(
+    join(root, "output", "agent-runs", "run-background-1", "summary.json"),
+    `${JSON.stringify(
+      {
+        schema: "agent-runtime-summary.v1",
+        generatedAt: "2026-03-30T10:06:00.000Z",
+        runId: "run-background-1",
+        missionId: "mission-background-1",
+        status: "blocked",
+        riskLane: "high_risk",
+        title: "Portal Runtime Mission",
+        goal: "Keep the portal launch lane bounded.",
+        groundingSources: ["codex-startup-preflight", "studio-brain-memory-brief", "git-status"],
+        acceptance: {
+          total: 3,
+          pending: 1,
+          completed: 1,
+          failed: 1,
+        },
+        activeBlockers: ["Verifier checks failed."],
+        ratholeSignals: [
+          {
+            signalId: "rathole-1",
+            kind: "repeat_verifier_failure",
+            severity: "critical",
+            summary: "Verifier checks failed repeatedly without a state change.",
+            recommendedAction: "Re-ground the mission and stop retrying until the blocker is explicit.",
+            createdAt: "2026-03-30T10:06:00.000Z",
+            blocking: true,
+          },
+        ],
+        memoriesInfluencingRun: ["Portal continuity is loaded and ready for the next safe move."],
+        goalMisses: [
+          {
+            category: "verification_omission",
+            summary: "Verifier command failed: npm run startup:check",
+            createdAt: "2026-03-30T10:06:00.000Z",
+          },
+        ],
+        lastEventType: "rathole.detected",
+        updatedAt: "2026-03-30T10:06:00.000Z",
+        partner: {
+          initiativeState: "waiting_on_owner",
+          lastMeaningfulContactAt: "2026-03-30T10:01:00.000Z",
+          nextCheckInAt: "2026-03-30T12:00:00.000Z",
+          cooldownUntil: null,
+          needsOwnerDecision: true,
+          contactReason: "Studio Brain verified the blocked portal lane and is asking for one owner decision before it keeps moving.",
+          verifiedContext: [
+            "Verifier checks failed.",
+            "Portal room is still waiting for direction.",
+            "Memory brief still recommends inspecting the portal lane.",
+          ],
+          singleDecisionNeeded: "Decide whether to unblock the portal lane now or pause it until the verifier is fixed.",
+          idleBudget: {
+            policy: "one_task_at_a_time",
+            maxConcurrentTasks: 1,
+            maxAttemptsPerLoop: 2,
+            rankedBacklog: [
+              "stale blocker cleanup",
+              "unresolved review queues",
+              "memory hygiene",
+            ],
+            verifyBeforeReport: true,
+            contactOnlyOnMeaningfulChange: true,
+          },
+          openLoops: [
+            {
+              id: "room:portal",
+              title: "Portal lane waiting on decision",
+              status: "open",
+              summary: "Portal room is blocked behind verifier drift and still needs a bounded next move.",
+              next: "Inspect portal lane",
+              source: "control-tower-room:portal",
+              updatedAt: "2026-03-30T10:06:00.000Z",
+              roomId: "portal",
+              sessionName: "sb-room",
+              decisionNeeded: "Decide whether to unblock, pause, or redirect this lane.",
+              verifiedContext: [
+                "Portal room stayed attached to the operator board.",
+                "Verifier checks failed repeatedly.",
+              ],
+              evidence: ["monsoonfire-portal", "Codex", "sb-room"],
+            },
+          ],
+        },
+        boardRow: {
+          id: "agent-runtime:run-background-1",
+          owner: "agent-runtime",
+          task: "Portal Runtime Mission",
+          state: "blocked",
+          blocker: "Verifier checks failed.",
+          next: "Inspect runtime",
+          last_update: "2026-03-30T10:06:00.000Z",
+          contactReason: "Studio Brain verified the blocked portal lane and is asking for one owner decision before it keeps moving.",
+          verifiedContext: [
+            "Verifier checks failed.",
+            "Portal room is still waiting for direction.",
+          ],
+          decisionNeeded: "Decide whether to unblock the portal lane now or pause it until the verifier is fixed.",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  writeFileSync(
+    join(root, "output", "agent-runs", "run-background-1", "run-ledger.jsonl"),
+    `${JSON.stringify({
+      schema: "agent-run-ledger-event.v1",
+      eventId: "evt-1",
+      runId: "run-background-1",
+      missionId: "mission-background-1",
+      type: "mission.state.changed",
+      occurredAt: "2026-03-30T10:06:00.000Z",
+      payload: { status: "blocked" },
+    })}\n`,
+    "utf8",
+  );
+
+  writeFileSync(
+    join(root, "output", "agent-runs", "latest.json"),
+    `${JSON.stringify(
+      {
+        schema: "agent-runtime-pointer.v1",
+        runId: "run-background-1",
+        updatedAt: "2026-03-30T10:06:00.000Z",
       },
       null,
       2,
@@ -1229,6 +1371,58 @@ test("memory endpoints require staff auth", async () => {
     });
     assert.equal(nonStaff.status, 401);
   });
+});
+
+test("memory consolidation executes on the host control plane and records an audit event", async () => {
+  const eventStore = new MemoryEventStore();
+  await withServer(
+    {
+      eventStore,
+      adminToken: "admin-secret",
+    },
+    async (baseUrl) => {
+      const blocked = await fetch(`${baseUrl}/api/memory/consolidate`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+        body: JSON.stringify({ mode: "idle", runId: "memory-consolidation-test-blocked" }),
+      });
+      assert.equal(blocked.status, 401);
+
+      const response = await fetch(`${baseUrl}/api/memory/consolidate`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer test-staff",
+          "x-studio-brain-admin-token": "admin-secret",
+        },
+        body: JSON.stringify({
+          mode: "idle",
+          runId: "memory-consolidation-test",
+          maxCandidates: 10,
+          maxWrites: 5,
+          timeBudgetMs: 15000,
+          focusAreas: ["Portal continuity"],
+          requestOrigin: "studio-brain-mcp",
+          requestedTransport: "http",
+        }),
+      });
+
+      assert.equal(response.status, 200);
+      const payload = await response.json() as {
+        ok: boolean;
+        result: {
+          status: string;
+          focusAreas?: string[];
+        };
+      };
+      assert.equal(payload.ok, true);
+      assert.equal(typeof payload.result?.status, "string");
+      assert.equal(payload.result?.focusAreas?.includes("Portal continuity"), true);
+
+      const rows = await eventStore.listRecent(10);
+      assert.equal(rows.some((row) => row.action === "studio_brain.memory_consolidated"), true);
+    },
+  );
 });
 
 test("memory ingest endpoint is disabled by default", async () => {
@@ -3005,6 +3199,18 @@ test("control tower state routes derive browser-friendly room and service data",
               metrics: { readyRate: number | null; groundingReadyRate: number | null; blockedContinuityRate: number | null; p95LatencyMs: number | null };
               supportingSignals: { toolcalls: { telemetryCoverageRate: number | null } };
               coverage: { gaps: string[] };
+              launcherCoverage: { liveStartupSamples: number; trustworthy: boolean };
+            } | null;
+            agentRuntime: {
+              status: string;
+              boardRow: { owner: string; state: string; blocker: string };
+            } | null;
+            partner: {
+              initiativeState: string;
+              needsOwnerDecision: boolean;
+              contactReason: string;
+              singleDecisionNeeded: string | null;
+              openLoops: Array<{ id: string; status: string; roomId: string | null }>;
             } | null;
             memoryHealth: {
               severity: string;
@@ -3024,9 +3230,10 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.ok(payload.state.overview.needsAttention.length >= 1);
         assert.ok(payload.state.pinnedItems.some((entry) => entry.title === "Discord Relay is down"));
         assert.ok(payload.state.services.some((entry) => entry.id === "studio-brain-discord-relay" && entry.health === "error"));
-        assert.equal(payload.state.board[0]?.owner, "Memory maintenance");
-        assert.equal(payload.state.board[1]?.owner, "Codex");
-        assert.match(payload.state.board[1]?.task ?? "", /Investigate portal issue/i);
+        assert.equal(payload.state.board[0]?.owner, "agent-runtime");
+        assert.equal(payload.state.board.some((entry) => entry.owner === "Memory maintenance"), true);
+        assert.equal(payload.state.board.some((entry) => entry.owner === "Codex"), true);
+        assert.equal(payload.state.board.find((entry) => entry.owner === "Codex")?.task?.includes("Investigate portal issue"), true);
         assert.equal(payload.state.memoryBrief.continuityState, "ready");
         assert.equal(payload.state.memoryBrief.consolidation.mode, "scheduled");
         assert.ok(payload.state.memoryBrief.consolidation.focusAreas.includes("Portal continuity"));
@@ -3044,6 +3251,17 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal(payload.state.startupScorecard?.metrics.p95LatencyMs, 950);
         assert.equal(payload.state.startupScorecard?.supportingSignals.toolcalls.telemetryCoverageRate, 0.86);
         assert.equal(payload.state.startupScorecard?.coverage.gaps.length, 1);
+        assert.equal(payload.state.startupScorecard?.launcherCoverage.liveStartupSamples, 7);
+        assert.equal(payload.state.startupScorecard?.launcherCoverage.trustworthy, true);
+        assert.equal(payload.state.agentRuntime?.status, "blocked");
+        assert.equal(payload.state.agentRuntime?.boardRow.owner, "agent-runtime");
+        assert.equal(payload.state.board[0]?.owner, "agent-runtime");
+        assert.equal(payload.state.partner?.initiativeState, "waiting_on_owner");
+        assert.equal(payload.state.partner?.needsOwnerDecision, true);
+        assert.match(payload.state.partner?.contactReason ?? "", /owner decision/i);
+        assert.match(payload.state.partner?.singleDecisionNeeded ?? "", /unblock the portal lane|pause/i);
+        assert.equal(payload.state.partner?.openLoops[0]?.id, "room:portal");
+        assert.equal(payload.state.partner?.openLoops[0]?.roomId, "portal");
         assert.equal(payload.state.memoryHealth?.severity, "critical");
         assert.equal((payload.state.memoryHealth?.startupReadiness.startupEligibleRows ?? 0) >= 1, true);
         assert.equal((payload.state.memoryHealth?.startupReadiness.handoffRows ?? 0) >= 1, true);
@@ -3391,6 +3609,178 @@ test("control tower promotes memory next moves only when startup quality is degr
           payload.state.overview.goodNextMoves.some((entry) => entry.actionLabel === "Review memory"),
           true,
         );
+      },
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("agent runtime routes expose latest summary and accept webhook events", async () => {
+  const fixture = createControlTowerFixture();
+  const { runner } = createControlTowerRunner();
+
+  try {
+    await withServer(
+      {
+        controlTowerRepoRoot: fixture.root,
+        controlTowerRunner: runner,
+      },
+      async (baseUrl) => {
+        const latestResponse = await fetch(`${baseUrl}/api/agent-runtime/latest`, {
+          headers: { authorization: "Bearer test-staff" },
+        });
+        assert.equal(latestResponse.status, 200);
+        const latestPayload = (await latestResponse.json()) as {
+          ok: boolean;
+          summary: { runId: string; status: string } | null;
+          events: Array<{ type: string }>;
+        };
+        assert.equal(latestPayload.ok, true);
+        assert.equal(latestPayload.summary?.runId, "run-background-1");
+        assert.equal(latestPayload.summary?.status, "blocked");
+        assert.equal(latestPayload.events[0]?.type, "mission.state.changed");
+
+        const eventResponse = await fetch(`${baseUrl}/api/agent-runtime/events`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer test-staff",
+          },
+          body: JSON.stringify({
+            event: {
+              schema: "agent-run-ledger-event.v1",
+              eventId: "evt-2",
+              runId: "run-background-2",
+              missionId: "mission-background-2",
+              type: "mission.started",
+              occurredAt: "2026-03-30T10:10:00.000Z",
+              payload: { title: "Second runtime mission" },
+            },
+            summary: {
+              schema: "agent-runtime-summary.v1",
+              runId: "run-background-2",
+              missionId: "mission-background-2",
+              status: "running",
+              riskLane: "background",
+              title: "Second runtime mission",
+              goal: "Stay bounded",
+              groundingSources: ["codex-startup-preflight"],
+              acceptance: { total: 1, pending: 1, completed: 0, failed: 0 },
+              activeBlockers: [],
+              ratholeSignals: [],
+              memoriesInfluencingRun: ["Memory"],
+              goalMisses: [],
+              lastEventType: "mission.started",
+              updatedAt: "2026-03-30T10:10:00.000Z",
+              boardRow: {
+                id: "agent-runtime:run-background-2",
+                owner: "agent-runtime",
+                task: "Second runtime mission",
+                state: "running",
+                blocker: "none",
+                next: "Run verifier",
+                last_update: "2026-03-30T10:10:00.000Z",
+              },
+            },
+          }),
+        });
+        assert.equal(eventResponse.status, 202);
+
+        const runsResponse = await fetch(`${baseUrl}/api/agent-runtime/runs`, {
+          headers: { authorization: "Bearer test-staff" },
+        });
+        assert.equal(runsResponse.status, 200);
+        const runsPayload = (await runsResponse.json()) as {
+          ok: boolean;
+          runs: Array<{ runId: string }>;
+        };
+        assert.equal(runsPayload.ok, true);
+        assert.equal(runsPayload.runs.some((entry) => entry.runId === "run-background-2"), true);
+      },
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("partner routes generate briefs, record owner commands, and update open loops", async () => {
+  const fixture = createControlTowerFixture();
+  const { runner } = createControlTowerRunner();
+  const stateStore = new MemoryStateStore();
+  await stateStore.saveOverseerRun(buildSampleOverseerRun());
+
+  try {
+    await withServer(
+      {
+        stateStore,
+        controlTowerRepoRoot: fixture.root,
+        controlTowerRunner: runner,
+      },
+      async (baseUrl) => {
+        const authHeaders = {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        };
+
+        const latestResponse = await fetch(`${baseUrl}/api/control-tower/partner/latest`, {
+          headers: { authorization: "Bearer test-staff" },
+        });
+        assert.equal(latestResponse.status, 200);
+        const latestPayload = (await latestResponse.json()) as {
+          ok: boolean;
+          partner: { initiativeState: string; openLoops: Array<{ id: string; status: string }> } | null;
+          checkins: Array<{ action: string }>;
+        };
+        assert.equal(latestPayload.ok, true);
+        assert.equal(latestPayload.partner?.initiativeState, "waiting_on_owner");
+        assert.equal(latestPayload.partner?.openLoops[0]?.id, "room:portal");
+        assert.equal(latestPayload.checkins.length, 0);
+
+        const snoozeResponse = await fetch(`${baseUrl}/api/control-tower/partner/checkins`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ action: "snooze", snoozeMinutes: 90, note: "Quiet until after lunch." }),
+        });
+        assert.equal(snoozeResponse.status, 200);
+        const snoozePayload = (await snoozeResponse.json()) as {
+          ok: boolean;
+          partner: { initiativeState: string; cooldownUntil: string | null; nextCheckInAt: string | null } | null;
+        };
+        assert.equal(snoozePayload.ok, true);
+        assert.equal(snoozePayload.partner?.initiativeState, "cooldown");
+        assert.ok(Boolean(snoozePayload.partner?.cooldownUntil));
+        assert.equal(snoozePayload.partner?.cooldownUntil, snoozePayload.partner?.nextCheckInAt);
+
+        const delegateResponse = await fetch(`${baseUrl}/api/control-tower/partner/open-loops/${encodeURIComponent("room:portal")}`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ status: "delegated", note: "Redirect this to the verifier repair lane." }),
+        });
+        assert.equal(delegateResponse.status, 200);
+        const delegatePayload = (await delegateResponse.json()) as {
+          ok: boolean;
+          partner: { openLoops: Array<{ id: string; status: string }> } | null;
+          openLoop: { id: string; status: string } | null;
+        };
+        assert.equal(delegatePayload.ok, true);
+        assert.equal(delegatePayload.openLoop?.id, "room:portal");
+        assert.equal(delegatePayload.openLoop?.status, "delegated");
+        assert.equal(delegatePayload.partner?.openLoops.find((entry) => entry.id === "room:portal")?.status, "delegated");
+
+        const latestAfterResponse = await fetch(`${baseUrl}/api/control-tower/partner/latest`, {
+          headers: { authorization: "Bearer test-staff" },
+        });
+        assert.equal(latestAfterResponse.status, 200);
+        const latestAfterPayload = (await latestAfterResponse.json()) as {
+          ok: boolean;
+          partner: { openLoops: Array<{ id: string; status: string }> } | null;
+          checkins: Array<{ action: string }>;
+        };
+        assert.equal(latestAfterPayload.ok, true);
+        assert.equal(latestAfterPayload.checkins.some((entry) => entry.action === "snooze"), true);
+        assert.equal(latestAfterPayload.checkins.some((entry) => entry.action === "redirect"), true);
+        assert.equal(latestAfterPayload.partner?.openLoops.find((entry) => entry.id === "room:portal")?.status, "delegated");
       },
     );
   } finally {

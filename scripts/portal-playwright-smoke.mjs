@@ -886,6 +886,8 @@ const parseOptions = (argv) => {
     visualDiffBaselineRoot: String(process.env.PORTAL_VISUAL_DIFF_BASELINE_ROOT || "").trim(),
     visualDiffOutputRoot: String(process.env.PORTAL_VISUAL_DIFF_OUTPUT_ROOT || "").trim(),
     visualDiffPlanPath: String(process.env.PORTAL_VISUAL_DIFF_PLAN || "").trim(),
+    benchmarkProbe: false,
+    json: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -1029,9 +1031,43 @@ const parseOptions = (argv) => {
       i += 1;
       continue;
     }
+
+    if (arg === "--benchmark-probe") {
+      options.benchmarkProbe = true;
+      continue;
+    }
+
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
   }
 
   return options;
+};
+
+const emitBenchmarkProbe = (options) => {
+  const payload = {
+    schema: "agent-tool-benchmark-probe.v1",
+    tool: "portal-playwright-smoke",
+    status: "ok",
+    benchmarkProbe: true,
+    options: {
+      baseUrl: options.baseUrl,
+      outputDir: options.outputDir,
+      deep: options.deep === true,
+      requireAuth: options.requireAuth === true,
+      withAuth: options.withAuth === true,
+      headless: options.headless === true,
+      runMobile: options.runMobile === true,
+      visualDiffMode: options.visualDiffMode,
+    },
+  };
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  process.stdout.write(`benchmark-probe ok: ${payload.tool}\n`);
 };
 
 const readJsonSafe = async (path) => {
@@ -2008,6 +2044,10 @@ const runOfflineRecoverySmoke = async (page, context, outputDir, summary) => {
 
 const run = async () => {
   const options = parseOptions(process.argv.slice(2));
+  if (options.benchmarkProbe) {
+    emitBenchmarkProbe(options);
+    return;
+  }
   const feedbackProfile = await resolveSmokeFeedbackProfile(options.feedbackPath);
   const summary = createSummary(options);
   summary.feedback = {

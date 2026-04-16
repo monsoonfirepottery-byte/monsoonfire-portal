@@ -29,6 +29,9 @@ try {
   if (!names.includes("studio_brain_memory_search")) {
     throw new Error(`Expected tool not found. Advertised tools: ${names.join(", ")}`);
   }
+  if (!names.includes("studio_brain_memory_consolidate")) {
+    throw new Error(`Expected consolidation tool not found. Advertised tools: ${names.join(", ")}`);
+  }
   process.stdout.write("Studio Brain MCP smoke test passed.\n");
 } finally {
   await transport.close();

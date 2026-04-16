@@ -217,6 +217,111 @@ async function withRememberCaptureServer(run) {
   }
 }
 
+async function withConsolidationServer(run) {
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if ((req.url || "").startsWith("/api/memory/consolidate") && req.method === "POST") {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      requests.push({
+        url: req.url || "",
+        method: req.method || "",
+        authorization: req.headers.authorization || "",
+        adminToken: req.headers["x-studio-brain-admin-token"] || "",
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          result: {
+            status: "success",
+            summary: "Host-side memory consolidation completed.",
+            actionabilityStatus: "passed",
+            focusAreas: ["Portal continuity"],
+          },
+        }),
+      );
+      return;
+    }
+
+    if ((req.url || "").startsWith("/healthz")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, service: "studio-brain", at: new Date().toISOString() }));
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, message: "Not found" }));
+  });
+
+  await new Promise((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    await run(baseUrl, requests);
+  } finally {
+    await new Promise((resolvePromise, reject) => {
+      server.close((error) => (error ? reject(error) : resolvePromise()));
+    });
+  }
+}
+
+async function withThreadMetadataScrubServer(run) {
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if ((req.url || "").startsWith("/api/memory/scrub-thread-metadata") && req.method === "POST") {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      requests.push({
+        url: req.url || "",
+        method: req.method || "",
+        authorization: req.headers.authorization || "",
+        adminToken: req.headers["x-studio-brain-admin-token"] || "",
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          result: {
+            status: "success",
+            dryRun: true,
+            scanned: 18,
+            eligible: 4,
+            updated: 0,
+          },
+        }),
+      );
+      return;
+    }
+
+    if ((req.url || "").startsWith("/healthz")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, service: "studio-brain", at: new Date().toISOString() }));
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, message: "Not found" }));
+  });
+
+  await new Promise((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    await run(baseUrl, requests);
+  } finally {
+    await new Promise((resolvePromise, reject) => {
+      server.close((error) => (error ? reject(error) : resolvePromise()));
+    });
+  }
+}
+
 async function withClient(envOverrides, run) {
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -259,6 +364,8 @@ test("studio-brain MCP advertises the canonical startup alias and preserves the 
         assert.equal(names.includes("studio_brain_startup_context"), true);
         assert.equal(names.includes("studio_brain_memory_context"), true);
         assert.equal(names.includes("studio_brain_remember"), true);
+        assert.equal(names.includes("studio_brain_memory_consolidate"), true);
+        assert.equal(names.includes("studio_brain_memory_scrub_thread_metadata"), true);
       },
     );
   } finally {
@@ -316,6 +423,101 @@ test("studio-brain remember writes a startup-linked handoff and refreshes local 
       assert.match(String(handoff.summary || ""), /remember MCP tool/i);
       assert.equal(String(continuity.continuityState || "").toLowerCase(), "ready");
       assert.match(String(continuity.nextRecommendedAction || ""), /codex-doctor/i);
+    });
+  } finally {
+    bootstrap.cleanup();
+  }
+});
+
+test("studio-brain memory consolidate executes on the host via MCP", async () => {
+  const bootstrap = createBootstrapHome();
+
+  try {
+    await withConsolidationServer(async (baseUrl, requests) => {
+      await withClient(
+        {
+          HOME: bootstrap.homeDir,
+          USERPROFILE: bootstrap.homeDir,
+          STUDIO_BRAIN_BOOTSTRAP_THREAD_ID: bootstrap.threadId,
+          STUDIO_BRAIN_MCP_ADMIN_TOKEN: "test-admin-token",
+          STUDIO_BRAIN_MCP_ID_TOKEN: "test-token",
+        },
+        async (client) => {
+          const result = await client.callTool({
+            name: "studio_brain_memory_consolidate",
+            arguments: {
+              mode: "overnight",
+              runId: "memory-consolidation-mcp",
+              maxCandidates: 12,
+              maxWrites: 4,
+              timeBudgetMs: 15000,
+              focusAreas: ["Portal continuity"],
+              baseUrl,
+              timeoutMs: 2000,
+            },
+          });
+
+          assert.notEqual(result.isError, true);
+          assert.equal(result.structuredContent?.status, "success");
+          assert.equal(result.structuredContent?.actionabilityStatus, "passed");
+          assert.equal(result.structuredContent?.focusAreas?.includes("Portal continuity"), true);
+        },
+      );
+
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0]?.url, "/api/memory/consolidate");
+      assert.equal(requests[0]?.authorization, "Bearer test-token");
+      assert.equal(requests[0]?.adminToken, "test-admin-token");
+      assert.equal(requests[0]?.body?.requestOrigin, "studio-brain-mcp");
+      assert.equal(requests[0]?.body?.mode, "overnight");
+    });
+  } finally {
+    bootstrap.cleanup();
+  }
+});
+
+test("studio-brain thread metadata scrub executes on the host via MCP", async () => {
+  const bootstrap = createBootstrapHome();
+
+  try {
+    await withThreadMetadataScrubServer(async (baseUrl, requests) => {
+      await withClient(
+        {
+          HOME: bootstrap.homeDir,
+          USERPROFILE: bootstrap.homeDir,
+          STUDIO_BRAIN_BOOTSTRAP_THREAD_ID: bootstrap.threadId,
+          STUDIO_BRAIN_MCP_ADMIN_TOKEN: "test-admin-token",
+          STUDIO_BRAIN_MCP_ID_TOKEN: "test-token",
+        },
+        async (client) => {
+          const result = await client.callTool({
+            name: "studio_brain_memory_scrub_thread_metadata",
+            arguments: {
+              dryRun: true,
+              limit: 25,
+              maxWrites: 10,
+              writeDelayMs: 5,
+              stopAfterTimeoutErrors: 2,
+              sourcePrefixes: ["import", "replay:"],
+              baseUrl,
+              timeoutMs: 2000,
+            },
+          });
+
+          assert.notEqual(result.isError, true);
+          assert.equal(result.structuredContent?.status, "success");
+          assert.equal(result.structuredContent?.dryRun, true);
+          assert.equal(result.structuredContent?.scanned, 18);
+        },
+      );
+
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0]?.url, "/api/memory/scrub-thread-metadata");
+      assert.equal(requests[0]?.authorization, "Bearer test-token");
+      assert.equal(requests[0]?.adminToken, "test-admin-token");
+      assert.equal(requests[0]?.body?.requestOrigin, "studio-brain-mcp");
+      assert.equal(requests[0]?.body?.dryRun, true);
+      assert.deepEqual(requests[0]?.body?.sourcePrefixes, ["import", "replay:"]);
     });
   } finally {
     bootstrap.cleanup();

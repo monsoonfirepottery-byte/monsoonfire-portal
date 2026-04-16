@@ -270,10 +270,28 @@
 .control-tower-next-list,
 .control-tower-pinned-list,
 .control-tower-timeline,
-.control-tower-session-list {
+.control-tower-session-list,
+.control-tower-partner-loop-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.control-tower-partner-command-row,
+.control-tower-partner-loop-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.control-tower-partner-loop-card {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(136, 152, 179, 0.16);
+  background: rgba(12, 17, 24, 0.78);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .control-tower-memory-card {

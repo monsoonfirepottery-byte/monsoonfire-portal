@@ -4,6 +4,8 @@ Standalone MCP bridge for the existing Studio Brain HTTP memory and loop endpoin
 
 This package is intentionally isolated from the main `studio-brain/` app so it can ship as a low-conflict PR while other work continues in the service itself.
 
+Memory maintenance executes on the Ubuntu Studio Brain host. The MCP server is a client bridge to that host control plane; it should not run memory-service logic or database access locally on `wuff-laptop`.
+
 ## What it exposes
 
 - `studio_brain_health`
@@ -11,6 +13,8 @@ This package is intentionally isolated from the main `studio-brain/` app so it c
 - `studio_brain_memory_recent`
 - `studio_brain_memory_stats`
 - `studio_brain_memory_context`
+- `studio_brain_memory_consolidate`
+- `studio_brain_memory_scrub_thread_metadata`
 - `studio_brain_loop_incidents`
 - `studio_brain_loop_action_plan`
 
@@ -24,6 +28,7 @@ This package is intentionally isolated from the main `studio-brain/` app so it c
   - optional full `Authorization` header value (for example `Bearer <token>`); falls back to the ID token variables when unset
 - `STUDIO_BRAIN_MCP_ADMIN_TOKEN`
   - optional extra admin token for local/dev setups
+  - required for mutating host-control operations such as `studio_brain_memory_consolidate` and `studio_brain_memory_scrub_thread_metadata` when Studio Brain is configured to require the admin token
 - `STUDIO_BRAIN_MCP_TIMEOUT_MS`
   - default: `10000`
 

@@ -475,3 +475,147 @@ test("ops service creates members and stores only billing-safe metadata", async 
   assert.equal(audits[1]?.payload.emailMasked, "n***r@example.com");
   assert.match(audits[1]?.reason ?? "", /^stored securely \(\d+ chars\)$/);
 });
+
+test("ops service suppresses stale reservation bundles from the live handoff view", async () => {
+  const store = new MemoryOpsStore();
+  await store.upsertReservationBundle({
+    id: "reservation:stale-1",
+    reservationId: "stale-1",
+    title: "Fixture Member · bisque firing",
+    status: "REQUESTED",
+    ownerUid: "member-1",
+    displayName: "Fixture Member",
+    firingType: "bisque firing",
+    dueAt: "2026-04-16T08:00:00.000Z",
+    itemCount: 4,
+    shelfEquivalent: 1,
+    notes: "Old QA fixture",
+    arrival: {
+      status: "expected",
+      dueAt: "2026-04-16T08:00:00.000Z",
+      arrivedAt: null,
+      summary: "Fixture Member is expected.",
+      confidence: 0.7,
+      verificationClass: "planned",
+    },
+    prep: {
+      summary: "Fixture prep",
+      actions: ["Prepare shelf"],
+      toolsNeeded: ["clipboard"],
+      assignedRole: "floor_staff",
+    },
+    linkedTaskIds: [],
+    verificationClass: "planned",
+    freshestAt: "2026-04-16T07:45:00.000Z",
+    sources: [],
+    confidence: 0.7,
+    degradeReason: null,
+    metadata: {},
+  });
+
+  const service = createOpsService({
+    store,
+    now: () => "2026-04-18T20:45:00.000Z",
+    stateStore: {
+      async saveStudioState() {},
+      async getLatestStudioState() {
+        return {
+          schemaVersion: "v3.0",
+          snapshotDate: "2026-04-18",
+          generatedAt: "2026-04-18T20:40:00.000Z",
+          cloudSync: {
+            firestoreReadAt: "2026-04-18T20:40:00.000Z",
+            stripeReadAt: null,
+          },
+          counts: {
+            batchesActive: 0,
+            batchesClosed: 0,
+            reservationsOpen: 0,
+            firingsScheduled: 0,
+            reportsOpen: 0,
+          },
+          ops: {
+            agentRequestsPending: 0,
+            highSeverityReports: 0,
+          },
+          finance: {
+            pendingOrders: 0,
+            unsettledPayments: 0,
+          },
+          sourceHashes: {
+            firestore: "fixture",
+            stripe: null,
+          },
+          diagnostics: {
+            completeness: "partial",
+            warnings: [],
+          },
+        };
+      },
+      async getPreviousStudioState() { return null; },
+      async saveStudioStateDiff() {},
+      async saveOverseerRun() {},
+      async getLatestOverseerRun() { return null; },
+      async listRecentOverseerRuns() { return []; },
+      async listRecentJobRuns() { return []; },
+      async startJobRun(jobName) {
+        return {
+          id: `${jobName}-1`,
+          jobName,
+          status: "running" as const,
+          startedAt: "2026-04-18T20:40:00.000Z",
+          completedAt: null,
+          summary: null,
+          errorMessage: null,
+        };
+      },
+      async completeJobRun() {},
+      async failJobRun() {},
+    },
+    staffDataSource: {
+      async listMembers() { return []; },
+      async getMember() { return null; },
+      async createMember() { throw new Error("not used"); },
+      async updateMemberProfile() { throw new Error("not used"); },
+      async updateMemberMembership() { throw new Error("not used"); },
+      async updateMemberBilling() { throw new Error("not used"); },
+      async updateMemberRole() { throw new Error("not used"); },
+      async getMemberActivity(uid) {
+        return {
+          uid,
+          reservations: 0,
+          libraryLoans: 0,
+          supportThreads: 0,
+          events: 0,
+          lastReservationAt: null,
+          lastLoanAt: null,
+          lastEventAt: null,
+        };
+      },
+      async listReservations() { return []; },
+      async getReservationBundle() { return null; },
+      async listEvents() { return []; },
+      async listReports() { return []; },
+      async getLendingSnapshot() {
+        return {
+          requests: [],
+          loans: [],
+          recommendationCount: 0,
+          tagSubmissionCount: 0,
+          coverReviewCount: 0,
+          generatedAt: "2026-04-18T20:40:00.000Z",
+        };
+      },
+    },
+  });
+
+  const snapshot = await service.getPortalSnapshot();
+  assert.equal(snapshot.reservations.length, 0);
+  assert.equal(snapshot.twin.currentRisk, null);
+  assert.match(snapshot.twin.headline, /quiet/i);
+  assert.ok(
+    snapshot.truth.sources.some((row) =>
+      row.source === "reservations" && /suppressed|active right now/i.test(String(row.reason || ""))
+    ),
+  );
+});

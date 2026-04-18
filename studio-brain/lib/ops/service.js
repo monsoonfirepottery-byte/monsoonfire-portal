@@ -76,6 +76,9 @@ function freshnessMsFrom(timestamp, currentIso) {
         return null;
     return Math.max(0, now - then);
 }
+function msSince(timestamp, currentIso) {
+    return freshnessMsFrom(timestamp, currentIso);
+}
 function minutesUntil(timestamp) {
     if (!timestamp)
         return null;
@@ -184,7 +187,7 @@ function sourceHealth(freshnessSeconds, budgetSeconds) {
         return "warning";
     return "critical";
 }
-function sourceFreshnessRow(currentIso, source, label, observedAt, budgetSeconds, reason) {
+function sourceFreshnessRow(currentIso, source, label, observedAt, budgetSeconds, reason, missingStatus = "critical") {
     const freshnessMs = freshnessMsFrom(observedAt, currentIso);
     const freshnessSeconds = freshnessMs === null ? null : Math.round(freshnessMs / 1000);
     return {
@@ -192,10 +195,30 @@ function sourceFreshnessRow(currentIso, source, label, observedAt, budgetSeconds
         label,
         freshnessSeconds,
         budgetSeconds,
-        status: sourceHealth(freshnessSeconds, budgetSeconds),
+        status: freshnessSeconds === null ? missingStatus : sourceHealth(freshnessSeconds, budgetSeconds),
         freshestAt: observedAt,
         reason,
     };
+}
+function reservationBundleIsOperational(bundle, currentIso) {
+    const normalizedStatus = String(bundle.status || "").trim().toUpperCase();
+    if (["CANCELED", "CANCELLED", "COMPLETED", "FULFILLED", "ARCHIVED"].includes(normalizedStatus)) {
+        return false;
+    }
+    const arrivalStatus = String(bundle.arrival?.status || "").trim().toLowerCase();
+    const arrivedAgeMs = msSince(bundle.arrival?.arrivedAt ?? null, currentIso);
+    if (arrivalStatus === "arrived") {
+        return arrivedAgeMs === null || arrivedAgeMs <= 12 * 60 * 60 * 1000;
+    }
+    const dueAgeMs = msSince(bundle.dueAt, currentIso);
+    if (dueAgeMs !== null) {
+        return dueAgeMs <= 6 * 60 * 60 * 1000;
+    }
+    const freshestAgeMs = msSince(bundle.freshestAt, currentIso);
+    if (freshestAgeMs !== null) {
+        return freshestAgeMs <= 12 * 60 * 60 * 1000;
+    }
+    return false;
 }
 function deriveReadiness(modes, sourceRows) {
     const worstSource = sourceRows.reduce((worst, row) => {
@@ -619,7 +642,6 @@ function createOpsService(options = {}) {
             const merged = mergeApproval(approvalsById.get(seed.id) ?? null, seed, currentIso);
             mergedApprovals.set(seed.id, merged);
         };
-        const reservationsOpen = dependencies.studioState?.counts.reservationsOpen ?? 0;
         const supportOpen = dependencies.supportQueue?.totalOpen ?? dependencies.supportCases.filter((row) => row.queueBucket !== "resolved").length;
         const supportAwaitingApproval = dependencies.supportQueue?.awaitingApproval ?? 0;
         const supportSecurityHold = dependencies.supportQueue?.securityHold ?? 0;
@@ -951,7 +973,10 @@ function createOpsService(options = {}) {
                 }),
             }));
         }
-        const reservationBundles = dependencies.reservations.length > 0 ? dependencies.reservations : persistedBundles;
+        const reservationBundleCandidates = dependencies.reservations.length > 0 ? dependencies.reservations : persistedBundles;
+        const reservationBundles = reservationBundleCandidates.filter((bundle) => reservationBundleIsOperational(bundle, currentIso));
+        const suppressedReservationBundles = Math.max(0, reservationBundleCandidates.length - reservationBundles.length);
+        const reservationsOpen = reservationBundles.length;
         for (const bundle of reservationBundles) {
             const caseId = `case_reservation_${bundle.reservationId}`;
             const countdown = minutesUntil(bundle.dueAt);
@@ -1101,15 +1126,19 @@ function createOpsService(options = {}) {
             ?? dependencies.lending?.requests.reduce((best, row) => latest(best, row.createdAt), null)
             ?? null;
         const sourceRows = [
-            sourceFreshnessRow(currentIso, "ops_ledger", "Ops ledger", latestOpsEventAt, 600, latestOpsEventAt ? null : "No ops events have been ingested yet."),
-            sourceFreshnessRow(currentIso, "studio_state", "Studio state", latestStateAt, 3600, latestStateAt ? null : "No studio state snapshot is available."),
-            sourceFreshnessRow(currentIso, "kilnaid", "Kiln telemetry", latestKilnAt, 900, dependencies.kilnOverview ? null : "Kiln telemetry is unavailable."),
-            sourceFreshnessRow(currentIso, "support", "Inbox and internet threads", latestSupportAt, 900, supportOpsStore ? null : "Support lane is not configured."),
-            sourceFreshnessRow(currentIso, "stations", "Station heartbeats", latestStationAt, 900, latestStationAt ? null : "No station heartbeats have been seen yet."),
-            sourceFreshnessRow(currentIso, "reservations", "Reservations", latestReservationAt, 1800, reservationBundles.length > 0 ? null : "No reservation bundles are available yet."),
-            sourceFreshnessRow(currentIso, "events", "Events", latestEventAt, 3600, dependencies.events.length > 0 ? null : "No event records are available yet."),
-            sourceFreshnessRow(currentIso, "reports", "Community reports", latestReportAt, 1800, dependencies.reports.length > 0 ? null : "No community reports are visible."),
-            sourceFreshnessRow(currentIso, "lending", "Lending", latestLendingAt, 1800, dependencies.lending ? null : "Lending data is unavailable."),
+            sourceFreshnessRow(currentIso, "ops_ledger", "Ops ledger", latestOpsEventAt, 600, latestOpsEventAt ? null : "No ops events have been ingested yet.", "warning"),
+            sourceFreshnessRow(currentIso, "studio_state", "Studio state", latestStateAt, 3600, latestStateAt ? null : "No studio state snapshot is available.", "critical"),
+            sourceFreshnessRow(currentIso, "kilnaid", "Kiln telemetry", latestKilnAt, 900, dependencies.kilnOverview ? null : "Kiln telemetry is unavailable.", "warning"),
+            sourceFreshnessRow(currentIso, "support", "Inbox and internet threads", latestSupportAt, 900, supportOpsStore ? null : "Support lane is not configured.", "warning"),
+            sourceFreshnessRow(currentIso, "stations", "Station heartbeats", latestStationAt, 900, latestStationAt ? null : "No station heartbeats have been seen yet.", "warning"),
+            sourceFreshnessRow(currentIso, "reservations", "Reservations", latestReservationAt, 1800, reservationBundles.length > 0
+                ? null
+                : suppressedReservationBundles > 0
+                    ? "Historical reservation bundles were suppressed from the live board."
+                    : "No reservation bundles are active right now.", "healthy"),
+            sourceFreshnessRow(currentIso, "events", "Events", latestEventAt, 3600, dependencies.events.length > 0 ? null : "No event records are active right now.", "healthy"),
+            sourceFreshnessRow(currentIso, "reports", "Community reports", latestReportAt, 1800, dependencies.reports.length > 0 ? null : "No community reports are active right now.", "healthy"),
+            sourceFreshnessRow(currentIso, "lending", "Lending", latestLendingAt, 1800, dependencies.lending ? null : "Lending data is unavailable.", "warning"),
         ];
         const derivedModes = new Set(manualModes);
         if (sourceRows.some((row) => row.source === "ops_ledger" && row.status === "critical"))
@@ -1129,13 +1158,19 @@ function createOpsService(options = {}) {
         const truthReadiness = deriveReadiness([...derivedModes], sourceRows);
         const pendingApprovals = [...mergedApprovals.values()].filter((row) => row.status === "pending").length;
         const topTask = sortTasks([...mergedTasks.values()]).find((row) => !terminalTaskStatus(row.status)) ?? null;
+        const studioIsQuiet = reservationsOpen === 0
+            && kilnAttention === 0
+            && kilnActiveRuns === 0
+            && supportOpen === 0
+            && pendingApprovals === 0
+            && topTask === null;
         const currentRisk = supportSecurityHold > 0
             ? `${supportSecurityHold} support thread${supportSecurityHold === 1 ? "" : "s"} are on security hold.`
             : kilnAttention > 0
                 ? `${kilnAttention} kiln signal${kilnAttention === 1 ? "" : "s"} need attention.`
                 : pendingApprovals > 0
                     ? `${pendingApprovals} approval${pendingApprovals === 1 ? "" : "s"} are blocking forward motion.`
-                    : truthReadiness === "blocked"
+                    : truthReadiness === "blocked" && !studioIsQuiet
                         ? "Truth readiness is degraded enough that human trust would be misplaced."
                         : null;
         const watchdogs = [
@@ -1286,9 +1321,17 @@ function createOpsService(options = {}) {
             generatedAt: currentIso,
             headline: currentRisk
                 ? `Studio is active: ${currentRisk}`
-                : `Studio is steady with ${kilnActiveRuns} active kiln run${kilnActiveRuns === 1 ? "" : "s"} and ${supportOpen} open internet thread${supportOpen === 1 ? "" : "s"}.`,
-            narrative: `The manager should minimize surprise across ${reservationsOpen} open reservation${reservationsOpen === 1 ? "" : "s"}, `
-                + `${kilnAttention} kiln attention item${kilnAttention === 1 ? "" : "s"}, and ${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}.`,
+                : studioIsQuiet
+                    ? truthReadiness === "ready"
+                        ? "Studio is quiet and ready for handoff."
+                        : "Studio is quiet and waiting for fresher live telemetry."
+                    : `Studio is steady with ${kilnActiveRuns} active kiln run${kilnActiveRuns === 1 ? "" : "s"} and ${supportOpen} open internet thread${supportOpen === 1 ? "" : "s"}.`,
+            narrative: studioIsQuiet
+                ? truthReadiness === "ready"
+                    ? "No arrivals, physical tasks, or approvals are queued right now."
+                    : "No human handoff is queued right now, so this board should read as ambient status until live signals return."
+                : `The manager should minimize surprise across ${reservationsOpen} open reservation${reservationsOpen === 1 ? "" : "s"}, `
+                    + `${kilnAttention} kiln attention item${kilnAttention === 1 ? "" : "s"}, and ${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}.`,
             currentRisk,
             commitmentsDueSoon: reservationsOpen,
             arrivalsExpectedSoon: reservationsOpen,

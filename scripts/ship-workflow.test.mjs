@@ -23,6 +23,24 @@ test("parseArgs accepts lane, apply, and skip flags", () => {
   assert.equal(parsed.updateBranch, false);
 });
 
+test("parseArgs accepts npm-safe positional aliases", () => {
+  const parsed = parseArgs(["apply", "portal", "474", "skip-cleanup", "skip-sync", "no-update-branch"]);
+  assert.equal(parsed.apply, true);
+  assert.equal(parsed.lane, "portal");
+  assert.equal(parsed.pr, "474");
+  assert.equal(parsed.deploy, true);
+  assert.equal(parsed.cleanup, false);
+  assert.equal(parsed.sync, false);
+  assert.equal(parsed.updateBranch, false);
+});
+
+test("parseArgs accepts positional key=value aliases", () => {
+  const parsed = parseArgs(["pr=474", "merge-method=merge", "artifact=output/custom-report.json"]);
+  assert.equal(parsed.pr, "474");
+  assert.equal(parsed.mergeMethod, "merge");
+  assert.equal(parsed.artifact, "output/custom-report.json");
+});
+
 test("resolveLanePreset maps studio lane to reconcile script", () => {
   const preset = resolveLanePreset("studio");
   assert.equal(preset.script, "studio:ops:reconcile");

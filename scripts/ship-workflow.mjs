@@ -91,6 +91,10 @@ function printUsage() {
     "  --artifact <path>       Write the JSON report to a custom repo-relative path.",
     "  --json                  Emit the report as JSON.",
     "  --help                  Show this help text.",
+    "",
+    "NPM-safe positional aliases:",
+    "  apply, portal, website, studio, 474, pr=474, skip-cleanup, skip-sync, skip-merge",
+    "  no-update-branch, no-wait-checks, no-delete-branch, merge-method=squash",
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
 }
@@ -115,45 +119,46 @@ export function parseArgs(argv) {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = clean(argv[index]);
+    const lowerArg = arg.toLowerCase();
     if (!arg) continue;
 
-    if (arg === "--apply") {
+    if (arg === "--apply" || lowerArg === "apply") {
       parsed.apply = true;
       continue;
     }
-    if (arg === "--json") {
+    if (arg === "--json" || lowerArg === "json") {
       parsed.json = true;
       continue;
     }
-    if (arg === "--help" || arg === "-h") {
+    if (arg === "--help" || arg === "-h" || lowerArg === "help") {
       parsed.help = true;
       continue;
     }
-    if (arg === "--skip-merge") {
+    if (arg === "--skip-merge" || lowerArg === "skip-merge") {
       parsed.merge = false;
       continue;
     }
-    if (arg === "--skip-deploy") {
+    if (arg === "--skip-deploy" || lowerArg === "skip-deploy") {
       parsed.deploy = false;
       continue;
     }
-    if (arg === "--skip-sync") {
+    if (arg === "--skip-sync" || lowerArg === "skip-sync") {
       parsed.sync = false;
       continue;
     }
-    if (arg === "--skip-cleanup") {
+    if (arg === "--skip-cleanup" || lowerArg === "skip-cleanup") {
       parsed.cleanup = false;
       continue;
     }
-    if (arg === "--no-update-branch") {
+    if (arg === "--no-update-branch" || lowerArg === "no-update-branch") {
       parsed.updateBranch = false;
       continue;
     }
-    if (arg === "--no-wait-checks") {
+    if (arg === "--no-wait-checks" || lowerArg === "no-wait-checks") {
       parsed.waitChecks = false;
       continue;
     }
-    if (arg === "--no-delete-branch") {
+    if (arg === "--no-delete-branch" || lowerArg === "no-delete-branch") {
       parsed.deleteBranch = false;
       continue;
     }
@@ -162,8 +167,8 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (arg.startsWith("--lane=")) {
-      parsed.lane = clean(arg.slice("--lane=".length)).toLowerCase();
+    if (arg.startsWith("--lane=") || lowerArg.startsWith("lane=")) {
+      parsed.lane = clean(arg.slice(arg.indexOf("=") + 1)).toLowerCase();
       continue;
     }
     if (arg === "--pr" && argv[index + 1]) {
@@ -171,8 +176,8 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (arg.startsWith("--pr=")) {
-      parsed.pr = clean(arg.slice("--pr=".length));
+    if (arg.startsWith("--pr=") || lowerArg.startsWith("pr=")) {
+      parsed.pr = clean(arg.slice(arg.indexOf("=") + 1));
       continue;
     }
     if (arg === "--merge-method" && argv[index + 1]) {
@@ -180,8 +185,8 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (arg.startsWith("--merge-method=")) {
-      parsed.mergeMethod = clean(arg.slice("--merge-method=".length)).toLowerCase();
+    if (arg.startsWith("--merge-method=") || lowerArg.startsWith("merge-method=")) {
+      parsed.mergeMethod = clean(arg.slice(arg.indexOf("=") + 1)).toLowerCase();
       continue;
     }
     if (arg === "--artifact" && argv[index + 1]) {
@@ -189,8 +194,8 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (arg.startsWith("--artifact=")) {
-      parsed.artifact = clean(arg.slice("--artifact=".length));
+    if (arg.startsWith("--artifact=") || lowerArg.startsWith("artifact=")) {
+      parsed.artifact = clean(arg.slice(arg.indexOf("=") + 1));
       continue;
     }
     if (!arg.startsWith("--")) {
@@ -198,8 +203,8 @@ export function parseArgs(argv) {
         parsed.pr = arg;
         continue;
       }
-      if (parsed.lane === "none" && Object.hasOwn(LANE_PRESETS, arg.toLowerCase())) {
-        parsed.lane = arg.toLowerCase();
+      if (parsed.lane === "none" && Object.hasOwn(LANE_PRESETS, lowerArg)) {
+        parsed.lane = lowerArg;
         continue;
       }
     }

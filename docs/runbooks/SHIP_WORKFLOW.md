@@ -38,6 +38,13 @@ Apply the portal lane:
 npm run ship:portal:apply -- 473
 ```
 
+When you want extra toggles through `npm run`, prefer npm-safe positional aliases:
+
+```bash
+npm run ship:apply -- 474 skip-cleanup
+npm run ship:portal:apply -- 474 skip-cleanup skip-sync
+```
+
 Website and Studio Brain presets follow the same pattern:
 - `npm run ship:website`
 - `npm run ship:website:apply`
@@ -60,4 +67,5 @@ When apply mode is enabled, the workflow can:
 ## Notes
 - The workflow writes a JSON report to `output/maintenance/ship-workflow-latest.json` by default.
 - If no clean default-branch worktree is available, deploy is blocked on purpose rather than deploying from a dirty feature branch.
-- Use `--skip-deploy`, `--skip-sync`, or `--skip-cleanup` when you only want part of the tail-end flow.
+- Direct `node ./scripts/ship-workflow.mjs ...` runs accept the full `--flag` syntax.
+- `npm run ship...` shorthands also accept positional aliases like `apply`, `portal`, `474`, `skip-cleanup`, `skip-sync`, `skip-merge`, and `pr=474`.

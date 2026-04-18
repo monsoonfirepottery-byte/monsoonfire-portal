@@ -1822,6 +1822,8 @@ test("ops portal routes expose twin state and allow claiming tasks", async () =>
       const html = await portalResponse.text();
       assert.ok(html.includes("Studio Manager voice"));
       assert.ok(html.includes("Hands lane"));
+      assert.ok(html.includes('id="ops-hands-workbench"'));
+      assert.ok(html.includes('id="ops-support-workbench"'));
 
       const choiceResponse = await fetch(`${baseUrl}/ops/choice`, {
         headers: { authorization: "Bearer test-staff" },
@@ -2179,6 +2181,18 @@ test("ops staff replacement routes expose session context and member management 
       assert.equal(activityPayload.ok, true);
       assert.equal(activityPayload.activity.reservations, 1);
       assert.equal(activityPayload.activity.supportThreads, 1);
+
+      const portalResponse = await fetch(`${baseUrl}/ops?surface=internet&mode=member-ops`, {
+        headers: { authorization: "Bearer test-staff" },
+      });
+      assert.equal(portalResponse.status, 200);
+      const portalHtml = await portalResponse.text();
+      assert.ok(portalHtml.includes('id="ops-member-workbench"'));
+      assert.ok(portalHtml.includes('id="ops-member-create-trigger"'));
+      assert.ok(portalHtml.includes("Never type raw card numbers here"));
+      assert.ok(!portalHtml.includes('window.prompt("Display name"'));
+      assert.ok(!portalHtml.includes('window.prompt("Membership tier"'));
+      assert.ok(!portalHtml.includes('window.prompt("Comma-separated ops roles"'));
     },
   );
 });

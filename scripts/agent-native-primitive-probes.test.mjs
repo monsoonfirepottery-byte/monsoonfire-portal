@@ -46,3 +46,38 @@ test("website smoke primitive probe exits without starting browser automation", 
   assert.equal(payload.benchmarkProbe, true);
   assert.equal(payload.options.expectedPortalHost, "portal.monsoonfire.com");
 });
+
+test("native browser shadow verifier probe exits without writing artifacts", () => {
+  const payload = runProbe("./scripts/native-browser-shadow-verifier.mjs", [
+    "--surface",
+    "portal",
+    "--base-url",
+    "https://portal.monsoonfire.com",
+    "--output-dir",
+    "output/native-browser/portal/prod",
+    "--shadow-of",
+    "verify.portal.smoke",
+  ]);
+  assert.equal(payload.tool, "native-browser-shadow-verifier");
+  assert.equal(payload.benchmarkProbe, true);
+  assert.equal(payload.options.surface, "portal");
+  assert.equal(payload.options.shadowOf, "verify.portal.smoke");
+});
+
+test("native browser shadow exec probe advertises execute mode", () => {
+  const payload = runProbe("./scripts/native-browser-shadow-verifier.mjs", [
+    "--surface",
+    "website",
+    "--base-url",
+    "https://monsoonfire.com",
+    "--output-dir",
+    "output/native-browser/website/prod",
+    "--shadow-of",
+    "verify.website.smoke",
+    "--execute",
+  ]);
+  assert.equal(payload.tool, "native-browser-shadow-verifier");
+  assert.equal(payload.benchmarkProbe, true);
+  assert.equal(payload.options.surface, "website");
+  assert.equal(payload.options.execute, true);
+});

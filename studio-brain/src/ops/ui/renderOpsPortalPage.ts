@@ -84,6 +84,56 @@ function statusTone(status: string): string {
   return "neutral";
 }
 
+function titleizeWords(value: string): string {
+  return value.replace(/\b([a-z])/g, (match) => match.toUpperCase());
+}
+
+function humanizeToken(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "Unknown";
+  if (/^p\d+$/i.test(normalized)) return normalized.toUpperCase();
+  return titleizeWords(normalized.replaceAll("_", " ").replaceAll("-", " "));
+}
+
+function formatRoleLabel(value: string | null | undefined): string {
+  return humanizeToken(value);
+}
+
+function formatStatusLabel(value: string | null | undefined): string {
+  return humanizeToken(value);
+}
+
+function formatProofModeLabel(value: string | null | undefined): string {
+  return humanizeToken(value);
+}
+
+function formatVerificationClassLabel(value: string | null | undefined): string {
+  return humanizeToken(value);
+}
+
+function formatPriorityLabel(value: string | null | undefined): string {
+  return humanizeToken(value);
+}
+
+function formatEscapeHatchLabel(value: string | null | undefined): string {
+  switch (String(value ?? "")) {
+    case "need_help":
+      return "Need help";
+    case "unsafe":
+      return "Unsafe";
+    case "missing_tool":
+      return "Missing tool";
+    case "not_my_role":
+      return "Not my role";
+    case "already_done":
+      return "Already done";
+    case "defer_with_reason":
+      return "Defer with reason";
+    default:
+      return humanizeToken(value);
+  }
+}
+
 function renderZone(zone: OpsTwinZone): string {
   return `
     <article class="ops-zone ops-tone-${esc(statusTone(zone.status))}">
@@ -112,16 +162,19 @@ function renderTask(task: HumanTaskRecord): string {
   const checklist = task.checklist.length
     ? task.checklist.map((item) => `<li><strong>${esc(item.label)}</strong>${item.detail ? ` · ${esc(item.detail)}` : ""}</li>`).join("")
     : "<li>No checklist has been generated yet.</li>";
+  const proofModes = task.proofModes.length > 1
+    ? task.proofModes.slice(1).map((entry) => formatProofModeLabel(entry)).join(", ")
+    : "";
   return `
     <article class="ops-task-card ops-tone-${esc(statusTone(task.status))}" data-task-id="${esc(task.id)}">
       <div class="ops-task-card__head">
         <div>
-          <p class="ops-kicker">${esc(task.surface)} lane · ${esc(task.role)} · ${esc(task.zone)}</p>
+          <p class="ops-kicker">${esc(humanizeToken(task.surface))} lane · ${esc(formatRoleLabel(task.role))} · ${esc(task.zone)}</p>
           <h3>${esc(task.title)}</h3>
         </div>
         <div class="ops-task-card__badges">
-          <span class="ops-pill ops-pill-${esc(statusTone(task.status))}">${esc(task.status)}</span>
-          <span class="ops-pill">${esc(task.priority)}</span>
+          <span class="ops-pill ops-pill-${esc(statusTone(task.status))}">${esc(formatStatusLabel(task.status))}</span>
+          <span class="ops-pill">${esc(formatPriorityLabel(task.priority))}</span>
         </div>
       </div>
       <p class="ops-summary">${esc(task.whyNow)}</p>
@@ -133,7 +186,7 @@ function renderTask(task: HumanTaskRecord): string {
         <div><dt>Evidence</dt><dd>${esc(task.evidenceSummary)}</dd></div>
         <div><dt>Tools</dt><dd>${esc(task.toolsNeeded.join(", ") || "Use standard station tools.")}</dd></div>
         <div><dt>Done definition</dt><dd>${esc(task.doneDefinition)}</dd></div>
-        <div><dt>Proof path</dt><dd>${esc(task.preferredProofMode)}${task.proofModes.length > 1 ? ` (fallbacks: ${esc(task.proofModes.slice(1).join(", "))})` : ""}</dd></div>
+        <div><dt>Proof path</dt><dd>${esc(formatProofModeLabel(task.preferredProofMode))}${proofModes ? ` (fallbacks: ${esc(proofModes)})` : ""}</dd></div>
         <div class="ops-span-2"><dt>If the signal path is missing</dt><dd>${esc(task.fallbackIfSignalMissing)}</dd></div>
       </dl>
       <div class="ops-subpanel">
@@ -147,7 +200,7 @@ function renderTask(task: HumanTaskRecord): string {
       <div class="ops-subpanel">
         <h4>Need help instead?</h4>
         <div class="ops-chip-row">
-          ${task.blockerEscapeHatches.map((entry) => `<button type="button" class="ops-chip" data-task-escape="${esc(entry)}" data-task-id="${esc(task.id)}">${esc(entry)}</button>`).join("")}
+          ${task.blockerEscapeHatches.map((entry) => `<button type="button" class="ops-chip" data-task-escape="${esc(entry)}" data-task-id="${esc(task.id)}">${esc(formatEscapeHatchLabel(entry))}</button>`).join("")}
         </div>
       </div>
       <div class="ops-actions">
@@ -164,10 +217,10 @@ function renderApproval(row: ApprovalItem): string {
     <article class="ops-approval ops-tone-${esc(statusTone(row.status))}">
       <div class="ops-zone__head">
         <div>
-          <p class="ops-kicker">Approval · ${esc(row.actionClass)} · ${esc(row.requiredRole)}</p>
+          <p class="ops-kicker">Approval · ${esc(humanizeToken(row.actionClass))} · ${esc(formatRoleLabel(row.requiredRole))}</p>
           <h3>${esc(row.title)}</h3>
         </div>
-        <span class="ops-pill ops-pill-${esc(statusTone(row.status))}">${esc(row.status)}</span>
+        <span class="ops-pill ops-pill-${esc(statusTone(row.status))}">${esc(formatStatusLabel(row.status))}</span>
       </div>
       <p class="ops-summary">${esc(row.summary)}</p>
       <dl class="ops-meta-grid">
@@ -188,12 +241,12 @@ function renderApproval(row: ApprovalItem): string {
 function renderCase(row: OpsCaseRecord): string {
   return `
     <article class="ops-case ops-tone-${esc(statusTone(row.status))}">
-      <p class="ops-kicker">${esc(row.kind)} · ${esc(row.lane)} · ${esc(row.priority)}</p>
+      <p class="ops-kicker">${esc(humanizeToken(row.kind))} · ${esc(humanizeToken(row.lane))} · ${esc(formatPriorityLabel(row.priority))}</p>
       <h3>${esc(row.title)}</h3>
       <p class="ops-summary">${esc(row.summary)}</p>
       <dl class="ops-meta-grid">
-        <div><dt>Status</dt><dd>${esc(row.status)}</dd></div>
-        <div><dt>Verification</dt><dd>${esc(row.verificationClass)}</dd></div>
+        <div><dt>Status</dt><dd>${esc(formatStatusLabel(row.status))}</dd></div>
+        <div><dt>Verification</dt><dd>${esc(formatVerificationClassLabel(row.verificationClass))}</dd></div>
         <div><dt>Freshest</dt><dd>${esc(formatTimestamp(row.freshestAt))}</dd></div>
         <div><dt>Confidence</dt><dd>${esc(formatConfidence(row.confidence))}</dd></div>
       </dl>
@@ -207,7 +260,7 @@ function renderCase(row: OpsCaseRecord): string {
 function renderConversation(row: OpsConversationThreadRecord): string {
   return `
     <article class="ops-conversation">
-      <p class="ops-kicker">${esc(row.roleMask)} · ${esc(row.senderIdentity)}</p>
+      <p class="ops-kicker">${esc(formatRoleLabel(row.roleMask))} · ${esc(row.senderIdentity)}</p>
       <h4>${esc(row.summary)}</h4>
       <p class="ops-meta">${row.unread ? "Unread" : "Read"} · last activity ${esc(formatTimestamp(row.latestMessageAt))}</p>
     </article>
@@ -220,35 +273,59 @@ function renderMemberCard(
     canEditProfile?: boolean;
     canEditMembership?: boolean;
     canEditRole?: boolean;
+    canEditBilling?: boolean;
     canViewActivity?: boolean;
   } = {},
 ): string {
+  const filterText = [
+    row.displayName,
+    row.email || "",
+    row.membershipTier || "",
+    row.portalRole,
+    row.opsRoles.join(" "),
+    row.opsCapabilities.join(" "),
+  ].join(" ").toLowerCase();
+  const rolePills = row.opsRoles.length
+    ? row.opsRoles.map((entry) => `<span class="ops-pill">${esc(formatRoleLabel(entry))}</span>`).join("")
+    : '<span class="ops-chip">No ops roles</span>';
+  const billingSummary = row.billing?.paymentMethodSummary
+    || (row.billing?.stripeCustomerId ? "Tokenized billing refs on file" : "No billing profile on file");
   const actions = [
-    options.canViewActivity
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-activity="${esc(row.uid)}" data-member-name="${esc(row.displayName)}">Activity</button>`
-      : "",
+    `<button type="button" class="ops-button" data-member-open="${esc(row.uid)}" data-member-tab="overview">Open</button>`,
     options.canEditProfile
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-profile="${esc(row.uid)}" data-member-display-name="${esc(row.displayName)}" data-member-kiln-preferences="${esc(row.kilnPreferences || "")}" data-member-staff-notes="${esc(row.staffNotes || "")}">Profile</button>`
+      ? `<button type="button" class="ops-button ops-button-secondary" data-member-open="${esc(row.uid)}" data-member-tab="profile">Profile</button>`
       : "",
     options.canEditMembership
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-membership="${esc(row.uid)}" data-member-membership-tier="${esc(row.membershipTier || "")}" data-member-name="${esc(row.displayName)}">Membership</button>`
+      ? `<button type="button" class="ops-button ops-button-secondary" data-member-open="${esc(row.uid)}" data-member-tab="membership">Membership</button>`
       : "",
     options.canEditRole
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-role="${esc(row.uid)}" data-member-roles="${esc(row.opsRoles.join(", "))}" data-member-name="${esc(row.displayName)}">Roles</button>`
+      ? `<button type="button" class="ops-button ops-button-secondary" data-member-open="${esc(row.uid)}" data-member-tab="roles">Roles</button>`
+      : "",
+    options.canEditBilling
+      ? `<button type="button" class="ops-button ops-button-secondary" data-member-open="${esc(row.uid)}" data-member-tab="billing">Billing</button>`
+      : "",
+    options.canViewActivity
+      ? `<button type="button" class="ops-button ops-button-secondary" data-member-open="${esc(row.uid)}" data-member-tab="overview">Activity</button>`
       : "",
   ].filter(Boolean);
   return `
-    <article class="ops-case ops-tone-neutral">
-      <p class="ops-kicker">${esc(row.portalRole)} · ${esc(row.opsRoles.join(", ") || "no ops roles")}</p>
-      <h3>${esc(row.displayName)}</h3>
-      <p class="ops-summary">${esc(row.email || "No email on file.")}</p>
-      <dl class="ops-meta-grid">
+    <article class="ops-case ops-tone-neutral ops-member-roster-card" data-member-card="${esc(row.uid)}" data-member-filter="${esc(filterText)}">
+      <div class="ops-member-roster-card__head">
+        <div>
+          <p class="ops-kicker">${esc(formatRoleLabel(row.portalRole))} · ${esc(row.membershipTier || "membership unset")}</p>
+          <h3>${esc(row.displayName)}</h3>
+          <p class="ops-summary">${esc(row.email || "No email on file.")}</p>
+        </div>
+        <span class="ops-pill ops-pill-${esc(row.billing?.stripeCustomerId || row.billing?.paymentMethodSummary ? "good" : "warn")}">${esc(row.billing?.stripeCustomerId || row.billing?.paymentMethodSummary ? "Billing ready" : "Needs billing")}</span>
+      </div>
+      <div class="ops-chip-row">${rolePills}</div>
+      <dl class="ops-member-roster-card__meta">
         <div><dt>Membership</dt><dd>${esc(row.membershipTier || "none")}</dd></div>
         <div><dt>Last seen</dt><dd>${esc(formatTimestamp(row.lastSeenAt))}</dd></div>
-        <div class="ops-span-2"><dt>Capabilities</dt><dd>${esc(row.opsCapabilities.join(", ") || "No explicit ops capabilities.")}</dd></div>
+        <div><dt>Billing</dt><dd>${esc(billingSummary)}</dd></div>
         <div><dt>Updated</dt><dd>${esc(formatTimestamp(row.updatedAt))}</dd></div>
       </dl>
-      ${actions.length ? `<div class="ops-actions">${actions.join("")}</div>` : ""}
+      ${actions.length ? `<div class="ops-member-roster-card__actions">${actions.join("")}</div>` : ""}
     </article>
   `;
 }
@@ -261,13 +338,13 @@ function renderReservationCard(
 ): string {
   return `
     <article class="ops-case ops-tone-${esc(statusTone(row.arrival.status === "arrived" ? "active" : row.degradeReason ? "warning" : "healthy"))}">
-      <p class="ops-kicker">${esc(row.status)} · ${esc(row.firingType)} · ${esc(row.arrival.status)}</p>
+      <p class="ops-kicker">${esc(humanizeToken(row.status))} · ${esc(humanizeToken(row.firingType))} · ${esc(humanizeToken(row.arrival.status))}</p>
       <h3>${esc(row.title)}</h3>
       <p class="ops-summary">${esc(row.arrival.summary)}</p>
       <dl class="ops-meta-grid">
         <div><dt>Due</dt><dd>${esc(formatTimestamp(row.dueAt))}</dd></div>
         <div><dt>Items</dt><dd>${esc(String(row.itemCount))}</dd></div>
-        <div><dt>Verification</dt><dd>${esc(row.verificationClass)}</dd></div>
+        <div><dt>Verification</dt><dd>${esc(formatVerificationClassLabel(row.verificationClass))}</dd></div>
         <div class="ops-span-2"><dt>Prep</dt><dd>${esc(row.prep.summary)}</dd></div>
       </dl>
       ${options.canPrepareReservations ? `
@@ -276,6 +353,228 @@ function renderReservationCard(
         </div>
       ` : ""}
     </article>
+  `;
+}
+
+function renderMemberOpsWorkspace(input: {
+  members: OpsPortalSnapshot["members"];
+  reservations: OpsPortalSnapshot["reservations"];
+  memberCards: string;
+  reservationCards: string;
+  canViewMembers: boolean;
+  canCreateMember: boolean;
+}): string {
+  const billingReadyCount = input.members.filter((row) => row.billing?.stripeCustomerId || row.billing?.paymentMethodSummary).length;
+  const onboardingReadyCount = input.members.filter((row) => !row.membershipTier || !row.billing?.stripeCustomerId).length;
+  return `
+    <div class="ops-member-ops-grid">
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Member ops</p>
+            <h2>Roster, onboarding, and access control</h2>
+          </div>
+        </div>
+        <div class="ops-member-toolbar">
+          <label class="ops-field ops-field-compact ops-member-search-field">
+            <span>Find a member</span>
+            <input id="ops-member-search" type="search" placeholder="Search by name, email, membership, or role." />
+          </label>
+          ${input.canCreateMember ? '<button type="button" class="ops-button" id="ops-member-create-trigger">Create member</button>' : ""}
+        </div>
+        <div class="ops-member-signal-strip">
+          <article class="ops-member-signal">
+            <span>Roster</span>
+            <strong>${esc(input.members.length)}</strong>
+          </article>
+          <article class="ops-member-signal">
+            <span>Billing ready</span>
+            <strong>${esc(billingReadyCount)}</strong>
+          </article>
+          <article class="ops-member-signal">
+            <span>Needs follow-through</span>
+            <strong>${esc(onboardingReadyCount)}</strong>
+          </article>
+        </div>
+        <div class="ops-scroll-stack ops-member-roster" id="ops-member-roster">
+          ${input.canViewMembers
+            ? (input.memberCards || '<div class="ops-empty">No member rows are visible for this session.</div>')
+            : '<div class="ops-empty">This role can use the internet lane, but the member roster is masked.</div>'}
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Workbench</p>
+            <h2>Manage one member without losing the plot</h2>
+          </div>
+        </div>
+        <div id="ops-member-workbench" class="ops-member-workbench">
+          <div class="ops-empty">Select a member to manage profile, membership, roles, and billing without leaving the lane.</div>
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Context rail</p>
+            <h2>Reservations, safety, and why the change matters</h2>
+          </div>
+        </div>
+        <div id="ops-member-context" class="ops-member-context">
+          ${input.reservationCards || '<div class="ops-empty">No member arrival bundles are visible.</div>'}
+          <article class="ops-member-note">
+            <p class="ops-kicker">Billing safety</p>
+            <h3>Never type raw card numbers here</h3>
+            <p class="ops-summary">Use Stripe-hosted collection for payment details. This workspace only stores tokenized references, safe card summaries, and billing contact context.</p>
+          </article>
+        </div>
+      </div>
+    </div>
+    <datalist id="ops-membership-tier-options">
+      <option value="drop-in"></option>
+      <option value="community"></option>
+      <option value="member"></option>
+      <option value="resident"></option>
+      <option value="staff"></option>
+    </datalist>
+  `;
+}
+
+function renderHandsQueueWorkspace(input: {
+  handsTasks: HumanTaskRecord[];
+  activeHandsTasks: HumanTaskRecord[];
+  displayState: StationDisplayState | null;
+  truth: OpsPortalSnapshot["truth"];
+  reservations: OpsPortalSnapshot["reservations"];
+}): string {
+  const claimedCount = input.handsTasks.filter((task) => task.status === "claimed").length;
+  const blockedCount = input.handsTasks.filter((task) => task.status === "blocked" || task.status === "proof_pending").length;
+  return `
+    <div class="ops-workspace-grid">
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Hands queue</p>
+            <h2>What human hands should touch next</h2>
+          </div>
+        </div>
+        <div class="ops-member-toolbar">
+          <label class="ops-field ops-field-compact">
+            <span>Search tasks</span>
+            <input id="ops-hands-search" type="search" placeholder="Search by title, zone, status, or role." />
+          </label>
+        </div>
+        <div class="ops-member-signal-strip">
+          <article class="ops-member-signal">
+            <span>Queued</span>
+            <strong>${esc(input.handsTasks.length)}</strong>
+          </article>
+          <article class="ops-member-signal">
+            <span>Claimed</span>
+            <strong>${esc(claimedCount)}</strong>
+          </article>
+          <article class="ops-member-signal">
+            <span>Blocked / proof</span>
+            <strong>${esc(blockedCount)}</strong>
+          </article>
+        </div>
+        <div class="ops-scroll-stack" id="ops-hands-queue-rail">
+          ${input.handsTasks.map((task) => renderTask(task)).join("") || '<div class="ops-empty">No physical tasks are queued.</div>'}
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Task workbench</p>
+            <h2>One task, full context, no guessing</h2>
+          </div>
+        </div>
+        <div id="ops-hands-workbench" class="ops-workbench">
+          ${input.activeHandsTasks[0] ? renderTask(input.activeHandsTasks[0]) : '<div class="ops-empty">Select a task from the queue to open its full instructions, proof path, and blocker exits.</div>'}
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Shift context</p>
+            <h2>Station state and nearby commitments</h2>
+          </div>
+        </div>
+        <div id="ops-hands-context" class="ops-workbench">
+          ${renderStationContext(input.displayState)}
+          <div class="ops-ribbon-stack">${input.truth.sources.slice(0, 3).map(renderFreshnessRibbon).join("") || '<div class="ops-empty">No source freshness signals are available.</div>'}</div>
+          <div class="ops-scroll-stack">${input.reservations.slice(0, 3).map((row) => renderReservationCard(row, { canPrepareReservations: false })).join("") || '<div class="ops-empty">No nearby reservation bundles are visible right now.</div>'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSupportWorkspace(input: {
+  conversations: OpsPortalSnapshot["conversations"];
+  internetTasks: HumanTaskRecord[];
+  cases: OpsCaseRecord[];
+  approvals: ApprovalItem[];
+}): string {
+  const unreadCount = input.conversations.filter((row) => row.unread).length;
+  const activeCount = input.internetTasks.filter((task) => isActiveTask(task)).length;
+  return `
+    <div class="ops-workspace-grid">
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Support desk</p>
+            <h2>Threads and reply pressure</h2>
+          </div>
+        </div>
+        <div class="ops-member-toolbar">
+          <label class="ops-field ops-field-compact">
+            <span>Search threads</span>
+            <input id="ops-support-search" type="search" placeholder="Search by sender, role mask, or summary." />
+          </label>
+        </div>
+        <div class="ops-member-signal-strip">
+          <article class="ops-member-signal">
+            <span>Threads</span>
+            <strong>${esc(input.conversations.length)}</strong>
+          </article>
+          <article class="ops-member-signal">
+            <span>Unread</span>
+            <strong>${esc(unreadCount)}</strong>
+          </article>
+          <article class="ops-member-signal">
+            <span>Active internet tasks</span>
+            <strong>${esc(activeCount)}</strong>
+          </article>
+        </div>
+        <div class="ops-scroll-stack" id="ops-support-thread-rail">
+          ${input.conversations.map(renderConversation).join("") || '<div class="ops-empty">No recent conversations.</div>'}
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Reply workbench</p>
+            <h2>Selected thread, clear next move</h2>
+          </div>
+        </div>
+        <div id="ops-support-workbench" class="ops-workbench">
+          <div class="ops-empty">Select a support thread to see its pressure, linked work, and a safe draft path.</div>
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="ops-panel__head">
+          <div>
+            <p class="ops-kicker">Linked context</p>
+            <h2>Tasks, cases, and approval gates around that conversation</h2>
+          </div>
+        </div>
+        <div id="ops-support-context" class="ops-workbench">
+          <div class="ops-scroll-stack">${input.cases.map(renderCase).join("") || '<div class="ops-empty">No internet-related cases are active right now.</div>'}</div>
+          <div class="ops-stack">${input.approvals.slice(0, 3).map(renderApproval).join("") || '<div class="ops-empty">No approval gates are currently queued.</div>'}</div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -376,10 +675,10 @@ function renderStationContext(displayState: StationDisplayState | null): string 
       <h3>${esc(station.stationId)}</h3>
       <dl class="ops-meta-grid">
         <div><dt>Room</dt><dd>${esc(station.roomId)}</dd></div>
-        <div><dt>Mode</dt><dd>${esc(station.surfaceMode)}</dd></div>
+        <div><dt>Mode</dt><dd>${esc(humanizeToken(station.surfaceMode))}</dd></div>
         <div><dt>Actor</dt><dd>${esc(station.actorId || "unclaimed")}</dd></div>
         <div><dt>Last seen</dt><dd>${esc(formatTimestamp(station.lastSeenAt))}</dd></div>
-        <div class="ops-span-2"><dt>Capabilities</dt><dd>${esc(station.capabilities.join(", ") || "No capabilities advertised.")}</dd></div>
+        <div class="ops-span-2"><dt>Capabilities</dt><dd>${esc(station.capabilities.map((entry) => humanizeToken(entry)).join(", ") || "No capabilities advertised.")}</dd></div>
       </dl>
     </article>
   `;
@@ -418,12 +717,12 @@ function renderPulseZone(zone: OpsTwinZone): string {
           <p class="ops-kicker">Studio system</p>
           <h3>${esc(zone.label)}</h3>
         </div>
-        <span class="ops-pill ops-pill-${esc(tone)}">${esc(zone.status)}</span>
+        <span class="ops-pill ops-pill-${esc(tone)}">${esc(formatStatusLabel(zone.status))}</span>
       </div>
       <p class="ops-summary">${esc(zone.summary)}</p>
       ${renderMeter(zone.evidence.confidence * 100, tone, `${formatConfidence(zone.evidence.confidence)} confidence`)}
       <dl class="ops-inline-meta">
-        <div><dt>Verification</dt><dd>${esc(zone.evidence.verificationClass)}</dd></div>
+        <div><dt>Verification</dt><dd>${esc(formatVerificationClassLabel(zone.evidence.verificationClass))}</dd></div>
         <div><dt>Freshest</dt><dd>${esc(formatTimestamp(zone.evidence.freshestAt))}</dd></div>
       </dl>
       <p class="ops-pulse-card__next"><strong>Next:</strong> ${esc(zone.nextAction || "No explicit next action queued.")}</p>
@@ -756,14 +1055,14 @@ function renderMapZone(zone: OpsTwinZone, index: number): string {
           <p class="ops-kicker">Studio system</p>
           <h3>${esc(zone.label)}</h3>
         </div>
-        <span class="ops-map-zone__sentinel ops-map-zone__sentinel-${esc(tone)}" title="${esc(zone.evidence.verificationClass)} · ${esc(formatConfidence(zone.evidence.confidence))}">
+        <span class="ops-map-zone__sentinel ops-map-zone__sentinel-${esc(tone)}" title="${esc(formatVerificationClassLabel(zone.evidence.verificationClass))} · ${esc(formatConfidence(zone.evidence.confidence))}">
           <span class="ops-map-zone__status ops-map-zone__status-${esc(tone)}"></span>
         </span>
       </div>
       <p class="ops-summary">${esc(zone.summary)}</p>
       ${renderMeter(zone.evidence.confidence * 100, tone, `${formatConfidence(zone.evidence.confidence)} confidence`)}
       <div class="ops-zone-ribbon" aria-hidden="true">${sourceSignals}</div>
-      <p class="ops-meta"><strong>${esc(zone.evidence.verificationClass)}</strong> · freshest ${esc(formatTimestamp(zone.evidence.freshestAt))}</p>
+      <p class="ops-meta"><strong>${esc(formatVerificationClassLabel(zone.evidence.verificationClass))}</strong> · freshest ${esc(formatTimestamp(zone.evidence.freshestAt))}</p>
       <p class="ops-map-zone__next"><strong>Next:</strong> ${esc(zone.nextAction || "No explicit next action queued.")}</p>
     </article>
   `;
@@ -800,9 +1099,11 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     ? model.session.allowedSurfaces
     : ["manager", "owner", "hands", "internet", "ceo", "forge"];
   const sessionCapabilities = model.session?.opsCapabilities ?? [];
+  const canCreateMember = sessionCapabilities.includes("members:create");
   const canEditMemberProfile = sessionCapabilities.includes("members:edit_profile");
   const canEditMembership = sessionCapabilities.includes("members:edit_membership");
   const canEditRole = sessionCapabilities.includes("members:edit_role");
+  const canEditBilling = sessionCapabilities.includes("members:edit_billing");
   const canViewMembers = sessionCapabilities.includes("members:view");
   const canPrepareReservations = sessionCapabilities.includes("reservations:prepare");
   const canRequestOverrides = sessionCapabilities.includes("overrides:request");
@@ -822,6 +1123,7 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     canEditProfile: canEditMemberProfile,
     canEditMembership,
     canEditRole,
+    canEditBilling,
     canViewActivity: canViewMembers,
   })).join("");
   const reservationCards = reservationBundles.map((row) => renderReservationCard(row, {
@@ -1351,10 +1653,13 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
           </div>
         `)}
         ${renderModePanel("hands", "queue", `
-          <div class="ops-panel">
-            <div class="ops-panel__head"><div><p class="ops-kicker">Queued work</p><h2>Task rail</h2></div></div>
-            <div class="ops-scroll-stack">${handsTasks.map(renderTask).join("") || '<div class="ops-empty">No physical tasks are queued.</div>'}</div>
-          </div>
+          ${renderHandsQueueWorkspace({
+            handsTasks,
+            activeHandsTasks,
+            displayState,
+            truth: model.truth,
+            reservations: reservationBundles,
+          })}
         `)}
         ${renderModePanel("hands", "checkins", `
           <div class="ops-layout">
@@ -1428,16 +1733,14 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
           </div>
         `)}
         ${renderModePanel("internet", "member-ops", `
-          <div class="ops-layout">
-            <div class="ops-panel">
-              <div class="ops-panel__head"><div><p class="ops-kicker">Member ops</p><h2>Profiles, memberships, and role context</h2></div></div>
-              <div class="ops-scroll-stack">${memberCards || '<div class="ops-empty">No member rows are visible for this session.</div>'}</div>
-            </div>
-            <div class="ops-panel">
-              <div class="ops-panel__head"><div><p class="ops-kicker">Reservation bundles</p><h2>The member promises that need prep context</h2></div></div>
-              <div class="ops-scroll-stack">${reservationCards || '<div class="ops-empty">No member arrival bundles are visible.</div>'}</div>
-            </div>
-          </div>
+          ${renderMemberOpsWorkspace({
+            members: memberRows,
+            reservations: reservationBundles,
+            memberCards,
+            reservationCards,
+            canViewMembers,
+            canCreateMember,
+          })}
         `)}
         ${renderModePanel("internet", "events", `
           <div class="ops-layout">
@@ -1457,16 +1760,12 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
           </div>
         `)}
         ${renderModePanel("internet", "support", `
-          <div class="ops-layout">
-            <div class="ops-panel">
-              <div class="ops-panel__head"><div><p class="ops-kicker">Related cases</p><h2>Support, events, and reputation ledger</h2></div></div>
-              <div class="ops-scroll-stack">${internetCases.map(renderCase).join("") || '<div class="ops-empty">No internet-related cases are active right now.</div>'}</div>
-            </div>
-            <div class="ops-panel">
-              <div class="ops-panel__head"><div><p class="ops-kicker">Conversations</p><h2>Explicit sender identity and thread memory</h2></div></div>
-              <div class="ops-scroll-stack">${model.conversations.map(renderConversation).join("") || '<div class="ops-empty">No recent conversations.</div>'}</div>
-            </div>
-          </div>
+          ${renderSupportWorkspace({
+            conversations: model.conversations,
+            internetTasks,
+            cases: internetCases,
+            approvals: pendingApprovals,
+          })}
         `)}
         ${renderModePanel("internet", "reputation", `
           <div class="ops-layout">
@@ -1682,6 +1981,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-surface-tab.is-active, .ops-button { background: var(--accent); color: #f8f3ed; }
       .ops-button-secondary { background: rgba(123,75,40,0.12); color: var(--accent-2); border-color: rgba(123,75,40,0.16); }
       .ops-chip { background: rgba(255,255,255,0.72); color: var(--muted); border-color: var(--line); }
+      .ops-chip.is-selected { background: rgba(38,77,125,0.14); color: var(--accent); border-color: rgba(38,77,125,0.28); }
       .ops-surface { display: none; margin-bottom: 18px; }
       .ops-surface.is-active { display: block; }
       .ops-mode-nav {
@@ -2341,7 +2641,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-chat-message-user { margin-left: auto; background: rgba(38,77,125,0.10); }
       .ops-chat-message-assistant { margin-right: auto; background: rgba(255,255,255,0.8); }
       .ops-chat-form, .ops-compose-form { display: grid; gap: 10px; margin-top: 14px; }
-      textarea, input {
+      textarea, input, select {
         width: 100%;
         border: 1px solid rgba(49,39,31,0.18);
         border-radius: 16px;
@@ -2369,6 +2669,221 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-banner-success { border-color: rgba(36,92,77,0.22); color: var(--good); }
       .ops-banner-error { border-color: rgba(159,61,45,0.24); color: var(--danger); }
       .ops-truth-grid { margin-top: 14px; }
+      .ops-field {
+        display: grid;
+        gap: 6px;
+      }
+      .ops-field span {
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .ops-field-compact {
+        flex: 1 1 260px;
+        min-width: 240px;
+      }
+      .ops-member-ops-grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.35fr) minmax(280px, 0.95fr);
+        gap: 18px;
+      }
+      .ops-member-toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: end;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .ops-member-signal-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .ops-member-signal {
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.56);
+      }
+      .ops-member-signal span {
+        display: block;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .ops-member-signal strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 1.35rem;
+      }
+      .ops-workspace-grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.35fr) minmax(280px, 0.95fr);
+        gap: 18px;
+      }
+      .ops-workbench {
+        display: grid;
+        gap: 12px;
+      }
+      .ops-rail-card {
+        display: grid;
+        gap: 10px;
+        transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+      }
+      .ops-rail-card.is-selected {
+        border-color: rgba(38,77,125,0.26);
+        box-shadow: 0 0 0 2px rgba(38,77,125,0.14);
+        transform: translateY(-1px);
+      }
+      .ops-rail-card__head {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .ops-rail-card__meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 14px;
+      }
+      .ops-rail-card__meta dt {
+        font-size: 0.77rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .ops-rail-card__meta dd { margin: 4px 0 0; }
+      .ops-member-roster-card {
+        display: grid;
+        gap: 12px;
+        transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+      }
+      .ops-member-roster-card.is-selected {
+        border-color: rgba(38,77,125,0.26);
+        box-shadow: 0 0 0 2px rgba(38,77,125,0.14);
+        transform: translateY(-1px);
+      }
+      .ops-member-roster-card__head,
+      .ops-member-workbench__header {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .ops-member-roster-card__meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 14px;
+      }
+      .ops-member-roster-card__meta dt {
+        font-size: 0.77rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .ops-member-roster-card__meta dd { margin: 4px 0 0; }
+      .ops-member-roster-card__actions,
+      .ops-member-workbench__tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .ops-member-tab {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(255,255,255,0.7);
+        color: var(--muted);
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .ops-member-tab.is-active {
+        background: var(--accent);
+        color: #f8f3ed;
+        border-color: transparent;
+      }
+      .ops-member-workbench,
+      .ops-member-context {
+        display: grid;
+        gap: 12px;
+      }
+      .ops-member-pane,
+      .ops-member-note,
+      .ops-member-reservation {
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.56);
+      }
+      .ops-member-pane h3,
+      .ops-member-note h3,
+      .ops-member-reservation h3 { margin: 0; }
+      .ops-member-pane__split {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .ops-member-form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px 14px;
+      }
+      .ops-member-activity-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .ops-member-stat {
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.52);
+      }
+      .ops-member-stat span {
+        display: block;
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .ops-member-stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 1.2rem;
+      }
+      .ops-member-role-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 8px;
+      }
+      .ops-member-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 52px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.48);
+      }
+      .ops-member-checkbox input {
+        width: auto;
+        margin: 0;
+      }
+      .ops-member-safe {
+        border-color: rgba(38,77,125,0.14);
+        background: rgba(38,77,125,0.08);
+      }
+      .ops-member-empty-inline {
+        padding: 14px;
+        border: 1px dashed var(--line);
+        border-radius: 16px;
+        color: var(--muted);
+        background: rgba(255,255,255,0.38);
+      }
       @keyframes ops-ticker-scroll {
         from { transform: translateX(0); }
         to { transform: translateX(-50%); }
@@ -2425,18 +2940,22 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       ul, ol { margin: 0; padding-left: 18px; }
       li { margin: 6px 0; }
       @media (max-width: 1280px) {
-        .ops-kpi-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-countdown-grid, .ops-countdown-grid-dual { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ops-kpi-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-countdown-grid, .ops-countdown-grid-dual, .ops-member-signal-strip, .ops-member-activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ops-scan-grid, .ops-detail-grid, .ops-command-grid, .ops-motion-grid { grid-template-columns: 1fr; }
+        .ops-member-ops-grid { grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.15fr); }
+        .ops-member-ops-grid > :last-child { grid-column: 1 / -1; }
+        .ops-workspace-grid { grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.15fr); }
+        .ops-workspace-grid > :last-child { grid-column: 1 / -1; }
       }
       @media (max-width: 1100px) {
-        .ops-layout, .ops-layout-hands, .ops-bottom-grid, .ops-scan-grid, .ops-detail-grid, .ops-command-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-motion-grid, .ops-countdown-grid, .ops-countdown-grid-dual { grid-template-columns: 1fr; }
+        .ops-layout, .ops-layout-hands, .ops-bottom-grid, .ops-scan-grid, .ops-detail-grid, .ops-command-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-motion-grid, .ops-countdown-grid, .ops-countdown-grid-dual, .ops-member-ops-grid, .ops-workspace-grid, .ops-member-pane__split, .ops-member-form-grid { grid-template-columns: 1fr; }
         .ops-studio-map { grid-template-columns: 1fr; }
         .ops-map-zone-0, .ops-map-zone-1, .ops-map-zone-2, .ops-map-zone-3 { grid-column: span 1; }
         .ops-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ops-mode-nav { top: 8px; }
       }
       @media (max-width: 720px) {
-        .ops-kpi-grid { grid-template-columns: 1fr; }
+        .ops-kpi-grid, .ops-member-signal-strip, .ops-member-activity-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -2549,7 +3068,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
           payload = await response.json();
         } catch {}
         if (!response.ok || !payload || payload.ok !== true) {
-          throw new Error(payload && payload.message ? payload.message : "Request failed.");
+          throw new Error(payload && payload.message ? payload.message : "Studio Brain could not load that data right now.");
         }
         return payload;
       }
@@ -2570,7 +3089,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
           payload = await response.json();
         } catch {}
         if (!response.ok || !payload || payload.ok !== true) {
-          throw new Error(payload && payload.message ? payload.message : "Request failed.");
+          throw new Error(payload && payload.message ? payload.message : "Studio Brain could not complete that request.");
         }
         return payload;
       }
@@ -2597,54 +3116,1310 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       }
       setSurface(visibleSurfaces.includes(requestedSurface) ? requestedSurface : (visibleSurfaces[0] || "manager"));
 
-      document.querySelectorAll("[data-task-claim]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          try {
-            await postJson("/api/ops/tasks/" + encodeURIComponent(button.getAttribute("data-task-claim")) + "/claim", { actorId: "staff:local-portal" });
-            showBanner("Task claimed. Refresh to see the updated assignment state.", "success");
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
-          }
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+      }
+
+      function formatPortalTimestamp(value) {
+        if (!value) return "unknown";
+        const parsed = Date.parse(value);
+        if (!Number.isFinite(parsed)) return String(value);
+        return new Date(parsed).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
         });
+      }
+
+      function titleizeWords(value) {
+        return String(value || "").replace(/\b([a-z])/g, function (match) { return match.toUpperCase(); });
+      }
+
+      function humanizeToken(value) {
+        const normalized = String(value || "").trim();
+        if (!normalized) return "Unknown";
+        if (/^p\d+$/i.test(normalized)) return normalized.toUpperCase();
+        return titleizeWords(normalized.replaceAll("_", " ").replaceAll("-", " "));
+      }
+
+      function formatRoleLabel(value) {
+        return humanizeToken(value);
+      }
+
+      function formatStatusLabel(value) {
+        return humanizeToken(value);
+      }
+
+      function formatProofModeLabel(value) {
+        return humanizeToken(value);
+      }
+
+      function formatVerificationClassLabel(value) {
+        return humanizeToken(value);
+      }
+
+      function formatPriorityLabel(value) {
+        return humanizeToken(value);
+      }
+
+      function formatEscapeHatchLabel(value) {
+        switch (String(value || "")) {
+          case "need_help":
+            return "Need help";
+          case "unsafe":
+            return "Unsafe";
+          case "missing_tool":
+            return "Missing tool";
+          case "not_my_role":
+            return "Not my role";
+          case "already_done":
+            return "Already done";
+          case "defer_with_reason":
+            return "Defer with reason";
+          default:
+            return humanizeToken(value);
+        }
+      }
+
+      const memberPortalRoles = ["member", "staff", "admin"];
+      const memberOpsRoles = ["owner", "member_ops", "support_ops", "kiln_lead", "floor_staff", "events_ops", "library_ops", "finance_ops"];
+      const memberCapabilitySet = new Set(((pageModel.snapshot || {}).session || {}).opsCapabilities || []);
+      const memberPermissions = {
+        canView: memberCapabilitySet.has("members:view"),
+        canCreate: memberCapabilitySet.has("members:create"),
+        canEditProfile: memberCapabilitySet.has("members:edit_profile"),
+        canEditMembership: memberCapabilitySet.has("members:edit_membership"),
+        canEditRole: memberCapabilitySet.has("members:edit_role"),
+        canEditOwnerRole: memberCapabilitySet.has("members:edit_owner_role"),
+        canEditBilling: memberCapabilitySet.has("members:edit_billing"),
+        canPrepareReservations: memberCapabilitySet.has("reservations:prepare"),
+      };
+      const memberState = {
+        rows: Array.isArray(pageModel.snapshot?.members) ? pageModel.snapshot.members.slice() : [],
+        reservations: Array.isArray(pageModel.snapshot?.reservations) ? pageModel.snapshot.reservations.slice() : [],
+        search: "",
+        selectedUid: Array.isArray(pageModel.snapshot?.members) && pageModel.snapshot.members[0] ? pageModel.snapshot.members[0].uid : null,
+        activeTab: "overview",
+        createMode: memberPermissions.canCreate && Array.isArray(pageModel.snapshot?.members) && pageModel.snapshot.members.length === 0,
+        detailCache: {},
+        activityCache: {},
+        loadingUid: null,
+        hydratingUid: null,
+      };
+
+      function updateMemberRow(member) {
+        if (!member || !member.uid) return;
+        const index = memberState.rows.findIndex((row) => row.uid === member.uid);
+        if (index >= 0) {
+          memberState.rows[index] = member;
+        } else {
+          memberState.rows.unshift(member);
+        }
+        memberState.detailCache[member.uid] = member;
+      }
+
+      function getMemberRecord(uid) {
+        if (!uid) return null;
+        return memberState.detailCache[uid] || memberState.rows.find((row) => row.uid === uid) || null;
+      }
+
+      function getSelectedMember() {
+        return getMemberRecord(memberState.selectedUid);
+      }
+
+      function getSelectedActivity() {
+        return memberState.selectedUid ? memberState.activityCache[memberState.selectedUid] || null : null;
+      }
+
+      function allowedMemberTabs() {
+        const tabs = ["overview"];
+        if (memberPermissions.canEditProfile) tabs.push("profile");
+        if (memberPermissions.canEditMembership) tabs.push("membership");
+        if (memberPermissions.canEditRole) tabs.push("roles");
+        if (memberPermissions.canEditBilling) tabs.push("billing");
+        return tabs;
+      }
+
+      function normalizeMemberTab(tab) {
+        const allowed = allowedMemberTabs();
+        return allowed.includes(tab) ? tab : allowed[0];
+      }
+
+      function memberSearchText(row) {
+        return [
+          row.displayName,
+          row.email || "",
+          row.membershipTier || "",
+          row.portalRole || "",
+          Array.isArray(row.opsRoles) ? row.opsRoles.join(" ") : "",
+          Array.isArray(row.opsCapabilities) ? row.opsCapabilities.join(" ") : "",
+        ].join(" ").toLowerCase();
+      }
+
+      function filteredMemberRows() {
+        const query = memberState.search.trim().toLowerCase();
+        const rows = memberState.rows.slice().sort((left, right) => String(left.displayName || "").localeCompare(String(right.displayName || "")));
+        if (!query) return rows;
+        return rows.filter((row) => memberSearchText(row).includes(query));
+      }
+
+      function memberRecommendation(member) {
+        if (!member) {
+          return {
+            title: "Pick a member to start",
+            body: "Use the roster to load one person into the workbench, then drive profile, membership, role, and billing changes without prompts.",
+            tab: "overview",
+          };
+        }
+        if (!member.membershipTier) {
+          return {
+            title: "Assign the right membership tier",
+            body: "This person has no membership tier, so billing, access, and studio expectations are still ambiguous.",
+            tab: "membership",
+          };
+        }
+        if (!member.billing?.stripeCustomerId && !member.billing?.paymentMethodSummary) {
+          return {
+            title: "Attach tokenized billing references",
+            body: "Finish the billing profile using Stripe-hosted collection, then store only the safe customer and payment method references here.",
+            tab: "billing",
+          };
+        }
+        if (member.portalRole !== "member" && (!Array.isArray(member.opsRoles) || member.opsRoles.length === 0)) {
+          return {
+            title: "Set the ops role mask",
+            body: "This account has elevated portal access without an explicit ops role mask, so the work surface still lacks good boundaries.",
+            tab: "roles",
+          };
+        }
+        if (!member.staffNotes) {
+          return {
+            title: "Capture staff context",
+            body: "A short operational note here keeps future handoffs from starting over.",
+            tab: "profile",
+          };
+        }
+        return {
+          title: "Record is healthy",
+          body: "The profile, membership, and billing references are all present. Use the context rail to inspect linked reservations or recent activity before making changes.",
+          tab: "overview",
+        };
+      }
+
+      function renderMemberRoster() {
+        const roster = document.getElementById("ops-member-roster");
+        if (!roster) return;
+        if (!memberPermissions.canView) {
+          roster.innerHTML = '<div class="ops-empty">This role can use the internet lane, but the member roster is masked.</div>';
+          return;
+        }
+        const rows = filteredMemberRows();
+        if (!rows.length) {
+          roster.innerHTML = '<div class="ops-empty">No members match that search yet.</div>';
+          return;
+        }
+        roster.innerHTML = rows.map((row) => {
+          const selected = !memberState.createMode && memberState.selectedUid === row.uid;
+          const roles = Array.isArray(row.opsRoles) && row.opsRoles.length
+            ? row.opsRoles.map((role) => \`<span class="ops-pill">\${escapeHtml(formatRoleLabel(role))}</span>\`).join("")
+            : '<span class="ops-chip">No ops roles</span>';
+          const billingSummary = row.billing?.paymentMethodSummary
+            || (row.billing?.stripeCustomerId ? "Tokenized billing refs on file" : "No billing profile on file");
+          const actions = [
+            \`<button type="button" class="ops-button" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="overview">Open</button>\`,
+            memberPermissions.canEditProfile ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="profile">Profile</button>\` : "",
+            memberPermissions.canEditMembership ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="membership">Membership</button>\` : "",
+            memberPermissions.canEditRole ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="roles">Roles</button>\` : "",
+            memberPermissions.canEditBilling ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="billing">Billing</button>\` : "",
+          ].filter(Boolean).join("");
+          return \`
+            <article class="ops-case ops-tone-neutral ops-member-roster-card\${selected ? " is-selected" : ""}" data-member-card="\${escapeHtml(row.uid)}">
+              <div class="ops-member-roster-card__head">
+                <div>
+                  <p class="ops-kicker">\${escapeHtml(formatRoleLabel(row.portalRole))} · \${escapeHtml(row.membershipTier || "membership unset")}</p>
+                  <h3>\${escapeHtml(row.displayName)}</h3>
+                  <p class="ops-summary">\${escapeHtml(row.email || "No email on file.")}</p>
+                </div>
+                <span class="ops-pill ops-pill-\${row.billing?.stripeCustomerId || row.billing?.paymentMethodSummary ? "good" : "warn"}">\${row.billing?.stripeCustomerId || row.billing?.paymentMethodSummary ? "Billing ready" : "Needs billing"}</span>
+              </div>
+              <div class="ops-chip-row">\${roles}</div>
+              <dl class="ops-member-roster-card__meta">
+                <div><dt>Membership</dt><dd>\${escapeHtml(row.membershipTier || "none")}</dd></div>
+                <div><dt>Last seen</dt><dd>\${escapeHtml(formatPortalTimestamp(row.lastSeenAt))}</dd></div>
+                <div><dt>Billing</dt><dd>\${escapeHtml(billingSummary)}</dd></div>
+                <div><dt>Updated</dt><dd>\${escapeHtml(formatPortalTimestamp(row.updatedAt))}</dd></div>
+              </dl>
+              <div class="ops-member-roster-card__actions">\${actions}</div>
+            </article>
+          \`;
+        }).join("");
+      }
+
+      function renderMemberRoleCheckboxes(selectedRoles, disabledAll) {
+        return memberOpsRoles.map((role) => {
+          const checked = Array.isArray(selectedRoles) && selectedRoles.includes(role);
+          const ownerLocked = role === "owner" && !memberPermissions.canEditOwnerRole;
+          const disabled = disabledAll || ownerLocked;
+          return \`
+            <label class="ops-member-checkbox">
+              <input type="checkbox" name="opsRoles" value="\${escapeHtml(role)}" \${checked ? "checked" : ""} \${disabled ? "disabled" : ""} />
+              <span>\${escapeHtml(formatRoleLabel(role))}</span>
+            </label>
+          \`;
+        }).join("");
+      }
+
+      function renderActivityStats(activity) {
+        const rows = [
+          { label: "Reservations", value: activity?.reservations ?? 0, meta: activity?.lastReservationAt ? \`Last \${formatPortalTimestamp(activity.lastReservationAt)}\` : "No recent reservation" },
+          { label: "Support", value: activity?.supportThreads ?? 0, meta: "Active thread history" },
+          { label: "Events", value: activity?.events ?? 0, meta: activity?.lastEventAt ? \`Last \${formatPortalTimestamp(activity.lastEventAt)}\` : "No recent event" },
+          { label: "Library", value: activity?.libraryLoans ?? 0, meta: activity?.lastLoanAt ? \`Last \${formatPortalTimestamp(activity.lastLoanAt)}\` : "No current loans" },
+        ];
+        return rows.map((row) => \`
+          <article class="ops-member-stat">
+            <span>\${escapeHtml(row.label)}</span>
+            <strong>\${escapeHtml(row.value)}</strong>
+            <p class="ops-summary">\${escapeHtml(row.meta)}</p>
+          </article>
+        \`).join("");
+      }
+
+      function renderMemberOverview(member, activity) {
+        const recommendation = memberRecommendation(member);
+        const billingSummary = member.billing?.paymentMethodSummary
+          || (member.billing?.stripeCustomerId ? "Tokenized billing refs are stored." : "No billing profile has been attached yet.");
+        return \`
+          <article class="ops-member-pane">
+            <p class="ops-kicker">Recommended next move</p>
+            <h3>\${escapeHtml(recommendation.title)}</h3>
+            <p class="ops-summary">\${escapeHtml(recommendation.body)}</p>
+            \${recommendation.tab !== "overview" ? \`<div class="ops-actions"><button type="button" class="ops-button" data-member-workbench-tab="\${escapeHtml(recommendation.tab)}">Open \${escapeHtml(humanizeToken(recommendation.tab))}</button></div>\` : ""}
+          </article>
+          <div class="ops-member-activity-grid">
+            \${renderActivityStats(activity)}
+          </div>
+          <div class="ops-member-pane__split">
+            <article class="ops-member-note">
+              <p class="ops-kicker">Profile snapshot</p>
+              <h3>\${escapeHtml(member.displayName)}</h3>
+              <p class="ops-summary">\${escapeHtml(member.email || "No email on file.")}</p>
+              <dl class="ops-inline-meta">
+                <div><dt>Membership</dt><dd>\${escapeHtml(member.membershipTier || "none")}</dd></div>
+                <div><dt>Portal role</dt><dd>\${escapeHtml(formatRoleLabel(member.portalRole))}</dd></div>
+                <div><dt>Last seen</dt><dd>\${escapeHtml(formatPortalTimestamp(member.lastSeenAt))}</dd></div>
+                <div><dt>Updated</dt><dd>\${escapeHtml(formatPortalTimestamp(member.updatedAt))}</dd></div>
+              </dl>
+            </article>
+            <article class="ops-member-note">
+              <p class="ops-kicker">Operational context</p>
+              <h3>What the staff lane currently knows</h3>
+              <p class="ops-summary"><strong>Kiln preferences:</strong> \${escapeHtml(member.kilnPreferences || "Not recorded yet.")}</p>
+              <p class="ops-summary"><strong>Staff notes:</strong> \${escapeHtml(member.staffNotes || "No staff note has been captured yet.")}</p>
+              <p class="ops-summary"><strong>Billing:</strong> \${escapeHtml(billingSummary)}</p>
+            </article>
+          </div>
+        \`;
+      }
+
+      function renderMemberWorkbench() {
+        const workbench = document.getElementById("ops-member-workbench");
+        if (!workbench) return;
+        if (!memberPermissions.canView && !memberPermissions.canCreate) {
+          workbench.innerHTML = '<div class="ops-empty">This role cannot inspect or create members from the current session.</div>';
+          return;
+        }
+        if (memberState.createMode) {
+          if (!memberPermissions.canCreate) {
+            workbench.innerHTML = '<div class="ops-empty">This role cannot create new members.</div>';
+            return;
+          }
+          workbench.innerHTML = \`
+            <article class="ops-member-pane">
+              <div class="ops-member-workbench__header">
+                <div>
+                  <p class="ops-kicker">New member</p>
+                  <h2>Create a clean account record</h2>
+                  <p class="ops-summary">Start with identity, membership, and ops role mask. Add billing safely after the account exists.</p>
+                </div>
+              </div>
+              <form class="ops-compose-form" id="ops-member-create-form">
+                <div class="ops-member-form-grid">
+                  <label class="ops-field">
+                    <span>Email</span>
+                    <input type="email" name="email" required placeholder="member@example.com" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Display name</span>
+                    <input type="text" name="displayName" required placeholder="Member name" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Membership tier</span>
+                    <input type="text" name="membershipTier" list="ops-membership-tier-options" placeholder="community" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Portal role</span>
+                    <select name="portalRole">
+                      \${memberPortalRoles.map((role) => \`<option value="\${escapeHtml(role)}"\${role === "member" ? " selected" : ""}>\${escapeHtml(formatRoleLabel(role))}</option>\`).join("")}
+                    </select>
+                  </label>
+                  <label class="ops-field">
+                    <span>Kiln preferences</span>
+                    <input type="text" name="kilnPreferences" placeholder="Cone 6 preferred" />
+                  </label>
+                  <div class="ops-field ops-span-2">
+                    <span>Ops roles</span>
+                    <div class="ops-member-role-grid">
+                      \${renderMemberRoleCheckboxes([], false)}
+                    </div>
+                  </div>
+                  <label class="ops-field ops-span-2">
+                    <span>Staff notes</span>
+                    <textarea name="staffNotes" rows="4" placeholder="Anything future staff should know about this person."></textarea>
+                  </label>
+                  <label class="ops-field ops-span-2">
+                    <span>Why are we creating this member?</span>
+                    <textarea name="reason" rows="3" placeholder="Onboarded from the member ops lane."></textarea>
+                  </label>
+                </div>
+                <div class="ops-actions">
+                  <button type="submit" class="ops-button">Create member</button>
+                </div>
+              </form>
+            </article>
+            <article class="ops-member-note ops-member-safe">
+              <p class="ops-kicker">Billing safety</p>
+              <h3>Card collection stays out of Studio Brain</h3>
+              <p class="ops-summary">After you create the member, use Stripe-hosted collection and save only the safe customer, payment method, and billing contact references here.</p>
+            </article>
+          \`;
+          bindMemberWorkbenchHandlers();
+          return;
+        }
+        const member = getSelectedMember();
+        if (!member) {
+          workbench.innerHTML = '<div class="ops-empty">Select a member from the roster to open the workbench.</div>';
+          return;
+        }
+        const activity = getSelectedActivity();
+        const selectedTab = normalizeMemberTab(memberState.activeTab);
+        memberState.activeTab = selectedTab;
+        const selectedRoles = Array.isArray(member.opsRoles) ? member.opsRoles : [];
+        const roleLocked = member.uid === pageModel.snapshot?.session?.actorId || (selectedRoles.includes("owner") && !memberPermissions.canEditOwnerRole);
+        const billingSummary = member.billing?.paymentMethodSummary
+          || (member.billing?.stripeCustomerId ? "Tokenized billing refs on file." : "No billing profile attached yet.");
+        const tabButtons = allowedMemberTabs().map((tab) => \`
+          <button type="button" class="ops-member-tab\${tab === selectedTab ? " is-active" : ""}" data-member-workbench-tab="\${escapeHtml(tab)}">\${escapeHtml(humanizeToken(tab))}</button>
+        \`).join("");
+        let body = "";
+        if (selectedTab === "overview") {
+          body = renderMemberOverview(member, activity);
+        } else if (selectedTab === "profile") {
+          body = \`
+            <article class="ops-member-pane">
+              <p class="ops-kicker">Profile</p>
+              <h3>Edit the human-readable record</h3>
+              <form class="ops-compose-form" id="ops-member-profile-form">
+                <div class="ops-member-form-grid">
+                  <label class="ops-field">
+                    <span>Display name</span>
+                    <input type="text" name="displayName" value="\${escapeHtml(member.displayName || "")}" required />
+                  </label>
+                  <label class="ops-field">
+                    <span>Kiln preferences</span>
+                    <input type="text" name="kilnPreferences" value="\${escapeHtml(member.kilnPreferences || "")}" placeholder="Cone 6 preferred" />
+                  </label>
+                  <label class="ops-field ops-span-2">
+                    <span>Staff notes</span>
+                    <textarea name="staffNotes" rows="5" placeholder="Operational context for future staff.">\${escapeHtml(member.staffNotes || "")}</textarea>
+                  </label>
+                  <label class="ops-field ops-span-2">
+                    <span>Reason for change</span>
+                    <textarea name="reason" rows="3" placeholder="Why this profile update matters right now."></textarea>
+                  </label>
+                </div>
+                <div class="ops-actions"><button type="submit" class="ops-button">Save profile</button></div>
+              </form>
+            </article>
+          \`;
+        } else if (selectedTab === "membership") {
+          body = \`
+            <article class="ops-member-pane">
+              <p class="ops-kicker">Membership</p>
+              <h3>Control the studio promise and billing posture</h3>
+              <form class="ops-compose-form" id="ops-member-membership-form">
+                <div class="ops-member-form-grid">
+                  <label class="ops-field">
+                    <span>Membership tier</span>
+                    <input type="text" name="membershipTier" list="ops-membership-tier-options" value="\${escapeHtml(member.membershipTier || "")}" placeholder="community" />
+                  </label>
+                  <div class="ops-member-note">
+                    <p class="ops-kicker">Why it matters</p>
+                    <h3>Membership drives follow-through</h3>
+                    <p class="ops-summary">This tier affects how staff triage follow-up, what billing assumptions are safe, and what the studio owes this member next.</p>
+                  </div>
+                  <label class="ops-field ops-span-2">
+                    <span>Reason for change</span>
+                    <textarea name="reason" rows="3" placeholder="Why this membership change is happening."></textarea>
+                  </label>
+                </div>
+                <div class="ops-actions"><button type="submit" class="ops-button">Save membership</button></div>
+              </form>
+            </article>
+          \`;
+        } else if (selectedTab === "roles") {
+          body = \`
+            <article class="ops-member-pane">
+              <p class="ops-kicker">Roles and access</p>
+              <h3>Set the human role mask, not just the portal badge</h3>
+              \${roleLocked ? '<div class="ops-member-note ops-member-safe"><p class="ops-kicker">Protected</p><h3>This role mask is locked in this session</h3><p class="ops-summary">You cannot change your own access here, and owner role assignments stay protected unless this session carries explicit owner-edit capability.</p></div>' : ""}
+              <form class="ops-compose-form" id="ops-member-role-form">
+                <div class="ops-member-form-grid">
+                  <label class="ops-field">
+                    <span>Portal role</span>
+                    <select name="portalRole" \${roleLocked ? "disabled" : ""}>
+                      \${memberPortalRoles.map((role) => \`<option value="\${escapeHtml(role)}"\${member.portalRole === role ? " selected" : ""}>\${escapeHtml(formatRoleLabel(role))}</option>\`).join("")}
+                    </select>
+                  </label>
+                  <div class="ops-field ops-span-2">
+                    <span>Ops roles</span>
+                    <div class="ops-member-role-grid">
+                      \${renderMemberRoleCheckboxes(selectedRoles, roleLocked)}
+                    </div>
+                  </div>
+                  <label class="ops-field ops-span-2">
+                    <span>Reason for change</span>
+                    <textarea name="reason" rows="3" placeholder="Why this access mask should change." \${roleLocked ? "disabled" : ""}></textarea>
+                  </label>
+                </div>
+                <div class="ops-actions"><button type="submit" class="ops-button" \${roleLocked ? "disabled" : ""}>Save roles</button></div>
+              </form>
+            </article>
+          \`;
+        } else if (selectedTab === "billing") {
+          body = \`
+            <article class="ops-member-pane">
+              <p class="ops-kicker">Billing-safe profile</p>
+              <h3>Store only tokenized references and safe summaries</h3>
+              <p class="ops-summary">\${escapeHtml(billingSummary)}</p>
+              <form class="ops-compose-form" id="ops-member-billing-form">
+                <div class="ops-member-form-grid">
+                  <label class="ops-field">
+                    <span>Stripe customer ID</span>
+                    <input type="text" name="stripeCustomerId" value="\${escapeHtml(member.billing?.stripeCustomerId || "")}" placeholder="cus_..." />
+                  </label>
+                  <label class="ops-field">
+                    <span>Default payment method ID</span>
+                    <input type="text" name="defaultPaymentMethodId" value="\${escapeHtml(member.billing?.defaultPaymentMethodId || "")}" placeholder="pm_..." />
+                  </label>
+                  <label class="ops-field">
+                    <span>Card brand</span>
+                    <input type="text" name="cardBrand" value="\${escapeHtml(member.billing?.cardBrand || "")}" placeholder="Visa" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Last 4</span>
+                    <input type="text" name="cardLast4" value="\${escapeHtml(member.billing?.cardLast4 || "")}" placeholder="4242" maxlength="4" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Exp month</span>
+                    <input type="text" name="expMonth" value="\${escapeHtml(member.billing?.expMonth || "")}" placeholder="08" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Exp year</span>
+                    <input type="text" name="expYear" value="\${escapeHtml(member.billing?.expYear || "")}" placeholder="2030" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Billing contact name</span>
+                    <input type="text" name="billingContactName" value="\${escapeHtml(member.billing?.billingContactName || "")}" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Billing contact email</span>
+                    <input type="email" name="billingContactEmail" value="\${escapeHtml(member.billing?.billingContactEmail || "")}" />
+                  </label>
+                  <label class="ops-field">
+                    <span>Billing contact phone</span>
+                    <input type="text" name="billingContactPhone" value="\${escapeHtml(member.billing?.billingContactPhone || "")}" />
+                  </label>
+                  <div class="ops-member-note ops-member-safe">
+                    <p class="ops-kicker">Protected path</p>
+                    <h3>Raw card data is blocked</h3>
+                    <p class="ops-summary">Collect cards in Stripe-hosted flows only. This form stores safe references and summary fields, never PAN or CVC.</p>
+                  </div>
+                  <label class="ops-field ops-span-2">
+                    <span>Reason for change</span>
+                    <textarea name="reason" rows="3" placeholder="Why this billing-safe profile changed."></textarea>
+                  </label>
+                </div>
+                <div class="ops-actions"><button type="submit" class="ops-button">Save billing profile</button></div>
+              </form>
+            </article>
+          \`;
+        }
+        workbench.innerHTML = \`
+          <article class="ops-member-pane">
+            <div class="ops-member-workbench__header">
+              <div>
+                <p class="ops-kicker">Selected member</p>
+                <h2>\${escapeHtml(member.displayName)}</h2>
+                <p class="ops-summary">\${escapeHtml(member.email || "No email on file.")}</p>
+              </div>
+              <div class="ops-member-workbench__tabs">\${tabButtons}</div>
+            </div>
+            <div class="ops-chip-row">
+              <span class="ops-pill">\${escapeHtml(formatRoleLabel(member.portalRole))}</span>
+              <span class="ops-pill">\${escapeHtml(member.membershipTier || "membership unset")}</span>
+              \${(member.opsRoles || []).map((role) => \`<span class="ops-pill">\${escapeHtml(formatRoleLabel(role))}</span>\`).join("") || '<span class="ops-chip">No ops roles</span>'}
+            </div>
+          </article>
+          \${body}
+        \`;
+        bindMemberWorkbenchHandlers();
+      }
+
+      function renderMemberReservation(bundle) {
+        const tone = bundle.degradeReason ? "warn" : (bundle.arrival?.status === "arrived" ? "good" : "neutral");
+        return \`
+          <article class="ops-member-reservation ops-tone-\${tone}">
+            <p class="ops-kicker">\${escapeHtml(bundle.status)} · \${escapeHtml(bundle.firingType)} · \${escapeHtml(bundle.arrival?.status || "expected")}</p>
+            <h3>\${escapeHtml(bundle.title)}</h3>
+            <p class="ops-summary">\${escapeHtml(bundle.arrival?.summary || "Arrival context is pending.")}</p>
+            <dl class="ops-meta-grid">
+              <div><dt>Due</dt><dd>\${escapeHtml(formatPortalTimestamp(bundle.dueAt))}</dd></div>
+              <div><dt>Items</dt><dd>\${escapeHtml(bundle.itemCount)}</dd></div>
+              <div class="ops-span-2"><dt>Prep</dt><dd>\${escapeHtml(bundle.prep?.summary || "Prep summary unavailable.")}</dd></div>
+            </dl>
+            \${memberPermissions.canPrepareReservations ? \`<div class="ops-actions"><button type="button" class="ops-button ops-button-secondary" data-member-reservation-prepare="\${escapeHtml(bundle.reservationId)}">Stage prep task</button></div>\` : ""}
+          </article>
+        \`;
+      }
+
+      function renderMemberContext() {
+        const context = document.getElementById("ops-member-context");
+        if (!context) return;
+        if (memberState.createMode) {
+          context.innerHTML = \`
+            <article class="ops-member-note">
+              <p class="ops-kicker">New member checklist</p>
+              <h3>Create first, bill second</h3>
+              <p class="ops-summary">Use the create form to establish identity, membership, and ops role mask. After that, attach Stripe customer and payment method references from a hosted payment flow.</p>
+            </article>
+            <article class="ops-member-note ops-member-safe">
+              <p class="ops-kicker">Safety rule</p>
+              <h3>No raw card details in Studio Brain</h3>
+              <p class="ops-summary">This keeps logs, audits, and backups from turning into a soft target. Only tokenized references and safe billing summaries belong here.</p>
+            </article>
+          \`;
+          return;
+        }
+        const member = getSelectedMember();
+        if (!member) {
+          context.innerHTML = '<div class="ops-empty">Select a member to see linked reservations, billing posture, and next-step context.</div>';
+          return;
+        }
+        const activity = getSelectedActivity();
+        const recommendation = memberRecommendation(member);
+        const bundles = memberState.reservations.filter((bundle) => bundle.ownerUid && bundle.ownerUid === member.uid).slice(0, 4);
+        context.innerHTML = \`
+          <article class="ops-member-note">
+            <p class="ops-kicker">Why this matters</p>
+            <h3>\${escapeHtml(recommendation.title)}</h3>
+            <p class="ops-summary">\${escapeHtml(recommendation.body)}</p>
+            \${recommendation.tab !== "overview" ? \`<div class="ops-actions"><button type="button" class="ops-button" data-member-workbench-tab="\${escapeHtml(recommendation.tab)}">Go to \${escapeHtml(recommendation.tab)}</button></div>\` : ""}
+          </article>
+          <article class="ops-member-note">
+            <p class="ops-kicker">Activity context</p>
+            <h3>\${escapeHtml(member.displayName)} in the flow</h3>
+            <p class="ops-summary">\${escapeHtml((activity?.reservations ?? 0) + " reservations, " + (activity?.events ?? 0) + " events, " + (activity?.supportThreads ?? 0) + " support threads, and " + (activity?.libraryLoans ?? 0) + " library loans are currently linked.")}</p>
+            <p class="ops-summary">Last reservation: \${escapeHtml(formatPortalTimestamp(activity?.lastReservationAt || null))}</p>
+          </article>
+          <article class="ops-member-note ops-member-safe">
+            <p class="ops-kicker">Billing safety</p>
+            <h3>\${escapeHtml(member.billing?.paymentMethodSummary || "No safe billing summary on file yet")}</h3>
+            <p class="ops-summary">Store only Stripe customer and payment method refs plus safe card summary and billing contact context. Never raw PAN or CVC.</p>
+          </article>
+          \${bundles.length
+            ? bundles.map(renderMemberReservation).join("")
+            : '<div class="ops-member-empty-inline">No live reservation bundles are tied to this member right now.</div>'}
+        \`;
+        bindMemberContextHandlers();
+      }
+
+      async function hydrateMember(uid) {
+        if (!uid || !memberPermissions.canView) return;
+        memberState.hydratingUid = uid;
+        try {
+          const [memberPayload, activityPayload] = await Promise.all([
+            getJson("/api/ops/members/" + encodeURIComponent(uid)),
+            getJson("/api/ops/members/" + encodeURIComponent(uid) + "/activity"),
+          ]);
+          if (memberPayload?.member) {
+            updateMemberRow(memberPayload.member);
+          }
+          if (activityPayload?.activity) {
+            memberState.activityCache[uid] = activityPayload.activity;
+          }
+          renderMemberRoster();
+          renderMemberWorkbench();
+          renderMemberContext();
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+          memberState.hydratingUid = null;
+        }
+      }
+
+      function openMemberWorkbench(uid, tab) {
+        memberState.createMode = false;
+        memberState.selectedUid = uid;
+        memberState.activeTab = normalizeMemberTab(tab || "overview");
+        renderMemberRoster();
+        renderMemberWorkbench();
+        renderMemberContext();
+        hydrateMember(uid);
+      }
+
+      async function handleMemberCreateSubmit(form) {
+        const formData = new FormData(form);
+        try {
+          const payload = await postJson("/api/ops/members", {
+            email: String(formData.get("email") || "").trim(),
+            displayName: String(formData.get("displayName") || "").trim(),
+            membershipTier: String(formData.get("membershipTier") || "").trim() || null,
+            portalRole: String(formData.get("portalRole") || "member").trim(),
+            opsRoles: formData.getAll("opsRoles").map((entry) => String(entry).trim()).filter(Boolean),
+            kilnPreferences: String(formData.get("kilnPreferences") || "").trim() || null,
+            staffNotes: String(formData.get("staffNotes") || "").trim() || null,
+            reason: String(formData.get("reason") || "").trim() || null,
+          });
+          if (payload?.member) {
+            updateMemberRow(payload.member);
+            memberState.selectedUid = payload.member.uid;
+            memberState.createMode = false;
+            memberState.activeTab = "overview";
+            renderMemberRoster();
+            renderMemberWorkbench();
+            renderMemberContext();
+            showBanner("Member created. The workbench is now focused on the new account.", "success");
+            hydrateMember(payload.member.uid);
+          }
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        }
+      }
+
+      async function handleMemberProfileSubmit(form) {
+        const member = getSelectedMember();
+        if (!member) return;
+        const formData = new FormData(form);
+        try {
+          const payload = await postJson("/api/ops/members/" + encodeURIComponent(member.uid) + "/profile", {
+            reason: String(formData.get("reason") || "").trim() || null,
+            patch: {
+              displayName: String(formData.get("displayName") || "").trim(),
+              kilnPreferences: String(formData.get("kilnPreferences") || "").trim() || null,
+              staffNotes: String(formData.get("staffNotes") || "").trim() || null,
+            },
+          });
+          if (payload?.member) {
+            updateMemberRow(payload.member);
+            renderMemberRoster();
+            renderMemberWorkbench();
+            renderMemberContext();
+            showBanner("Member profile updated.", "success");
+          }
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        }
+      }
+
+      async function handleMemberMembershipSubmit(form) {
+        const member = getSelectedMember();
+        if (!member) return;
+        const formData = new FormData(form);
+        try {
+          const payload = await postJson("/api/ops/members/" + encodeURIComponent(member.uid) + "/membership", {
+            membershipTier: String(formData.get("membershipTier") || "").trim() || null,
+            reason: String(formData.get("reason") || "").trim() || null,
+          });
+          if (payload?.member) {
+            updateMemberRow(payload.member);
+            renderMemberRoster();
+            renderMemberWorkbench();
+            renderMemberContext();
+            showBanner("Membership updated.", "success");
+          }
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        }
+      }
+
+      async function handleMemberRoleSubmit(form) {
+        const member = getSelectedMember();
+        if (!member) return;
+        const formData = new FormData(form);
+        try {
+          const payload = await postJson("/api/ops/members/" + encodeURIComponent(member.uid) + "/role", {
+            portalRole: String(formData.get("portalRole") || member.portalRole).trim(),
+            opsRoles: formData.getAll("opsRoles").map((entry) => String(entry).trim()).filter(Boolean),
+            reason: String(formData.get("reason") || "").trim() || null,
+          });
+          if (payload?.member) {
+            updateMemberRow(payload.member);
+            renderMemberRoster();
+            renderMemberWorkbench();
+            renderMemberContext();
+            showBanner("Role mask updated.", "success");
+          }
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        }
+      }
+
+      async function handleMemberBillingSubmit(form) {
+        const member = getSelectedMember();
+        if (!member) return;
+        const formData = new FormData(form);
+        try {
+          const payload = await postJson("/api/ops/members/" + encodeURIComponent(member.uid) + "/billing", {
+            reason: String(formData.get("reason") || "").trim() || null,
+            billing: {
+              stripeCustomerId: String(formData.get("stripeCustomerId") || "").trim() || null,
+              defaultPaymentMethodId: String(formData.get("defaultPaymentMethodId") || "").trim() || null,
+              cardBrand: String(formData.get("cardBrand") || "").trim() || null,
+              cardLast4: String(formData.get("cardLast4") || "").trim() || null,
+              expMonth: String(formData.get("expMonth") || "").trim() || null,
+              expYear: String(formData.get("expYear") || "").trim() || null,
+              billingContactName: String(formData.get("billingContactName") || "").trim() || null,
+              billingContactEmail: String(formData.get("billingContactEmail") || "").trim() || null,
+              billingContactPhone: String(formData.get("billingContactPhone") || "").trim() || null,
+            },
+          });
+          if (payload?.member) {
+            updateMemberRow(payload.member);
+            renderMemberRoster();
+            renderMemberWorkbench();
+            renderMemberContext();
+            showBanner("Billing-safe member profile updated.", "success");
+          }
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        }
+      }
+
+      async function handleMemberReservationPrepare(reservationId) {
+        try {
+          await postJson("/api/ops/reservations/" + encodeURIComponent(reservationId) + "/prepare", {
+            actorId: "staff:local-portal",
+          });
+          showBanner("Prep task is staged for that reservation bundle. Refresh the hands lane to see it in queue.", "success");
+        } catch (error) {
+          showBanner(error instanceof Error ? error.message : String(error), "error");
+        }
+      }
+
+      function bindMemberWorkbenchHandlers() {
+        const workbench = document.getElementById("ops-member-workbench");
+        if (!workbench) return;
+        const createForm = document.getElementById("ops-member-create-form");
+        if (createForm) {
+          createForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleMemberCreateSubmit(createForm);
+          }, { once: true });
+        }
+        const profileForm = document.getElementById("ops-member-profile-form");
+        if (profileForm) {
+          profileForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleMemberProfileSubmit(profileForm);
+          }, { once: true });
+        }
+        const membershipForm = document.getElementById("ops-member-membership-form");
+        if (membershipForm) {
+          membershipForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleMemberMembershipSubmit(membershipForm);
+          }, { once: true });
+        }
+        const roleForm = document.getElementById("ops-member-role-form");
+        if (roleForm) {
+          roleForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleMemberRoleSubmit(roleForm);
+          }, { once: true });
+        }
+        const billingForm = document.getElementById("ops-member-billing-form");
+        if (billingForm) {
+          billingForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleMemberBillingSubmit(billingForm);
+          }, { once: true });
+        }
+        workbench.querySelectorAll("[data-member-workbench-tab]").forEach((button) => {
+          button.addEventListener("click", () => {
+            memberState.activeTab = normalizeMemberTab(button.getAttribute("data-member-workbench-tab") || "overview");
+            renderMemberWorkbench();
+            renderMemberContext();
+          });
+        });
+      }
+
+      function bindMemberContextHandlers() {
+        const context = document.getElementById("ops-member-context");
+        if (!context) return;
+        context.querySelectorAll("[data-member-reservation-prepare]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            await handleMemberReservationPrepare(button.getAttribute("data-member-reservation-prepare"));
+          }, { once: true });
+        });
+        context.querySelectorAll("[data-member-workbench-tab]").forEach((button) => {
+          button.addEventListener("click", () => {
+            memberState.activeTab = normalizeMemberTab(button.getAttribute("data-member-workbench-tab") || "overview");
+            renderMemberWorkbench();
+            renderMemberContext();
+          });
+        });
+      }
+
+      const memberSearch = document.getElementById("ops-member-search");
+      if (memberSearch) {
+        memberSearch.addEventListener("input", () => {
+          memberState.search = memberSearch.value || "";
+          renderMemberRoster();
+        });
+      }
+      const memberCreateTrigger = document.getElementById("ops-member-create-trigger");
+      if (memberCreateTrigger) {
+        memberCreateTrigger.addEventListener("click", () => {
+          memberState.createMode = true;
+          memberState.activeTab = "overview";
+          renderMemberRoster();
+          renderMemberWorkbench();
+          renderMemberContext();
+        });
+      }
+      document.addEventListener("click", (event) => {
+        const target = event.target && typeof event.target.closest === "function"
+          ? event.target.closest("[data-member-open]")
+          : null;
+        if (!target) return;
+        const uid = target.getAttribute("data-member-open");
+        if (!uid) return;
+        openMemberWorkbench(uid, target.getAttribute("data-member-tab") || "overview");
       });
-      document.querySelectorAll("[data-task-proof]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          try {
-            await postJson("/api/ops/tasks/" + encodeURIComponent(button.getAttribute("data-task-proof")) + "/proof", {
-              actorId: "staff:local-portal",
-              mode: button.getAttribute("data-task-proof-mode"),
-              note: "Proof submitted from the Studio Brain portal.",
-              artifactRefs: [],
+      if (document.getElementById("ops-member-roster")) {
+        renderMemberRoster();
+        renderMemberWorkbench();
+        renderMemberContext();
+        if (memberState.selectedUid && !memberState.createMode) {
+          hydrateMember(memberState.selectedUid);
+        }
+      }
+
+      function taskTone(status) {
+        if (status === "healthy" || status === "ready" || status === "verified" || status === "approved") return "good";
+        if (status === "warning" || status === "degraded" || status === "proof_pending" || status === "pending") return "warn";
+        if (status === "critical" || status === "blocked" || status === "rejected" || status === "canceled") return "danger";
+        return "neutral";
+      }
+
+      function isClientActiveTask(task) {
+        if (!task || !task.status) return false;
+        return ["verified", "resolved", "rejected", "canceled"].indexOf(task.status) === -1;
+      }
+
+      function joinOrFallback(values, fallback) {
+        return Array.isArray(values) && values.length ? values.join(", ") : fallback;
+      }
+
+      function checklistHtml(task) {
+        if (!Array.isArray(task.checklist) || !task.checklist.length) {
+          return "<li>No checklist has been generated yet.</li>";
+        }
+        return task.checklist.map(function (item) {
+          return "<li><strong>" + escapeHtml(item.label) + "</strong>" + (item.detail ? " · " + escapeHtml(item.detail) : "") + "</li>";
+        }).join("");
+      }
+
+      async function submitTaskEscape(taskId, hatch, reason) {
+        const trimmedReason = String(reason || "").trim();
+        if (!trimmedReason) {
+          throw new Error("Add one sentence so the manager knows why this task needs a different path.");
+        }
+        await postJson("/api/ops/tasks/" + encodeURIComponent(taskId) + "/escape", {
+          actorId: "staff:local-portal",
+          escapeHatch: hatch,
+          reason: trimmedReason,
+        });
+        showBanner("The manager now sees this task as blocked and routed for reconciliation.", "success");
+      }
+
+      function bindTaskActionButtons(root) {
+        if (!root) return;
+        root.querySelectorAll("[data-task-claim]").forEach(function (button) {
+          if (button.dataset.opsBoundClaim === "1") return;
+          button.dataset.opsBoundClaim = "1";
+          button.addEventListener("click", async function () {
+            try {
+              await postJson("/api/ops/tasks/" + encodeURIComponent(button.getAttribute("data-task-claim")) + "/claim", { actorId: "staff:local-portal" });
+              showBanner("Task claimed. Refresh to see the updated assignment state.", "success");
+            } catch (error) {
+              showBanner(error instanceof Error ? error.message : String(error), "error");
+            }
+          });
+        });
+        root.querySelectorAll("[data-task-proof]").forEach(function (button) {
+          if (button.dataset.opsBoundProof === "1") return;
+          button.dataset.opsBoundProof = "1";
+          button.addEventListener("click", async function () {
+            try {
+              await postJson("/api/ops/tasks/" + encodeURIComponent(button.getAttribute("data-task-proof")) + "/proof", {
+                actorId: "staff:local-portal",
+                mode: button.getAttribute("data-task-proof-mode"),
+                note: "Proof submitted from the Studio Brain portal.",
+                artifactRefs: [],
+              });
+              showBanner("Proof submitted. Refresh to verify the updated task state.", "success");
+            } catch (error) {
+              showBanner(error instanceof Error ? error.message : String(error), "error");
+            }
+          });
+        });
+        root.querySelectorAll("[data-task-complete]").forEach(function (button) {
+          if (button.dataset.opsBoundComplete === "1") return;
+          button.dataset.opsBoundComplete = "1";
+          button.addEventListener("click", async function () {
+            try {
+              await postJson("/api/ops/tasks/" + encodeURIComponent(button.getAttribute("data-task-complete")) + "/complete", { actorId: "staff:local-portal" });
+              showBanner("Task completion recorded. If proof is still pending, the truth rail will keep it visibly unverified.", "success");
+            } catch (error) {
+              showBanner(error instanceof Error ? error.message : String(error), "error");
+            }
+          });
+        });
+      }
+
+      const handsState = {
+        tasks: Array.isArray(pageModel.snapshot?.tasks) ? pageModel.snapshot.tasks.filter(function (task) { return task.surface === "hands"; }) : [],
+        search: "",
+        selectedTaskId: null,
+        escapeHatch: null,
+        escapeReason: "",
+      };
+      handsState.selectedTaskId = ((handsState.tasks.find(function (task) { return isClientActiveTask(task); }) || handsState.tasks[0] || {}).id) || null;
+
+      function getHandsTask(taskId) {
+        if (!taskId) return null;
+        return handsState.tasks.find(function (task) { return task.id === taskId; }) || null;
+      }
+
+      function filteredHandsTasks() {
+        const query = (handsState.search || "").trim().toLowerCase();
+        const rows = handsState.tasks.slice();
+        if (!query) return rows;
+        return rows.filter(function (task) {
+          return [
+            task.title,
+            task.zone,
+            task.role,
+            task.status,
+            task.whyNow,
+          ].join(" ").toLowerCase().includes(query);
+        });
+      }
+
+      function renderHandsQueueRail() {
+        const rail = document.getElementById("ops-hands-queue-rail");
+        if (!rail) return;
+        const tasks = filteredHandsTasks();
+        if (!tasks.length) {
+          rail.innerHTML = '<div class="ops-empty">No physical tasks match that filter.</div>';
+          return;
+        }
+        rail.innerHTML = tasks.map(function (task) {
+          const selected = handsState.selectedTaskId === task.id;
+          return '<article class="ops-task-card ops-tone-' + escapeHtml(taskTone(task.status)) + ' ops-rail-card' + (selected ? ' is-selected' : '') + '">' +
+            '<div class="ops-rail-card__head">' +
+              '<div>' +
+                '<p class="ops-kicker">' + escapeHtml(humanizeToken(task.surface)) + ' lane · ' + escapeHtml(formatRoleLabel(task.role)) + ' · ' + escapeHtml(task.zone) + '</p>' +
+                '<h3>' + escapeHtml(task.title) + '</h3>' +
+                '<p class="ops-summary">' + escapeHtml(task.whyNow) + '</p>' +
+              '</div>' +
+              '<span class="ops-pill ops-pill-' + escapeHtml(taskTone(task.status)) + '">' + escapeHtml(formatStatusLabel(task.status)) + '</span>' +
+            '</div>' +
+            '<dl class="ops-rail-card__meta">' +
+              '<div><dt>Priority</dt><dd>' + escapeHtml(formatPriorityLabel(task.priority)) + '</dd></div>' +
+              '<div><dt>ETA</dt><dd>' + escapeHtml(task.etaMinutes === null ? "unknown" : (task.etaMinutes + " min")) + '</dd></div>' +
+              '<div><dt>Due</dt><dd>' + escapeHtml(formatPortalTimestamp(task.dueAt)) + '</dd></div>' +
+              '<div><dt>Proof</dt><dd>' + escapeHtml(formatProofModeLabel(task.preferredProofMode)) + '</dd></div>' +
+            '</dl>' +
+            '<div class="ops-actions"><button type="button" class="ops-button" data-hands-open-task="' + escapeHtml(task.id) + '">Open task</button></div>' +
+          '</article>';
+        }).join("");
+      }
+
+      function renderHandsWorkbench() {
+        const workbench = document.getElementById("ops-hands-workbench");
+        if (!workbench) return;
+        const task = getHandsTask(handsState.selectedTaskId);
+        if (!task) {
+          workbench.innerHTML = '<div class="ops-empty">Select a task from the queue to open its full instructions, proof path, and blocker exits.</div>';
+          return;
+        }
+        if (!handsState.escapeHatch || (task.blockerEscapeHatches || []).indexOf(handsState.escapeHatch) === -1) {
+          handsState.escapeHatch = (task.blockerEscapeHatches || [])[0] || null;
+          handsState.escapeReason = "";
+        }
+        const escapeButtons = (task.blockerEscapeHatches || []).map(function (entry) {
+          const selected = handsState.escapeHatch === entry;
+          return '<button type="button" class="ops-chip' + (selected ? ' is-selected' : '') + '" data-task-escape-select="' + escapeHtml(entry) + '">' + escapeHtml(formatEscapeHatchLabel(entry)) + '</button>';
+        }).join("");
+        const fallbackProofModes = (task.proofModes || []).slice(1).map(function (entry) { return formatProofModeLabel(entry); }).join(", ");
+        workbench.innerHTML = '<article class="ops-task-card ops-tone-' + escapeHtml(taskTone(task.status)) + '">' +
+          '<div class="ops-task-card__head">' +
+            '<div>' +
+              '<p class="ops-kicker">' + escapeHtml(humanizeToken(task.surface)) + ' lane · ' + escapeHtml(formatRoleLabel(task.role)) + ' · ' + escapeHtml(task.zone) + '</p>' +
+              '<h3>' + escapeHtml(task.title) + '</h3>' +
+            '</div>' +
+            '<div class="ops-task-card__badges">' +
+              '<span class="ops-pill ops-pill-' + escapeHtml(taskTone(task.status)) + '">' + escapeHtml(formatStatusLabel(task.status)) + '</span>' +
+              '<span class="ops-pill">' + escapeHtml(formatPriorityLabel(task.priority)) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<p class="ops-summary">' + escapeHtml(task.whyNow) + '</p>' +
+          '<dl class="ops-task-grid">' +
+            '<div><dt>Why now</dt><dd>' + escapeHtml(task.whyNow) + '</dd></div>' +
+            '<div><dt>Why you</dt><dd>' + escapeHtml(task.whyYou) + '</dd></div>' +
+            '<div><dt>Consequence if delayed</dt><dd>' + escapeHtml(task.consequenceIfDelayed) + '</dd></div>' +
+            '<div><dt>Freshness / confidence</dt><dd>' + escapeHtml(formatPortalTimestamp(task.freshestAt)) + ' · ' + escapeHtml(Math.round(Math.max(0, Math.min(1, task.confidence || 0)) * 100) + "%") + '</dd></div>' +
+            '<div><dt>Evidence</dt><dd>' + escapeHtml(task.evidenceSummary) + '</dd></div>' +
+            '<div><dt>Tools</dt><dd>' + escapeHtml(joinOrFallback(task.toolsNeeded, "Use standard station tools.")) + '</dd></div>' +
+            '<div><dt>Done definition</dt><dd>' + escapeHtml(task.doneDefinition) + '</dd></div>' +
+            '<div><dt>Proof path</dt><dd>' + escapeHtml(formatProofModeLabel(task.preferredProofMode)) + (fallbackProofModes ? ' (fallbacks: ' + escapeHtml(fallbackProofModes) + ')' : '') + '</dd></div>' +
+            '<div class="ops-span-2"><dt>If the signal path is missing</dt><dd>' + escapeHtml(task.fallbackIfSignalMissing) + '</dd></div>' +
+          '</dl>' +
+          '<div class="ops-subpanel"><h4>How to do it</h4><ol>' + (task.instructions || []).map(function (line) { return '<li>' + escapeHtml(line) + '</li>'; }).join("") + '</ol></div>' +
+          '<div class="ops-subpanel"><h4>Checklist</h4><ul>' + checklistHtml(task) + '</ul></div>' +
+          '<div class="ops-subpanel"><h4>Need help instead?</h4><p class="ops-summary">Choose the blocker and leave one sentence so the manager can reroute this cleanly.</p><div class="ops-chip-row">' + escapeButtons + '</div><form class="ops-compose-form" id="ops-task-reroute-form"><textarea name="reason" rows="3" placeholder="What blocked this task, and what should happen next?">' + escapeHtml(handsState.escapeReason || "") + '</textarea><div class="ops-actions"><button type="submit" class="ops-button ops-button-secondary"' + (handsState.escapeHatch ? '' : ' disabled') + '>Send to manager</button></div></form></div>' +
+          '<div class="ops-actions">' +
+            '<button type="button" class="ops-button" data-task-claim="' + escapeHtml(task.id) + '">Claim</button>' +
+            '<button type="button" class="ops-button ops-button-secondary" data-task-proof="' + escapeHtml(task.id) + '" data-task-proof-mode="' + escapeHtml(task.preferredProofMode) + '">Proof</button>' +
+            '<button type="button" class="ops-button ops-button-secondary" data-task-complete="' + escapeHtml(task.id) + '">Complete</button>' +
+          '</div>' +
+        '</article>';
+        bindTaskActionButtons(workbench);
+        workbench.querySelectorAll("[data-task-escape-select]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            handsState.escapeHatch = button.getAttribute("data-task-escape-select");
+            renderHandsWorkbench();
+          }, { once: true });
+        });
+        const rerouteForm = document.getElementById("ops-task-reroute-form");
+        if (rerouteForm) {
+          const reasonField = rerouteForm.querySelector("textarea");
+          if (reasonField) {
+            reasonField.addEventListener("input", function () {
+              handsState.escapeReason = reasonField.value || "";
             });
-            showBanner("Proof submitted. Refresh to verify the updated task state.", "success");
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
           }
+          rerouteForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            try {
+              await submitTaskEscape(task.id, handsState.escapeHatch, reasonField ? reasonField.value : "");
+            } catch (error) {
+              showBanner(error instanceof Error ? error.message : String(error), "error");
+            }
+          }, { once: true });
+        }
+      }
+
+      const supportState = {
+        threads: Array.isArray(pageModel.snapshot?.conversations) ? pageModel.snapshot.conversations.slice() : [],
+        tasks: Array.isArray(pageModel.snapshot?.tasks) ? pageModel.snapshot.tasks.filter(function (task) { return task.surface === "internet"; }) : [],
+        cases: Array.isArray(pageModel.snapshot?.cases) ? pageModel.snapshot.cases.filter(function (entry) { return entry.lane === "internet" || entry.kind === "support_thread" || entry.kind === "event" || entry.kind === "complaint"; }) : [],
+        approvals: Array.isArray(pageModel.snapshot?.approvals) ? pageModel.snapshot.approvals.filter(function (entry) { return entry.status === "pending"; }) : [],
+        search: "",
+        selectedThreadId: null,
+      };
+      supportState.selectedThreadId = ((supportState.threads.find(function (row) { return !!row.unread; }) || supportState.threads[0] || {}).id) || null;
+
+      function getSupportThread(threadId) {
+        if (!threadId) return null;
+        return supportState.threads.find(function (row) { return row.id === threadId; }) || null;
+      }
+
+      function filteredSupportThreads() {
+        const query = (supportState.search || "").trim().toLowerCase();
+        if (!query) return supportState.threads.slice();
+        return supportState.threads.filter(function (row) {
+          return [
+            row.senderIdentity,
+            row.roleMask,
+            row.summary,
+          ].join(" ").toLowerCase().includes(query);
         });
-      });
-      document.querySelectorAll("[data-task-complete]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          try {
-            await postJson("/api/ops/tasks/" + encodeURIComponent(button.getAttribute("data-task-complete")) + "/complete", { actorId: "staff:local-portal" });
-            showBanner("Task completion recorded. If proof is still pending, the truth rail will keep it visibly unverified.", "success");
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
-          }
+      }
+
+      function supportNextMove(thread) {
+        if (!thread) {
+          return { title: "Pick a thread", body: "Select a thread from the left rail to see the safest next reply move and any linked tasks or approvals." };
+        }
+        if (thread.unread) {
+          return { title: "Read and draft first response", body: "This thread is unread in the current session, so the next best move is to draft a safe reply before context is lost." };
+        }
+        if (supportState.approvals.length) {
+          return { title: "Check approval posture", body: "The internet lane has pending approvals, so make sure this reply does not cross one of those boundaries without owner signoff." };
+        }
+        return { title: "Close the loop cleanly", body: "This thread looks readable and low-drama. Draft the next response or document why it is waiting." };
+      }
+
+      function renderSupportThreadRail() {
+        const rail = document.getElementById("ops-support-thread-rail");
+        if (!rail) return;
+        const rows = filteredSupportThreads();
+        if (!rows.length) {
+          rail.innerHTML = '<div class="ops-empty">No support threads match that filter.</div>';
+          return;
+        }
+        rail.innerHTML = rows.map(function (row) {
+          const selected = supportState.selectedThreadId === row.id;
+          return '<article class="ops-conversation ops-rail-card' + (selected ? ' is-selected' : '') + '">' +
+            '<div class="ops-rail-card__head">' +
+              '<div>' +
+                '<p class="ops-kicker">' + escapeHtml(formatRoleLabel(row.roleMask)) + ' · ' + escapeHtml(row.senderIdentity) + '</p>' +
+                '<h4>' + escapeHtml(row.summary) + '</h4>' +
+              '</div>' +
+              '<span class="ops-pill ops-pill-' + (row.unread ? 'warn' : 'good') + '">' + (row.unread ? 'Unread' : 'Read') + '</span>' +
+            '</div>' +
+            '<dl class="ops-rail-card__meta">' +
+              '<div><dt>Surface</dt><dd>' + escapeHtml(humanizeToken(row.surface)) + '</dd></div>' +
+              '<div><dt>Latest</dt><dd>' + escapeHtml(formatPortalTimestamp(row.latestMessageAt)) + '</dd></div>' +
+            '</dl>' +
+            '<div class="ops-actions"><button type="button" class="ops-button" data-support-open-thread="' + escapeHtml(row.id) + '">Open thread</button></div>' +
+          '</article>';
+        }).join("");
+      }
+
+      function renderSupportWorkbench() {
+        const workbench = document.getElementById("ops-support-workbench");
+        if (!workbench) return;
+        const thread = getSupportThread(supportState.selectedThreadId);
+        if (!thread) {
+          workbench.innerHTML = '<div class="ops-empty">Select a support thread to see its pressure, linked work, and a safe draft path.</div>';
+          return;
+        }
+        const recommendation = supportNextMove(thread);
+        const activeTask = supportState.tasks.find(function (task) { return isClientActiveTask(task); }) || supportState.tasks[0] || null;
+        workbench.innerHTML = '<article class="ops-member-pane">' +
+            '<div class="ops-member-workbench__header">' +
+              '<div>' +
+                '<p class="ops-kicker">Selected thread</p>' +
+                '<h2>' + escapeHtml(thread.senderIdentity) + '</h2>' +
+                '<p class="ops-summary">' + escapeHtml(thread.summary) + '</p>' +
+              '</div>' +
+              '<div class="ops-chip-row">' +
+                '<span class="ops-pill">' + escapeHtml(formatRoleLabel(thread.roleMask)) + '</span>' +
+                '<span class="ops-pill ops-pill-' + (thread.unread ? 'warn' : 'good') + '">' + (thread.unread ? 'Unread' : 'Read') + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</article>' +
+          '<article class="ops-member-pane">' +
+            '<p class="ops-kicker">Recommended next move</p>' +
+            '<h3>' + escapeHtml(recommendation.title) + '</h3>' +
+            '<p class="ops-summary">' + escapeHtml(recommendation.body) + '</p>' +
+            '<dl class="ops-inline-meta">' +
+              '<div><dt>Latest activity</dt><dd>' + escapeHtml(formatPortalTimestamp(thread.latestMessageAt)) + '</dd></div>' +
+              '<div><dt>Sender identity</dt><dd>' + escapeHtml(thread.senderIdentity) + '</dd></div>' +
+            '</dl>' +
+          '</article>' +
+          (activeTask ? '<article class="ops-member-note">' +
+            '<p class="ops-kicker">Current internet task</p>' +
+            '<h3>' + escapeHtml(activeTask.title) + '</h3>' +
+            '<p class="ops-summary">' + escapeHtml(activeTask.whyNow) + '</p>' +
+          '</article>' : '') +
+          '<form class="ops-chat-form" id="ops-support-draft-form">' +
+            '<textarea name="text" rows="5" placeholder="Draft the safest next reply, explain why this needs approval, or record what should happen next."></textarea>' +
+            '<div class="ops-actions"><button type="submit" class="ops-button">Ask internet lane</button></div>' +
+          '</form>';
+        const draftForm = document.getElementById("ops-support-draft-form");
+        if (draftForm) {
+          draftForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const field = draftForm.querySelector("textarea");
+            const text = field && field.value ? field.value.trim() : "";
+            if (!text) return;
+            try {
+              const payload = await postJson("/api/ops/chat/internet/send", {
+                actorId: "staff:local-portal",
+                text: "[" + thread.senderIdentity + " · " + formatRoleLabel(thread.roleMask) + "] " + text,
+              });
+              field.value = "";
+              showBanner(payload.reply || "Internet lane reply received.", "success");
+            } catch (error) {
+              showBanner(error instanceof Error ? error.message : String(error), "error");
+            }
+          }, { once: true });
+        }
+      }
+
+      const handsSearch = document.getElementById("ops-hands-search");
+      if (handsSearch) {
+        handsSearch.addEventListener("input", function () {
+          handsState.search = handsSearch.value || "";
+          renderHandsQueueRail();
         });
+      }
+      document.addEventListener("click", function (event) {
+        const target = event.target && typeof event.target.closest === "function"
+          ? event.target.closest("[data-hands-open-task]")
+          : null;
+        if (!target) return;
+        const taskId = target.getAttribute("data-hands-open-task");
+        if (!taskId) return;
+        handsState.selectedTaskId = taskId;
+        handsState.escapeHatch = null;
+        handsState.escapeReason = "";
+        renderHandsQueueRail();
+        renderHandsWorkbench();
       });
+      if (document.getElementById("ops-hands-queue-rail")) {
+        renderHandsQueueRail();
+        renderHandsWorkbench();
+      }
+
+      const supportSearch = document.getElementById("ops-support-search");
+      if (supportSearch) {
+        supportSearch.addEventListener("input", function () {
+          supportState.search = supportSearch.value || "";
+          renderSupportThreadRail();
+        });
+      }
+      document.addEventListener("click", function (event) {
+        const target = event.target && typeof event.target.closest === "function"
+          ? event.target.closest("[data-support-open-thread]")
+          : null;
+        if (!target) return;
+        const threadId = target.getAttribute("data-support-open-thread");
+        if (!threadId) return;
+        supportState.selectedThreadId = threadId;
+        renderSupportThreadRail();
+        renderSupportWorkbench();
+      });
+      if (document.getElementById("ops-support-thread-rail")) {
+        renderSupportThreadRail();
+        renderSupportWorkbench();
+      }
+
+      bindTaskActionButtons(document);
       document.querySelectorAll("[data-task-escape]").forEach((button) => {
         button.addEventListener("click", async () => {
           const taskId = button.getAttribute("data-task-id");
           const hatch = button.getAttribute("data-task-escape");
-          const reason = window.prompt("Tell the manager why this task needs a different path.", "");
+          const reason = window.prompt("What blocked this task, and what should the manager do next?", "");
           if (reason === null) return;
           try {
-            await postJson("/api/ops/tasks/" + encodeURIComponent(taskId) + "/escape", {
-              actorId: "staff:local-portal",
-              escapeHatch: hatch,
-              reason,
-            });
-            showBanner("The manager now sees this task as blocked and routed for reconciliation.", "success");
+            await submitTaskEscape(taskId, hatch, reason);
           } catch (error) {
             showBanner(error instanceof Error ? error.message : String(error), "error");
           }
@@ -2657,89 +4432,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
               actorId: "staff:local-portal",
             });
             showBanner("Prep task is staged for that reservation bundle. Refresh to see it in the queue.", "success");
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
-          }
-        });
-      });
-      document.querySelectorAll("[data-member-activity]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          try {
-            const payload = await getJson("/api/ops/members/" + encodeURIComponent(button.getAttribute("data-member-activity")) + "/activity");
-            const activity = payload.activity || {};
-            showBanner(
-              (button.getAttribute("data-member-name") || "Member")
-                + ": "
-                + (activity.reservations || 0)
-                + " reservations, "
-                + (activity.events || 0)
-                + " upcoming events, "
-                + (activity.supportThreads || 0)
-                + " support threads, "
-                + (activity.libraryLoans || 0)
-                + " library loans.",
-              "success",
-            );
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
-          }
-        });
-      });
-      document.querySelectorAll("[data-member-profile]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const uid = button.getAttribute("data-member-profile");
-          const displayName = window.prompt("Display name", button.getAttribute("data-member-display-name") || "");
-          if (displayName === null) return;
-          const kilnPreferences = window.prompt("Kiln preferences", button.getAttribute("data-member-kiln-preferences") || "");
-          if (kilnPreferences === null) return;
-          const staffNotes = window.prompt("Staff notes", button.getAttribute("data-member-staff-notes") || "");
-          if (staffNotes === null) return;
-          try {
-            await postJson("/api/ops/members/" + encodeURIComponent(uid) + "/profile", {
-              reason: "Edited from the autonomous ops portal.",
-              patch: {
-                displayName,
-                kilnPreferences,
-                staffNotes,
-              },
-            });
-            showBanner("Member profile updated. Refresh to see the new values.", "success");
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
-          }
-        });
-      });
-      document.querySelectorAll("[data-member-membership]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const uid = button.getAttribute("data-member-membership");
-          const membershipTier = window.prompt("Membership tier", button.getAttribute("data-member-membership-tier") || "");
-          if (membershipTier === null) return;
-          try {
-            await postJson("/api/ops/members/" + encodeURIComponent(uid) + "/membership", {
-              membershipTier,
-              reason: "Updated from the autonomous ops portal.",
-            });
-            showBanner("Membership updated. Refresh to see the new tier.", "success");
-          } catch (error) {
-            showBanner(error instanceof Error ? error.message : String(error), "error");
-          }
-        });
-      });
-      document.querySelectorAll("[data-member-role]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const uid = button.getAttribute("data-member-role");
-          const rolesInput = window.prompt("Comma-separated ops roles", button.getAttribute("data-member-roles") || "");
-          if (rolesInput === null) return;
-          const opsRoles = rolesInput
-            .split(",")
-            .map((entry) => entry.trim())
-            .filter(Boolean);
-          try {
-            await postJson("/api/ops/members/" + encodeURIComponent(uid) + "/role", {
-              opsRoles,
-              reason: "Updated from the autonomous ops portal.",
-            });
-            showBanner("Role assignment updated. Refresh to see the new capability mask.", "success");
           } catch (error) {
             showBanner(error instanceof Error ? error.message : String(error), "error");
           }

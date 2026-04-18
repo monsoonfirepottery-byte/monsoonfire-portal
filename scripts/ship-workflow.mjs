@@ -226,6 +226,19 @@ export function resolveLanePreset(lane) {
   return LANE_PRESETS[clean(lane).toLowerCase()] || null;
 }
 
+export function buildWaitChecksArgs(prNumber, intervalSeconds = DEFAULT_CHECK_INTERVAL_SECONDS) {
+  return [
+    "pr",
+    "checks",
+    String(prNumber),
+    "--required",
+    "--watch",
+    "--fail-fast",
+    "--interval",
+    String(intervalSeconds),
+  ];
+}
+
 export function chooseSyncTarget({ repoRoot, defaultBranch, currentStatus, worktrees, statusByPath }) {
   const root = resolve(repoRoot);
   const preferred = worktrees.find((entry) => {
@@ -521,17 +534,18 @@ function main() {
         }
 
         if (options.waitChecks) {
+          const waitChecksArgs = buildWaitChecksArgs(report.pr.number);
           plannedSteps.push(
             attachExecutable(
               createStep(
                 "wait-checks",
-                "Wait for GitHub checks",
+                "Wait for required GitHub checks",
                 "gh",
-                ["pr", "checks", String(report.pr.number), "--watch", "--interval", DEFAULT_CHECK_INTERVAL_SECONDS],
+                waitChecksArgs,
                 repoRoot,
               ),
               "gh",
-              ["pr", "checks", String(report.pr.number), "--watch", "--interval", DEFAULT_CHECK_INTERVAL_SECONDS],
+              waitChecksArgs,
             ),
           );
         }

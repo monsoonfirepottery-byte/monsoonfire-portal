@@ -17,6 +17,14 @@ function injectBaseHref(html: string): string {
   return html.replace(/<head([^>]*)>/i, `<head$1><base href="${window.location.origin}/">`);
 }
 
+function buildBridgeUrl(locationKey: string): string {
+  if (typeof window === "undefined") {
+    return "/__studio-brain/ops";
+  }
+  const current = new URL(locationKey, window.location.origin);
+  return `/__studio-brain${current.pathname}${current.search}`;
+}
+
 export default function OpsPortalBridgeView({ user, authReady, isStaff }: Props) {
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(true);
@@ -54,7 +62,7 @@ export default function OpsPortalBridgeView({ user, authReady, isStaff }: Props)
 
       try {
         const idToken = await user.getIdToken();
-        const response = await fetch(`/__studio-brain${locationKey}`, {
+        const response = await fetch(buildBridgeUrl(locationKey), {
           method: "GET",
           headers: {
             authorization: `Bearer ${idToken}`,

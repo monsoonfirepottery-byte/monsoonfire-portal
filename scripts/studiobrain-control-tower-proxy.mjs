@@ -108,7 +108,11 @@ server.listen(listenPort, listenHost, () => {
 
 function isAllowedPath(pathname) {
   if (pathname === "/") return true;
-  return /^\/api\/control-tower(?:\/.*)?$/i.test(pathname);
+  return (
+    /^\/ops(?:\/.*)?$/i.test(pathname) ||
+    /^\/api\/ops(?:\/.*)?$/i.test(pathname) ||
+    /^\/api\/control-tower(?:\/.*)?$/i.test(pathname)
+  );
 }
 
 function normalizePort(value, fallback) {

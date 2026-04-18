@@ -12,6 +12,12 @@ The run writes:
 - screenshots under `output/playwright/portal`
 - `portal-smoke-summary.json` with every check, network event, screenshot reference, and failure detail
 
+## Native-browser shadow lane
+- `npm run portal:smoke:native-browser:shadow` prepares the advisory Codex-native shadow artifacts under `output/native-browser/portal/prod`.
+- `npm run portal:smoke:native-browser:shadow:execute` runs the bounded `codex exec` wrapper and records structured evidence when native browser/computer-use is available.
+- This lane is non-gating and advisory-only today.
+- Playwright remains the authoritative portal smoke gate for CI, release signoff, and production monitoring until native browser/computer-use is actually exposed in this execution path.
+
 ## Local usage
 1. Install dependencies:
 ```bash

@@ -104,6 +104,7 @@ const StudioReservationsView = React.lazy(() => import("./views/StudioReservatio
 const SignedOutView = React.lazy(() => import("./views/SignedOutView"));
 const StudioResourcesView = React.lazy(() => import("./views/StudioResourcesView"));
 const SupportView = React.lazy(() => import("./views/SupportView"));
+const OpsPortalBridgeView = React.lazy(() => import("./views/OpsPortalBridgeView"));
 const StaffView = React.lazy(() => import("./views/StaffView"));
 const WareCheckInView = React.lazy(() => import("./views/WareCheckInView"));
 
@@ -128,6 +129,7 @@ type NavKey =
   | "notifications"
   | "messages"
   | "support"
+  | "opsPortal"
   | "staff";
 
 type NavItem = {
@@ -361,6 +363,7 @@ const NAV_LABELS: Record<NavKey, string> = {
   notifications: "Notifications",
   messages: "Messages",
   support: "Support",
+  opsPortal: "Studio Ops",
   staff: "Staff",
 };
 
@@ -415,6 +418,10 @@ function normalizeAppPath(pathname: string): string {
 
 function normalizeHashPath(hash: string): string {
   return normalizeStaffPath(hash);
+}
+
+function isOpsPortalPath(pathname: string): boolean {
+  return /^\/ops(?:\/|$)/i.test(normalizeAppPath(pathname));
 }
 
 function isLegacyRequestsPath(pathname: string): boolean {
@@ -888,6 +895,7 @@ export default function App() {
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
     const normalizedPathname = normalizeAppPath(window.location.pathname);
+    if (isOpsPortalPath(normalizedPathname)) return "opsPortal";
     const staffTaskShortcut = resolveStaffTaskShortcut(normalizedPathname, window.location.hash);
     if (staffTaskShortcut) return staffTaskShortcut.targetNav;
     const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(normalizedPathname, window.location.hash);
@@ -903,7 +911,7 @@ export default function App() {
     if (reservationsTarget === "wareCheckIn") return "wareCheckIn";
     if (normalizedPathname === "/glazes" || normalizedPathname === "/community/glazes") return "glazes";
     const saved = readLocalItem(LOCAL_NAV_KEY);
-    if (saved && isNavKey(saved)) return saved;
+    if (saved && isNavKey(saved) && saved !== "opsPortal") return saved;
     return "dashboard";
   });
   const [staffWorkspaceMode, setStaffWorkspaceMode] = useState<StaffWorkspaceMode>(() => {
@@ -1213,9 +1221,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    writeLocalItem(LOCAL_NAV_KEY, nav);
+    if (nav !== "opsPortal") {
+      writeLocalItem(LOCAL_NAV_KEY, nav);
+    }
     if (typeof window === "undefined") return;
     const pathname = normalizeAppPath(window.location.pathname);
+    const hasOpsPortalPath = isOpsPortalPath(pathname);
     const hashPath = normalizeHashPath(window.location.hash);
     const staffTaskShortcut = resolveStaffTaskShortcut(pathname, window.location.hash);
     const pathnameStaffMatch = resolveStaffWorkspaceMatch(pathname);
@@ -1266,12 +1277,19 @@ export default function App() {
         }
       }
     } else if (
+      hasOpsPortalPath ||
       pathname === "/glazes" ||
       hasLegacyRequestsPath ||
       hasLegacyRequestsHash ||
       resolveReservationsPathTarget(pathname) !== null
     ) {
-      window.history.replaceState({}, "", "/");
+      if (hasOpsPortalPath) {
+        if (nav !== "opsPortal") {
+          setNav("opsPortal");
+        }
+      } else {
+        window.history.replaceState({}, "", "/");
+      }
     }
   }, [nav, staffInitialTaskAction, staffUi, staffWorkspaceMode]);
 
@@ -1280,6 +1298,15 @@ export default function App() {
 
     const syncStateWithBrowserLocation = () => {
       const pathname = normalizeAppPath(window.location.pathname);
+      if (isOpsPortalPath(pathname)) {
+        if (staffWorkspaceMode !== "default") {
+          setStaffWorkspaceMode("default");
+        }
+        if (nav !== "opsPortal") {
+          setNav("opsPortal");
+        }
+        return;
+      }
       const staffTaskShortcut = resolveStaffTaskShortcut(pathname, window.location.hash);
       if (staffTaskShortcut) {
         if (staffTaskShortcut.targetNav === "staff") {
@@ -2471,6 +2498,8 @@ export default function App() {
             isBusy={supportBusy}
           />
         );
+      case "opsPortal":
+        return <OpsPortalBridgeView user={user} authReady={authReady} isStaff={staffUi} />;
       case "staff":
         return (
           <StaffView

@@ -5624,3 +5624,22 @@ html[data-portal-theme="memoria"] .page .card:nth-of-type(8) {
   font: 600 12px/1.2 var(--ui-font);
   cursor: pointer;
 }
+
+.ops-bridge-shell {
+  min-height: calc(100vh - 4rem);
+  display: flex;
+}
+
+.ops-bridge-card {
+  width: min(720px, 100%);
+  margin: auto;
+}
+
+.ops-bridge-frame {
+  width: 100%;
+  min-height: calc(100vh - 4rem);
+  border: 0;
+  border-radius: 24px;
+  background: #0f1419;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}

@@ -11,6 +11,10 @@
   RewriteRule ^assets/ - [L,E=MF_ASSET_CACHE:1]
   RewriteRule ^[^/]+\.(js|css|map)$ - [E=ROOT_COMPAT_CHUNK:1]
 
+  # Route the Studio Brain browser bridge before the SPA fallback.
+  RewriteRule ^__studio-brain(?:/(?!index\.php$).*)?$ __studio-brain/index.php [QSA,L,NC]
+  RewriteRule ^api/ops(?:/(?!index\.php$).*)?$ __studio-brain/index.php [QSA,L,NC]
+
   # Never rewrite service worker/runtime manifest endpoints.
   RewriteRule ^(registerSW\.js|sw\.js|workbox-.*\.js|manifest\.webmanifest)$ - [L]
 

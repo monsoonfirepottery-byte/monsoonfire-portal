@@ -35,6 +35,19 @@ npm run studio:ops:reconcile
 - `studio:ops:deploy` is the wrapper alias for the full runtime deploy.
 - `studio:ops:reconcile` runs the full runtime deploy, then the tracked host-stack install, then captures a fresh status snapshot.
 
+## Ship Close-Out
+
+After the PR for a Studio Brain host change exists, the recommended close-out path is the ship workflow:
+
+```powershell
+npm run ship:studio -- 476
+npm run ship:studio:apply -- 476
+```
+
+- preview first with `ship:studio`
+- apply with `ship:studio:apply` once the PR is ready
+- the ship workflow now waits on required GitHub checks before merge, then syncs a clean `main` worktree and runs `studio:ops:reconcile`
+
 ## Secrets
 
 The script reads remote connection details from the gitignored secret file:

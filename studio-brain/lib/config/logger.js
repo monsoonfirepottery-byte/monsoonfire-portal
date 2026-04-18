@@ -1,7 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createLogger = createLogger;
-const REDACT_KEYS = ["password", "secret", "token", "authorization", "apikey", "api_key"];
+const REDACT_KEYS = [
+    "password",
+    "secret",
+    "token",
+    "authorization",
+    "apikey",
+    "api_key",
+    "email",
+    "phone",
+    "customerid",
+    "paymentmethodid",
+    "staffnotes",
+    "billingcontact",
+];
 function levelWeight(level) {
     switch (level) {
         case "debug":

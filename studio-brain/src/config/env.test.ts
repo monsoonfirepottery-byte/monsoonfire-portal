@@ -45,6 +45,7 @@ test("redactEnvForLogs masks sensitive fields", () => {
       PGPASSWORD: "super-secret",
       GOOGLE_APPLICATION_CREDENTIALS: "C:\\\\tmp\\\\service-account.json",
       STUDIO_BRAIN_ADMIN_TOKEN: "token",
+      STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: "ops-pii-key",
       STUDIO_BRAIN_OPENAI_API_KEY: "sk-local",
       STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET: "ingest-secret",
       STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
@@ -58,6 +59,7 @@ test("redactEnvForLogs masks sensitive fields", () => {
       assert.equal(safe.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY, "[set]");
       assert.equal(safe.PGPASSWORD, "[redacted]");
       assert.equal(safe.GOOGLE_APPLICATION_CREDENTIALS, "[set]");
+      assert.equal(safe.STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY, "[set]");
       assert.equal(safe.STUDIO_BRAIN_OPENAI_API_KEY, "[set]");
       assert.equal(safe.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET, "[set]");
       assert.equal(safe.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "[set]");

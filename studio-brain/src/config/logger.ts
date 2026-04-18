@@ -7,7 +7,20 @@ export type Logger = {
   error: (msg: string, meta?: Record<string, unknown>) => void;
 };
 
-const REDACT_KEYS = ["password", "secret", "token", "authorization", "apikey", "api_key"];
+const REDACT_KEYS = [
+  "password",
+  "secret",
+  "token",
+  "authorization",
+  "apikey",
+  "api_key",
+  "email",
+  "phone",
+  "customerid",
+  "paymentmethodid",
+  "staffnotes",
+  "billingcontact",
+];
 
 function levelWeight(level: LogLevel): number {
   switch (level) {

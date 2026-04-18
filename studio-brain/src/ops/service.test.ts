@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHumanTaskSeed, createOpsService } from "./service";
-import type { OpsCapability, OpsHumanRole } from "./contracts";
+import type { MemberOpsRecord, OpsCapability, OpsHumanRole } from "./contracts";
 import { MemoryOpsStore } from "./store";
 
 test("ops service claims, proofs, and completes a task", async () => {
@@ -93,6 +93,7 @@ test("ops service records member audits and blocks self role changes", async () 
     membershipTier: string | null;
     kilnPreferences: string | null;
     staffNotes: string | null;
+    billing?: MemberOpsRecord["billing"];
     portalRole: "member" | "staff" | "admin";
     opsRoles: OpsHumanRole[];
     opsCapabilities: OpsCapability[];
@@ -120,6 +121,41 @@ test("ops service records member audits and blocks self role changes", async () 
     staffDataSource: {
       async listMembers() { return [member]; },
       async getMember(uid) { return uid === member.uid ? member : null; },
+      async createMember(input) {
+        member = {
+          ...member,
+          uid: "member-created",
+          email: input.email,
+          displayName: input.displayName,
+          membershipTier: input.membershipTier ?? null,
+          portalRole: input.portalRole ?? "member",
+          opsRoles: input.opsRoles ?? [],
+          updatedAt: "2026-04-17T00:30:00.000Z",
+        };
+        return {
+          member,
+          created: {
+            uid: member.uid,
+            email: input.email,
+            displayName: input.displayName,
+            membershipTier: input.membershipTier ?? null,
+            portalRole: input.portalRole ?? "member",
+            opsRoles: input.opsRoles ?? [],
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T00:30:00.000Z",
+          },
+          audit: {
+            id: "audit-create-1",
+            uid: "member-created",
+            kind: "create",
+            actorId: input.actorId,
+            summary: "Member created.",
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T00:30:00.000Z",
+            payload: { email: input.email },
+          },
+        };
+      },
       async updateMemberProfile(input) {
         member = {
           ...member,
@@ -202,6 +238,39 @@ test("ops service records member audits and blocks self role changes", async () 
       },
       async listReservations() { return []; },
       async getReservationBundle() { return null; },
+      async updateMemberBilling(input) {
+        member = {
+          ...member,
+          billing: {
+            stripeCustomerId: input.billing.stripeCustomerId ?? null,
+            defaultPaymentMethodId: input.billing.defaultPaymentMethodId ?? null,
+            cardBrand: input.billing.cardBrand ?? null,
+            cardLast4: input.billing.cardLast4 ?? null,
+            expMonth: input.billing.expMonth ?? null,
+            expYear: input.billing.expYear ?? null,
+            paymentMethodSummary: "Visa · •••• 4242 · exp 08/2030",
+            billingContactName: input.billing.billingContactName ?? null,
+            billingContactEmail: input.billing.billingContactEmail ?? null,
+            billingContactPhone: input.billing.billingContactPhone ?? null,
+            storageMode: "stripe_tokenized_only",
+            updatedAt: "2026-04-17T01:12:00.000Z",
+          },
+          updatedAt: "2026-04-17T01:12:00.000Z",
+        };
+        return {
+          member,
+          audit: {
+            id: "audit-billing-1",
+            uid: member.uid,
+            kind: "billing",
+            actorId: input.actorId,
+            summary: "Billing updated.",
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T01:12:00.000Z",
+            payload: input.billing,
+          },
+        };
+      },
       async listEvents() { return []; },
       async listReports() { return []; },
       async getLendingSnapshot() {
@@ -244,4 +313,165 @@ test("ops service records member audits and blocks self role changes", async () 
     }, actor),
     /change your own role/i,
   );
+});
+
+test("ops service creates members and stores only billing-safe metadata", async () => {
+  const store = new MemoryOpsStore();
+  let member: MemberOpsRecord = {
+    uid: "member-created",
+    email: "newmember@example.com",
+    displayName: "New Member",
+    membershipTier: "community",
+    kilnPreferences: null,
+    staffNotes: "Created from test.",
+    billing: null,
+    portalRole: "member" as const,
+    opsRoles: [] as OpsHumanRole[],
+    opsCapabilities: [] as OpsCapability[],
+    createdAt: "2026-04-17T02:00:00.000Z",
+    updatedAt: "2026-04-17T02:00:00.000Z",
+    lastSeenAt: null,
+    metadata: {},
+  };
+  const service = createOpsService({
+    store,
+    staffDataSource: {
+      async listMembers() { return [member]; },
+      async getMember(uid) { return uid === member.uid ? member : null; },
+      async createMember(input) {
+        member = {
+          ...member,
+          email: input.email,
+          displayName: input.displayName,
+          membershipTier: input.membershipTier ?? null,
+          portalRole: input.portalRole ?? "member",
+          opsRoles: input.opsRoles ?? [],
+        };
+        return {
+          member,
+          created: {
+            uid: member.uid,
+            email: input.email,
+            displayName: input.displayName,
+            membershipTier: input.membershipTier ?? null,
+            portalRole: input.portalRole ?? "member",
+            opsRoles: input.opsRoles ?? [],
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T02:00:00.000Z",
+          },
+          audit: {
+            id: "audit-create-2",
+            uid: member.uid,
+            kind: "create",
+            actorId: input.actorId,
+            summary: "Member created.",
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T02:00:00.000Z",
+            payload: { email: input.email },
+          },
+        };
+      },
+      async updateMemberProfile() { throw new Error("not used"); },
+      async updateMemberBilling(input) {
+        member = {
+          ...member,
+          billing: {
+            stripeCustomerId: input.billing.stripeCustomerId ?? null,
+            defaultPaymentMethodId: input.billing.defaultPaymentMethodId ?? null,
+            cardBrand: input.billing.cardBrand ?? null,
+            cardLast4: input.billing.cardLast4 ?? null,
+            expMonth: input.billing.expMonth ?? null,
+            expYear: input.billing.expYear ?? null,
+            paymentMethodSummary: "Visa · •••• 4242 · exp 08/2030",
+            billingContactName: input.billing.billingContactName ?? null,
+            billingContactEmail: input.billing.billingContactEmail ?? null,
+            billingContactPhone: input.billing.billingContactPhone ?? null,
+            storageMode: "stripe_tokenized_only",
+            updatedAt: "2026-04-17T02:05:00.000Z",
+          },
+        };
+        return {
+          member,
+          audit: {
+            id: "audit-billing-2",
+            uid: member.uid,
+            kind: "billing",
+            actorId: input.actorId,
+            summary: "Billing updated.",
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T02:05:00.000Z",
+            payload: input.billing,
+          },
+        };
+      },
+      async updateMemberMembership() { throw new Error("not used"); },
+      async updateMemberRole() { throw new Error("not used"); },
+      async getMemberActivity(uid) {
+        return {
+          uid,
+          reservations: 0,
+          libraryLoans: 0,
+          supportThreads: 0,
+          events: 0,
+          lastReservationAt: null,
+          lastLoanAt: null,
+          lastEventAt: null,
+        };
+      },
+      async listReservations() { return []; },
+      async getReservationBundle() { return null; },
+      async listEvents() { return []; },
+      async listReports() { return []; },
+      async getLendingSnapshot() {
+        return {
+          requests: [],
+          loans: [],
+          recommendationCount: 0,
+          tagSubmissionCount: 0,
+          coverReviewCount: 0,
+          generatedAt: "2026-04-17T02:00:00.000Z",
+        };
+      },
+    },
+  });
+  const actor = {
+    actorId: "staff-2",
+    isStaff: true,
+    portalRole: "staff" as const,
+    opsRoles: ["member_ops"] as OpsHumanRole[],
+    opsCapabilities: ["surface:internet", "members:view", "members:create", "members:edit_billing"] as OpsCapability[],
+  };
+
+  const created = await service.createMember({
+    email: "newmember@example.com",
+    displayName: "New Member",
+    membershipTier: "community",
+    reason: "Onboarded from member ops.",
+  }, actor);
+  assert.equal(created?.member?.displayName, "New Member");
+
+  const billing = await service.updateMemberBilling({
+    uid: "member-created",
+    reason: "Attached Stripe references only.",
+    billing: {
+      stripeCustomerId: "cus_123",
+      defaultPaymentMethodId: "pm_123",
+      cardBrand: "Visa",
+      cardLast4: "4242",
+      expMonth: "08",
+      expYear: "2030",
+      billingContactEmail: "billing@example.com",
+    },
+  }, actor);
+  assert.equal(billing?.member?.billing?.stripeCustomerId, "cus_123");
+  assert.equal(billing?.member?.billing?.cardLast4, "4242");
+
+  const audits = await store.listMemberAudits("member-created", 10);
+  assert.equal(audits.length, 2);
+  assert.equal(audits[0]?.kind, "billing");
+  assert.equal(audits[1]?.kind, "create");
+  assert.equal(audits[0]?.payload.stripeCustomerId, "cu***");
+  assert.equal(audits[0]?.payload.billingContactEmail, "b***g@example.com");
+  assert.equal(audits[1]?.payload.emailMasked, "n***r@example.com");
+  assert.match(audits[1]?.reason ?? "", /^stored securely \(\d+ chars\)$/);
 });

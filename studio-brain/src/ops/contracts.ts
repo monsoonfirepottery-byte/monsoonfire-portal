@@ -50,10 +50,12 @@ export const opsCapabilities = [
   "surface:ceo",
   "surface:forge",
   "members:view",
+  "members:create",
   "members:edit_profile",
   "members:edit_membership",
   "members:edit_role",
   "members:edit_owner_role",
+  "members:edit_billing",
   "approvals:view",
   "approvals:manage",
   "tasks:claim:any",
@@ -84,10 +86,12 @@ const roleCapabilityMap: Record<OpsHumanRole, readonly OpsCapability[]> = {
     "surface:ceo",
     "surface:forge",
     "members:view",
+    "members:create",
     "members:edit_profile",
     "members:edit_membership",
     "members:edit_role",
     "members:edit_owner_role",
+    "members:edit_billing",
     "approvals:view",
     "approvals:manage",
     "tasks:claim:any",
@@ -110,9 +114,11 @@ const roleCapabilityMap: Record<OpsHumanRole, readonly OpsCapability[]> = {
   member_ops: [
     "surface:internet",
     "members:view",
+    "members:create",
     "members:edit_profile",
     "members:edit_membership",
     "members:edit_role",
+    "members:edit_billing",
     "approvals:view",
     "tasks:escape",
     "proof:submit",
@@ -123,9 +129,11 @@ const roleCapabilityMap: Record<OpsHumanRole, readonly OpsCapability[]> = {
   support_ops: [
     "surface:internet",
     "members:view",
+    "members:create",
     "members:edit_profile",
     "members:edit_membership",
     "members:edit_role",
+    "members:edit_billing",
     "approvals:view",
     "tasks:claim:any",
     "tasks:escape",
@@ -175,6 +183,7 @@ const roleCapabilityMap: Record<OpsHumanRole, readonly OpsCapability[]> = {
     "surface:owner",
     "approvals:view",
     "finance:view",
+    "members:edit_billing",
     "overrides:request",
   ],
 };
@@ -572,6 +581,7 @@ export type MemberOpsRecord = {
   membershipTier: string | null;
   kilnPreferences: string | null;
   staffNotes: string | null;
+  billing?: MemberBillingRecord | null;
   portalRole: OpsPortalRole;
   opsRoles: OpsHumanRole[];
   opsCapabilities: OpsCapability[];
@@ -579,6 +589,32 @@ export type MemberOpsRecord = {
   updatedAt: string | null;
   lastSeenAt: string | null;
   metadata: Record<string, unknown>;
+};
+
+export type MemberBillingRecord = {
+  stripeCustomerId: string | null;
+  defaultPaymentMethodId: string | null;
+  cardBrand: string | null;
+  cardLast4: string | null;
+  expMonth: string | null;
+  expYear: string | null;
+  paymentMethodSummary: string | null;
+  billingContactName: string | null;
+  billingContactEmail: string | null;
+  billingContactPhone: string | null;
+  storageMode: "stripe_tokenized_only" | "plaintext_fallback";
+  updatedAt: string | null;
+};
+
+export type CreateMemberRecord = {
+  uid: string;
+  email: string;
+  displayName: string;
+  membershipTier: string | null;
+  portalRole: OpsPortalRole;
+  opsRoles: OpsHumanRole[];
+  reason: string | null;
+  createdAt: string;
 };
 
 export type MembershipChangeRecord = {
@@ -617,7 +653,7 @@ export type MemberActivityRecord = {
 export type OpsMemberAuditRecord = {
   id: string;
   uid: string;
-  kind: "profile" | "membership" | "role";
+  kind: "create" | "profile" | "membership" | "role" | "billing";
   actorId: string;
   summary: string;
   reason: string | null;

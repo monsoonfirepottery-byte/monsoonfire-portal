@@ -23,6 +23,7 @@ import type {
   StationSession,
   TaskProofRecord,
 } from "./contracts";
+import { redactMemberAuditPayload } from "./pii";
 
 function stringify(value: unknown): string {
   return JSON.stringify(value);
@@ -246,12 +247,13 @@ export class MemoryOpsStore implements OpsStore {
     return [...this.overrides.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
   }
   async appendMemberAudit(record: OpsMemberAuditRecord): Promise<void> {
-    const list = this.memberAudits.get(record.uid) ?? [];
-    list.unshift(record);
-    this.memberAudits.set(record.uid, list);
+    const safeRecord = redactMemberAuditPayload(record);
+    const list = this.memberAudits.get(safeRecord.uid) ?? [];
+    list.unshift(safeRecord);
+    this.memberAudits.set(safeRecord.uid, list);
   }
   async listMemberAudits(uid: string, limit: number): Promise<OpsMemberAuditRecord[]> {
-    return (this.memberAudits.get(uid) ?? []).slice(0, limit);
+    return (this.memberAudits.get(uid) ?? []).slice(0, limit).map((record) => redactMemberAuditPayload(record));
   }
 }
 
@@ -846,11 +848,12 @@ export class PostgresOpsStore implements OpsStore {
 
   async appendMemberAudit(record: OpsMemberAuditRecord): Promise<void> {
     const pool = getPgPool();
+    const safeRecord = redactMemberAuditPayload(record);
     await pool.query(
       `INSERT INTO brain_ops_member_audits (id, uid, kind, actor_id, created_at, raw_payload)
        VALUES ($1,$2,$3,$4,$5::timestamptz,$6::jsonb)
        ON CONFLICT (id) DO UPDATE SET raw_payload = EXCLUDED.raw_payload`,
-      [record.id, record.uid, record.kind, record.actorId, record.createdAt, stringify(record)],
+      [safeRecord.id, safeRecord.uid, safeRecord.kind, safeRecord.actorId, safeRecord.createdAt, stringify(safeRecord)],
     );
   }
 
@@ -860,6 +863,6 @@ export class PostgresOpsStore implements OpsStore {
       "SELECT raw_payload FROM brain_ops_member_audits WHERE uid = $1 ORDER BY created_at DESC LIMIT $2",
       [uid, Math.max(1, limit)],
     );
-    return result.rows.map((row) => asRecord<OpsMemberAuditRecord>((row as StoredPayload).raw_payload));
+    return result.rows.map((row) => redactMemberAuditPayload(asRecord<OpsMemberAuditRecord>((row as StoredPayload).raw_payload)));
   }
 }

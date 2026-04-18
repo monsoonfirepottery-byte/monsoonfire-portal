@@ -1,13 +1,14 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { resolveFirebaseProjectId } from "../cloud/firebaseProject";
 import {
   deriveOpsCapabilities,
   makeId,
-  normalizeOpsHumanRole,
   normalizeOpsHumanRoles,
+  type CreateMemberRecord,
   type MemberActivityRecord,
+  type MemberBillingRecord,
   type MemberOpsRecord,
   type OpsCapability,
   type OpsEventRecord,
@@ -22,6 +23,7 @@ import {
   type RoleChangeRecord,
   type MembershipChangeRecord,
 } from "./contracts";
+import { decryptOpsPiiJson, encryptOpsPiiJson, redactMemberAuditPayload } from "./pii";
 
 function ensureFirebaseAdmin(): void {
   if (getApps().length > 0) return;
@@ -174,13 +176,15 @@ function memberRecordFromSource(input: {
   const claims = input.claims ?? {};
   const portalRole = derivePortalRoleFromClaims(claims) ?? readCollectionRole(merged) ?? "member";
   const opsRoles = deriveOpsRolesFromClaims(claims);
+  const decryptedStaffNotes = decryptOpsPiiJson<{ value?: string | null }>(merged.staffNotesEncrypted)?.value ?? null;
   return {
     uid: input.uid,
     email: cleanNullableString(merged.email),
     displayName: buildDisplayName(input.uid, merged),
     membershipTier: cleanNullableString(merged.membershipTier),
     kilnPreferences: cleanNullableString(merged.kilnPreferences),
-    staffNotes: cleanNullableString(merged.staffNotes),
+    staffNotes: cleanNullableString(decryptedStaffNotes ?? merged.staffNotes),
+    billing: memberBillingFromSource(merged),
     portalRole,
     opsRoles,
     opsCapabilities: deriveOpsCapabilities(opsRoles),
@@ -190,6 +194,153 @@ function memberRecordFromSource(input: {
     metadata: {
       sourceCollections: ["users", ...(input.profileData ? ["profiles"] : [])],
     },
+  };
+}
+
+function billingSummaryFromSource(input: {
+  cardBrand?: string | null;
+  cardLast4?: string | null;
+  expMonth?: string | null;
+  expYear?: string | null;
+}): string | null {
+  const parts = [
+    cleanNullableString(input.cardBrand),
+    input.cardLast4 ? `•••• ${cleanString(input.cardLast4)}` : null,
+    input.expMonth && input.expYear ? `exp ${cleanString(input.expMonth)}/${cleanString(input.expYear)}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function memberBillingFromSource(merged: Record<string, unknown>): MemberBillingRecord | null {
+  const safeProfile =
+    typeof merged.billingProfile === "object" && merged.billingProfile !== null
+      ? merged.billingProfile as Record<string, unknown>
+      : {};
+  const encryptedProfile = decryptOpsPiiJson<Record<string, unknown>>(merged.billingProfileEncrypted) ?? {};
+  const profile = {
+    ...safeProfile,
+    ...encryptedProfile,
+  };
+  const stripeCustomerId = cleanNullableString(profile.stripeCustomerId ?? merged.stripeCustomerId);
+  const defaultPaymentMethodId = cleanNullableString(profile.defaultPaymentMethodId ?? merged.defaultPaymentMethodId);
+  const cardBrand = cleanNullableString(profile.cardBrand);
+  const cardLast4 = cleanNullableString(profile.cardLast4);
+  const expMonth = cleanNullableString(profile.expMonth);
+  const expYear = cleanNullableString(profile.expYear);
+  const billingContactName = cleanNullableString(profile.billingContactName);
+  const billingContactEmail = cleanNullableString(profile.billingContactEmail);
+  const billingContactPhone = cleanNullableString(profile.billingContactPhone);
+  const updatedAt = toIso(profile.updatedAt) ?? toIso(merged.updatedAt);
+  const paymentMethodSummary = billingSummaryFromSource({ cardBrand, cardLast4, expMonth, expYear });
+  const hasSafeSummaryOnly = Boolean(cardBrand || cardLast4 || expMonth || expYear);
+  if (
+    !stripeCustomerId
+    && !defaultPaymentMethodId
+    && !cardBrand
+    && !cardLast4
+    && !billingContactName
+    && !billingContactEmail
+    && !billingContactPhone
+  ) {
+    return null;
+  }
+  return {
+    stripeCustomerId,
+    defaultPaymentMethodId,
+    cardBrand,
+    cardLast4,
+    expMonth,
+    expYear,
+    paymentMethodSummary,
+    billingContactName,
+    billingContactEmail,
+    billingContactPhone,
+    storageMode:
+      encryptedProfile && Object.keys(encryptedProfile).length > 0
+        ? "stripe_tokenized_only"
+        : hasSafeSummaryOnly
+          ? "stripe_tokenized_only"
+          : "plaintext_fallback",
+    updatedAt,
+  };
+}
+
+function protectStaffNotes(value: string | null | undefined): {
+  plaintext: string | null;
+  encrypted: unknown | null;
+  protectedAtRest: boolean;
+} {
+  const normalized = cleanNullableString(value);
+  if (!normalized) {
+    return {
+      plaintext: null,
+      encrypted: null,
+      protectedAtRest: false,
+    };
+  }
+  const encrypted = encryptOpsPiiJson({ value: normalized });
+  if (encrypted) {
+    return {
+      plaintext: null,
+      encrypted,
+      protectedAtRest: true,
+    };
+  }
+  return {
+    plaintext: normalized,
+    encrypted: null,
+    protectedAtRest: false,
+  };
+}
+
+function buildBillingStorage(input: {
+  stripeCustomerId?: string | null;
+  defaultPaymentMethodId?: string | null;
+  cardBrand?: string | null;
+  cardLast4?: string | null;
+  expMonth?: string | null;
+  expYear?: string | null;
+  billingContactName?: string | null;
+  billingContactEmail?: string | null;
+  billingContactPhone?: string | null;
+}, updatedAt: Date): {
+  publicProfile: Record<string, unknown>;
+  encryptedProfile: unknown | null;
+  protectedAtRest: boolean;
+  fullProfile: MemberBillingRecord | null;
+} {
+  const sensitiveProfile = {
+    stripeCustomerId: cleanNullableString(input.stripeCustomerId),
+    defaultPaymentMethodId: cleanNullableString(input.defaultPaymentMethodId),
+    billingContactName: cleanNullableString(input.billingContactName),
+    billingContactEmail: cleanNullableString(input.billingContactEmail),
+    billingContactPhone: cleanNullableString(input.billingContactPhone),
+  };
+  const hasSensitiveFields = Object.values(sensitiveProfile).some((value) => value !== null);
+  const encryptedProfile = hasSensitiveFields ? encryptOpsPiiJson(sensitiveProfile) : null;
+  const safeProfile: Record<string, unknown> = {
+    cardBrand: cleanNullableString(input.cardBrand),
+    cardLast4: cleanNullableString(input.cardLast4),
+    expMonth: cleanNullableString(input.expMonth),
+    expYear: cleanNullableString(input.expYear),
+    storageMode: encryptedProfile || !hasSensitiveFields ? "stripe_tokenized_only" : "plaintext_fallback",
+    updatedAt,
+  };
+  if (!encryptedProfile) {
+    safeProfile.stripeCustomerId = sensitiveProfile.stripeCustomerId;
+    safeProfile.defaultPaymentMethodId = sensitiveProfile.defaultPaymentMethodId;
+    safeProfile.billingContactName = sensitiveProfile.billingContactName;
+    safeProfile.billingContactEmail = sensitiveProfile.billingContactEmail;
+    safeProfile.billingContactPhone = sensitiveProfile.billingContactPhone;
+  }
+  return {
+    publicProfile: safeProfile,
+    encryptedProfile,
+    protectedAtRest: encryptedProfile !== null,
+    fullProfile: memberBillingFromSource({
+      billingProfile: safeProfile,
+      billingProfileEncrypted: encryptedProfile,
+    }),
   };
 }
 
@@ -300,6 +451,17 @@ function reservationBundleFromDoc(id: string, raw: Record<string, unknown>): Res
 export type OpsStaffDataSource = {
   listMembers(limit?: number): Promise<MemberOpsRecord[]>;
   getMember(uid: string): Promise<MemberOpsRecord | null>;
+  createMember(input: {
+    actorId: string;
+    email: string;
+    displayName: string;
+    membershipTier?: string | null;
+    portalRole?: OpsPortalRole;
+    opsRoles?: OpsHumanRole[];
+    kilnPreferences?: string | null;
+    staffNotes?: string | null;
+    reason?: string | null;
+  }): Promise<{ member: MemberOpsRecord | null; audit: OpsMemberAuditRecord; created: CreateMemberRecord }>;
   updateMemberProfile(input: {
     uid: string;
     actorId: string;
@@ -308,6 +470,22 @@ export type OpsStaffDataSource = {
       membershipTier?: string | null;
       kilnPreferences?: string | null;
       staffNotes?: string | null;
+    };
+    reason?: string | null;
+  }): Promise<{ member: MemberOpsRecord | null; audit: OpsMemberAuditRecord }>;
+  updateMemberBilling(input: {
+    uid: string;
+    actorId: string;
+    billing: {
+      stripeCustomerId?: string | null;
+      defaultPaymentMethodId?: string | null;
+      cardBrand?: string | null;
+      cardLast4?: string | null;
+      expMonth?: string | null;
+      expYear?: string | null;
+      billingContactName?: string | null;
+      billingContactEmail?: string | null;
+      billingContactPhone?: string | null;
     };
     reason?: string | null;
   }): Promise<{ member: MemberOpsRecord | null; audit: OpsMemberAuditRecord }>;
@@ -385,6 +563,89 @@ export function createOpsStaffDataSource(): OpsStaffDataSource {
       });
     },
 
+    async createMember(input) {
+      const db = firestore();
+      const now = new Date();
+      const opsRoles = normalizeOpsHumanRoles(input.opsRoles);
+      const portalRole = input.portalRole ?? (opsRoles.length > 0 ? "staff" : "member");
+      const protectedNotes = protectStaffNotes(input.staffNotes);
+      const createdUser = await auth().createUser({
+        email: cleanString(input.email),
+        displayName: cleanString(input.displayName),
+      });
+      const claims = buildClaimsForOpsRoles({}, portalRole, opsRoles);
+      await auth().setCustomUserClaims(createdUser.uid, claims);
+      const memberPatch: Record<string, unknown> = {
+        email: cleanString(input.email),
+        displayName: cleanString(input.displayName),
+        membershipTier: input.membershipTier ?? null,
+        kilnPreferences: input.kilnPreferences ?? null,
+        role: claims.role ?? portalRole,
+        staffRole: claims.role ?? portalRole,
+        opsRoles,
+        opsCapabilities: deriveOpsCapabilities(opsRoles),
+        customClaims: claims,
+        claims,
+        createdAt: now,
+        updatedAt: now,
+        createdByUid: input.actorId,
+        source: "studio-brain-ops",
+      };
+      if (protectedNotes.encrypted) {
+        memberPatch.staffNotesEncrypted = protectedNotes.encrypted;
+      } else {
+        memberPatch.staffNotes = protectedNotes.plaintext;
+      }
+      await Promise.all([
+        db.collection("users").doc(createdUser.uid).set(memberPatch, { merge: true }),
+        db.collection("profiles").doc(createdUser.uid).set({
+          email: cleanString(input.email),
+          displayName: cleanString(input.displayName),
+          updatedAt: now,
+          createdAt: now,
+          source: "studio-brain-ops",
+        }, { merge: true }),
+      ]);
+      const created: CreateMemberRecord = {
+        uid: createdUser.uid,
+        email: cleanString(input.email),
+        displayName: cleanString(input.displayName),
+        membershipTier: input.membershipTier ?? null,
+        portalRole,
+        opsRoles,
+        reason: cleanNullableString(input.reason),
+        createdAt: now.toISOString(),
+      };
+      const audit: OpsMemberAuditRecord = {
+        id: makeId("ops_member_create"),
+        uid: createdUser.uid,
+        kind: "create",
+        actorId: input.actorId,
+        summary: `Created ${created.displayName} in the ops portal.`,
+        reason: created.reason,
+        createdAt: created.createdAt,
+        payload: {
+          ...created,
+          staffNotes: input.staffNotes ?? null,
+          piiProtection: protectedNotes.protectedAtRest ? "encrypted_at_rest" : "plaintext_fallback",
+        },
+      };
+      const safeAudit = redactMemberAuditPayload(audit);
+      await db.collection("staffMemberCreates").doc(audit.id).set({
+        uid: createdUser.uid,
+        payload: safeAudit.payload,
+        createdByUid: input.actorId,
+        reason: safeAudit.reason,
+        at: now,
+        source: "studio-brain-ops",
+      });
+      return {
+        member: await this.getMember(createdUser.uid),
+        audit: safeAudit,
+        created,
+      };
+    },
+
     async updateMemberProfile(input) {
       const db = firestore();
       const now = new Date();
@@ -395,7 +656,14 @@ export function createOpsStaffDataSource(): OpsStaffDataSource {
       if ("displayName" in input.patch) patch.displayName = input.patch.displayName ?? null;
       if ("membershipTier" in input.patch) patch.membershipTier = input.patch.membershipTier ?? null;
       if ("kilnPreferences" in input.patch) patch.kilnPreferences = input.patch.kilnPreferences ?? null;
-      if ("staffNotes" in input.patch) patch.staffNotes = input.patch.staffNotes ?? null;
+      if ("staffNotes" in input.patch) {
+        const protectedNotes = protectStaffNotes(input.patch.staffNotes);
+        patch.staffNotes = protectedNotes.plaintext ?? null;
+        patch.staffNotesEncrypted = protectedNotes.encrypted ?? FieldValue.delete();
+        if (protectedNotes.encrypted) {
+          patch.staffNotes = FieldValue.delete();
+        }
+      }
       await db.collection("users").doc(input.uid).set(patch, { merge: true });
       const audit: OpsMemberAuditRecord = {
         id: makeId("ops_member_audit"),
@@ -405,19 +673,62 @@ export function createOpsStaffDataSource(): OpsStaffDataSource {
         summary: "Profile fields were updated from the ops portal.",
         reason: cleanNullableString(input.reason),
         createdAt: now.toISOString(),
-        payload: { patch },
+        payload: input.patch,
       };
+      const safeAudit = redactMemberAuditPayload(audit);
       await db.collection("staffProfileEdits").doc(audit.id).set({
         uid: input.uid,
         editedByUid: input.actorId,
-        reason: audit.reason,
-        patch,
+        reason: safeAudit.reason,
+        patch: safeAudit.payload,
         at: now,
         source: "studio-brain-ops",
       });
       return {
         member: await this.getMember(input.uid),
-        audit,
+        audit: safeAudit,
+      };
+    },
+
+    async updateMemberBilling(input) {
+      const db = firestore();
+      const now = new Date();
+      const billingStorage = buildBillingStorage(input.billing, now);
+      const billingPatch: Record<string, unknown> = {
+        billingProfile: billingStorage.publicProfile,
+        billingProfileEncrypted: billingStorage.encryptedProfile ?? FieldValue.delete(),
+        updatedAt: now,
+        billingUpdatedByUid: input.actorId,
+        stripeCustomerId: FieldValue.delete(),
+        defaultPaymentMethodId: FieldValue.delete(),
+      };
+      await db.collection("users").doc(input.uid).set(billingPatch, { merge: true });
+      const audit: OpsMemberAuditRecord = {
+        id: makeId("ops_member_billing"),
+        uid: input.uid,
+        kind: "billing",
+        actorId: input.actorId,
+        summary: "Billing-safe metadata was updated from the ops portal.",
+        reason: cleanNullableString(input.reason),
+        createdAt: now.toISOString(),
+        payload: {
+          ...(billingStorage.fullProfile ?? {}),
+          paymentMethodSummary: billingStorage.fullProfile?.paymentMethodSummary ?? null,
+          storageMode: billingStorage.protectedAtRest ? "encrypted_at_rest" : "plaintext_fallback",
+        },
+      };
+      const safeAudit = redactMemberAuditPayload(audit);
+      await db.collection("staffBillingEdits").doc(audit.id).set({
+        uid: input.uid,
+        editedByUid: input.actorId,
+        reason: safeAudit.reason,
+        billingProfile: safeAudit.payload,
+        at: now,
+        source: "studio-brain-ops",
+      });
+      return {
+        member: await this.getMember(input.uid),
+        audit: safeAudit,
       };
     },
 

@@ -287,6 +287,10 @@ function freshnessMsFrom(timestamp: string | null, currentIso: string): number |
   return Math.max(0, now - then);
 }
 
+function msSince(timestamp: string | null, currentIso: string): number | null {
+  return freshnessMsFrom(timestamp, currentIso);
+}
+
 function minutesUntil(timestamp: string | null): number | null {
   if (!timestamp) return null;
   const then = Date.parse(timestamp);
@@ -415,6 +419,7 @@ function sourceFreshnessRow(
   observedAt: string | null,
   budgetSeconds: number,
   reason: string | null,
+  missingStatus: OpsHealth = "critical",
 ): OpsSourceFreshness {
   const freshnessMs = freshnessMsFrom(observedAt, currentIso);
   const freshnessSeconds = freshnessMs === null ? null : Math.round(freshnessMs / 1000);
@@ -423,10 +428,35 @@ function sourceFreshnessRow(
     label,
     freshnessSeconds,
     budgetSeconds,
-    status: sourceHealth(freshnessSeconds, budgetSeconds),
+    status: freshnessSeconds === null ? missingStatus : sourceHealth(freshnessSeconds, budgetSeconds),
     freshestAt: observedAt,
     reason,
   };
+}
+
+function reservationBundleIsOperational(bundle: ReservationBundle, currentIso: string): boolean {
+  const normalizedStatus = String(bundle.status || "").trim().toUpperCase();
+  if (["CANCELED", "CANCELLED", "COMPLETED", "FULFILLED", "ARCHIVED"].includes(normalizedStatus)) {
+    return false;
+  }
+
+  const arrivalStatus = String(bundle.arrival?.status || "").trim().toLowerCase();
+  const arrivedAgeMs = msSince(bundle.arrival?.arrivedAt ?? null, currentIso);
+  if (arrivalStatus === "arrived") {
+    return arrivedAgeMs === null || arrivedAgeMs <= 12 * 60 * 60 * 1000;
+  }
+
+  const dueAgeMs = msSince(bundle.dueAt, currentIso);
+  if (dueAgeMs !== null) {
+    return dueAgeMs <= 6 * 60 * 60 * 1000;
+  }
+
+  const freshestAgeMs = msSince(bundle.freshestAt, currentIso);
+  if (freshestAgeMs !== null) {
+    return freshestAgeMs <= 12 * 60 * 60 * 1000;
+  }
+
+  return false;
 }
 
 function deriveReadiness(modes: OpsDegradeMode[], sourceRows: OpsSourceFreshness[]): OpsPortalSnapshot["truth"]["readiness"] {
@@ -859,7 +889,6 @@ export function createOpsService(options: OpsServiceOptions = {}) {
       mergedApprovals.set(seed.id, merged);
     };
 
-    const reservationsOpen = dependencies.studioState?.counts.reservationsOpen ?? 0;
     const supportOpen = dependencies.supportQueue?.totalOpen ?? dependencies.supportCases.filter((row) => row.queueBucket !== "resolved").length;
     const supportAwaitingApproval = dependencies.supportQueue?.awaitingApproval ?? 0;
     const supportSecurityHold = dependencies.supportQueue?.securityHold ?? 0;
@@ -1220,7 +1249,10 @@ export function createOpsService(options: OpsServiceOptions = {}) {
       );
     }
 
-    const reservationBundles = dependencies.reservations.length > 0 ? dependencies.reservations : persistedBundles;
+    const reservationBundleCandidates = dependencies.reservations.length > 0 ? dependencies.reservations : persistedBundles;
+    const reservationBundles = reservationBundleCandidates.filter((bundle) => reservationBundleIsOperational(bundle, currentIso));
+    const suppressedReservationBundles = Math.max(0, reservationBundleCandidates.length - reservationBundles.length);
+    const reservationsOpen = reservationBundles.length;
     for (const bundle of reservationBundles) {
       const caseId = `case_reservation_${bundle.reservationId}`;
       const countdown = minutesUntil(bundle.dueAt);
@@ -1377,8 +1409,8 @@ export function createOpsService(options: OpsServiceOptions = {}) {
       ?? null;
 
     const sourceRows: OpsSourceFreshness[] = [
-      sourceFreshnessRow(currentIso, "ops_ledger", "Ops ledger", latestOpsEventAt, 600, latestOpsEventAt ? null : "No ops events have been ingested yet."),
-      sourceFreshnessRow(currentIso, "studio_state", "Studio state", latestStateAt, 3600, latestStateAt ? null : "No studio state snapshot is available."),
+      sourceFreshnessRow(currentIso, "ops_ledger", "Ops ledger", latestOpsEventAt, 600, latestOpsEventAt ? null : "No ops events have been ingested yet.", "warning"),
+      sourceFreshnessRow(currentIso, "studio_state", "Studio state", latestStateAt, 3600, latestStateAt ? null : "No studio state snapshot is available.", "critical"),
       sourceFreshnessRow(
         currentIso,
         "kilnaid",
@@ -1386,6 +1418,7 @@ export function createOpsService(options: OpsServiceOptions = {}) {
         latestKilnAt,
         900,
         dependencies.kilnOverview ? null : "Kiln telemetry is unavailable.",
+        "warning",
       ),
       sourceFreshnessRow(
         currentIso,
@@ -1394,12 +1427,25 @@ export function createOpsService(options: OpsServiceOptions = {}) {
         latestSupportAt,
         900,
         supportOpsStore ? null : "Support lane is not configured.",
+        "warning",
       ),
-      sourceFreshnessRow(currentIso, "stations", "Station heartbeats", latestStationAt, 900, latestStationAt ? null : "No station heartbeats have been seen yet."),
-      sourceFreshnessRow(currentIso, "reservations", "Reservations", latestReservationAt, 1800, reservationBundles.length > 0 ? null : "No reservation bundles are available yet."),
-      sourceFreshnessRow(currentIso, "events", "Events", latestEventAt, 3600, dependencies.events.length > 0 ? null : "No event records are available yet."),
-      sourceFreshnessRow(currentIso, "reports", "Community reports", latestReportAt, 1800, dependencies.reports.length > 0 ? null : "No community reports are visible."),
-      sourceFreshnessRow(currentIso, "lending", "Lending", latestLendingAt, 1800, dependencies.lending ? null : "Lending data is unavailable."),
+      sourceFreshnessRow(currentIso, "stations", "Station heartbeats", latestStationAt, 900, latestStationAt ? null : "No station heartbeats have been seen yet.", "warning"),
+      sourceFreshnessRow(
+        currentIso,
+        "reservations",
+        "Reservations",
+        latestReservationAt,
+        1800,
+        reservationBundles.length > 0
+          ? null
+          : suppressedReservationBundles > 0
+            ? "Historical reservation bundles were suppressed from the live board."
+            : "No reservation bundles are active right now.",
+        "healthy",
+      ),
+      sourceFreshnessRow(currentIso, "events", "Events", latestEventAt, 3600, dependencies.events.length > 0 ? null : "No event records are active right now.", "healthy"),
+      sourceFreshnessRow(currentIso, "reports", "Community reports", latestReportAt, 1800, dependencies.reports.length > 0 ? null : "No community reports are active right now.", "healthy"),
+      sourceFreshnessRow(currentIso, "lending", "Lending", latestLendingAt, 1800, dependencies.lending ? null : "Lending data is unavailable.", "warning"),
     ];
 
     const derivedModes = new Set<OpsDegradeMode>(manualModes);
@@ -1419,6 +1465,13 @@ export function createOpsService(options: OpsServiceOptions = {}) {
     const truthReadiness = deriveReadiness([...derivedModes], sourceRows);
     const pendingApprovals = [...mergedApprovals.values()].filter((row) => row.status === "pending").length;
     const topTask = sortTasks([...mergedTasks.values()]).find((row) => !terminalTaskStatus(row.status)) ?? null;
+    const studioIsQuiet =
+      reservationsOpen === 0
+      && kilnAttention === 0
+      && kilnActiveRuns === 0
+      && supportOpen === 0
+      && pendingApprovals === 0
+      && topTask === null;
     const currentRisk =
       supportSecurityHold > 0
         ? `${supportSecurityHold} support thread${supportSecurityHold === 1 ? "" : "s"} are on security hold.`
@@ -1426,7 +1479,7 @@ export function createOpsService(options: OpsServiceOptions = {}) {
           ? `${kilnAttention} kiln signal${kilnAttention === 1 ? "" : "s"} need attention.`
           : pendingApprovals > 0
             ? `${pendingApprovals} approval${pendingApprovals === 1 ? "" : "s"} are blocking forward motion.`
-            : truthReadiness === "blocked"
+            : truthReadiness === "blocked" && !studioIsQuiet
               ? "Truth readiness is degraded enough that human trust would be misplaced."
               : null;
 
@@ -1634,10 +1687,18 @@ export function createOpsService(options: OpsServiceOptions = {}) {
       headline:
         currentRisk
           ? `Studio is active: ${currentRisk}`
-          : `Studio is steady with ${kilnActiveRuns} active kiln run${kilnActiveRuns === 1 ? "" : "s"} and ${supportOpen} open internet thread${supportOpen === 1 ? "" : "s"}.`,
+          : studioIsQuiet
+            ? truthReadiness === "ready"
+              ? "Studio is quiet and ready for handoff."
+              : "Studio is quiet and waiting for fresher live telemetry."
+            : `Studio is steady with ${kilnActiveRuns} active kiln run${kilnActiveRuns === 1 ? "" : "s"} and ${supportOpen} open internet thread${supportOpen === 1 ? "" : "s"}.`,
       narrative:
-        `The manager should minimize surprise across ${reservationsOpen} open reservation${reservationsOpen === 1 ? "" : "s"}, `
-        + `${kilnAttention} kiln attention item${kilnAttention === 1 ? "" : "s"}, and ${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}.`,
+        studioIsQuiet
+          ? truthReadiness === "ready"
+            ? "No arrivals, physical tasks, or approvals are queued right now."
+            : "No human handoff is queued right now, so this board should read as ambient status until live signals return."
+          : `The manager should minimize surprise across ${reservationsOpen} open reservation${reservationsOpen === 1 ? "" : "s"}, `
+            + `${kilnAttention} kiln attention item${kilnAttention === 1 ? "" : "s"}, and ${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}.`,
       currentRisk,
       commitmentsDueSoon: reservationsOpen,
       arrivalsExpectedSoon: reservationsOpen,

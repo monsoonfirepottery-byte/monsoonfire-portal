@@ -1,91 +1,82 @@
-import type {
-  ApprovalItem,
-  GrowthExperiment,
-  HumanTaskRecord,
-  ImprovementCase,
-  OpsCaseRecord,
-  OpsConversationThreadRecord,
-  OpsPortalSnapshot,
-  OpsSourceFreshness,
-  OpsTwinZone,
-  OpsWatchdog,
-  StationDisplayState,
-} from "../contracts";
-import type { OpsPortalPageModel } from "./contracts";
-
-function esc(value: unknown): string {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.renderOpsPortalPage = renderOpsPortalPage;
+exports.renderOpsPortalChoicePage = renderOpsPortalChoicePage;
+function esc(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
 }
-
-function jsonScript(value: unknown): string {
-  return JSON.stringify(value)
-    .replaceAll("<", "\\u003c")
-    .replaceAll(">", "\\u003e")
-    .replaceAll("&", "\\u0026");
+function jsonScript(value) {
+    return JSON.stringify(value)
+        .replaceAll("<", "\\u003c")
+        .replaceAll(">", "\\u003e")
+        .replaceAll("&", "\\u0026");
 }
-
-function formatTimestamp(value: string | null): string {
-  if (!value) return "unknown";
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return value;
-  return new Date(parsed).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function formatTimestamp(value) {
+    if (!value)
+        return "unknown";
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed))
+        return value;
+    return new Date(parsed).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
 }
-
-function formatConfidence(value: number): string {
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+function formatConfidence(value) {
+    return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
-
-function parseTimestamp(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function parseTimestamp(value) {
+    if (!value)
+        return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
 }
-
-function minutesUntil(value: string | null): number | null {
-  const parsed = parseTimestamp(value);
-  if (parsed === null) return null;
-  return Math.round((parsed - Date.now()) / 60000);
+function minutesUntil(value) {
+    const parsed = parseTimestamp(value);
+    if (parsed === null)
+        return null;
+    return Math.round((parsed - Date.now()) / 60000);
 }
-
-function formatCountdown(minutes: number | null): string {
-  if (minutes === null) return "live";
-  if (minutes <= 0) return `${Math.abs(minutes)}m late`;
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
+function formatCountdown(minutes) {
+    if (minutes === null)
+        return "live";
+    if (minutes <= 0)
+        return `${Math.abs(minutes)}m late`;
+    if (minutes < 60)
+        return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
 }
-
-function countdownPercent(minutes: number | null, horizonMinutes: number): number {
-  if (minutes === null) return 52;
-  const bounded = Math.max(0, Math.min(horizonMinutes, minutes));
-  return Math.round((1 - bounded / horizonMinutes) * 100);
+function countdownPercent(minutes, horizonMinutes) {
+    if (minutes === null)
+        return 52;
+    const bounded = Math.max(0, Math.min(horizonMinutes, minutes));
+    return Math.round((1 - bounded / horizonMinutes) * 100);
 }
-
-function freshnessPercent(freshnessSeconds: number | null, budgetSeconds: number): number {
-  if (freshnessSeconds === null || budgetSeconds <= 0) return 26;
-  const bounded = Math.max(0, Math.min(budgetSeconds, freshnessSeconds));
-  return Math.round((1 - bounded / budgetSeconds) * 100);
+function freshnessPercent(freshnessSeconds, budgetSeconds) {
+    if (freshnessSeconds === null || budgetSeconds <= 0)
+        return 26;
+    const bounded = Math.max(0, Math.min(budgetSeconds, freshnessSeconds));
+    return Math.round((1 - bounded / budgetSeconds) * 100);
 }
-
-function statusTone(status: string): string {
-  if (status === "healthy" || status === "ready" || status === "verified" || status === "approved") return "good";
-  if (status === "warning" || status === "degraded" || status === "proof_pending" || status === "pending") return "warn";
-  if (status === "critical" || status === "blocked" || status === "rejected" || status === "canceled") return "danger";
-  return "neutral";
+function statusTone(status) {
+    if (status === "healthy" || status === "ready" || status === "verified" || status === "approved")
+        return "good";
+    if (status === "warning" || status === "degraded" || status === "proof_pending" || status === "pending")
+        return "warn";
+    if (status === "critical" || status === "blocked" || status === "rejected" || status === "canceled")
+        return "danger";
+    return "neutral";
 }
-
-function renderZone(zone: OpsTwinZone): string {
-  return `
+function renderZone(zone) {
+    return `
     <article class="ops-zone ops-tone-${esc(statusTone(zone.status))}">
       <div class="ops-zone__head">
         <div>
@@ -107,12 +98,11 @@ function renderZone(zone: OpsTwinZone): string {
     </article>
   `;
 }
-
-function renderTask(task: HumanTaskRecord): string {
-  const checklist = task.checklist.length
-    ? task.checklist.map((item) => `<li><strong>${esc(item.label)}</strong>${item.detail ? ` · ${esc(item.detail)}` : ""}</li>`).join("")
-    : "<li>No checklist has been generated yet.</li>";
-  return `
+function renderTask(task) {
+    const checklist = task.checklist.length
+        ? task.checklist.map((item) => `<li><strong>${esc(item.label)}</strong>${item.detail ? ` · ${esc(item.detail)}` : ""}</li>`).join("")
+        : "<li>No checklist has been generated yet.</li>";
+    return `
     <article class="ops-task-card ops-tone-${esc(statusTone(task.status))}" data-task-id="${esc(task.id)}">
       <div class="ops-task-card__head">
         <div>
@@ -158,9 +148,8 @@ function renderTask(task: HumanTaskRecord): string {
     </article>
   `;
 }
-
-function renderApproval(row: ApprovalItem): string {
-  return `
+function renderApproval(row) {
+    return `
     <article class="ops-approval ops-tone-${esc(statusTone(row.status))}">
       <div class="ops-zone__head">
         <div>
@@ -184,9 +173,8 @@ function renderApproval(row: ApprovalItem): string {
     </article>
   `;
 }
-
-function renderCase(row: OpsCaseRecord): string {
-  return `
+function renderCase(row) {
+    return `
     <article class="ops-case ops-tone-${esc(statusTone(row.status))}">
       <p class="ops-kicker">${esc(row.kind)} · ${esc(row.lane)} · ${esc(row.priority)}</p>
       <h3>${esc(row.title)}</h3>
@@ -203,9 +191,8 @@ function renderCase(row: OpsCaseRecord): string {
     </article>
   `;
 }
-
-function renderConversation(row: OpsConversationThreadRecord): string {
-  return `
+function renderConversation(row) {
+    return `
     <article class="ops-conversation">
       <p class="ops-kicker">${esc(row.roleMask)} · ${esc(row.senderIdentity)}</p>
       <h4>${esc(row.summary)}</h4>
@@ -213,31 +200,22 @@ function renderConversation(row: OpsConversationThreadRecord): string {
     </article>
   `;
 }
-
-function renderMemberCard(
-  row: OpsPortalSnapshot["members"][number],
-  options: {
-    canEditProfile?: boolean;
-    canEditMembership?: boolean;
-    canEditRole?: boolean;
-    canViewActivity?: boolean;
-  } = {},
-): string {
-  const actions = [
-    options.canViewActivity
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-activity="${esc(row.uid)}" data-member-name="${esc(row.displayName)}">Activity</button>`
-      : "",
-    options.canEditProfile
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-profile="${esc(row.uid)}" data-member-display-name="${esc(row.displayName)}" data-member-kiln-preferences="${esc(row.kilnPreferences || "")}" data-member-staff-notes="${esc(row.staffNotes || "")}">Profile</button>`
-      : "",
-    options.canEditMembership
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-membership="${esc(row.uid)}" data-member-membership-tier="${esc(row.membershipTier || "")}" data-member-name="${esc(row.displayName)}">Membership</button>`
-      : "",
-    options.canEditRole
-      ? `<button type="button" class="ops-button ops-button-secondary" data-member-role="${esc(row.uid)}" data-member-roles="${esc(row.opsRoles.join(", "))}" data-member-name="${esc(row.displayName)}">Roles</button>`
-      : "",
-  ].filter(Boolean);
-  return `
+function renderMemberCard(row, options = {}) {
+    const actions = [
+        options.canViewActivity
+            ? `<button type="button" class="ops-button ops-button-secondary" data-member-activity="${esc(row.uid)}" data-member-name="${esc(row.displayName)}">Activity</button>`
+            : "",
+        options.canEditProfile
+            ? `<button type="button" class="ops-button ops-button-secondary" data-member-profile="${esc(row.uid)}" data-member-display-name="${esc(row.displayName)}" data-member-kiln-preferences="${esc(row.kilnPreferences || "")}" data-member-staff-notes="${esc(row.staffNotes || "")}">Profile</button>`
+            : "",
+        options.canEditMembership
+            ? `<button type="button" class="ops-button ops-button-secondary" data-member-membership="${esc(row.uid)}" data-member-membership-tier="${esc(row.membershipTier || "")}" data-member-name="${esc(row.displayName)}">Membership</button>`
+            : "",
+        options.canEditRole
+            ? `<button type="button" class="ops-button ops-button-secondary" data-member-role="${esc(row.uid)}" data-member-roles="${esc(row.opsRoles.join(", "))}" data-member-name="${esc(row.displayName)}">Roles</button>`
+            : "",
+    ].filter(Boolean);
+    return `
     <article class="ops-case ops-tone-neutral">
       <p class="ops-kicker">${esc(row.portalRole)} · ${esc(row.opsRoles.join(", ") || "no ops roles")}</p>
       <h3>${esc(row.displayName)}</h3>
@@ -252,14 +230,8 @@ function renderMemberCard(
     </article>
   `;
 }
-
-function renderReservationCard(
-  row: OpsPortalSnapshot["reservations"][number],
-  options: {
-    canPrepareReservations?: boolean;
-  } = {},
-): string {
-  return `
+function renderReservationCard(row, options = {}) {
+    return `
     <article class="ops-case ops-tone-${esc(statusTone(row.arrival.status === "arrived" ? "active" : row.degradeReason ? "warning" : "healthy"))}">
       <p class="ops-kicker">${esc(row.status)} · ${esc(row.firingType)} · ${esc(row.arrival.status)}</p>
       <h3>${esc(row.title)}</h3>
@@ -278,9 +250,8 @@ function renderReservationCard(
     </article>
   `;
 }
-
-function renderEventCard(row: OpsPortalSnapshot["events"][number]): string {
-  return `
+function renderEventCard(row) {
+    return `
     <article class="ops-case ops-tone-${esc(statusTone(row.status === "published" ? "healthy" : row.status === "review_required" ? "warning" : "neutral"))}">
       <p class="ops-kicker">${esc(row.status)} · ${esc(row.location || "Location pending")}</p>
       <h3>${esc(row.title)}</h3>
@@ -292,9 +263,8 @@ function renderEventCard(row: OpsPortalSnapshot["events"][number]): string {
     </article>
   `;
 }
-
-function renderReportCard(row: OpsPortalSnapshot["reports"][number]): string {
-  return `
+function renderReportCard(row) {
+    return `
     <article class="ops-case ops-tone-${esc(statusTone(row.severity === "high" ? "critical" : row.status === "open" ? "warning" : "healthy"))}">
       <p class="ops-kicker">${esc(row.severity)} severity · ${esc(row.status)}</p>
       <h3>${esc(row.summary)}</h3>
@@ -302,12 +272,11 @@ function renderReportCard(row: OpsPortalSnapshot["reports"][number]): string {
     </article>
   `;
 }
-
-function renderLendingCard(model: OpsPortalSnapshot["lending"]): string {
-  if (!model) {
-    return '<div class="ops-empty">Lending data is unavailable right now.</div>';
-  }
-  return `
+function renderLendingCard(model) {
+    if (!model) {
+        return '<div class="ops-empty">Lending data is unavailable right now.</div>';
+    }
+    return `
     <div class="ops-sequence-grid">
       ${renderSequenceStep(`Open requests: ${model.requests.length}`)}
       ${renderSequenceStep(`Active loans: ${model.loans.length}`)}
@@ -317,15 +286,14 @@ function renderLendingCard(model: OpsPortalSnapshot["lending"]): string {
     </div>
   `;
 }
-
-function renderExperiment(row: GrowthExperiment | ImprovementCase, lane: "ceo" | "forge"): string {
-  const status = "status" in row ? row.status : "open";
-  const title = "title" in row ? row.title : "Untitled";
-  const summary = "summary" in row ? row.summary : "";
-  const body = lane === "ceo"
-    ? esc((row as GrowthExperiment).hypothesis || summary)
-    : esc((row as ImprovementCase).problem || summary);
-  return `
+function renderExperiment(row, lane) {
+    const status = "status" in row ? row.status : "open";
+    const title = "title" in row ? row.title : "Untitled";
+    const summary = "summary" in row ? row.summary : "";
+    const body = lane === "ceo"
+        ? esc(row.hypothesis || summary)
+        : esc(row.problem || summary);
+    return `
     <article class="ops-case ops-tone-${esc(statusTone(status))}">
       <p class="ops-kicker">${esc(lane)} strategy</p>
       <h3>${esc(title)}</h3>
@@ -334,22 +302,18 @@ function renderExperiment(row: GrowthExperiment | ImprovementCase, lane: "ceo" |
     </article>
   `;
 }
-
-function renderWatchdogs(rows: OpsWatchdog[]): string {
-  return rows
-    .map(
-      (row) => `
+function renderWatchdogs(rows) {
+    return rows
+        .map((row) => `
       <article class="ops-watchdog ops-tone-${esc(statusTone(row.status))}">
         <h4>${esc(row.label)}</h4>
         <p>${esc(row.summary)}</p>
         <p class="ops-meta"><strong>Next:</strong> ${esc(row.recommendation)}</p>
-      </article>`,
-    )
-    .join("");
+      </article>`)
+        .join("");
 }
-
-function renderModeTabs(surface: string, entries: Array<{ id: string; label: string; meta?: string | number }>): string {
-  return `
+function renderModeTabs(surface, entries) {
+    return `
     <nav class="ops-mode-nav" data-mode-nav="${esc(surface)}">
       ${entries.map((entry) => `
         <button type="button" class="ops-mode-tab" data-surface-mode-tab="${esc(surface)}" data-mode-tab="${esc(entry.id)}">
@@ -360,17 +324,15 @@ function renderModeTabs(surface: string, entries: Array<{ id: string; label: str
     </nav>
   `;
 }
-
-function renderModePanel(surface: string, mode: string, body: string): string {
-  return `<div class="ops-mode-panel" data-surface-mode-panel="${esc(surface)}" data-mode="${esc(mode)}">${body}</div>`;
+function renderModePanel(surface, mode, body) {
+    return `<div class="ops-mode-panel" data-surface-mode-panel="${esc(surface)}" data-mode="${esc(mode)}">${body}</div>`;
 }
-
-function renderStationContext(displayState: StationDisplayState | null): string {
-  if (!displayState?.station) {
-    return `<div class="ops-empty">No active station heartbeat is visible for this surface right now.</div>`;
-  }
-  const station = displayState.station;
-  return `
+function renderStationContext(displayState) {
+    if (!displayState?.station) {
+        return `<div class="ops-empty">No active station heartbeat is visible for this surface right now.</div>`;
+    }
+    const station = displayState.station;
+    return `
     <article class="ops-station-card">
       <p class="ops-kicker">Station heartbeat</p>
       <h3>${esc(station.stationId)}</h3>
@@ -384,22 +346,19 @@ function renderStationContext(displayState: StationDisplayState | null): string 
     </article>
   `;
 }
-
-function renderHandsFocus(displayState: StationDisplayState | null, fallbackTask: HumanTaskRecord | null = null): string {
-  const task = displayState?.focusTask ?? fallbackTask;
-  if (!task) {
-    return `<div class="ops-empty">No focus task is currently pinned to this station.</div>`;
-  }
-  return renderTask(task);
+function renderHandsFocus(displayState, fallbackTask = null) {
+    const task = displayState?.focusTask ?? fallbackTask;
+    if (!task) {
+        return `<div class="ops-empty">No focus task is currently pinned to this station.</div>`;
+    }
+    return renderTask(task);
 }
-
-function isActiveTask(task: HumanTaskRecord): boolean {
-  return task.status !== "verified" && task.status !== "canceled";
+function isActiveTask(task) {
+    return task.status !== "verified" && task.status !== "canceled";
 }
-
-function renderMeter(value: number, tone: string, label: string): string {
-  const clamped = Math.max(0, Math.min(100, Math.round(value)));
-  return `
+function renderMeter(value, tone, label) {
+    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    return `
     <div class="ops-meter">
       <div class="ops-meter__track">
         <div class="ops-meter__fill ops-meter__fill-${esc(tone)}" style="width:${clamped}%"></div>
@@ -408,10 +367,9 @@ function renderMeter(value: number, tone: string, label: string): string {
     </div>
   `;
 }
-
-function renderPulseZone(zone: OpsTwinZone): string {
-  const tone = statusTone(zone.status);
-  return `
+function renderPulseZone(zone) {
+    const tone = statusTone(zone.status);
+    return `
     <article class="ops-pulse-card ops-tone-${esc(tone)}">
       <div class="ops-pulse-card__head">
         <div>
@@ -430,9 +388,8 @@ function renderPulseZone(zone: OpsTwinZone): string {
     </article>
   `;
 }
-
-function renderSignalCard(input: { kicker: string; title: string; value: string; summary: string; tone: string; meter: number; meterLabel: string }): string {
-  return `
+function renderSignalCard(input) {
+    return `
     <article class="ops-signal-card ops-tone-${esc(input.tone)}">
       <div class="ops-signal-card__top">
         <div>
@@ -446,20 +403,19 @@ function renderSignalCard(input: { kicker: string; title: string; value: string;
     </article>
   `;
 }
-
-function renderTaskSpotlight(task: HumanTaskRecord | null, label: string): string {
-  if (!task) {
-    return `
+function renderTaskSpotlight(task, label) {
+    if (!task) {
+        return `
       <article class="ops-spotlight-card">
         <p class="ops-kicker">${esc(label)}</p>
         <h3>No active task</h3>
         <p class="ops-summary">This lane is currently quiet.</p>
       </article>
     `;
-  }
-  const tone = statusTone(task.status);
-  const countdownMinutes = task.dueAt ? minutesUntil(task.dueAt) : (task.etaMinutes ?? null);
-  return `
+    }
+    const tone = statusTone(task.status);
+    const countdownMinutes = task.dueAt ? minutesUntil(task.dueAt) : (task.etaMinutes ?? null);
+    return `
     <article class="ops-spotlight-card ops-tone-${esc(tone)}" data-task-id="${esc(task.id)}">
       <div class="ops-zone__head">
         <div>
@@ -505,19 +461,18 @@ function renderTaskSpotlight(task: HumanTaskRecord | null, label: string): strin
     </article>
   `;
 }
-
-function renderApprovalSpotlight(row: ApprovalItem | null): string {
-  if (!row) {
-    return `
+function renderApprovalSpotlight(row) {
+    if (!row) {
+        return `
       <article class="ops-spotlight-card">
         <p class="ops-kicker">Owner gate</p>
         <h3>No pending approvals</h3>
         <p class="ops-summary">The manager is not currently blocked on explicit owner agency.</p>
       </article>
     `;
-  }
-  const tone = statusTone(row.status);
-  return `
+    }
+    const tone = statusTone(row.status);
+    return `
     <article class="ops-spotlight-card ops-tone-${esc(tone)}">
       <div class="ops-zone__head">
         <div>
@@ -559,36 +514,35 @@ function renderApprovalSpotlight(row: ApprovalItem | null): string {
     </article>
   `;
 }
-
-function renderSequenceStep(entry: string, index = 0): string {
-  return `
+function renderSequenceStep(entry, index = 0) {
+    return `
     <article class="ops-sequence-step">
       <span class="ops-sequence-step__index">${index + 1}</span>
       <p>${esc(entry)}</p>
     </article>
   `;
 }
-
-function renderIncidentChip(input: { label: string; text: string; tone: string }): string {
-  return `
+function renderIncidentChip(input) {
+    return `
     <article class="ops-incident-chip ops-tone-${esc(input.tone)}">
       <span class="ops-incident-chip__label">${esc(input.label)}</span>
       <p>${esc(input.text)}</p>
     </article>
   `;
 }
-
-function toneGaugeColor(tone: string): string {
-  if (tone === "good") return "var(--good)";
-  if (tone === "warn") return "var(--warn)";
-  if (tone === "danger") return "var(--danger)";
-  return "var(--neutral)";
+function toneGaugeColor(tone) {
+    if (tone === "good")
+        return "var(--good)";
+    if (tone === "warn")
+        return "var(--warn)";
+    if (tone === "danger")
+        return "var(--danger)";
+    return "var(--neutral)";
 }
-
-function renderCountdownOrb(input: { label: string; title: string; summary: string; minutes: number | null; tone: string; horizonMinutes?: number }): string {
-  const percent = countdownPercent(input.minutes, input.horizonMinutes ?? 180);
-  const progressAngle = `${Math.round((percent / 100) * 360)}deg`;
-  return `
+function renderCountdownOrb(input) {
+    const percent = countdownPercent(input.minutes, input.horizonMinutes ?? 180);
+    const progressAngle = `${Math.round((percent / 100) * 360)}deg`;
+    return `
     <article class="ops-countdown-card ops-tone-${esc(input.tone)}" style="--countdown-color:${toneGaugeColor(input.tone)};--countdown-progress:${progressAngle};">
       <div class="ops-countdown-card__dial" aria-hidden="true">
         <div class="ops-countdown-card__ring"></div>
@@ -605,12 +559,11 @@ function renderCountdownOrb(input: { label: string; title: string; summary: stri
     </article>
   `;
 }
-
-function renderGaugeCard(input: { label: string; title: string; value: string; summary: string; tone: string; percent: number; meterLabel: string }): string {
-  const clamped = Math.max(0, Math.min(100, Math.round(input.percent)));
-  const progressAngle = `${Math.round((clamped / 100) * 240)}deg`;
-  const needleAngle = `${-120 + (clamped / 100) * 240}deg`;
-  return `
+function renderGaugeCard(input) {
+    const clamped = Math.max(0, Math.min(100, Math.round(input.percent)));
+    const progressAngle = `${Math.round((clamped / 100) * 240)}deg`;
+    const needleAngle = `${-120 + (clamped / 100) * 240}deg`;
+    return `
     <article class="ops-gauge-card ops-tone-${esc(input.tone)}" style="--gauge-color:${toneGaugeColor(input.tone)};--gauge-progress:${progressAngle};--gauge-needle:${needleAngle};">
       <div class="ops-gauge-card__row">
         <div class="ops-gauge" aria-hidden="true">
@@ -629,23 +582,21 @@ function renderGaugeCard(input: { label: string; title: string; value: string; s
     </article>
   `;
 }
-
-function renderTickerItem(input: { label: string; text: string; tone: string }): string {
-  return `
+function renderTickerItem(input) {
+    return `
     <article class="ops-ticker-item ops-tone-${esc(input.tone)}">
       <span class="ops-ticker-item__label">${esc(input.label)}</span>
       <span class="ops-ticker-item__text">${esc(input.text)}</span>
     </article>
   `;
 }
-
-function renderFreshnessRibbon(source: OpsSourceFreshness): string {
-  const tone = statusTone(source.status);
-  const percent = freshnessPercent(source.freshnessSeconds, source.budgetSeconds);
-  const freshnessLabel = source.freshnessSeconds === null
-    ? "freshness unknown"
-    : `${Math.max(0, Math.round((source.budgetSeconds - source.freshnessSeconds) / 60))}m until stale`;
-  return `
+function renderFreshnessRibbon(source) {
+    const tone = statusTone(source.status);
+    const percent = freshnessPercent(source.freshnessSeconds, source.budgetSeconds);
+    const freshnessLabel = source.freshnessSeconds === null
+        ? "freshness unknown"
+        : `${Math.max(0, Math.round((source.budgetSeconds - source.freshnessSeconds) / 60))}m until stale`;
+    return `
     <article class="ops-source-ribbon ops-tone-${esc(tone)}">
       <div class="ops-source-ribbon__head">
         <span>${esc(source.label)}</span>
@@ -658,9 +609,8 @@ function renderFreshnessRibbon(source: OpsSourceFreshness): string {
     </article>
   `;
 }
-
-function renderRelayCard(input: { label: string; title: string; summary: string; tone: string; stages: Array<{ label: string; state: "done" | "active" | "queued" }> }): string {
-  return `
+function renderRelayCard(input) {
+    return `
     <article class="ops-flow-card ops-tone-${esc(input.tone)}">
       <p class="ops-kicker">${esc(input.label)}</p>
       <h3>${esc(input.title)}</h3>
@@ -676,80 +626,77 @@ function renderRelayCard(input: { label: string; title: string; summary: string;
     </article>
   `;
 }
-
-function renderTaskRelayCard(task: HumanTaskRecord | null, label: string): string {
-  if (!task) {
+function renderTaskRelayCard(task, label) {
+    if (!task) {
+        return renderRelayCard({
+            label,
+            title: "No active relay",
+            summary: "This lane is quiet, so no human handoff is flowing right now.",
+            tone: "good",
+            stages: [
+                { label: "manager", state: "done" },
+                { label: "waiting", state: "active" },
+                { label: "verify", state: "queued" },
+            ],
+        });
+    }
+    const tone = statusTone(task.status);
+    const claimState = task.status === "queued" || task.status === "proposed" ? "queued" : "done";
+    const actionState = task.status === "claimed" || task.status === "in_progress" ? "active" : task.status === "proof_pending" || task.status === "verified" ? "done" : "queued";
+    const verifyState = task.status === "proof_pending" ? "active" : task.status === "verified" ? "done" : "queued";
     return renderRelayCard({
-      label,
-      title: "No active relay",
-      summary: "This lane is quiet, so no human handoff is flowing right now.",
-      tone: "good",
-      stages: [
-        { label: "manager", state: "done" },
-        { label: "waiting", state: "active" },
-        { label: "verify", state: "queued" },
-      ],
+        label,
+        title: task.title,
+        summary: task.claimedBy ? `Claimed by ${task.claimedBy}.` : task.whyNow,
+        tone,
+        stages: [
+            { label: "manager", state: "done" },
+            { label: task.surface === "internet" ? "reply" : "hands", state: actionState === "active" ? "active" : claimState },
+            { label: "verify", state: verifyState },
+        ],
     });
-  }
-  const tone = statusTone(task.status);
-  const claimState = task.status === "queued" || task.status === "proposed" ? "queued" : "done";
-  const actionState = task.status === "claimed" || task.status === "in_progress" ? "active" : task.status === "proof_pending" || task.status === "verified" ? "done" : "queued";
-  const verifyState = task.status === "proof_pending" ? "active" : task.status === "verified" ? "done" : "queued";
-  return renderRelayCard({
-    label,
-    title: task.title,
-    summary: task.claimedBy ? `Claimed by ${task.claimedBy}.` : task.whyNow,
-    tone,
-    stages: [
-      { label: "manager", state: "done" },
-      { label: task.surface === "internet" ? "reply" : "hands", state: actionState === "active" ? "active" : claimState },
-      { label: "verify", state: verifyState },
-    ],
-  });
 }
-
-function renderApprovalRelayCard(row: ApprovalItem | null): string {
-  if (!row) {
+function renderApprovalRelayCard(row) {
+    if (!row) {
+        return renderRelayCard({
+            label: "Owner gate",
+            title: "Approval lane clear",
+            summary: "Nothing is waiting on explicit owner agency right now.",
+            tone: "good",
+            stages: [
+                { label: "manager", state: "done" },
+                { label: "owner", state: "queued" },
+                { label: "release", state: "queued" },
+            ],
+        });
+    }
+    const tone = statusTone(row.status);
+    const ownerState = row.status === "pending" ? "active" : "done";
+    const releaseState = row.status === "approved" || row.status === "executed" ? "done" : row.status === "rejected" ? "done" : "queued";
     return renderRelayCard({
-      label: "Owner gate",
-      title: "Approval lane clear",
-      summary: "Nothing is waiting on explicit owner agency right now.",
-      tone: "good",
-      stages: [
-        { label: "manager", state: "done" },
-        { label: "owner", state: "queued" },
-        { label: "release", state: "queued" },
-      ],
+        label: "Owner gate",
+        title: row.title,
+        summary: row.recommendation,
+        tone,
+        stages: [
+            { label: "manager", state: "done" },
+            { label: "owner", state: ownerState },
+            { label: "release", state: releaseState },
+        ],
     });
-  }
-  const tone = statusTone(row.status);
-  const ownerState = row.status === "pending" ? "active" : "done";
-  const releaseState = row.status === "approved" || row.status === "executed" ? "done" : row.status === "rejected" ? "done" : "queued";
-  return renderRelayCard({
-    label: "Owner gate",
-    title: row.title,
-    summary: row.recommendation,
-    tone,
-    stages: [
-      { label: "manager", state: "done" },
-      { label: "owner", state: ownerState },
-      { label: "release", state: releaseState },
-    ],
-  });
 }
-
-function renderMapZone(zone: OpsTwinZone, index: number): string {
-  const tone = statusTone(zone.status);
-  const sourceSignals = zone.evidence.sources.length
-    ? zone.evidence.sources.slice(0, 4).map((source) => {
-        const freshness = source.freshnessMs === null ? null : Math.round(source.freshnessMs / 1000);
-        const freshnessTone = freshness === null ? "neutral" : freshness <= 300 ? "good" : freshness <= 1800 ? "warn" : "danger";
-        return `
+function renderMapZone(zone, index) {
+    const tone = statusTone(zone.status);
+    const sourceSignals = zone.evidence.sources.length
+        ? zone.evidence.sources.slice(0, 4).map((source) => {
+            const freshness = source.freshnessMs === null ? null : Math.round(source.freshnessMs / 1000);
+            const freshnessTone = freshness === null ? "neutral" : freshness <= 300 ? "good" : freshness <= 1800 ? "warn" : "danger";
+            return `
           <span class="ops-zone-ribbon__segment ops-zone-ribbon__segment-${esc(freshnessTone)}" title="${esc(source.label)} · ${esc(source.system)}"></span>
         `;
-      }).join("")
-    : `<span class="ops-zone-ribbon__segment ops-zone-ribbon__segment-${esc(tone)}"></span>`;
-  return `
+        }).join("")
+        : `<span class="ops-zone-ribbon__segment ops-zone-ribbon__segment-${esc(tone)}"></span>`;
+    return `
     <article class="ops-map-zone ops-map-zone-${index % 4} ops-tone-${esc(tone)}">
       <div class="ops-map-zone__head">
         <div>
@@ -768,16 +715,9 @@ function renderMapZone(zone: OpsTwinZone, index: number): string {
     </article>
   `;
 }
-
-function renderTimelineEntry(input: {
-  time: string | null;
-  lane: string;
-  title: string;
-  summary: string;
-  tone: string;
-}): string {
-  const minutes = minutesUntil(input.time);
-  return `
+function renderTimelineEntry(input) {
+    const minutes = minutesUntil(input.time);
+    return `
     <article class="ops-timeline-entry ops-tone-${esc(input.tone)}">
       <div class="ops-timeline-entry__time">${esc(formatTimestamp(input.time))}</div>
       <div class="ops-timeline-entry__body">
@@ -794,274 +734,271 @@ function renderTimelineEntry(input: {
     </article>
   `;
 }
-
-function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDisplayState | null): string {
-  const surfaceTabs = model.session?.allowedSurfaces?.length
-    ? model.session.allowedSurfaces
-    : ["manager", "owner", "hands", "internet", "ceo", "forge"];
-  const sessionCapabilities = model.session?.opsCapabilities ?? [];
-  const canEditMemberProfile = sessionCapabilities.includes("members:edit_profile");
-  const canEditMembership = sessionCapabilities.includes("members:edit_membership");
-  const canEditRole = sessionCapabilities.includes("members:edit_role");
-  const canViewMembers = sessionCapabilities.includes("members:view");
-  const canPrepareReservations = sessionCapabilities.includes("reservations:prepare");
-  const canRequestOverrides = sessionCapabilities.includes("overrides:request");
-  const activeManagerTasks = model.tasks.filter((entry) => (entry.surface === "manager" || entry.surface === "owner") && isActiveTask(entry));
-  const managerTasks = activeManagerTasks.slice(0, 4);
-  const activeHandsTasks = model.tasks.filter((entry) => entry.surface === "hands" && isActiveTask(entry));
-  const handsTasks = model.tasks.filter((entry) => entry.surface === "hands").slice(0, 8);
-  const activeInternetTasks = model.tasks.filter((entry) => entry.surface === "internet" && isActiveTask(entry));
-  const internetTasks = model.tasks.filter((entry) => entry.surface === "internet").slice(0, 8);
-  const handsCases = model.cases.filter((entry) => entry.lane === "hands" || entry.kind === "kiln_run" || entry.kind === "arrival").slice(0, 4);
-  const internetCases = model.cases.filter((entry) => entry.lane === "internet" || entry.kind === "support_thread" || entry.kind === "event" || entry.kind === "complaint").slice(0, 4);
-  const reservationBundles = model.reservations.slice(0, 8);
-  const eventRows = model.events.slice(0, 8);
-  const reportRows = model.reports.slice(0, 8);
-  const memberRows = model.members.slice(0, 12);
-  const memberCards = memberRows.map((row) => renderMemberCard(row, {
-    canEditProfile: canEditMemberProfile,
-    canEditMembership,
-    canEditRole,
-    canViewActivity: canViewMembers,
-  })).join("");
-  const reservationCards = reservationBundles.map((row) => renderReservationCard(row, {
-    canPrepareReservations,
-  })).join("");
-  const overrideCards = model.overrides.map((entry) => renderCase({
-    id: entry.id,
-    kind: "general",
-    title: entry.scope,
-    summary: entry.reason,
-    status: entry.status === "active" ? "active" : entry.status === "pending" ? "awaiting_approval" : "resolved",
-    priority: "p2",
-    lane: "manager",
-    ownerRole: entry.requiredRole,
-    verificationClass: "claimed",
-    freshestAt: entry.createdAt,
-    sources: [],
-    confidence: 0.55,
-    degradeReason: "Manual override in play.",
-    dueAt: entry.expiresAt,
-    linkedEntityKind: null,
-    linkedEntityId: null,
-    memoryScope: null,
-    createdAt: entry.createdAt || model.generatedAt,
-    updatedAt: entry.createdAt || model.generatedAt,
-    metadata: {},
-  })).join("");
-  const ceoCards = model.ceo.map((entry) => renderExperiment(entry, "ceo")).join("");
-  const forgeCards = model.forge.map((entry) => renderExperiment(entry, "forge")).join("");
-  const pendingApprovals = model.approvals.filter((entry) => entry.status === "pending");
-  const unreadConversations = model.conversations.filter((entry) => entry.unread).length;
-  const fastestSource = [...model.truth.sources]
-    .filter((entry) => entry.budgetSeconds > 0)
-    .sort((left, right) => {
-      const leftRemaining = (left.budgetSeconds - (left.freshnessSeconds ?? left.budgetSeconds));
-      const rightRemaining = (right.budgetSeconds - (right.freshnessSeconds ?? right.budgetSeconds));
-      return leftRemaining - rightRemaining;
+function renderSurfaceShell(model, displayState) {
+    const surfaceTabs = model.session?.allowedSurfaces?.length
+        ? model.session.allowedSurfaces
+        : ["manager", "owner", "hands", "internet", "ceo", "forge"];
+    const sessionCapabilities = model.session?.opsCapabilities ?? [];
+    const canEditMemberProfile = sessionCapabilities.includes("members:edit_profile");
+    const canEditMembership = sessionCapabilities.includes("members:edit_membership");
+    const canEditRole = sessionCapabilities.includes("members:edit_role");
+    const canViewMembers = sessionCapabilities.includes("members:view");
+    const canPrepareReservations = sessionCapabilities.includes("reservations:prepare");
+    const canRequestOverrides = sessionCapabilities.includes("overrides:request");
+    const activeManagerTasks = model.tasks.filter((entry) => (entry.surface === "manager" || entry.surface === "owner") && isActiveTask(entry));
+    const managerTasks = activeManagerTasks.slice(0, 4);
+    const activeHandsTasks = model.tasks.filter((entry) => entry.surface === "hands" && isActiveTask(entry));
+    const handsTasks = model.tasks.filter((entry) => entry.surface === "hands").slice(0, 8);
+    const activeInternetTasks = model.tasks.filter((entry) => entry.surface === "internet" && isActiveTask(entry));
+    const internetTasks = model.tasks.filter((entry) => entry.surface === "internet").slice(0, 8);
+    const handsCases = model.cases.filter((entry) => entry.lane === "hands" || entry.kind === "kiln_run" || entry.kind === "arrival").slice(0, 4);
+    const internetCases = model.cases.filter((entry) => entry.lane === "internet" || entry.kind === "support_thread" || entry.kind === "event" || entry.kind === "complaint").slice(0, 4);
+    const reservationBundles = model.reservations.slice(0, 8);
+    const eventRows = model.events.slice(0, 8);
+    const reportRows = model.reports.slice(0, 8);
+    const memberRows = model.members.slice(0, 12);
+    const memberCards = memberRows.map((row) => renderMemberCard(row, {
+        canEditProfile: canEditMemberProfile,
+        canEditMembership,
+        canEditRole,
+        canViewActivity: canViewMembers,
+    })).join("");
+    const reservationCards = reservationBundles.map((row) => renderReservationCard(row, {
+        canPrepareReservations,
+    })).join("");
+    const overrideCards = model.overrides.map((entry) => renderCase({
+        id: entry.id,
+        kind: "general",
+        title: entry.scope,
+        summary: entry.reason,
+        status: entry.status === "active" ? "active" : entry.status === "pending" ? "awaiting_approval" : "resolved",
+        priority: "p2",
+        lane: "manager",
+        ownerRole: entry.requiredRole,
+        verificationClass: "claimed",
+        freshestAt: entry.createdAt,
+        sources: [],
+        confidence: 0.55,
+        degradeReason: "Manual override in play.",
+        dueAt: entry.expiresAt,
+        linkedEntityKind: null,
+        linkedEntityId: null,
+        memoryScope: null,
+        createdAt: entry.createdAt || model.generatedAt,
+        updatedAt: entry.createdAt || model.generatedAt,
+        metadata: {},
+    })).join("");
+    const ceoCards = model.ceo.map((entry) => renderExperiment(entry, "ceo")).join("");
+    const forgeCards = model.forge.map((entry) => renderExperiment(entry, "forge")).join("");
+    const pendingApprovals = model.approvals.filter((entry) => entry.status === "pending");
+    const unreadConversations = model.conversations.filter((entry) => entry.unread).length;
+    const fastestSource = [...model.truth.sources]
+        .filter((entry) => entry.budgetSeconds > 0)
+        .sort((left, right) => {
+        const leftRemaining = (left.budgetSeconds - (left.freshnessSeconds ?? left.budgetSeconds));
+        const rightRemaining = (right.budgetSeconds - (right.freshnessSeconds ?? right.budgetSeconds));
+        return leftRemaining - rightRemaining;
     })[0] ?? null;
-  const gaugeCards = [
-    renderGaugeCard({
-      label: "Studio risk",
-      title: "Pressure",
-      value: model.twin.currentRisk ? "82%" : "24%",
-      summary: model.twin.currentRisk || "No issue is dominating the studio right now.",
-      tone: statusTone(model.twin.currentRisk ? "critical" : "healthy"),
-      percent: model.twin.currentRisk ? 82 : 24,
-      meterLabel: model.twin.currentRisk ? "risk elevated" : "risk contained",
-    }),
-    renderGaugeCard({
-      label: "Hands lane",
-      title: "Load",
-      value: `${activeHandsTasks.length}`,
-      summary: activeHandsTasks[0]?.title || "No physical task is currently queued for human hands.",
-      tone: statusTone(activeHandsTasks.length > 0 ? "warning" : "healthy"),
-      percent: Math.min(100, Math.max(12, activeHandsTasks.length * 24)),
-      meterLabel: `${activeHandsTasks.length} active task${activeHandsTasks.length === 1 ? "" : "s"}`,
-    }),
-    renderGaugeCard({
-      label: "Internet lane",
-      title: "Traffic",
-      value: `${Math.max(activeInternetTasks.length, unreadConversations)}`,
-      summary:
-        activeInternetTasks[0]?.title
-        || (unreadConversations > 0 ? `${unreadConversations} unread conversation${unreadConversations === 1 ? "" : "s"} need eyes.` : "No urgent internet thread is visible right now."),
-      tone: statusTone(activeInternetTasks.length > 0 || unreadConversations > 0 ? "warning" : "healthy"),
-      percent: Math.min(100, Math.max(10, Math.max(activeInternetTasks.length, unreadConversations) * 28)),
-      meterLabel: `${activeInternetTasks.length} active thread task${activeInternetTasks.length === 1 ? "" : "s"}`,
-    }),
-    renderGaugeCard({
-      label: "Owner gates",
-      title: "Approval",
-      value: `${pendingApprovals.length}`,
-      summary: pendingApprovals[0]?.title || "No explicit owner approval is currently blocking the manager.",
-      tone: statusTone(pendingApprovals.length > 0 ? "pending" : "approved"),
-      percent: pendingApprovals.length > 0 ? Math.min(100, pendingApprovals.length * 36) : 8,
-      meterLabel: pendingApprovals.length > 0 ? "human decision required" : "clear",
-    }),
-    renderGaugeCard({
-      label: "Truth posture",
-      title: "Readiness",
-      value: model.truth.readiness,
-      summary: model.truth.summary,
-      tone: statusTone(model.truth.readiness),
-      percent: model.truth.readiness === "ready" ? 92 : model.truth.readiness === "degraded" ? 56 : 22,
-      meterLabel: `${model.truth.degradeModes.length} degrade mode${model.truth.degradeModes.length === 1 ? "" : "s"}`,
-    }),
-  ];
-  const incidentItems = [
-    model.twin.currentRisk
-      ? renderIncidentChip({
-          label: "Studio risk",
-          text: model.twin.currentRisk,
-          tone: statusTone("critical"),
-        })
-      : "",
-    activeHandsTasks[0]
-      ? renderIncidentChip({
-          label: "Hands",
-          text: activeHandsTasks[0].title,
-          tone: statusTone(activeHandsTasks[0].status),
-        })
-      : "",
-    activeInternetTasks[0]
-      ? renderIncidentChip({
-          label: "Internet",
-          text: activeInternetTasks[0].title,
-          tone: statusTone(activeInternetTasks[0].status),
-        })
-      : "",
-    pendingApprovals[0]
-      ? renderIncidentChip({
-          label: "Approval",
-          text: pendingApprovals[0].title,
-          tone: statusTone(pendingApprovals[0].status),
-        })
-      : "",
-    model.truth.watchdogs.find((entry) => entry.status !== "healthy")
-      ? renderIncidentChip({
-          label: "Watchdog",
-          text: model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.summary || "",
-          tone: statusTone(model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.status || "warning"),
-        })
-      : "",
-  ].filter(Boolean);
-  const tickerItems = [
-    model.twin.currentRisk
-      ? { label: "risk", text: model.twin.currentRisk, tone: statusTone("critical") }
-      : { label: "studio", text: "No top-level incident is dominating the floor right now.", tone: statusTone("healthy") },
-    activeHandsTasks[0]
-      ? { label: "hands", text: activeHandsTasks[0].title, tone: statusTone(activeHandsTasks[0].status) }
-      : { label: "hands", text: "No physical queue is currently active.", tone: statusTone("healthy") },
-    activeInternetTasks[0]
-      ? { label: "internet", text: activeInternetTasks[0].title, tone: statusTone(activeInternetTasks[0].status) }
-      : { label: "internet", text: "No urgent internet thread is visible right now.", tone: statusTone("healthy") },
-    pendingApprovals[0]
-      ? { label: "approval", text: pendingApprovals[0].title, tone: statusTone(pendingApprovals[0].status) }
-      : { label: "approval", text: "No explicit owner gate is blocking the manager.", tone: statusTone("approved") },
-    model.truth.watchdogs.find((entry) => entry.status !== "healthy")
-      ? {
-          label: "watchdog",
-          text: model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.summary || "",
-          tone: statusTone(model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.status || "warning"),
-        }
-      : { label: "truth", text: model.truth.summary, tone: statusTone(model.truth.readiness) },
-  ];
-  const timelineEntries = [
-    ...activeHandsTasks.slice(0, 3).map((entry) => ({
-      time: entry.dueAt ?? entry.freshestAt,
-      lane: "Hands",
-      title: entry.title,
-      summary: entry.whyNow,
-      tone: statusTone(entry.status),
-    })),
-    ...activeInternetTasks.slice(0, 2).map((entry) => ({
-      time: entry.dueAt ?? entry.freshestAt,
-      lane: "Internet",
-      title: entry.title,
-      summary: entry.whyNow,
-      tone: statusTone(entry.status),
-    })),
-    ...pendingApprovals.slice(0, 2).map((entry) => ({
-      time: entry.freshestAt,
-      lane: "Approval",
-      title: entry.title,
-      summary: entry.recommendation,
-      tone: statusTone(entry.status),
-    })),
-  ]
-    .sort((left, right) => String(left.time ?? "9999").localeCompare(String(right.time ?? "9999")))
-    .slice(0, 6);
-  const countdownItems = [
-    renderCountdownOrb({
-      label: "Hands window",
-      title: activeHandsTasks[0]?.title || "No physical deadline",
-      summary: activeHandsTasks[0]?.whyNow || "The hands lane is not carrying an urgent physical deadline right now.",
-      minutes: activeHandsTasks[0]?.dueAt ? minutesUntil(activeHandsTasks[0].dueAt) : (activeHandsTasks[0]?.etaMinutes ?? null),
-      tone: activeHandsTasks[0] ? statusTone(activeHandsTasks[0].status) : "good",
-      horizonMinutes: 240,
-    }),
-    renderCountdownOrb({
-      label: "Internet window",
-      title: activeInternetTasks[0]?.title || "No reply clock",
-      summary:
-        activeInternetTasks[0]?.whyNow
-        || (unreadConversations > 0 ? `${unreadConversations} unread conversation${unreadConversations === 1 ? "" : "s"} are visible.` : "The internet lane is not under immediate reply pressure."),
-      minutes: activeInternetTasks[0]?.dueAt ? minutesUntil(activeInternetTasks[0].dueAt) : (activeInternetTasks[0]?.etaMinutes ?? null),
-      tone: activeInternetTasks[0] ? statusTone(activeInternetTasks[0].status) : (unreadConversations > 0 ? "warn" : "good"),
-      horizonMinutes: 180,
-    }),
-    renderCountdownOrb({
-      label: "Truth window",
-      title: fastestSource?.label || "No freshness budget",
-      summary: fastestSource?.reason || "No source freshness budget is currently close to expiring.",
-      minutes: fastestSource?.freshnessSeconds === null ? null : Math.round((fastestSource.budgetSeconds - fastestSource.freshnessSeconds) / 60),
-      tone: fastestSource ? statusTone(fastestSource.status) : statusTone(model.truth.readiness),
-      horizonMinutes: Math.max(60, Math.round((fastestSource?.budgetSeconds ?? 3600) / 60)),
-    }),
-  ];
-  const relayItems = [
-    renderTaskRelayCard(activeHandsTasks[0] ?? null, "Hands relay"),
-    renderTaskRelayCard(activeInternetTasks[0] ?? null, "Internet relay"),
-    renderApprovalRelayCard(pendingApprovals[0] ?? null),
-  ];
-  const handsNowCountdowns = [
-    renderCountdownOrb({
-      label: "Current window",
-      title: activeHandsTasks[0]?.title || "No active physical window",
-      summary: activeHandsTasks[0]?.whyNow || "No physical deadline is pressing right now.",
-      minutes: activeHandsTasks[0]?.dueAt ? minutesUntil(activeHandsTasks[0].dueAt) : (activeHandsTasks[0]?.etaMinutes ?? null),
-      tone: activeHandsTasks[0] ? statusTone(activeHandsTasks[0].status) : "good",
-      horizonMinutes: 180,
-    }),
-    renderCountdownOrb({
-      label: "Truth freshness",
-      title: fastestSource?.label || "No live source budget",
-      summary: fastestSource?.reason || "No source budget is near expiry.",
-      minutes: fastestSource?.freshnessSeconds === null ? null : Math.round((fastestSource.budgetSeconds - fastestSource.freshnessSeconds) / 60),
-      tone: fastestSource ? statusTone(fastestSource.status) : statusTone(model.truth.readiness),
-      horizonMinutes: Math.max(60, Math.round((fastestSource?.budgetSeconds ?? 3600) / 60)),
-    }),
-  ];
-  const internetDeskCountdowns = [
-    renderCountdownOrb({
-      label: "Reply window",
-      title: activeInternetTasks[0]?.title || "No urgent reply clock",
-      summary: activeInternetTasks[0]?.whyNow || "No urgent internet task is pressing the queue right now.",
-      minutes: activeInternetTasks[0]?.dueAt ? minutesUntil(activeInternetTasks[0].dueAt) : (activeInternetTasks[0]?.etaMinutes ?? null),
-      tone: activeInternetTasks[0] ? statusTone(activeInternetTasks[0].status) : "good",
-      horizonMinutes: 180,
-    }),
-    renderCountdownOrb({
-      label: "Unread pressure",
-      title: unreadConversations > 0 ? `${unreadConversations} unread thread${unreadConversations === 1 ? "" : "s"}` : "Inbox is calm",
-      summary: unreadConversations > 0 ? "Unread conversations are waiting on clarity or action." : "No unread conversation is currently visible.",
-      minutes: unreadConversations > 0 ? unreadConversations * 12 : 0,
-      tone: unreadConversations > 0 ? "warn" : "good",
-      horizonMinutes: 120,
-    }),
-  ];
-  return `
+    const gaugeCards = [
+        renderGaugeCard({
+            label: "Studio risk",
+            title: "Pressure",
+            value: model.twin.currentRisk ? "82%" : "24%",
+            summary: model.twin.currentRisk || "No issue is dominating the studio right now.",
+            tone: statusTone(model.twin.currentRisk ? "critical" : "healthy"),
+            percent: model.twin.currentRisk ? 82 : 24,
+            meterLabel: model.twin.currentRisk ? "risk elevated" : "risk contained",
+        }),
+        renderGaugeCard({
+            label: "Hands lane",
+            title: "Load",
+            value: `${activeHandsTasks.length}`,
+            summary: activeHandsTasks[0]?.title || "No physical task is currently queued for human hands.",
+            tone: statusTone(activeHandsTasks.length > 0 ? "warning" : "healthy"),
+            percent: Math.min(100, Math.max(12, activeHandsTasks.length * 24)),
+            meterLabel: `${activeHandsTasks.length} active task${activeHandsTasks.length === 1 ? "" : "s"}`,
+        }),
+        renderGaugeCard({
+            label: "Internet lane",
+            title: "Traffic",
+            value: `${Math.max(activeInternetTasks.length, unreadConversations)}`,
+            summary: activeInternetTasks[0]?.title
+                || (unreadConversations > 0 ? `${unreadConversations} unread conversation${unreadConversations === 1 ? "" : "s"} need eyes.` : "No urgent internet thread is visible right now."),
+            tone: statusTone(activeInternetTasks.length > 0 || unreadConversations > 0 ? "warning" : "healthy"),
+            percent: Math.min(100, Math.max(10, Math.max(activeInternetTasks.length, unreadConversations) * 28)),
+            meterLabel: `${activeInternetTasks.length} active thread task${activeInternetTasks.length === 1 ? "" : "s"}`,
+        }),
+        renderGaugeCard({
+            label: "Owner gates",
+            title: "Approval",
+            value: `${pendingApprovals.length}`,
+            summary: pendingApprovals[0]?.title || "No explicit owner approval is currently blocking the manager.",
+            tone: statusTone(pendingApprovals.length > 0 ? "pending" : "approved"),
+            percent: pendingApprovals.length > 0 ? Math.min(100, pendingApprovals.length * 36) : 8,
+            meterLabel: pendingApprovals.length > 0 ? "human decision required" : "clear",
+        }),
+        renderGaugeCard({
+            label: "Truth posture",
+            title: "Readiness",
+            value: model.truth.readiness,
+            summary: model.truth.summary,
+            tone: statusTone(model.truth.readiness),
+            percent: model.truth.readiness === "ready" ? 92 : model.truth.readiness === "degraded" ? 56 : 22,
+            meterLabel: `${model.truth.degradeModes.length} degrade mode${model.truth.degradeModes.length === 1 ? "" : "s"}`,
+        }),
+    ];
+    const incidentItems = [
+        model.twin.currentRisk
+            ? renderIncidentChip({
+                label: "Studio risk",
+                text: model.twin.currentRisk,
+                tone: statusTone("critical"),
+            })
+            : "",
+        activeHandsTasks[0]
+            ? renderIncidentChip({
+                label: "Hands",
+                text: activeHandsTasks[0].title,
+                tone: statusTone(activeHandsTasks[0].status),
+            })
+            : "",
+        activeInternetTasks[0]
+            ? renderIncidentChip({
+                label: "Internet",
+                text: activeInternetTasks[0].title,
+                tone: statusTone(activeInternetTasks[0].status),
+            })
+            : "",
+        pendingApprovals[0]
+            ? renderIncidentChip({
+                label: "Approval",
+                text: pendingApprovals[0].title,
+                tone: statusTone(pendingApprovals[0].status),
+            })
+            : "",
+        model.truth.watchdogs.find((entry) => entry.status !== "healthy")
+            ? renderIncidentChip({
+                label: "Watchdog",
+                text: model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.summary || "",
+                tone: statusTone(model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.status || "warning"),
+            })
+            : "",
+    ].filter(Boolean);
+    const tickerItems = [
+        model.twin.currentRisk
+            ? { label: "risk", text: model.twin.currentRisk, tone: statusTone("critical") }
+            : { label: "studio", text: "No top-level incident is dominating the floor right now.", tone: statusTone("healthy") },
+        activeHandsTasks[0]
+            ? { label: "hands", text: activeHandsTasks[0].title, tone: statusTone(activeHandsTasks[0].status) }
+            : { label: "hands", text: "No physical queue is currently active.", tone: statusTone("healthy") },
+        activeInternetTasks[0]
+            ? { label: "internet", text: activeInternetTasks[0].title, tone: statusTone(activeInternetTasks[0].status) }
+            : { label: "internet", text: "No urgent internet thread is visible right now.", tone: statusTone("healthy") },
+        pendingApprovals[0]
+            ? { label: "approval", text: pendingApprovals[0].title, tone: statusTone(pendingApprovals[0].status) }
+            : { label: "approval", text: "No explicit owner gate is blocking the manager.", tone: statusTone("approved") },
+        model.truth.watchdogs.find((entry) => entry.status !== "healthy")
+            ? {
+                label: "watchdog",
+                text: model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.summary || "",
+                tone: statusTone(model.truth.watchdogs.find((entry) => entry.status !== "healthy")?.status || "warning"),
+            }
+            : { label: "truth", text: model.truth.summary, tone: statusTone(model.truth.readiness) },
+    ];
+    const timelineEntries = [
+        ...activeHandsTasks.slice(0, 3).map((entry) => ({
+            time: entry.dueAt ?? entry.freshestAt,
+            lane: "Hands",
+            title: entry.title,
+            summary: entry.whyNow,
+            tone: statusTone(entry.status),
+        })),
+        ...activeInternetTasks.slice(0, 2).map((entry) => ({
+            time: entry.dueAt ?? entry.freshestAt,
+            lane: "Internet",
+            title: entry.title,
+            summary: entry.whyNow,
+            tone: statusTone(entry.status),
+        })),
+        ...pendingApprovals.slice(0, 2).map((entry) => ({
+            time: entry.freshestAt,
+            lane: "Approval",
+            title: entry.title,
+            summary: entry.recommendation,
+            tone: statusTone(entry.status),
+        })),
+    ]
+        .sort((left, right) => String(left.time ?? "9999").localeCompare(String(right.time ?? "9999")))
+        .slice(0, 6);
+    const countdownItems = [
+        renderCountdownOrb({
+            label: "Hands window",
+            title: activeHandsTasks[0]?.title || "No physical deadline",
+            summary: activeHandsTasks[0]?.whyNow || "The hands lane is not carrying an urgent physical deadline right now.",
+            minutes: activeHandsTasks[0]?.dueAt ? minutesUntil(activeHandsTasks[0].dueAt) : (activeHandsTasks[0]?.etaMinutes ?? null),
+            tone: activeHandsTasks[0] ? statusTone(activeHandsTasks[0].status) : "good",
+            horizonMinutes: 240,
+        }),
+        renderCountdownOrb({
+            label: "Internet window",
+            title: activeInternetTasks[0]?.title || "No reply clock",
+            summary: activeInternetTasks[0]?.whyNow
+                || (unreadConversations > 0 ? `${unreadConversations} unread conversation${unreadConversations === 1 ? "" : "s"} are visible.` : "The internet lane is not under immediate reply pressure."),
+            minutes: activeInternetTasks[0]?.dueAt ? minutesUntil(activeInternetTasks[0].dueAt) : (activeInternetTasks[0]?.etaMinutes ?? null),
+            tone: activeInternetTasks[0] ? statusTone(activeInternetTasks[0].status) : (unreadConversations > 0 ? "warn" : "good"),
+            horizonMinutes: 180,
+        }),
+        renderCountdownOrb({
+            label: "Truth window",
+            title: fastestSource?.label || "No freshness budget",
+            summary: fastestSource?.reason || "No source freshness budget is currently close to expiring.",
+            minutes: fastestSource?.freshnessSeconds === null ? null : Math.round((fastestSource.budgetSeconds - fastestSource.freshnessSeconds) / 60),
+            tone: fastestSource ? statusTone(fastestSource.status) : statusTone(model.truth.readiness),
+            horizonMinutes: Math.max(60, Math.round((fastestSource?.budgetSeconds ?? 3600) / 60)),
+        }),
+    ];
+    const relayItems = [
+        renderTaskRelayCard(activeHandsTasks[0] ?? null, "Hands relay"),
+        renderTaskRelayCard(activeInternetTasks[0] ?? null, "Internet relay"),
+        renderApprovalRelayCard(pendingApprovals[0] ?? null),
+    ];
+    const handsNowCountdowns = [
+        renderCountdownOrb({
+            label: "Current window",
+            title: activeHandsTasks[0]?.title || "No active physical window",
+            summary: activeHandsTasks[0]?.whyNow || "No physical deadline is pressing right now.",
+            minutes: activeHandsTasks[0]?.dueAt ? minutesUntil(activeHandsTasks[0].dueAt) : (activeHandsTasks[0]?.etaMinutes ?? null),
+            tone: activeHandsTasks[0] ? statusTone(activeHandsTasks[0].status) : "good",
+            horizonMinutes: 180,
+        }),
+        renderCountdownOrb({
+            label: "Truth freshness",
+            title: fastestSource?.label || "No live source budget",
+            summary: fastestSource?.reason || "No source budget is near expiry.",
+            minutes: fastestSource?.freshnessSeconds === null ? null : Math.round((fastestSource.budgetSeconds - fastestSource.freshnessSeconds) / 60),
+            tone: fastestSource ? statusTone(fastestSource.status) : statusTone(model.truth.readiness),
+            horizonMinutes: Math.max(60, Math.round((fastestSource?.budgetSeconds ?? 3600) / 60)),
+        }),
+    ];
+    const internetDeskCountdowns = [
+        renderCountdownOrb({
+            label: "Reply window",
+            title: activeInternetTasks[0]?.title || "No urgent reply clock",
+            summary: activeInternetTasks[0]?.whyNow || "No urgent internet task is pressing the queue right now.",
+            minutes: activeInternetTasks[0]?.dueAt ? minutesUntil(activeInternetTasks[0].dueAt) : (activeInternetTasks[0]?.etaMinutes ?? null),
+            tone: activeInternetTasks[0] ? statusTone(activeInternetTasks[0].status) : "good",
+            horizonMinutes: 180,
+        }),
+        renderCountdownOrb({
+            label: "Unread pressure",
+            title: unreadConversations > 0 ? `${unreadConversations} unread thread${unreadConversations === 1 ? "" : "s"}` : "Inbox is calm",
+            summary: unreadConversations > 0 ? "Unread conversations are waiting on clarity or action." : "No unread conversation is currently visible.",
+            minutes: unreadConversations > 0 ? unreadConversations * 12 : 0,
+            tone: unreadConversations > 0 ? "warn" : "good",
+            horizonMinutes: 120,
+        }),
+    ];
+    return `
     <nav class="ops-surface-nav">
       ${surfaceTabs.map((surface) => `<button type="button" class="ops-surface-tab" data-surface-tab="${esc(surface)}">${esc(surface)}</button>`).join("")}
     </nav>
@@ -1069,13 +1006,13 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     <section class="ops-surface" data-surface="manager">
       <div class="ops-manager-canvas">
         ${renderModeTabs("manager", [
-          { id: "overview", label: "Overview" },
-          { id: "live", label: "Live" },
-          { id: "truth", label: "Truth", meta: model.truth.sources.length },
-          { id: "operations", label: "Operations", meta: managerTasks.length },
-          { id: "commitments", label: "Commitments", meta: reservationBundles.length },
-          { id: "trust", label: "Trust", meta: reportRows.length },
-        ])}
+        { id: "overview", label: "Overview" },
+        { id: "live", label: "Live" },
+        { id: "truth", label: "Truth", meta: model.truth.sources.length },
+        { id: "operations", label: "Operations", meta: managerTasks.length },
+        { id: "commitments", label: "Commitments", meta: reservationBundles.length },
+        { id: "trust", label: "Trust", meta: reportRows.length },
+    ])}
         ${renderModePanel("manager", "overview", `
           <div class="ops-manager-canvas">
             <div class="ops-panel">
@@ -1167,11 +1104,9 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
                 </div>
               </div>
               <div class="ops-sequence-grid">
-                ${
-                  model.twin.nextActions.length
-                    ? model.twin.nextActions.slice(0, 5).map(renderSequenceStep).join("")
-                    : '<div class="ops-empty">No next action has been surfaced yet.</div>'
-                }
+                ${model.twin.nextActions.length
+        ? model.twin.nextActions.slice(0, 5).map(renderSequenceStep).join("")
+        : '<div class="ops-empty">No next action has been surfaced yet.</div>'}
               </div>
             </div>
             <div class="ops-panel">
@@ -1282,11 +1217,11 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     <section class="ops-surface" data-surface="owner">
       <div class="ops-manager-canvas">
         ${renderModeTabs("owner", [
-          { id: "brief", label: "Brief" },
-          { id: "approvals", label: "Approvals", meta: pendingApprovals.length },
-          { id: "finance", label: "Finance" },
-          { id: "identity", label: "Identity", meta: memberRows.length },
-        ])}
+        { id: "brief", label: "Brief" },
+        { id: "approvals", label: "Approvals", meta: pendingApprovals.length },
+        { id: "finance", label: "Finance" },
+        { id: "identity", label: "Identity", meta: memberRows.length },
+    ])}
         ${renderModePanel("owner", "brief", `
           <div class="ops-layout">
             <div class="ops-panel">
@@ -1328,14 +1263,14 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     <section class="ops-surface" data-surface="hands">
       <div class="ops-manager-canvas">
         ${renderModeTabs("hands", [
-          { id: "now", label: "Now" },
-          { id: "queue", label: "Queue", meta: handsTasks.length },
-          { id: "checkins", label: "Check-ins", meta: reservationBundles.length },
-          { id: "production", label: "Production", meta: handsCases.length },
-          { id: "firings", label: "Firings", meta: handsCases.filter((entry) => entry.kind === "kiln_run").length },
-          { id: "lending", label: "Lending", meta: model.lending?.loans.length ?? 0 },
-          { id: "lending-intake", label: "Lending intake", meta: model.lending?.requests.length ?? 0 },
-        ])}
+        { id: "now", label: "Now" },
+        { id: "queue", label: "Queue", meta: handsTasks.length },
+        { id: "checkins", label: "Check-ins", meta: reservationBundles.length },
+        { id: "production", label: "Production", meta: handsCases.length },
+        { id: "firings", label: "Firings", meta: handsCases.filter((entry) => entry.kind === "kiln_run").length },
+        { id: "lending", label: "Lending", meta: model.lending?.loans.length ?? 0 },
+        { id: "lending-intake", label: "Lending intake", meta: model.lending?.requests.length ?? 0 },
+    ])}
         ${renderModePanel("hands", "now", `
           <div class="ops-layout ops-layout-hands">
             <div class="ops-panel">
@@ -1405,12 +1340,12 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     <section class="ops-surface" data-surface="internet">
       <div class="ops-manager-canvas">
         ${renderModeTabs("internet", [
-          { id: "desk", label: "Desk" },
-          { id: "member-ops", label: "Member ops", meta: memberRows.length },
-          { id: "events", label: "Events", meta: eventRows.length },
-          { id: "support", label: "Support", meta: model.conversations.length },
-          { id: "reputation", label: "Reputation", meta: reportRows.length },
-        ])}
+        { id: "desk", label: "Desk" },
+        { id: "member-ops", label: "Member ops", meta: memberRows.length },
+        { id: "events", label: "Events", meta: eventRows.length },
+        { id: "support", label: "Support", meta: model.conversations.length },
+        { id: "reputation", label: "Reputation", meta: reportRows.length },
+    ])}
         ${renderModePanel("internet", "desk", `
           <div class="ops-layout">
             <div class="ops-panel">
@@ -1486,10 +1421,10 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     <section class="ops-surface" data-surface="ceo">
       <div class="ops-manager-canvas">
         ${renderModeTabs("ceo", [
-          { id: "portfolio", label: "Portfolio", meta: model.ceo.length },
-          { id: "community", label: "Community", meta: eventRows.length },
-          { id: "campaigns", label: "Campaigns", meta: reportRows.length },
-        ])}
+        { id: "portfolio", label: "Portfolio", meta: model.ceo.length },
+        { id: "community", label: "Community", meta: eventRows.length },
+        { id: "campaigns", label: "Campaigns", meta: reportRows.length },
+    ])}
         ${renderModePanel("ceo", "portfolio", `
           <div class="ops-layout">
             <div class="ops-panel">
@@ -1542,11 +1477,11 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     <section class="ops-surface" data-surface="forge">
       <div class="ops-manager-canvas">
         ${renderModeTabs("forge", [
-          { id: "lab", label: "Lab", meta: model.forge.length },
-          { id: "policy-agent-ops", label: "Policy / agents", meta: pendingApprovals.length },
-          { id: "telemetry", label: "Telemetry", meta: model.truth.sources.length },
-          { id: "migration", label: "Migration", meta: reservationBundles.length + memberRows.length },
-        ])}
+        { id: "lab", label: "Lab", meta: model.forge.length },
+        { id: "policy-agent-ops", label: "Policy / agents", meta: pendingApprovals.length },
+        { id: "telemetry", label: "Telemetry", meta: model.truth.sources.length },
+        { id: "migration", label: "Migration", meta: reservationBundles.length + memberRows.length },
+    ])}
         ${renderModePanel("forge", "lab", `
           <div class="ops-layout">
             <div class="ops-panel">
@@ -1610,10 +1545,9 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
 
   `;
 }
-
-export function renderOpsPortalPage(model: OpsPortalPageModel): string {
-  const initialJson = jsonScript(model);
-  return `<!doctype html>
+function renderOpsPortalPage(model) {
+    const initialJson = jsonScript(model);
+    return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -2855,16 +2789,9 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
   </body>
 </html>`;
 }
-
-export function renderOpsPortalChoicePage(input: {
-  headline: string;
-  narrative: string;
-  generatedAt: string;
-  opsUrl: string;
-  legacyUrl: string | null;
-}): string {
-  const legacyCard = input.legacyUrl
-    ? `
+function renderOpsPortalChoicePage(input) {
+    const legacyCard = input.legacyUrl
+        ? `
       <a class="ops-choice-card ops-choice-card-legacy" href="${esc(input.legacyUrl)}">
         <p class="ops-kicker">A · Original portal</p>
         <h2>Legacy staff experience</h2>
@@ -2872,7 +2799,7 @@ export function renderOpsPortalChoicePage(input: {
         <span>Open original</span>
       </a>
     `
-    : `
+        : `
       <article class="ops-choice-card ops-choice-card-disabled">
         <p class="ops-kicker">A · Original portal</p>
         <h2>Legacy staff experience</h2>
@@ -2880,7 +2807,7 @@ export function renderOpsPortalChoicePage(input: {
         <span>Unavailable</span>
       </article>
     `;
-  return `<!doctype html>
+    return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />

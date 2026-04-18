@@ -149,6 +149,13 @@ const EnvSchema = z.object({
 
   STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: BoolFromString.default(false),
   STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: BoolFromString.default(true),
+  STUDIO_BRAIN_ENABLE_OPS_PORTAL: BoolFromString.default(false),
+  STUDIO_BRAIN_REQUIRE_STAFF_FOR_OPS_PORTAL: BoolFromString.default(true),
+  STUDIO_BRAIN_ENABLE_OPS_PORTAL_CHOICE: BoolFromString.default(true),
+  STUDIO_BRAIN_OPS_PORTAL_LEGACY_URL: z.string().default(""),
+  STUDIO_BRAIN_OPS_PORTAL_DEFAULT_SURFACE: z
+    .enum(["manager", "owner", "hands", "internet", "ceo", "forge"])
+    .default("manager"),
   STUDIO_BRAIN_FUNCTIONS_BASE_URL: z.string().default("https://us-central1-monsoonfire-portal.cloudfunctions.net"),
   STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: BoolFromString.default(false),
   STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC: BoolFromString.default(true),

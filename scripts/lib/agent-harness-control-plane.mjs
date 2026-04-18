@@ -230,6 +230,59 @@ function compilePlaywrightSmokeVerifierFamily(family) {
   });
 }
 
+function compileNativeBrowserShadowVerifierFamily(family) {
+  const defaults = family?.defaults && typeof family.defaults === "object" ? family.defaults : {};
+  const entries = Array.isArray(family?.entries) ? family.entries : [];
+  return entries.map((entry) => {
+    const merged = mergeToolDefinition(defaults, entry);
+    const script = clean(entry?.script || defaults.script || "./scripts/native-browser-shadow-verifier.mjs");
+    const surface = clean(entry?.surface || defaults.surface);
+    const baseUrl = clean(entry?.baseUrl || defaults.baseUrl);
+    const outputDir = clean(entry?.outputDir || defaults.outputDir);
+    const shadowOf = clean(entry?.shadowOf || defaults.shadowOf);
+    const canonicalArtifactRoot = clean(entry?.canonicalArtifactRoot || defaults.canonicalArtifactRoot);
+    const expectedPortalHost = clean(entry?.expectedPortalHost || defaults.expectedPortalHost);
+    const deep = entry?.deep === true || (entry?.deep === undefined && defaults.deep === true);
+    const execute = entry?.execute === true || (entry?.execute === undefined && defaults.execute === true);
+    const argv = ["node", script];
+    if (surface) argv.push("--surface", surface);
+    if (baseUrl) argv.push("--base-url", baseUrl);
+    if (outputDir) argv.push("--output-dir", outputDir);
+    if (shadowOf) argv.push("--shadow-of", shadowOf);
+    if (canonicalArtifactRoot) argv.push("--canonical-artifact-root", canonicalArtifactRoot);
+    if (expectedPortalHost) argv.push("--expected-portal-host", expectedPortalHost);
+    if (deep) argv.push("--deep");
+    if (execute) argv.push("--execute");
+    const probeArgv = [...argv, "--benchmark-probe", "--json"];
+    const inputs = normalizeToolInputContracts(
+      entry.inputs ??
+        defaults.inputs ??
+        [
+          { name: "--deep", required: false, description: "Prepare the deeper native-browser shadow profile." },
+          { name: "--execute", required: false, description: "Run the bounded codex.exec shadow lane instead of only preparing artifacts." },
+        ],
+    );
+    return pickToolContractFields(merged, {
+      kind: clean(merged.kind || "runtime-primitive"),
+      inputs,
+      command: argv.join(" "),
+      verificationCommand: clean(merged.verificationCommand) || argv.join(" "),
+      nativeSpec: {
+        runner: "process.spawn",
+        cwd: ".",
+        argv,
+        probeArgv,
+        shellCommand: argv.join(" "),
+        probeCommand: probeArgv.join(" "),
+      },
+      generatedFrom: {
+        familyId: clean(family?.familyId),
+        builder: clean(family?.builder),
+      },
+    });
+  });
+}
+
 export function compileToolPrimitiveFamilies(familyRegistry) {
   if (!familyRegistry || typeof familyRegistry !== "object") {
     return {
@@ -256,6 +309,10 @@ export function compileToolPrimitiveFamilies(familyRegistry) {
     }
     if (builder === "playwright-smoke-verifier") {
       generatedTools.push(...compilePlaywrightSmokeVerifierFamily(family));
+      continue;
+    }
+    if (builder === "native-browser-shadow-verifier") {
+      generatedTools.push(...compileNativeBrowserShadowVerifierFamily(family));
       continue;
     }
     throw new Error(`Unsupported tool primitive family builder: ${builder}.`);

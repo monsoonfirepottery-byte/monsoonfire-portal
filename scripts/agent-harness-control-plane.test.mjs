@@ -424,6 +424,101 @@ test("tool primitive families compile deploy and playwright verifier contracts",
   assert.match(compiled.tools[1].nativeSpec.probeCommand, /--benchmark-probe --json/);
 });
 
+test("tool primitive families compile native-browser shadow verifier contracts", () => {
+  const compiled = compileToolPrimitiveFamilies({
+    schema: "agent-tool-primitive-family-registry.v1",
+    families: [
+      {
+        familyId: "verify.native-browser-shadow",
+        builder: "native-browser-shadow-verifier",
+        defaults: {
+          kind: "runtime-primitive",
+          selectableByAgent: false,
+          sideEffects: "artifact_only",
+          dryRunSupport: true,
+          safeFailBehavior: "Keep advisory.",
+          rollbackBehavior: "None.",
+          script: "./scripts/native-browser-shadow-verifier.mjs",
+          lifecycle: {
+            owner: "qa-platform",
+            class: "adapter",
+            reviewEveryDays: 14,
+            lastReviewedAt: "2026-04-17T00:00:00.000Z",
+            nativeAlternative: "codex-native-browser-verification",
+            retireWhen: "Native browser verifier exists.",
+          },
+        },
+        entries: [
+          {
+            toolId: "verify.portal.native-browser.shadow",
+            purpose: "Prepare portal shadow verification.",
+            surface: "portal",
+            baseUrl: "https://portal.monsoonfire.com",
+            outputDir: "output/native-browser/portal/prod",
+            canonicalArtifactRoot: "output/playwright/portal/prod",
+            shadowOf: "verify.portal.smoke",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(compiled.tools.length, 1);
+  assert.equal(compiled.tools[0].toolId, "verify.portal.native-browser.shadow");
+  assert.equal(compiled.tools[0].selectableByAgent, false);
+  assert.match(compiled.tools[0].command, /native-browser-shadow-verifier\.mjs/);
+  assert.match(compiled.tools[0].command, /--surface portal/);
+  assert.match(compiled.tools[0].nativeSpec.probeCommand, /--benchmark-probe --json/);
+  assert.equal(compiled.tools[0].generatedFrom.builder, "native-browser-shadow-verifier");
+});
+
+test("tool primitive families compile native-browser shadow exec contracts", () => {
+  const compiled = compileToolPrimitiveFamilies({
+    schema: "agent-tool-primitive-family-registry.v1",
+    families: [
+      {
+        familyId: "verify.native-browser-shadow-exec",
+        builder: "native-browser-shadow-verifier",
+        defaults: {
+          kind: "runtime-primitive",
+          selectableByAgent: false,
+          sideEffects: "artifact_only",
+          dryRunSupport: true,
+          safeFailBehavior: "Keep advisory.",
+          rollbackBehavior: "None.",
+          script: "./scripts/native-browser-shadow-verifier.mjs",
+          execute: true,
+          lifecycle: {
+            owner: "qa-platform",
+            class: "adapter",
+            reviewEveryDays: 14,
+            lastReviewedAt: "2026-04-18T00:00:00.000Z",
+            nativeAlternative: "codex-native-browser-verification",
+            retireWhen: "Native browser verifier exists.",
+          },
+        },
+        entries: [
+          {
+            toolId: "verify.website.native-browser.shadow.exec",
+            purpose: "Execute website shadow verification.",
+            surface: "website",
+            baseUrl: "https://monsoonfire.com",
+            outputDir: "output/native-browser/website/prod",
+            canonicalArtifactRoot: "output/playwright/prod",
+            shadowOf: "verify.website.smoke",
+            expectedPortalHost: "portal.monsoonfire.com",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(compiled.tools.length, 1);
+  assert.equal(compiled.tools[0].toolId, "verify.website.native-browser.shadow.exec");
+  assert.match(compiled.tools[0].command, /--execute/);
+  assert.match(compiled.tools[0].nativeSpec.probeCommand, /--execute .*--benchmark-probe --json/);
+});
+
 test("tool contract registries merge manual and generated tools", () => {
   const merged = mergeToolContractRegistries(
     {
@@ -527,13 +622,63 @@ test("load tool contract registry compiles primitive family entries from disk", 
             },
           ],
         },
+        {
+          familyId: "verify.native-browser-shadow",
+          builder: "native-browser-shadow-verifier",
+          defaults: {
+            kind: "runtime-primitive",
+            selectableByAgent: false,
+            sideEffects: "artifact_only",
+            dryRunSupport: true,
+            safeFailBehavior: "Keep advisory.",
+            rollbackBehavior: "None.",
+            script: "./scripts/native-browser-shadow-verifier.mjs",
+          },
+          entries: [
+            {
+              "toolId": "verify.portal.native-browser.shadow",
+              "purpose": "Prepare portal shadow verification.",
+              "surface": "portal",
+              "baseUrl": "https://portal.monsoonfire.com",
+              "outputDir": "output/native-browser/portal/prod",
+              "canonicalArtifactRoot": "output/playwright/portal/prod",
+              "shadowOf": "verify.portal.smoke"
+            }
+          ]
+        },
+        {
+          familyId: "verify.native-browser-shadow-exec",
+          builder: "native-browser-shadow-verifier",
+          defaults: {
+            kind: "runtime-primitive",
+            selectableByAgent: false,
+            sideEffects: "artifact_only",
+            dryRunSupport: true,
+            safeFailBehavior: "Keep advisory.",
+            rollbackBehavior: "None.",
+            script: "./scripts/native-browser-shadow-verifier.mjs",
+            execute: true
+          },
+          entries: [
+            {
+              "toolId": "verify.website.native-browser.shadow.exec",
+              "purpose": "Execute website shadow verification.",
+              "surface": "website",
+              "baseUrl": "https://monsoonfire.com",
+              "outputDir": "output/native-browser/website/prod",
+              "canonicalArtifactRoot": "output/playwright/prod",
+              "shadowOf": "verify.website.smoke",
+              "expectedPortalHost": "portal.monsoonfire.com"
+            }
+          ]
+        },
       ],
     }),
     "utf8",
   );
 
   const loaded = loadToolContractRegistry(repoRoot, "registry.json", "primitives.json");
-  assert.equal(loaded.registry.tools.length, 2);
-  assert.equal(loaded.registry.primitiveFamilies.generatedCount, 1);
+  assert.equal(loaded.registry.tools.length, 4);
+  assert.equal(loaded.registry.primitiveFamilies.generatedCount, 3);
   assert.equal(loaded.primitiveRelativePath, "primitives.json");
 });

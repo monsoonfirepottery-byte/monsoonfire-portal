@@ -11,6 +11,7 @@ const REPO_ROOT = resolve(__dirname, "..");
 
 const DISALLOWED_PREFIXES = [
   "output/playwright/",
+  "output/native-browser/",
   "output/qa/",
   "output/maintenance/",
   "output/codex-docs-drift/",

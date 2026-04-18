@@ -130,9 +130,11 @@ async function withServer(
             "surface:hands",
             "surface:internet",
             "members:view",
+            "members:create",
             "members:edit_profile",
             "members:edit_membership",
             "members:edit_role",
+            "members:edit_billing",
             "approvals:view",
             "tasks:claim:any",
             "tasks:escape",
@@ -161,10 +163,12 @@ async function withServer(
             "surface:ceo",
             "surface:forge",
             "members:view",
+            "members:create",
             "members:edit_profile",
             "members:edit_membership",
             "members:edit_role",
             "members:edit_owner_role",
+            "members:edit_billing",
             "approvals:view",
             "approvals:manage",
             "tasks:claim:any",
@@ -1839,6 +1843,20 @@ test("ops staff replacement routes expose session context and member management 
     membershipTier: string | null;
     kilnPreferences: string | null;
     staffNotes: string | null;
+    billing?: {
+      stripeCustomerId: string | null;
+      defaultPaymentMethodId: string | null;
+      cardBrand: string | null;
+      cardLast4: string | null;
+      expMonth: string | null;
+      expYear: string | null;
+      paymentMethodSummary: string | null;
+      billingContactName: string | null;
+      billingContactEmail: string | null;
+      billingContactPhone: string | null;
+      storageMode: string;
+      updatedAt: string | null;
+    } | null;
     portalRole: "member" | "staff" | "admin";
     opsRoles: string[];
     opsCapabilities: string[];
@@ -1853,6 +1871,7 @@ test("ops staff replacement routes expose session context and member management 
     membershipTier: "drop-in",
     kilnPreferences: "Cone 6 preferred",
     staffNotes: "Prefers pickup texts.",
+    billing: null,
     portalRole: "member" as const,
     opsRoles: [] as string[],
     opsCapabilities: [] as string[],
@@ -1867,6 +1886,42 @@ test("ops staff replacement routes expose session context and member management 
     staffDataSource: {
       async listMembers() { return [member as never]; },
       async getMember(uid) { return uid === member.uid ? (member as never) : null; },
+      async createMember(input) {
+        member = {
+          ...member,
+          uid: "member-2",
+          email: input.email,
+          displayName: input.displayName,
+          membershipTier: input.membershipTier ?? null,
+          staffNotes: input.staffNotes ?? null,
+          portalRole: input.portalRole ?? "member",
+          opsRoles: input.opsRoles ?? [],
+          updatedAt: "2026-04-17T01:55:00.000Z",
+        };
+        return {
+          member: member as never,
+          created: {
+            uid: member.uid,
+            email: input.email,
+            displayName: input.displayName,
+            membershipTier: input.membershipTier ?? null,
+            portalRole: input.portalRole ?? "member",
+            opsRoles: input.opsRoles ?? [],
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T01:55:00.000Z",
+          },
+          audit: {
+            id: "audit-create-route",
+            uid: "member-2",
+            kind: "create",
+            actorId: input.actorId,
+            summary: "Member created.",
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T01:55:00.000Z",
+            payload: { email: input.email },
+          },
+        };
+      },
       async updateMemberProfile(input) {
         member = {
           ...member,
@@ -1886,6 +1941,39 @@ test("ops staff replacement routes expose session context and member management 
             reason: input.reason ?? null,
             createdAt: "2026-04-17T02:00:00.000Z",
             payload: input.patch,
+          },
+        };
+      },
+      async updateMemberBilling(input) {
+        member = {
+          ...member,
+          billing: {
+            stripeCustomerId: input.billing.stripeCustomerId ?? null,
+            defaultPaymentMethodId: input.billing.defaultPaymentMethodId ?? null,
+            cardBrand: input.billing.cardBrand ?? null,
+            cardLast4: input.billing.cardLast4 ?? null,
+            expMonth: input.billing.expMonth ?? null,
+            expYear: input.billing.expYear ?? null,
+            paymentMethodSummary: "Visa · •••• 4242 · exp 08/2030",
+            billingContactName: input.billing.billingContactName ?? null,
+            billingContactEmail: input.billing.billingContactEmail ?? null,
+            billingContactPhone: input.billing.billingContactPhone ?? null,
+            storageMode: "stripe_tokenized_only",
+            updatedAt: "2026-04-17T02:03:00.000Z",
+          },
+          updatedAt: "2026-04-17T02:03:00.000Z",
+        };
+        return {
+          member: member as never,
+          audit: {
+            id: "audit-billing-route",
+            uid: member.uid,
+            kind: "billing",
+            actorId: input.actorId,
+            summary: "Billing updated.",
+            reason: input.reason ?? null,
+            createdAt: "2026-04-17T02:03:00.000Z",
+            payload: input.billing,
           },
         };
       },
@@ -1998,6 +2086,27 @@ test("ops staff replacement routes expose session context and member management 
       assert.equal(membersPayload.ok, true);
       assert.equal(membersPayload.rows[0]?.uid, "member-1");
 
+      const createResponse = await fetch(`${baseUrl}/api/ops/members`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "newmember@example.com",
+          displayName: "New Member",
+          membershipTier: "community",
+          reason: "Create route test.",
+        }),
+      });
+      assert.equal(createResponse.status, 200);
+      const createPayload = (await createResponse.json()) as {
+        ok: boolean;
+        member: { uid: string; displayName: string };
+      };
+      assert.equal(createPayload.ok, true);
+      assert.equal(createPayload.member.uid, "member-2");
+
       const membershipResponse = await fetch(`${baseUrl}/api/ops/members/member-1/membership`, {
         method: "POST",
         headers: {
@@ -2016,6 +2125,48 @@ test("ops staff replacement routes expose session context and member management 
       };
       assert.equal(membershipPayload.ok, true);
       assert.equal(membershipPayload.member.membershipTier, "community");
+
+      const billingResponse = await fetch(`${baseUrl}/api/ops/members/member-2/billing`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          reason: "Billing route test.",
+          billing: {
+            stripeCustomerId: "cus_123",
+            defaultPaymentMethodId: "pm_123",
+            cardBrand: "Visa",
+            cardLast4: "4242",
+            expMonth: "08",
+            expYear: "2030",
+            billingContactEmail: "billing@example.com",
+          },
+        }),
+      });
+      assert.equal(billingResponse.status, 200);
+      const billingPayload = (await billingResponse.json()) as {
+        ok: boolean;
+        member: { billing?: { stripeCustomerId: string | null; cardLast4: string | null } | null };
+      };
+      assert.equal(billingPayload.ok, true);
+      assert.equal(billingPayload.member.billing?.stripeCustomerId, "cus_123");
+      assert.equal(billingPayload.member.billing?.cardLast4, "4242");
+
+      const rawCardRejected = await fetch(`${baseUrl}/api/ops/members/member-2/billing`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-staff",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          billing: {
+            cardNumber: "4242424242424242",
+          },
+        }),
+      });
+      assert.equal(rawCardRejected.status, 400);
 
       const activityResponse = await fetch(`${baseUrl}/api/ops/members/member-1/activity`, {
         headers: { authorization: "Bearer test-staff" },

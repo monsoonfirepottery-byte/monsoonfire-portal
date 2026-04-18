@@ -17,6 +17,7 @@ import {
   stableOpsHash,
   type ActionEffectReceipt,
   type ApprovalItem,
+  type CreateMemberRecord,
   type GrowthExperiment,
   type HumanTaskRecord,
   type ImprovementCase,
@@ -2131,6 +2132,43 @@ export function createOpsService(options: OpsServiceOptions = {}) {
       return staffDataSource ? staffDataSource.getMember(uid) : null;
     },
 
+    async createMember(
+      input: {
+        email: string;
+        displayName: string;
+        membershipTier?: string | null;
+        portalRole?: OpsPortalRole;
+        opsRoles?: OpsHumanRole[];
+        kilnPreferences?: string | null;
+        staffNotes?: string | null;
+        reason?: string | null;
+      },
+      actor: Partial<OpsActorContext>,
+    ): Promise<{ member: MemberOpsRecord | null; audit: OpsMemberAuditRecord; created: CreateMemberRecord } | null> {
+      if (!staffDataSource) return null;
+      const context = defaultActorContext(actor);
+      assertActorCapability(context, "members:create", "This actor is not allowed to create members.");
+      if (!cleanString(input.email) || !cleanString(input.displayName)) {
+        throw new Error("New members need at least an email and display name.");
+      }
+      if ((input.opsRoles ?? []).includes("owner") && !hasOpsCapability(context.opsCapabilities, "members:edit_owner_role")) {
+        throw new Error("Only the owner can create another owner-level member.");
+      }
+      const result = await staffDataSource.createMember({
+        actorId: context.actorId,
+        email: input.email,
+        displayName: input.displayName,
+        membershipTier: input.membershipTier,
+        portalRole: input.portalRole,
+        opsRoles: input.opsRoles,
+        kilnPreferences: input.kilnPreferences,
+        staffNotes: input.staffNotes,
+        reason: input.reason,
+      });
+      await store.appendMemberAudit(result.audit);
+      return result;
+    },
+
     async updateMemberProfile(
       input: {
         uid: string;
@@ -2151,6 +2189,37 @@ export function createOpsService(options: OpsServiceOptions = {}) {
         uid: input.uid,
         actorId: context.actorId,
         patch: input.patch,
+        reason: input.reason,
+      });
+      await store.appendMemberAudit(result.audit);
+      return result;
+    },
+
+    async updateMemberBilling(
+      input: {
+        uid: string;
+        billing: {
+          stripeCustomerId?: string | null;
+          defaultPaymentMethodId?: string | null;
+          cardBrand?: string | null;
+          cardLast4?: string | null;
+          expMonth?: string | null;
+          expYear?: string | null;
+          billingContactName?: string | null;
+          billingContactEmail?: string | null;
+          billingContactPhone?: string | null;
+        };
+        reason?: string | null;
+      },
+      actor: Partial<OpsActorContext>,
+    ): Promise<{ member: MemberOpsRecord | null; audit: OpsMemberAuditRecord } | null> {
+      if (!staffDataSource) return null;
+      const context = defaultActorContext(actor);
+      assertActorCapability(context, "members:edit_billing", "This actor is not allowed to edit member billing profiles.");
+      const result = await staffDataSource.updateMemberBilling({
+        uid: input.uid,
+        actorId: context.actorId,
+        billing: input.billing,
         reason: input.reason,
       });
       await store.appendMemberAudit(result.audit);

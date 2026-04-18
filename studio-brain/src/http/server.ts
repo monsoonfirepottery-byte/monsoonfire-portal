@@ -5098,6 +5098,33 @@ export function startHttpServer(params: {
         return;
       }
 
+      if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/members") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const portalRole = toTrimmedString(body.portalRole || body.role) as OpsPortalRole;
+        const opsRoles = Array.isArray(body.opsRoles) ? body.opsRoles.map((entry) => toTrimmedString(entry)).filter(Boolean) : [];
+        const result = await opsService.createMember({
+          email: toTrimmedString(body.email) || "",
+          displayName: toTrimmedString(body.displayName) || "",
+          membershipTier: toTrimmedString(body.membershipTier) || null,
+          portalRole: portalRole === "member" || portalRole === "staff" || portalRole === "admin" ? portalRole : undefined,
+          opsRoles: opsRoles as OpsHumanRole[],
+          kilnPreferences: toTrimmedString(body.kilnPreferences) || null,
+          staffNotes: toTrimmedString(body.staffNotes) || null,
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
       const opsMemberDetailMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)$/) : null;
       if (opsPortal.enabled && opsService && opsMemberDetailMatch) {
         const auth = await assertOpsPortalAuth(req);
@@ -5165,6 +5192,52 @@ export function startHttpServer(params: {
         const result = await opsService.updateMemberMembership({
           uid,
           membershipTier: toTrimmedString(body.membershipTier) || null,
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      const opsMemberBillingMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/billing$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberBillingMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberBillingMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const billing = body.billing && typeof body.billing === "object" && !Array.isArray(body.billing)
+          ? body.billing as Record<string, unknown>
+          : {};
+        const forbiddenRawCardKeys = ["cardNumber", "pan", "fullPan", "cvc", "cvv", "expiry", "exp", "trackData"];
+        const forbiddenKey = forbiddenRawCardKeys.find((key) => Object.prototype.hasOwnProperty.call(billing, key) || Object.prototype.hasOwnProperty.call(body, key));
+        if (forbiddenKey) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({
+            ok: false,
+            message: "Raw card data is not accepted in /ops. Use Stripe-hosted collection and store only tokenized references plus safe summaries.",
+          }));
+          return;
+        }
+        const result = await opsService.updateMemberBilling({
+          uid,
+          billing: {
+            stripeCustomerId: Object.prototype.hasOwnProperty.call(billing, "stripeCustomerId") ? toTrimmedString(billing.stripeCustomerId) || null : undefined,
+            defaultPaymentMethodId: Object.prototype.hasOwnProperty.call(billing, "defaultPaymentMethodId") ? toTrimmedString(billing.defaultPaymentMethodId) || null : undefined,
+            cardBrand: Object.prototype.hasOwnProperty.call(billing, "cardBrand") ? toTrimmedString(billing.cardBrand) || null : undefined,
+            cardLast4: Object.prototype.hasOwnProperty.call(billing, "cardLast4") ? toTrimmedString(billing.cardLast4) || null : undefined,
+            expMonth: Object.prototype.hasOwnProperty.call(billing, "expMonth") ? toTrimmedString(billing.expMonth) || null : undefined,
+            expYear: Object.prototype.hasOwnProperty.call(billing, "expYear") ? toTrimmedString(billing.expYear) || null : undefined,
+            billingContactName: Object.prototype.hasOwnProperty.call(billing, "billingContactName") ? toTrimmedString(billing.billingContactName) || null : undefined,
+            billingContactEmail: Object.prototype.hasOwnProperty.call(billing, "billingContactEmail") ? toTrimmedString(billing.billingContactEmail) || null : undefined,
+            billingContactPhone: Object.prototype.hasOwnProperty.call(billing, "billingContactPhone") ? toTrimmedString(billing.billingContactPhone) || null : undefined,
+          },
           reason: toTrimmedString(body.reason) || null,
         }, opsActorContext(auth));
         statusCode = 200;

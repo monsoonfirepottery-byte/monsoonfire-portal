@@ -137,6 +137,34 @@ function extractOpsPageModel(html) {
   return JSON.parse(match[1]);
 }
 
+function injectPublicBaseShim(html, baseUrl) {
+  const origin = String(baseUrl || "").replace(/\/+$/, "");
+  if (!origin) return String(html || "");
+  const shim = `
+    <script data-ops-public-smoke-shim>
+      (() => {
+        const origin = ${JSON.stringify(origin)};
+        const toAbsolute = (value) => {
+          if (typeof value === "string" && value.startsWith("/")) {
+            return new URL(value, origin).toString();
+          }
+          if (value instanceof Request && value.url.startsWith("/")) {
+            return new Request(new URL(value.url, origin).toString(), value);
+          }
+          return value;
+        };
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init) => originalFetch(toAbsolute(input), init);
+      })();
+    </script>
+  `;
+  const source = String(html || "");
+  if (source.includes("</head>")) {
+    return source.replace("</head>", `${shim}\n</head>`);
+  }
+  return `${shim}\n${source}`;
+}
+
 async function waitForOpsFrame(page) {
   const iframe = page.locator("iframe").first();
   await iframe.waitFor({ timeout: 30000 });
@@ -183,6 +211,7 @@ async function runSmoke(argv = process.argv.slice(2)) {
   }
 
   const deployedPageModel = extractOpsPageModel(deployedHtml);
+  const shimmedDeployedHtml = injectPublicBaseShim(deployedHtml, options.baseUrl);
 
   const summary = {
     ok: false,
@@ -198,6 +227,7 @@ async function runSmoke(argv = process.argv.slice(2)) {
     pageErrors: [],
     bridgeMessages: [],
     theme: null,
+    layout: null,
     iframeUrl: "",
     headline: "",
     narrative: "",
@@ -297,7 +327,7 @@ async function runSmoke(argv = process.argv.slice(2)) {
         throw new Error("Smoke wrapper could not find the iframe mount point.");
       }
       iframe.setAttribute("srcdoc", html);
-    }, deployedHtml);
+    }, shimmedDeployedHtml);
 
     const frame = await waitForOpsFrame(page);
     await frame.locator('[data-surface-tab="internet"]').click({ timeout: 10000 });
@@ -313,6 +343,33 @@ async function runSmoke(argv = process.argv.slice(2)) {
         bg: styles.getPropertyValue("--bg").trim(),
       };
     });
+    summary.layout = await frame.evaluate(() => {
+      const body = document.body;
+      const html = document.documentElement;
+      const hero = document.querySelector(".ops-hero");
+      const activePanel = document.querySelector(".ops-mode-panel.is-active");
+      const activeSurface = document.querySelector(".ops-surface.is-active");
+      const rect = (node) => {
+        if (!node || typeof node.getBoundingClientRect !== "function") return null;
+        const box = node.getBoundingClientRect();
+        return {
+          top: box.top,
+          bottom: box.bottom,
+          height: box.height,
+        };
+      };
+      return {
+        viewportPreference: body?.dataset?.viewportPreference || null,
+        bodyScrollHeight: body?.scrollHeight ?? null,
+        bodyClientHeight: body?.clientHeight ?? null,
+        htmlScrollHeight: html?.scrollHeight ?? null,
+        htmlClientHeight: html?.clientHeight ?? null,
+        viewportHeight: window.innerHeight,
+        hero: rect(hero),
+        activePanel: rect(activePanel),
+        activeSurface: rect(activeSurface),
+      };
+    });
     summary.iframeUrl = frame.url();
     summary.protocol = await frame.evaluate(() => window.location.protocol);
     summary.headline = clean(await frame.locator(".ops-hero h2, .ops-hero h1").first().textContent());
@@ -325,12 +382,25 @@ async function runSmoke(argv = process.argv.slice(2)) {
     const isQuiet = /quiet and waiting for fresher live telemetry|quiet and ready for handoff/i.test(bodyText);
     const publicShellMounted = /Monsoon Fire Portal/i.test(shellHtml);
     const memberBridgeHealthy = Boolean(summary.memberProbe?.ok);
+    const singleScreenActive = summary.layout?.viewportPreference === "single-screen";
+    const frameNoVerticalOverflow = singleScreenActive
+      ? Math.abs((summary.layout?.htmlScrollHeight ?? 0) - (summary.layout?.htmlClientHeight ?? 0)) <= 2
+      : true;
+    const heroCompactEnough = singleScreenActive
+      ? (summary.layout?.hero?.height ?? Number.POSITIVE_INFINITY) <= (summary.layout?.viewportHeight ?? 0) * 0.42
+      : true;
+    const panelHasRoom = singleScreenActive
+      ? (summary.layout?.activePanel?.height ?? 0) >= (summary.layout?.viewportHeight ?? 0) * 0.28
+      : true;
 
     summary.ok = Boolean(
       publicShellMounted
       && isDark
       && isQuiet
       && memberBridgeHealthy
+      && frameNoVerticalOverflow
+      && heroCompactEnough
+      && panelHasRoom
       && !hasSecurityError
       && !hasBridgeUnavailable
       && summary.pageErrors.length === 0
@@ -340,6 +410,10 @@ async function runSmoke(argv = process.argv.slice(2)) {
       isDark,
       isQuiet,
       memberBridgeHealthy,
+      singleScreenActive,
+      frameNoVerticalOverflow,
+      heroCompactEnough,
+      panelHasRoom,
       hasSecurityError,
       hasBridgeUnavailable,
       pageErrors: summary.pageErrors.length,

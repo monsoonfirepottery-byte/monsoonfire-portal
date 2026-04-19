@@ -3013,7 +3013,10 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         border-color: rgba(105,180,255,0.2);
         background: rgba(105,180,255,0.08);
       }
+      html[data-viewport-preference="single-screen"],
       body[data-viewport-preference="single-screen"] {
+        height: 100%;
+        min-height: 100%;
         overflow: hidden;
       }
       body[data-viewport-preference="single-screen"] main {
@@ -3021,12 +3024,47 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         max-height: 100dvh;
         display: grid;
         grid-template-rows: auto auto minmax(0, 1fr);
-        gap: 14px;
+        gap: 10px;
         overflow: hidden;
-        padding: 18px 20px;
+        padding: 14px 18px;
       }
       body[data-viewport-preference="single-screen"] .ops-hero {
         margin-bottom: 0;
+        padding: 14px 16px;
+        gap: 12px;
+      }
+      body[data-viewport-preference="single-screen"] .ops-hero__top {
+        align-items: flex-start;
+      }
+      body[data-viewport-preference="single-screen"] .ops-hero__actions {
+        align-self: flex-start;
+      }
+      body[data-viewport-preference="single-screen"] .ops-hero h1 {
+        margin-bottom: 4px;
+        font-size: clamp(1.7rem, 2.7vw, 2.85rem);
+        line-height: 1.05;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      body[data-viewport-preference="single-screen"] .ops-hero p:not(.ops-meta) {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      body[data-viewport-preference="single-screen"] .ops-kpi-grid {
+        gap: 8px;
+      }
+      body[data-viewport-preference="single-screen"] .ops-kpi {
+        padding: 10px 12px;
+        border-radius: 14px;
+        min-height: 0;
+      }
+      body[data-viewport-preference="single-screen"] .ops-kpi strong {
+        margin-top: 4px;
+        font-size: 1.2rem;
       }
       body[data-viewport-preference="single-screen"] .ops-shell,
       body[data-viewport-preference="single-screen"] .ops-surfaces,
@@ -3044,11 +3082,29 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         grid-template-rows: auto minmax(0, 1fr);
         overflow: hidden;
       }
+      body[data-viewport-preference="single-screen"] .ops-surfaces,
+      body[data-viewport-preference="single-screen"] .ops-surface.is-active,
+      body[data-viewport-preference="single-screen"] .ops-manager-canvas {
+        display: grid;
+      }
+      body[data-viewport-preference="single-screen"] .ops-manager-canvas {
+        grid-template-rows: auto minmax(0, 1fr);
+        align-content: stretch;
+        gap: 12px;
+      }
       body[data-viewport-preference="single-screen"] .ops-surfaces {
         overflow: hidden;
       }
+      body[data-viewport-preference="single-screen"] .ops-mode-nav {
+        margin-bottom: 0;
+        padding: 6px;
+        gap: 8px;
+      }
       body[data-viewport-preference="single-screen"] .ops-mode-panel.is-active {
         display: grid;
+        align-content: start;
+        min-height: 0;
+        height: 100%;
         overflow: auto;
         padding-right: 4px;
       }
@@ -3062,6 +3118,12 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       body[data-viewport-preference="single-screen"] .ops-chat-feed {
         flex: 1 1 auto;
         max-height: none;
+      }
+      body[data-viewport-preference="single-screen"] .ops-layout,
+      body[data-viewport-preference="single-screen"] .ops-layout-hands,
+      body[data-viewport-preference="single-screen"] .ops-workspace-grid,
+      body[data-viewport-preference="single-screen"] .ops-member-focus-layout {
+        align-content: start;
       }
       @keyframes ops-ticker-scroll {
         from { transform: translateX(0); }
@@ -3208,10 +3270,11 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
 
       function applyViewportPreference() {
         document.body.dataset.viewportPreference = viewportPreference;
+        document.documentElement.dataset.viewportPreference = viewportPreference;
         const toggle = document.getElementById("ops-viewport-toggle");
         if (toggle) {
           const singleScreen = viewportPreference === "single-screen";
-          toggle.textContent = singleScreen ? "Single-screen focus" : "Document flow";
+          toggle.textContent = singleScreen ? "Single-screen: on" : "Document flow";
           toggle.classList.toggle("is-active", singleScreen);
           toggle.setAttribute("aria-pressed", singleScreen ? "true" : "false");
           toggle.setAttribute("data-viewport-toggle", viewportPreference);

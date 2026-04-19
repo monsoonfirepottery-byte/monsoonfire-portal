@@ -83,6 +83,52 @@ function parseArgs(argv) {
   return options;
 }
 
+function installPlaywrightCleanup(resources) {
+  let disposed = false;
+  let closing = null;
+
+  async function closeAll() {
+    if (closing) return closing;
+    closing = (async () => {
+      const snapshot = resources();
+      await snapshot.page?.close().catch(() => {});
+      await snapshot.context?.close().catch(() => {});
+      await snapshot.browser?.close().catch(() => {});
+    })();
+    return closing;
+  }
+
+  const bind = (signal, exitCode) => {
+    const handler = () => {
+      if (disposed) return;
+      disposed = true;
+      void closeAll().finally(() => {
+        process.exit(exitCode);
+      });
+    };
+    process.once(signal, handler);
+    return { signal, handler };
+  };
+
+  const subscriptions = [
+    bind("SIGINT", 130),
+    bind("SIGTERM", 143),
+  ];
+
+  return {
+    async close() {
+      disposed = true;
+      await closeAll();
+    },
+    dispose() {
+      disposed = true;
+      for (const entry of subscriptions) {
+        process.removeListener(entry.signal, entry.handler);
+      }
+    },
+  };
+}
+
 async function waitForOpsFrame(page) {
   const iframe = page.locator("iframe").first();
   await iframe.waitFor({ timeout: 30000 });
@@ -149,13 +195,17 @@ async function runSmoke(argv = process.argv.slice(2)) {
     generatedAt: new Date().toISOString(),
   };
 
-  const browser = await chromium.launch({ headless: options.headless });
+  let browser = null;
+  let context = null;
+  let page = null;
+  const cleanup = installPlaywrightCleanup(() => ({ browser, context, page }));
+  browser = await chromium.launch({ headless: options.headless });
   try {
-    const context = await browser.newContext({
+    context = await browser.newContext({
       colorScheme: "dark",
       viewport: { width: 1600, height: 1200 },
     });
-    const page = await context.newPage();
+    page = await context.newPage();
 
     page.on("console", (message) => {
       const entry = {
@@ -263,7 +313,8 @@ async function runSmoke(argv = process.argv.slice(2)) {
       process.exitCode = 1;
     }
   } finally {
-    await browser.close().catch(() => {});
+    cleanup.dispose();
+    await cleanup.close();
   }
 
   return summary;

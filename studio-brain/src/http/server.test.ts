@@ -1820,8 +1820,9 @@ test("ops portal routes expose twin state and allow claiming tasks", async () =>
       });
       assert.equal(portalResponse.status, 200);
       const html = await portalResponse.text();
-      assert.ok(html.includes("Studio Manager voice"));
+      assert.ok(html.includes("Command deck"));
       assert.ok(html.includes("Hands lane"));
+      assert.ok(html.includes("Windows that move today"));
       assert.ok(html.includes('id="ops-hands-workbench"'));
       assert.ok(html.includes('id="ops-support-workbench"'));
 
@@ -2190,6 +2191,8 @@ test("ops staff replacement routes expose session context and member management 
       assert.ok(portalHtml.includes('id="ops-member-workbench"'));
       assert.ok(portalHtml.includes('id="ops-member-create-trigger"'));
       assert.ok(portalHtml.includes("Never type raw card numbers here"));
+      assert.ok(portalHtml.includes("Roster and onboarding"));
+      assert.ok(portalHtml.includes("Selected member"));
       assert.ok(!portalHtml.includes('window.prompt("Display name"'));
       assert.ok(!portalHtml.includes('window.prompt("Membership tier"'));
       assert.ok(!portalHtml.includes('window.prompt("Comma-separated ops roles"'));

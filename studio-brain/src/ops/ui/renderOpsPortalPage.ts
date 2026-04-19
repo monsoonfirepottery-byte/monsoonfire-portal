@@ -259,10 +259,38 @@ function renderCase(row: OpsCaseRecord): string {
 
 function renderConversation(row: OpsConversationThreadRecord): string {
   return `
-    <article class="ops-conversation">
-      <p class="ops-kicker">${esc(formatRoleLabel(row.roleMask))} · ${esc(row.senderIdentity)}</p>
-      <h4>${esc(row.summary)}</h4>
-      <p class="ops-meta">${row.unread ? "Unread" : "Read"} · last activity ${esc(formatTimestamp(row.latestMessageAt))}</p>
+    <article class="ops-conversation ops-rail-card">
+      <div class="ops-rail-card__head">
+        <div>
+          <p class="ops-kicker">${esc(formatRoleLabel(row.roleMask))} · ${esc(row.senderIdentity)}</p>
+          <h4>${esc(row.summary)}</h4>
+        </div>
+        <span class="ops-pill ops-pill-${esc(row.unread ? "warn" : "neutral")}">${esc(row.unread ? "Unread" : "Read")}</span>
+      </div>
+      <p class="ops-meta">Last activity ${esc(formatTimestamp(row.latestMessageAt))}</p>
+    </article>
+  `;
+}
+
+function renderTaskRailCard(task: HumanTaskRecord): string {
+  const tone = statusTone(task.status);
+  const dueLabel = task.dueAt ? formatTimestamp(task.dueAt) : (task.etaMinutes ? `${task.etaMinutes}m ETA` : "No ETA");
+  return `
+    <article class="ops-rail-card ops-tone-${esc(tone)}" data-task-id="${esc(task.id)}">
+      <div class="ops-rail-card__head">
+        <div>
+          <p class="ops-kicker">${esc(humanizeToken(task.surface))} lane · ${esc(formatRoleLabel(task.role))}</p>
+          <h3>${esc(task.title)}</h3>
+        </div>
+        <span class="ops-pill ops-pill-${esc(tone)}">${esc(formatStatusLabel(task.status))}</span>
+      </div>
+      <p class="ops-summary">${esc(task.whyNow)}</p>
+      <dl class="ops-rail-card__meta">
+        <div><dt>Zone</dt><dd>${esc(task.zone)}</dd></div>
+        <div><dt>Due</dt><dd>${esc(dueLabel)}</dd></div>
+        <div><dt>Proof</dt><dd>${esc(formatProofModeLabel(task.preferredProofMode))}</dd></div>
+        <div><dt>Confidence</dt><dd>${esc(formatConfidence(task.confidence))}</dd></div>
+      </dl>
     </article>
   `;
 }
@@ -372,9 +400,10 @@ function renderMemberOpsWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Member ops</p>
-            <h2>Roster, onboarding, and access control</h2>
+            <h2>Roster and onboarding</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Search once, open one member, and make the change without losing the trail.</p>
         <div class="ops-member-toolbar">
           <label class="ops-field ops-field-compact ops-member-search-field">
             <span>Find a member</span>
@@ -406,9 +435,10 @@ function renderMemberOpsWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Workbench</p>
-            <h2>Manage one member without losing the plot</h2>
+            <h2>Selected member</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Profile, membership, roles, and safe billing references stay in one place.</p>
         <div id="ops-member-workbench" class="ops-member-workbench">
           <div class="ops-empty">Select a member to manage profile, membership, roles, and billing without leaving the lane.</div>
         </div>
@@ -417,9 +447,10 @@ function renderMemberOpsWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Context rail</p>
-            <h2>Reservations, safety, and why the change matters</h2>
+            <h2>Context and safety</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Keep arrival context and billing safety visible while you edit.</p>
         <div id="ops-member-context" class="ops-member-context">
           ${input.reservationCards || '<div class="ops-empty">No member arrival bundles are visible.</div>'}
           <article class="ops-member-note">
@@ -455,9 +486,10 @@ function renderHandsQueueWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Hands queue</p>
-            <h2>What human hands should touch next</h2>
+            <h2>Queue</h2>
           </div>
         </div>
+        <p class="ops-panel__note">The rail stays compact so staff can spot the next physical move in one glance.</p>
         <div class="ops-member-toolbar">
           <label class="ops-field ops-field-compact">
             <span>Search tasks</span>
@@ -479,16 +511,17 @@ function renderHandsQueueWorkspace(input: {
           </article>
         </div>
         <div class="ops-scroll-stack" id="ops-hands-queue-rail">
-          ${input.handsTasks.map((task) => renderTask(task)).join("") || '<div class="ops-empty">No physical tasks are queued.</div>'}
+          ${input.handsTasks.map((task) => renderTaskRailCard(task)).join("") || '<div class="ops-empty">No physical tasks are queued.</div>'}
         </div>
       </div>
       <div class="ops-panel">
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Task workbench</p>
-            <h2>One task, full context, no guessing</h2>
+            <h2>Current task</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Open one task and get the why, the how, and the proof path without extra hunting.</p>
         <div id="ops-hands-workbench" class="ops-workbench">
           ${input.activeHandsTasks[0] ? renderTask(input.activeHandsTasks[0]) : '<div class="ops-empty">Select a task from the queue to open its full instructions, proof path, and blocker exits.</div>'}
         </div>
@@ -497,9 +530,10 @@ function renderHandsQueueWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Shift context</p>
-            <h2>Station state and nearby commitments</h2>
+            <h2>Nearby context</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Keep station health, signal freshness, and nearby arrivals beside the task.</p>
         <div id="ops-hands-context" class="ops-workbench">
           ${renderStationContext(input.displayState)}
           <div class="ops-ribbon-stack">${input.truth.sources.slice(0, 3).map(renderFreshnessRibbon).join("") || '<div class="ops-empty">No source freshness signals are available.</div>'}</div>
@@ -524,9 +558,10 @@ function renderSupportWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Support desk</p>
-            <h2>Threads and reply pressure</h2>
+            <h2>Inbox</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Unread and hot threads stay in the rail. Open one and work it to completion.</p>
         <div class="ops-member-toolbar">
           <label class="ops-field ops-field-compact">
             <span>Search threads</span>
@@ -555,9 +590,10 @@ function renderSupportWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Reply workbench</p>
-            <h2>Selected thread, clear next move</h2>
+            <h2>Selected thread</h2>
           </div>
         </div>
+        <p class="ops-panel__note">The center pane should always answer what to say next and whether approval is needed.</p>
         <div id="ops-support-workbench" class="ops-workbench">
           <div class="ops-empty">Select a support thread to see its pressure, linked work, and a safe draft path.</div>
         </div>
@@ -566,9 +602,10 @@ function renderSupportWorkspace(input: {
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Linked context</p>
-            <h2>Tasks, cases, and approval gates around that conversation</h2>
+            <h2>Cases and approvals</h2>
           </div>
         </div>
+        <p class="ops-panel__note">Keep the surrounding task, case, and approval state visible while you reply.</p>
         <div id="ops-support-context" class="ops-workbench">
           <div class="ops-scroll-stack">${input.cases.map(renderCase).join("") || '<div class="ops-empty">No internet-related cases are active right now.</div>'}</div>
           <div class="ops-stack">${input.approvals.slice(0, 3).map(renderApproval).join("") || '<div class="ops-empty">No approval gates are currently queued.</div>'}</div>
@@ -1365,7 +1402,7 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
   ];
   return `
     <nav class="ops-surface-nav">
-      ${surfaceTabs.map((surface) => `<button type="button" class="ops-surface-tab" data-surface-tab="${esc(surface)}">${esc(surface)}</button>`).join("")}
+      ${surfaceTabs.map((surface) => `<button type="button" class="ops-surface-tab" data-surface-tab="${esc(surface)}">${esc(humanizeToken(surface))}</button>`).join("")}
     </nav>
 
     <section class="ops-surface" data-surface="manager">
@@ -1383,10 +1420,10 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
             <div class="ops-panel">
               <div class="ops-panel__head">
                 <div>
-                  <p class="ops-kicker">Studio manager</p>
+                  <p class="ops-kicker">Command deck</p>
                   <h2>${esc(model.twin.headline)}</h2>
                 </div>
-                <span class="ops-pill ops-pill-${esc(statusTone(model.truth.readiness))}">${esc(model.truth.readiness)}</span>
+                <span class="ops-pill ops-pill-${esc(statusTone(model.truth.readiness))}">${esc(formatStatusLabel(model.truth.readiness))}</span>
               </div>
               <p class="ops-summary">${esc(model.twin.narrative)}</p>
               <div class="ops-gauge-strip">${gaugeCards.join("")}</div>
@@ -1401,8 +1438,8 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
               <div class="ops-panel ops-motion-panel">
                 <div class="ops-panel__head">
                   <div>
-                    <p class="ops-kicker">Critical windows</p>
-                    <h2>Countdowns and SLA pressure</h2>
+                    <p class="ops-kicker">Clocks</p>
+                    <h2>Windows that move today</h2>
                   </div>
                 </div>
                 <div class="ops-countdown-grid">${countdownItems.join("")}</div>
@@ -1410,8 +1447,8 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
               <div class="ops-panel ops-motion-panel">
                 <div class="ops-panel__head">
                   <div>
-                    <p class="ops-kicker">Flow relays</p>
-                    <h2>Who owns the next handoff</h2>
+                    <p class="ops-kicker">Handoffs</p>
+                    <h2>Who owns the next move</h2>
                   </div>
                 </div>
                 <div class="ops-relay-stack">${relayItems.join("")}</div>
@@ -1419,8 +1456,8 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
               <div class="ops-panel ops-motion-panel">
                 <div class="ops-panel__head">
                   <div>
-                    <p class="ops-kicker">Freshness field</p>
-                    <h2>Which signals are still live</h2>
+                    <p class="ops-kicker">Live signals</p>
+                    <h2>Which signals are still trustworthy</h2>
                   </div>
                 </div>
                 <div class="ops-ribbon-stack">
@@ -1642,10 +1679,12 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
           <div class="ops-layout ops-layout-hands">
             <div class="ops-panel">
               <div class="ops-panel__head"><div><p class="ops-kicker">Hands lane</p><h2>One clear physical next step</h2></div></div>
+              <p class="ops-panel__note">This page should tell a staff member exactly what to do next without making them decode a dashboard.</p>
               ${renderHandsFocus(displayState, activeHandsTasks[0] ?? null)}
             </div>
             <div class="ops-panel">
               <div class="ops-panel__head"><div><p class="ops-kicker">Live telemetry</p><h2>Window, handoff, and truth</h2></div></div>
+              <p class="ops-panel__note">The dials and ribbons show time pressure, ownership, and whether the signal path is fresh enough to trust.</p>
               <div class="ops-countdown-grid ops-countdown-grid-dual">${handsNowCountdowns.join("")}</div>
               <div class="ops-relay-stack">${renderTaskRelayCard(activeHandsTasks[0] ?? null, "Hands relay")}</div>
               <div class="ops-ribbon-stack">${model.truth.sources.slice(0, 3).map(renderFreshnessRibbon).join("") || '<div class="ops-empty">No source freshness signals are available.</div>'}</div>
@@ -1720,7 +1759,8 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
           <div class="ops-layout">
             <div class="ops-panel">
               <div class="ops-panel__head"><div><p class="ops-kicker">Internet lane</p><h2>Support, events, reputation, and promises</h2></div></div>
-              <div class="ops-scroll-stack">${internetTasks.map(renderTask).join("") || '<div class="ops-empty">No internet tasks are queued.</div>'}</div>
+              <p class="ops-panel__note">Keep the left rail fast to scan. Open one thread or task and do the next safe thing.</p>
+              <div class="ops-scroll-stack">${internetTasks.map(renderTaskRailCard).join("") || '<div class="ops-empty">No internet tasks are queued.</div>'}</div>
             </div>
             <div class="ops-panel">
               <div class="ops-panel__head"><div><p class="ops-kicker">Reply pressure</p><h2>What needs eyes next</h2></div></div>
@@ -1921,40 +1961,47 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
     <style>
       :root {
         color-scheme: dark;
-        --bg: #061018;
-        --ink: #eef5fb;
-        --muted: #97acbd;
-        --panel: rgba(9, 18, 29, 0.82);
-        --line: rgba(126, 158, 184, 0.18);
-        --shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
-        --good: #7be0b6;
-        --good-bg: rgba(39, 117, 88, 0.18);
-        --warn: #f2c66d;
-        --warn-bg: rgba(142, 96, 24, 0.22);
-        --danger: #ff8c7f;
-        --danger-bg: rgba(132, 37, 25, 0.22);
-        --neutral: #93a8ba;
-        --neutral-bg: rgba(76, 97, 116, 0.18);
-        --accent: #5aa9ff;
-        --accent-2: #ef9d65;
+        --bg: #071119;
+        --panel: #0d1823;
+        --panel-2: #12202e;
+        --panel-3: #162737;
+        --panel-quiet: #0a141d;
+        --ink: #f5f8fc;
+        --ink-soft: #d5e1ec;
+        --muted: #a6b7c7;
+        --muted-soft: #8194a6;
+        --line: rgba(135, 162, 189, 0.18);
+        --line-strong: rgba(167, 194, 221, 0.28);
+        --shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+        --good: #82e6be;
+        --good-bg: rgba(41, 119, 92, 0.24);
+        --warn: #ffd36f;
+        --warn-bg: rgba(154, 102, 20, 0.24);
+        --danger: #ff9588;
+        --danger-bg: rgba(150, 53, 35, 0.24);
+        --neutral: #a8b8c7;
+        --neutral-bg: rgba(84, 103, 122, 0.22);
+        --accent: #69b4ff;
+        --accent-2: #ffb37d;
+        --focus-ring: 0 0 0 2px rgba(105, 180, 255, 0.24);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         color: var(--ink);
+        line-height: 1.45;
         font-family: "Aptos", "Segoe UI", system-ui, sans-serif;
         background:
-          radial-gradient(circle at top left, rgba(90,169,255,0.16), transparent 28%),
-          radial-gradient(circle at top right, rgba(239,157,101,0.14), transparent 22%),
-          linear-gradient(180deg, #08131d 0%, #09141f 48%, #071019 100%);
+          radial-gradient(circle at top left, rgba(105,180,255,0.12), transparent 26%),
+          radial-gradient(circle at top right, rgba(255,179,125,0.08), transparent 20%),
+          linear-gradient(180deg, #08131d 0%, #09131d 44%, #060d15 100%);
       }
       main { max-width: 1560px; margin: 0 auto; padding: 28px 24px 44px; }
       .ops-hero, .ops-panel, .ops-task-card, .ops-case, .ops-zone, .ops-watchdog, .ops-approval, .ops-conversation {
         background: var(--panel);
-        border: 1px solid var(--line);
+        border: 1px solid var(--line-strong);
         border-radius: 24px;
         box-shadow: var(--shadow);
-        backdrop-filter: blur(8px);
       }
       .ops-hero {
         padding: 24px;
@@ -1963,25 +2010,26 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         margin-bottom: 18px;
       }
       .ops-hero h1 { margin: 0 0 6px; font-size: clamp(2rem, 2.8vw, 3.3rem); font-family: "Palatino Linotype", Georgia, serif; }
-      .ops-hero p { margin: 0; color: var(--muted); }
+      .ops-hero p { margin: 0; color: var(--ink-soft); max-width: 92ch; }
       .ops-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-      .ops-kpi { padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: rgba(255,255,255,0.62); }
-      .ops-kpi span { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+      .ops-kpi { padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: var(--panel-2); }
+      .ops-kpi span { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-soft); }
       .ops-kpi strong { display: block; margin-top: 10px; font-size: 1.55rem; }
       .ops-surface-nav { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
       .ops-surface-tab, .ops-button, .ops-chip {
         border: 1px solid transparent;
         border-radius: 999px;
         padding: 10px 16px;
-        background: rgba(38,77,125,0.10);
-        color: var(--accent);
+        background: var(--panel-2);
+        color: var(--ink-soft);
         cursor: pointer;
         font-weight: 700;
       }
-      .ops-surface-tab.is-active, .ops-button { background: var(--accent); color: #f8f3ed; }
-      .ops-button-secondary { background: rgba(123,75,40,0.12); color: var(--accent-2); border-color: rgba(123,75,40,0.16); }
-      .ops-chip { background: rgba(255,255,255,0.72); color: var(--muted); border-color: var(--line); }
-      .ops-chip.is-selected { background: rgba(38,77,125,0.14); color: var(--accent); border-color: rgba(38,77,125,0.28); }
+      .ops-surface-tab:hover, .ops-button:hover, .ops-chip:hover, .ops-mode-tab:hover, .ops-member-tab:hover { border-color: var(--line-strong); }
+      .ops-surface-tab.is-active, .ops-button { background: linear-gradient(180deg, #2d78c7 0%, #255f9c 100%); color: #f8fbff; }
+      .ops-button-secondary { background: rgba(255,179,125,0.12); color: var(--accent-2); border-color: rgba(255,179,125,0.22); }
+      .ops-chip { background: var(--panel-2); color: var(--ink-soft); border-color: var(--line); }
+      .ops-chip.is-selected { background: rgba(105,180,255,0.14); color: var(--accent); border-color: rgba(105,180,255,0.34); }
       .ops-surface { display: none; margin-bottom: 18px; }
       .ops-surface.is-active { display: block; }
       .ops-mode-nav {
@@ -1993,10 +2041,9 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         gap: 10px;
         padding: 10px;
         border-radius: 18px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.78);
-        box-shadow: 0 12px 28px rgba(62, 42, 22, 0.08);
-        backdrop-filter: blur(10px);
+        border: 1px solid var(--line-strong);
+        background: rgba(10, 20, 29, 0.92);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
       }
       .ops-mode-tab {
         display: inline-flex;
@@ -2004,9 +2051,9 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         gap: 8px;
         padding: 10px 14px;
         border-radius: 999px;
-        border: 1px solid rgba(49,39,31,0.12);
-        background: rgba(255,255,255,0.74);
-        color: var(--muted);
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--ink-soft);
         cursor: pointer;
         font-weight: 700;
       }
@@ -2016,14 +2063,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         justify-content: center;
         padding: 2px 8px;
         border-radius: 999px;
-        background: rgba(38,77,125,0.10);
+        background: rgba(105,180,255,0.12);
         color: var(--accent);
         font-size: 0.74rem;
       }
       .ops-mode-tab.is-active {
-        background: var(--accent);
-        color: #f8f3ed;
-        border-color: rgba(38,77,125,0.25);
+        background: linear-gradient(180deg, #2d78c7 0%, #255f9c 100%);
+        color: #f8fbff;
+        border-color: rgba(105,180,255,0.28);
       }
       .ops-mode-tab.is-active strong {
         background: rgba(255,255,255,0.18);
@@ -2045,8 +2092,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         overflow: hidden;
         margin-top: 12px;
         border-radius: 18px;
-        border: 1px solid rgba(49,39,31,0.12);
-        background: linear-gradient(90deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52));
+        border: 1px solid var(--line);
+        background: linear-gradient(90deg, rgba(13,24,35,0.96), rgba(18,32,46,0.92));
       }
       .ops-ticker-shell::before,
       .ops-ticker-shell::after {
@@ -2060,11 +2107,11 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       }
       .ops-ticker-shell::before {
         left: 0;
-        background: linear-gradient(90deg, rgba(247,242,235,1), rgba(247,242,235,0));
+        background: linear-gradient(90deg, rgba(13,24,35,1), rgba(13,24,35,0));
       }
       .ops-ticker-shell::after {
         right: 0;
-        background: linear-gradient(270deg, rgba(247,242,235,1), rgba(247,242,235,0));
+        background: linear-gradient(270deg, rgba(13,24,35,1), rgba(13,24,35,0));
       }
       .ops-ticker-track {
         display: flex;
@@ -2081,23 +2128,23 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         min-width: 320px;
         padding: 10px 14px;
         border-radius: 999px;
-        background: rgba(255,255,255,0.76);
+        background: var(--panel-2);
         border: 1px solid var(--line);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
       }
       .ops-ticker-item__label {
         display: inline-flex;
         padding: 4px 8px;
         border-radius: 999px;
-        background: rgba(38,77,125,0.08);
-        color: var(--muted);
+        background: rgba(105,180,255,0.12);
+        color: var(--muted-soft);
         font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }
       .ops-ticker-item__text {
         font-size: 0.96rem;
-        color: var(--ink);
+        color: var(--ink-soft);
         white-space: nowrap;
       }
       .ops-incident-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
@@ -2109,7 +2156,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 16px;
         border-radius: 20px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.6);
+        background: var(--panel-2);
       }
       .ops-gauge-card__row {
         display: grid;
@@ -2133,8 +2180,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         inset: 0;
         border-radius: 50%;
         background:
-          radial-gradient(circle at center, rgba(255,255,255,0.85) 0 50%, transparent 51%),
-          conic-gradient(from -120deg, var(--gauge-color) 0deg var(--gauge-progress), rgba(49,39,31,0.08) var(--gauge-progress) 240deg, transparent 240deg 360deg);
+          radial-gradient(circle at center, rgba(8,17,25,0.96) 0 50%, transparent 51%),
+          conic-gradient(from -120deg, var(--gauge-color) 0deg var(--gauge-progress), rgba(106,125,144,0.16) var(--gauge-progress) 240deg, transparent 240deg 360deg);
         animation: ops-gauge-glow 2.8s ease-in-out infinite;
       }
       .ops-gauge__needle {
@@ -2144,7 +2191,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: 4px;
         height: 46px;
         border-radius: 999px;
-        background: linear-gradient(180deg, rgba(27,23,20,0.25), rgba(27,23,20,0.95));
+        background: linear-gradient(180deg, rgba(216,229,241,0.28), rgba(236,243,250,0.96));
         transform-origin: center bottom;
         transform: translateX(-50%) rotate(var(--gauge-needle));
         animation: ops-gauge-sweep 1.1s cubic-bezier(.2,.8,.2,1);
@@ -2154,8 +2201,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        background: rgba(27,23,20,0.92);
-        box-shadow: 0 0 0 5px rgba(255,255,255,0.82);
+        background: rgba(236,243,250,0.94);
+        box-shadow: 0 0 0 5px rgba(8,17,25,0.9);
       }
       .ops-gauge__readout {
         position: relative;
@@ -2177,14 +2224,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: fit-content;
         padding: 4px 8px;
         border-radius: 999px;
-        background: rgba(255,255,255,0.75);
+        background: rgba(8,17,25,0.72);
         border: 1px solid var(--line);
         font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
-      .ops-incident-chip p { margin: 0; color: var(--ink); line-height: 1.4; }
+      .ops-incident-chip p { margin: 0; color: var(--ink-soft); line-height: 1.45; }
       .ops-countdown-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
       .ops-countdown-grid-dual { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .ops-countdown-card {
@@ -2195,7 +2242,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 14px;
         border-radius: 20px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.6);
+        background: var(--panel-2);
       }
       .ops-countdown-card__dial {
         position: relative;
@@ -2209,8 +2256,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         inset: 0;
         border-radius: 50%;
         background:
-          radial-gradient(circle at center, rgba(255,255,255,0.9) 0 56%, transparent 57%),
-          conic-gradient(from -90deg, var(--countdown-color) 0deg var(--countdown-progress), rgba(49,39,31,0.08) var(--countdown-progress) 360deg);
+          radial-gradient(circle at center, rgba(8,17,25,0.96) 0 56%, transparent 57%),
+          conic-gradient(from -90deg, var(--countdown-color) 0deg var(--countdown-progress), rgba(106,125,144,0.16) var(--countdown-progress) 360deg);
         animation: ops-orbit-breathe 3.2s ease-in-out infinite;
       }
       .ops-countdown-card__ring::after {
@@ -2218,7 +2265,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         position: absolute;
         inset: 8px;
         border-radius: 50%;
-        border: 1px dashed rgba(49,39,31,0.12);
+        border: 1px dashed rgba(167, 194, 221, 0.18);
         animation: ops-countdown-spin 12s linear infinite;
       }
       .ops-countdown-card__core {
@@ -2235,14 +2282,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-countdown-card__copy h3 { margin: 0 0 6px; font-size: 1rem; }
       .ops-flow-card {
         padding: 16px;
         border-radius: 20px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.6);
+        background: var(--panel-2);
       }
       .ops-flow-card h3 { margin: 0 0 6px; }
       .ops-relay {
@@ -2260,7 +2307,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         top: 14px;
         height: 4px;
         border-radius: 999px;
-        background: linear-gradient(90deg, rgba(38,77,125,0.2), rgba(123,75,40,0.2));
+        background: linear-gradient(90deg, rgba(105,180,255,0.24), rgba(255,179,125,0.24));
       }
       .ops-relay-compact { margin-top: 0; }
       .ops-relay__stage {
@@ -2275,15 +2322,15 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        background: rgba(255,255,255,0.9);
-        border: 2px solid rgba(49,39,31,0.18);
-        box-shadow: 0 0 0 8px rgba(255,255,255,0.58);
+        background: rgba(11,20,30,0.96);
+        border: 2px solid var(--line-strong);
+        box-shadow: 0 0 0 8px rgba(7,17,25,0.72);
       }
       .ops-relay__label {
         font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-relay__stage-done .ops-relay__node {
         background: var(--accent);
@@ -2295,13 +2342,13 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         animation: ops-relay-pulse 1.8s ease-in-out infinite;
       }
       .ops-relay__stage-queued .ops-relay__node {
-        background: rgba(255,255,255,0.96);
+        background: rgba(11,20,30,0.96);
       }
       .ops-source-ribbon {
         padding: 14px;
         border-radius: 18px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.58);
+        background: var(--panel-2);
       }
       .ops-source-ribbon__head {
         display: flex;
@@ -2314,14 +2361,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.78rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-source-ribbon__track {
         position: relative;
         height: 12px;
         border-radius: 999px;
         overflow: hidden;
-        background: rgba(49,39,31,0.08);
+        background: rgba(104, 123, 142, 0.16);
       }
       .ops-source-ribbon__fill {
         position: relative;
@@ -2333,7 +2380,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
         animation: ops-ribbon-shimmer 2.6s linear infinite;
       }
       .ops-source-ribbon__fill-good { background: linear-gradient(90deg, #2e8d73, #245c4d); }
@@ -2395,7 +2442,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: 14px;
         height: 14px;
         border-radius: 999px;
-        box-shadow: 0 0 0 6px rgba(255,255,255,0.85);
+        box-shadow: 0 0 0 6px rgba(7,17,25,0.9);
         animation: ops-pulse-dot 2.4s ease-in-out infinite;
       }
       .ops-map-zone__status-good { background: var(--good); }
@@ -2420,7 +2467,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-zone-ribbon__segment-warn { background: linear-gradient(90deg, #d5a443, #9a6d12); }
       .ops-zone-ribbon__segment-danger { background: linear-gradient(90deg, #cf6a54, #9f3d2d); }
       .ops-zone-ribbon__segment-neutral { background: linear-gradient(90deg, #8fa0b1, #4f5a67); }
-      .ops-map-zone__next { margin: 12px 0 0; color: var(--muted); }
+      .ops-map-zone__next { margin: 12px 0 0; color: var(--ink-soft); }
       .ops-timeline {
         display: grid;
         gap: 12px;
@@ -2431,11 +2478,11 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         grid-template-columns: 92px minmax(0, 1fr);
         gap: 12px;
         padding: 14px 0 14px 14px;
-        border-left: 3px solid rgba(49,39,31,0.12);
+        border-left: 3px solid rgba(167, 194, 221, 0.18);
       }
       .ops-timeline-entry__time {
         font-size: 0.8rem;
-        color: var(--muted);
+        color: var(--muted-soft);
         text-transform: uppercase;
         letter-spacing: 0.06em;
         padding-top: 2px;
@@ -2455,7 +2502,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        background: rgba(255,255,255,0.8);
+        background: var(--panel-2);
         border: 1px solid currentColor;
       }
       .ops-timeline-entry__countdown-good { color: var(--good); }
@@ -2466,7 +2513,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         margin: 0 0 4px;
         font-size: 1rem;
       }
-      .ops-timeline-entry__body p:last-child { margin: 0; color: var(--muted); }
+      .ops-timeline-entry__body p:last-child { margin: 0; color: var(--ink-soft); }
       .ops-conveyor {
         position: relative;
         display: flex;
@@ -2505,11 +2552,11 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: 32px;
         height: 32px;
         border-radius: 999px;
-        background: rgba(38,77,125,0.12);
+        background: rgba(105,180,255,0.12);
         color: var(--accent);
         font-weight: 700;
       }
-      .ops-sequence-step p { margin: 0; color: var(--muted); }
+      .ops-sequence-step p { margin: 0; color: var(--ink-soft); }
       .ops-spotlight-signal-row {
         display: grid;
         grid-template-columns: 96px minmax(0, 1fr);
@@ -2529,8 +2576,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         inset: 0;
         border-radius: 50%;
         background:
-          radial-gradient(circle at center, rgba(255,255,255,0.9) 0 56%, transparent 57%),
-          conic-gradient(from -90deg, var(--countdown-color) 0deg var(--countdown-progress), rgba(49,39,31,0.08) var(--countdown-progress) 360deg);
+          radial-gradient(circle at center, rgba(8,17,25,0.96) 0 56%, transparent 57%),
+          conic-gradient(from -90deg, var(--countdown-color) 0deg var(--countdown-progress), rgba(106,125,144,0.16) var(--countdown-progress) 360deg);
         animation: ops-orbit-breathe 3.1s ease-in-out infinite;
       }
       .ops-spotlight-orb__core {
@@ -2544,7 +2591,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.68rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-inline-meta {
         display: grid;
@@ -2556,7 +2603,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.73rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-inline-meta dd { margin: 4px 0 0; }
       .ops-meter { display: grid; gap: 6px; margin-top: 10px; }
@@ -2564,12 +2611,12 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-meter__track {
         height: 9px;
         border-radius: 999px;
-        background: rgba(49,39,31,0.08);
+        background: rgba(104,123,142,0.16);
         overflow: hidden;
       }
       .ops-meter__fill {
@@ -2593,19 +2640,25 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 16px;
         border-radius: 20px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.58);
+        background: var(--panel-2);
       }
       .ops-station-card h3 { margin: 0; }
       .ops-panel { padding: 18px; }
       .ops-panel__head, .ops-zone__head, .ops-task-card__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
       .ops-panel h2, .ops-zone h3, .ops-task-card h3, .ops-case h3, .ops-approval h3 { margin: 0; }
-      .ops-kicker { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.78rem; color: var(--muted); }
-      .ops-summary, .ops-meta { color: var(--muted); }
+      .ops-kicker { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.78rem; color: var(--muted-soft); }
+      .ops-summary, .ops-meta { color: var(--ink-soft); }
+      .ops-panel__note {
+        margin: 8px 0 0;
+        color: var(--muted-soft);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
       .ops-zone-grid, .ops-stack, .ops-truth-grid { display: grid; gap: 12px; }
       .ops-zone-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 14px; }
       .ops-task-card, .ops-zone, .ops-case, .ops-watchdog, .ops-approval, .ops-conversation { padding: 16px; }
       .ops-task-grid, .ops-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 14px 0 0; }
-      .ops-task-grid dt, .ops-meta-grid dt { font-size: 0.77rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+      .ops-task-grid dt, .ops-meta-grid dt { font-size: 0.77rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); }
       .ops-task-grid dd, .ops-meta-grid dd { margin: 4px 0 0; }
       .ops-span-2 { grid-column: 1 / -1; }
       .ops-subpanel { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -2615,9 +2668,9 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         align-items: center;
         padding: 5px 10px;
         border-radius: 999px;
-        background: rgba(79,90,103,0.10);
+        background: var(--neutral-bg);
         color: var(--neutral);
-        border: 1px solid rgba(79,90,103,0.15);
+        border: 1px solid rgba(125,145,166,0.2);
         font-size: 0.82rem;
         font-weight: 700;
       }
@@ -2631,38 +2684,44 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-chat-feed {
         border-radius: 18px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.5);
+        background: var(--panel-quiet);
         padding: 14px;
         min-height: 120px;
         max-height: 340px;
         overflow: auto;
       }
       .ops-chat-message { max-width: 92%; padding: 12px 14px; border-radius: 18px; margin-bottom: 10px; }
-      .ops-chat-message-user { margin-left: auto; background: rgba(38,77,125,0.10); }
-      .ops-chat-message-assistant { margin-right: auto; background: rgba(255,255,255,0.8); }
+      .ops-chat-message-user { margin-left: auto; background: rgba(105,180,255,0.12); }
+      .ops-chat-message-assistant { margin-right: auto; background: var(--panel-2); }
       .ops-chat-form, .ops-compose-form { display: grid; gap: 10px; margin-top: 14px; }
       textarea, input, select {
         width: 100%;
-        border: 1px solid rgba(49,39,31,0.18);
+        border: 1px solid var(--line);
         border-radius: 16px;
         padding: 12px 14px;
         font: inherit;
         color: var(--ink);
-        background: rgba(255,255,255,0.84);
+        background: var(--panel-quiet);
+      }
+      textarea::placeholder, input::placeholder { color: var(--muted-soft); }
+      textarea:focus, input:focus, select:focus {
+        outline: none;
+        border-color: rgba(105,180,255,0.42);
+        box-shadow: var(--focus-ring);
       }
       .ops-empty {
         padding: 18px;
         border: 1px dashed var(--line);
         border-radius: 18px;
-        color: var(--muted);
-        background: rgba(255,255,255,0.42);
+        color: var(--muted-soft);
+        background: rgba(13,24,35,0.82);
       }
       .ops-banner {
         margin-bottom: 14px;
         padding: 12px 14px;
         border-radius: 16px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.68);
+        background: var(--panel-2);
         display: none;
       }
       .ops-banner.is-visible { display: block; }
@@ -2677,7 +2736,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.76rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-field-compact {
         flex: 1 1 260px;
@@ -2705,14 +2764,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 14px;
         border-radius: 18px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.56);
+        background: var(--panel-2);
       }
       .ops-member-signal span {
         display: block;
         font-size: 0.76rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-member-signal strong {
         display: block;
@@ -2753,7 +2812,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.77rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-rail-card__meta dd { margin: 4px 0 0; }
       .ops-member-roster-card {
@@ -2782,7 +2841,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         font-size: 0.77rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-member-roster-card__meta dd { margin: 4px 0 0; }
       .ops-member-roster-card__actions,
@@ -2795,14 +2854,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         border: 1px solid var(--line);
         border-radius: 999px;
         padding: 8px 12px;
-        background: rgba(255,255,255,0.7);
-        color: var(--muted);
+        background: var(--panel-2);
+        color: var(--ink-soft);
         cursor: pointer;
         font-weight: 700;
       }
       .ops-member-tab.is-active {
-        background: var(--accent);
-        color: #f8f3ed;
+        background: linear-gradient(180deg, #2d78c7 0%, #255f9c 100%);
+        color: #f8fbff;
         border-color: transparent;
       }
       .ops-member-workbench,
@@ -2816,7 +2875,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 16px;
         border-radius: 18px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.56);
+        background: var(--panel-2);
       }
       .ops-member-pane h3,
       .ops-member-note h3,
@@ -2840,14 +2899,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 14px;
         border-radius: 16px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.52);
+        background: var(--panel-3);
       }
       .ops-member-stat span {
         display: block;
         font-size: 0.74rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-member-stat strong {
         display: block;
@@ -2867,22 +2926,22 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         padding: 10px 12px;
         border-radius: 16px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.48);
+        background: var(--panel-quiet);
       }
       .ops-member-checkbox input {
         width: auto;
         margin: 0;
       }
       .ops-member-safe {
-        border-color: rgba(38,77,125,0.14);
-        background: rgba(38,77,125,0.08);
+        border-color: rgba(105,180,255,0.2);
+        background: rgba(105,180,255,0.08);
       }
       .ops-member-empty-inline {
         padding: 14px;
         border: 1px dashed var(--line);
         border-radius: 16px;
-        color: var(--muted);
-        background: rgba(255,255,255,0.38);
+        color: var(--muted-soft);
+        background: rgba(13,24,35,0.78);
       }
       @keyframes ops-ticker-scroll {
         from { transform: translateX(0); }
@@ -2917,8 +2976,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         50% { filter: saturate(1.14) brightness(1.03); transform: scale(1.02); }
       }
       @keyframes ops-relay-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(123,75,40,0.24), 0 0 0 8px rgba(255,255,255,0.58); }
-        50% { box-shadow: 0 0 0 8px rgba(123,75,40,0.06), 0 0 0 10px rgba(255,255,255,0.7); }
+        0%, 100% { box-shadow: 0 0 0 0 rgba(255,179,125,0.24), 0 0 0 8px rgba(7,17,25,0.72); }
+        50% { box-shadow: 0 0 0 8px rgba(255,179,125,0.06), 0 0 0 10px rgba(7,17,25,0.82); }
       }
       @keyframes ops-ribbon-shimmer {
         0% { transform: translateX(-100%); }
@@ -4611,13 +4670,13 @@ export function renderOpsPortalChoicePage(input: {
       }
       .ops-choice-hero { padding: 28px; display: grid; gap: 14px; }
       .ops-choice-hero h1 { margin: 0; font-size: clamp(2.2rem, 4vw, 4rem); font-family: "Palatino Linotype", Georgia, serif; }
-      .ops-choice-hero p { margin: 0; color: var(--muted); }
+      .ops-choice-hero p { margin: 0; color: var(--ink-soft); }
       .ops-kicker {
         margin: 0;
         font-size: 0.8rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: var(--muted);
+        color: var(--muted-soft);
       }
       .ops-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
       .ops-choice-card {
@@ -4628,7 +4687,7 @@ export function renderOpsPortalChoicePage(input: {
         text-decoration: none;
       }
       .ops-choice-card h2 { margin: 0; font-size: 1.6rem; }
-      .ops-choice-card p { margin: 0; color: var(--muted); line-height: 1.5; }
+      .ops-choice-card p { margin: 0; color: var(--ink-soft); line-height: 1.5; }
       .ops-choice-card span {
         display: inline-flex;
         width: fit-content;
@@ -4636,7 +4695,7 @@ export function renderOpsPortalChoicePage(input: {
         padding: 10px 16px;
         border-radius: 999px;
         font-weight: 700;
-        background: rgba(38,77,125,0.12);
+        background: rgba(105,180,255,0.12);
         color: var(--accent);
       }
       .ops-choice-card-legacy span { background: rgba(123,75,40,0.14); color: var(--accent-2); }
@@ -4645,9 +4704,9 @@ export function renderOpsPortalChoicePage(input: {
         padding: 18px 22px;
         border-radius: 22px;
         border: 1px solid var(--line);
-        background: rgba(255,255,255,0.66);
+        background: var(--panel-2);
       }
-      .ops-choice-notes p { margin: 0; color: var(--muted); }
+      .ops-choice-notes p { margin: 0; color: var(--ink-soft); }
       @media (max-width: 900px) {
         .ops-choice-grid { grid-template-columns: 1fr; }
       }

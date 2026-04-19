@@ -1826,6 +1826,38 @@ test("ops portal routes expose twin state and allow claiming tasks", async () =>
       assert.ok(html.includes('id="ops-hands-workbench"'));
       assert.ok(html.includes('id="ops-support-workbench"'));
 
+      const marker = '<script id="ops-portal-model" type="application/json">';
+      const modelStart = html.indexOf(marker);
+      assert.ok(modelStart >= 0);
+      const modelBodyStart = modelStart + marker.length;
+      const modelEnd = html.indexOf("</script>", modelBodyStart);
+      const portalModel = JSON.parse(html.slice(modelBodyStart, modelEnd)) as {
+        sessionToken?: string;
+      };
+      assert.equal(typeof portalModel.sessionToken, "string");
+
+      const sessionHeaders = { "x-studio-brain-ops-session": String(portalModel.sessionToken) };
+      const sessionMeResponse = await fetch(`${baseUrl}/api/ops/session/me`, {
+        headers: sessionHeaders,
+      });
+      assert.equal(sessionMeResponse.status, 200);
+      const sessionMePayload = (await sessionMeResponse.json()) as {
+        ok: boolean;
+        session: { actorId: string };
+      };
+      assert.equal(sessionMePayload.ok, true);
+      assert.equal(sessionMePayload.session.actorId, "staff-test-uid");
+
+      const memberDetailResponse = await fetch(`${baseUrl}/api/ops/members/member-1`, {
+        headers: sessionHeaders,
+      });
+      assert.equal(memberDetailResponse.status, 200);
+
+      const memberActivityResponse = await fetch(`${baseUrl}/api/ops/members/member-1/activity`, {
+        headers: sessionHeaders,
+      });
+      assert.equal(memberActivityResponse.status, 200);
+
       const choiceResponse = await fetch(`${baseUrl}/ops/choice`, {
         headers: { authorization: "Bearer test-staff" },
       });
@@ -2190,9 +2222,11 @@ test("ops staff replacement routes expose session context and member management 
       const portalHtml = await portalResponse.text();
       assert.ok(portalHtml.includes('id="ops-member-workbench"'));
       assert.ok(portalHtml.includes('id="ops-member-create-trigger"'));
+      assert.ok(portalHtml.includes('data-viewport-toggle="single-screen"'));
       assert.ok(portalHtml.includes("Never type raw card numbers here"));
       assert.ok(portalHtml.includes("Roster and onboarding"));
-      assert.ok(portalHtml.includes("Selected member"));
+      assert.ok(portalHtml.includes("One member, one intent"));
+      assert.ok(portalHtml.includes('class="ops-shell"'));
       assert.ok(!portalHtml.includes('window.prompt("Display name"'));
       assert.ok(!portalHtml.includes('window.prompt("Membership tier"'));
       assert.ok(!portalHtml.includes('window.prompt("Comma-separated ops roles"'));

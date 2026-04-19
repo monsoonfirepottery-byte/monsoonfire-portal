@@ -1744,7 +1744,60 @@ test("ops scorecard endpoint returns KPI status and records compute event", asyn
 });
 
 test("ops portal routes expose twin state and allow claiming tasks", async () => {
-  const opsService = createOpsService({ store: new MemoryOpsStore() });
+  const member = {
+    uid: "member-1",
+    email: "member@example.com",
+    displayName: "Studio Member",
+    membershipTier: "drop-in",
+    kilnPreferences: "Cone 6 preferred",
+    staffNotes: "Prefers pickup texts.",
+    billing: null,
+    portalRole: "member" as const,
+    opsRoles: [] as string[],
+    opsCapabilities: [] as string[],
+    createdAt: "2026-04-17T00:00:00.000Z",
+    updatedAt: "2026-04-17T00:00:00.000Z",
+    lastSeenAt: "2026-04-16T20:00:00.000Z",
+    metadata: {},
+  };
+  const opsService = createOpsService({
+    store: new MemoryOpsStore(),
+    staffDataSource: {
+      async listMembers() { return [member as never]; },
+      async getMember(uid) { return uid === member.uid ? (member as never) : null; },
+      async createMember() { throw new Error("not used in this test"); },
+      async updateMemberProfile() { throw new Error("not used in this test"); },
+      async updateMemberBilling() { throw new Error("not used in this test"); },
+      async updateMemberMembership() { throw new Error("not used in this test"); },
+      async updateMemberRole() { throw new Error("not used in this test"); },
+      async getMemberActivity(uid) {
+        return {
+          uid,
+          reservations: 1,
+          libraryLoans: 0,
+          supportThreads: 1,
+          events: 0,
+          lastReservationAt: member.lastSeenAt,
+          lastLoanAt: null,
+          lastEventAt: member.lastSeenAt,
+        };
+      },
+      async listReservations() { return []; },
+      async getReservationBundle() { return null; },
+      async listEvents() { return []; },
+      async listReports() { return []; },
+      async getLendingSnapshot() {
+        return {
+          requests: [],
+          loans: [],
+          recommendationCount: 0,
+          tagSubmissionCount: 0,
+          coverReviewCount: 0,
+          generatedAt: "2026-04-17T00:00:00.000Z",
+        };
+      },
+    },
+  });
   const task = createHumanTaskSeed({
     id: "task_ops_portal_claim",
     title: "Unload kiln 1",
@@ -1771,6 +1824,7 @@ test("ops portal routes expose twin state and allow claiming tasks", async () =>
         compareEnabled: true,
         legacyUrl: "https://portal.monsoonfire.com/staff",
       },
+      adminToken: "test-ops-session-secret",
     },
     async (baseUrl) => {
       const twinResponse = await fetch(`${baseUrl}/api/ops/twin`, {
@@ -2091,6 +2145,7 @@ test("ops staff replacement routes expose session context and member management 
         enabled: true,
         requireStaffAuth: true,
       },
+      adminToken: "test-ops-session-secret",
     },
     async (baseUrl) => {
       const sessionResponse = await fetch(`${baseUrl}/api/ops/session/me`, {

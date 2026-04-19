@@ -129,6 +129,14 @@ function installPlaywrightCleanup(resources) {
   };
 }
 
+function extractOpsPageModel(html) {
+  const match = String(html || "").match(/<script id="ops-portal-model" type="application\/json">([\s\S]*?)<\/script>/i);
+  if (!match) {
+    throw new Error("Could not locate the ops portal page model in the deployed HTML.");
+  }
+  return JSON.parse(match[1]);
+}
+
 async function waitForOpsFrame(page) {
   const iframe = page.locator("iframe").first();
   await iframe.waitFor({ timeout: 30000 });
@@ -174,6 +182,8 @@ async function runSmoke(argv = process.argv.slice(2)) {
     throw new Error(`Deployed ops HTML fetch failed: HTTP ${deployedResponse.status}`);
   }
 
+  const deployedPageModel = extractOpsPageModel(deployedHtml);
+
   const summary = {
     ok: false,
     baseUrl: options.baseUrl,
@@ -192,8 +202,48 @@ async function runSmoke(argv = process.argv.slice(2)) {
     headline: "",
     narrative: "",
     protocol: "",
+    memberProbe: null,
     generatedAt: new Date().toISOString(),
   };
+
+  const probeMember = Array.isArray(deployedPageModel.snapshot?.members) ? deployedPageModel.snapshot.members[0] : null;
+  if (!probeMember?.uid) {
+    summary.memberProbe = {
+      ok: false,
+      skipped: true,
+      reason: "no member rows available in the hosted session snapshot",
+    };
+  } else if (!deployedPageModel.sessionToken) {
+    summary.memberProbe = {
+      ok: false,
+      skipped: false,
+      uid: probeMember.uid,
+      reason: "missing x-studio-brain-ops-session token in deployed page model",
+    };
+  } else {
+    const memberHeaders = {
+      "x-studio-brain-ops-session": deployedPageModel.sessionToken,
+    };
+    const detailUrl = `${options.baseUrl}/api/ops/members/${encodeURIComponent(probeMember.uid)}`;
+    const activityUrl = `${detailUrl}/activity`;
+    const [detailResponse, activityResponse] = await Promise.all([
+      fetch(detailUrl, { headers: memberHeaders }),
+      fetch(activityUrl, { headers: memberHeaders }),
+    ]);
+    const [detailBody, activityBody] = await Promise.all([
+      detailResponse.text(),
+      activityResponse.text(),
+    ]);
+    summary.memberProbe = {
+      ok: detailResponse.ok && activityResponse.ok,
+      skipped: false,
+      uid: probeMember.uid,
+      detailStatus: detailResponse.status,
+      activityStatus: activityResponse.status,
+      detailSnippet: detailBody.slice(0, 220),
+      activitySnippet: activityBody.slice(0, 220),
+    };
+  }
 
   let browser = null;
   let context = null;
@@ -267,7 +317,6 @@ async function runSmoke(argv = process.argv.slice(2)) {
     summary.protocol = await frame.evaluate(() => window.location.protocol);
     summary.headline = clean(await frame.locator(".ops-hero h2, .ops-hero h1").first().textContent());
     summary.narrative = clean(await frame.locator(".ops-summary, .ops-hero p").nth(1).textContent().catch(() => ""));
-
     await page.screenshot({ path: options.screenshotPath, fullPage: true });
 
     const hasSecurityError = summary.consoleErrors.some((entry) => /SecurityError|replaceState/i.test(entry.text));
@@ -275,11 +324,13 @@ async function runSmoke(argv = process.argv.slice(2)) {
     const isDark = summary.theme?.colorScheme === "dark" && /^#0/i.test(summary.theme?.bg || "");
     const isQuiet = /quiet and waiting for fresher live telemetry|quiet and ready for handoff/i.test(bodyText);
     const publicShellMounted = /Monsoon Fire Portal/i.test(shellHtml);
+    const memberBridgeHealthy = Boolean(summary.memberProbe?.ok);
 
     summary.ok = Boolean(
       publicShellMounted
       && isDark
       && isQuiet
+      && memberBridgeHealthy
       && !hasSecurityError
       && !hasBridgeUnavailable
       && summary.pageErrors.length === 0
@@ -288,6 +339,7 @@ async function runSmoke(argv = process.argv.slice(2)) {
       publicShellMounted,
       isDark,
       isQuiet,
+      memberBridgeHealthy,
       hasSecurityError,
       hasBridgeUnavailable,
       pageErrors: summary.pageErrors.length,

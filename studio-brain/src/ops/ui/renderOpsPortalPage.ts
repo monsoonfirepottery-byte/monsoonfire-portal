@@ -318,8 +318,15 @@ function renderMemberCard(
     : '<span class="ops-chip">No ops roles</span>';
   const billingSummary = row.billing?.paymentMethodSummary
     || (row.billing?.stripeCustomerId ? "Tokenized billing refs on file" : "No billing profile on file");
+  const recommendationLabel = !row.membershipTier
+    ? "Set membership"
+    : (!row.billing?.stripeCustomerId && !row.billing?.paymentMethodSummary)
+      ? "Attach billing"
+      : (row.portalRole !== "member" && row.opsRoles.length === 0)
+        ? "Mask access"
+        : (!row.staffNotes ? "Add context" : "Record healthy");
   const actions = [
-    `<button type="button" class="ops-button" data-member-open="${esc(row.uid)}" data-member-tab="overview">Open</button>`,
+    `<button type="button" class="ops-button" data-member-open="${esc(row.uid)}" data-member-tab="overview">Focus</button>`,
     options.canEditProfile
       ? `<button type="button" class="ops-button ops-button-secondary" data-member-open="${esc(row.uid)}" data-member-tab="profile">Profile</button>`
       : "",
@@ -337,7 +344,7 @@ function renderMemberCard(
       : "",
   ].filter(Boolean);
   return `
-    <article class="ops-case ops-tone-neutral ops-member-roster-card" data-member-card="${esc(row.uid)}" data-member-filter="${esc(filterText)}">
+    <article class="ops-case ops-tone-neutral ops-member-roster-card ops-rail-card" data-member-card="${esc(row.uid)}" data-member-filter="${esc(filterText)}" data-member-open="${esc(row.uid)}" data-member-tab="overview">
       <div class="ops-member-roster-card__head">
         <div>
           <p class="ops-kicker">${esc(formatRoleLabel(row.portalRole))} · ${esc(row.membershipTier || "membership unset")}</p>
@@ -351,7 +358,7 @@ function renderMemberCard(
         <div><dt>Membership</dt><dd>${esc(row.membershipTier || "none")}</dd></div>
         <div><dt>Last seen</dt><dd>${esc(formatTimestamp(row.lastSeenAt))}</dd></div>
         <div><dt>Billing</dt><dd>${esc(billingSummary)}</dd></div>
-        <div><dt>Updated</dt><dd>${esc(formatTimestamp(row.updatedAt))}</dd></div>
+        <div><dt>Next move</dt><dd>${esc(recommendationLabel)}</dd></div>
       </dl>
       ${actions.length ? `<div class="ops-member-roster-card__actions">${actions.join("")}</div>` : ""}
     </article>
@@ -394,16 +401,17 @@ function renderMemberOpsWorkspace(input: {
 }): string {
   const billingReadyCount = input.members.filter((row) => row.billing?.stripeCustomerId || row.billing?.paymentMethodSummary).length;
   const onboardingReadyCount = input.members.filter((row) => !row.membershipTier || !row.billing?.stripeCustomerId).length;
+  const arrivalLinkedCount = input.reservations.filter((row) => !!row.ownerUid).length;
   return `
-    <div class="ops-member-ops-grid">
-      <div class="ops-panel">
+    <div class="ops-member-focus-layout">
+      <div class="ops-panel ops-member-focus-rail">
         <div class="ops-panel__head">
           <div>
             <p class="ops-kicker">Member ops</p>
             <h2>Roster and onboarding</h2>
           </div>
         </div>
-        <p class="ops-panel__note">Search once, open one member, and make the change without losing the trail.</p>
+        <p class="ops-panel__note">Search once, pick one person, and move the screen into the exact edit view that matches the decision you need to make.</p>
         <div class="ops-member-toolbar">
           <label class="ops-field ops-field-compact ops-member-search-field">
             <span>Find a member</span>
@@ -424,6 +432,10 @@ function renderMemberOpsWorkspace(input: {
             <span>Needs follow-through</span>
             <strong>${esc(onboardingReadyCount)}</strong>
           </article>
+          <article class="ops-member-signal">
+            <span>Arrival context</span>
+            <strong>${esc(arrivalLinkedCount)}</strong>
+          </article>
         </div>
         <div class="ops-scroll-stack ops-member-roster" id="ops-member-roster">
           ${input.canViewMembers
@@ -431,33 +443,16 @@ function renderMemberOpsWorkspace(input: {
             : '<div class="ops-empty">This role can use the internet lane, but the member roster is masked.</div>'}
         </div>
       </div>
-      <div class="ops-panel">
+      <div class="ops-panel ops-member-focus-stage">
         <div class="ops-panel__head">
           <div>
-            <p class="ops-kicker">Workbench</p>
-            <h2>Selected member</h2>
+            <p class="ops-kicker">Focus stage</p>
+            <h2>One member, one intent</h2>
           </div>
         </div>
-        <p class="ops-panel__note">Profile, membership, roles, and safe billing references stay in one place.</p>
+        <p class="ops-panel__note">The selected person stays centered while the view changes around them. Use the stage tabs to swap intent instead of scrolling for the right form. Never type raw card numbers here.</p>
         <div id="ops-member-workbench" class="ops-member-workbench">
           <div class="ops-empty">Select a member to manage profile, membership, roles, and billing without leaving the lane.</div>
-        </div>
-      </div>
-      <div class="ops-panel">
-        <div class="ops-panel__head">
-          <div>
-            <p class="ops-kicker">Context rail</p>
-            <h2>Context and safety</h2>
-          </div>
-        </div>
-        <p class="ops-panel__note">Keep arrival context and billing safety visible while you edit.</p>
-        <div id="ops-member-context" class="ops-member-context">
-          ${input.reservationCards || '<div class="ops-empty">No member arrival bundles are visible.</div>'}
-          <article class="ops-member-note">
-            <p class="ops-kicker">Billing safety</p>
-            <h3>Never type raw card numbers here</h3>
-            <p class="ops-summary">Use Stripe-hosted collection for payment details. This workspace only stores tokenized references, safe card summaries, and billing contact context.</p>
-          </article>
         </div>
       </div>
     </div>
@@ -1401,10 +1396,11 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
     }),
   ];
   return `
-    <nav class="ops-surface-nav">
-      ${surfaceTabs.map((surface) => `<button type="button" class="ops-surface-tab" data-surface-tab="${esc(surface)}">${esc(humanizeToken(surface))}</button>`).join("")}
-    </nav>
-
+    <div class="ops-shell">
+      <nav class="ops-surface-nav">
+        ${surfaceTabs.map((surface) => `<button type="button" class="ops-surface-tab" data-surface-tab="${esc(surface)}">${esc(humanizeToken(surface))}</button>`).join("")}
+      </nav>
+      <div class="ops-surfaces">
     <section class="ops-surface" data-surface="manager">
       <div class="ops-manager-canvas">
         ${renderModeTabs("manager", [
@@ -1946,7 +1942,8 @@ function renderSurfaceShell(model: OpsPortalSnapshot, displayState: StationDispl
         `)}
       </div>
     </section>
-
+      </div>
+    </div>
   `;
 }
 
@@ -1988,6 +1985,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       * { box-sizing: border-box; }
       body {
         margin: 0;
+        min-height: 100vh;
         color: var(--ink);
         line-height: 1.45;
         font-family: "Aptos", "Segoe UI", system-ui, sans-serif;
@@ -1996,7 +1994,16 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
           radial-gradient(circle at top right, rgba(255,179,125,0.08), transparent 20%),
           linear-gradient(180deg, #08131d 0%, #09131d 44%, #060d15 100%);
       }
-      main { max-width: 1560px; margin: 0 auto; padding: 28px 24px 44px; }
+      main {
+        max-width: 1560px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .ops-shell,
+      .ops-surfaces {
+        display: grid;
+        gap: 18px;
+      }
       .ops-hero, .ops-panel, .ops-task-card, .ops-case, .ops-zone, .ops-watchdog, .ops-approval, .ops-conversation {
         background: var(--panel);
         border: 1px solid var(--line-strong);
@@ -2004,10 +2011,22 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         box-shadow: var(--shadow);
       }
       .ops-hero {
-        padding: 24px;
+        padding: 20px 22px;
         display: grid;
-        gap: 18px;
+        gap: 16px;
         margin-bottom: 18px;
+      }
+      .ops-hero__top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .ops-hero__actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
       }
       .ops-hero h1 { margin: 0 0 6px; font-size: clamp(2rem, 2.8vw, 3.3rem); font-family: "Palatino Linotype", Georgia, serif; }
       .ops-hero p { margin: 0; color: var(--ink-soft); max-width: 92ch; }
@@ -2015,7 +2034,11 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-kpi { padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: var(--panel-2); }
       .ops-kpi span { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-soft); }
       .ops-kpi strong { display: block; margin-top: 10px; font-size: 1.55rem; }
-      .ops-surface-nav { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+      .ops-surface-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
       .ops-surface-tab, .ops-button, .ops-chip {
         border: 1px solid transparent;
         border-radius: 999px;
@@ -2028,9 +2051,19 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-surface-tab:hover, .ops-button:hover, .ops-chip:hover, .ops-mode-tab:hover, .ops-member-tab:hover { border-color: var(--line-strong); }
       .ops-surface-tab.is-active, .ops-button { background: linear-gradient(180deg, #2d78c7 0%, #255f9c 100%); color: #f8fbff; }
       .ops-button-secondary { background: rgba(255,179,125,0.12); color: var(--accent-2); border-color: rgba(255,179,125,0.22); }
+      .ops-button-ghost {
+        background: rgba(255,255,255,0.03);
+        color: var(--ink-soft);
+        border-color: var(--line);
+      }
+      .ops-button-ghost.is-active {
+        background: rgba(105,180,255,0.14);
+        color: var(--accent);
+        border-color: rgba(105,180,255,0.34);
+      }
       .ops-chip { background: var(--panel-2); color: var(--ink-soft); border-color: var(--line); }
       .ops-chip.is-selected { background: rgba(105,180,255,0.14); color: var(--accent); border-color: rgba(105,180,255,0.34); }
-      .ops-surface { display: none; margin-bottom: 18px; }
+      .ops-surface { display: none; }
       .ops-surface.is-active { display: block; }
       .ops-mode-nav {
         position: sticky;
@@ -2077,7 +2110,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         color: #f8f3ed;
       }
       .ops-mode-panel { display: none; }
-      .ops-mode-panel.is-active { display: block; }
+      .ops-mode-panel.is-active { display: block; min-height: 0; }
       .ops-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
       .ops-layout-hands { grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.05fr); }
       .ops-manager-canvas { display: grid; gap: 18px; }
@@ -2632,8 +2665,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-scroll-stack {
         display: grid;
         gap: 12px;
-        max-height: min(72vh, 1080px);
         overflow: auto;
+        min-height: 0;
         padding-right: 4px;
       }
       .ops-station-card {
@@ -2643,7 +2676,12 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         background: var(--panel-2);
       }
       .ops-station-card h3 { margin: 0; }
-      .ops-panel { padding: 18px; }
+      .ops-panel {
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
       .ops-panel__head, .ops-zone__head, .ops-task-card__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
       .ops-panel h2, .ops-zone h3, .ops-task-card h3, .ops-case h3, .ops-approval h3 { margin: 0; }
       .ops-kicker { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.78rem; color: var(--muted-soft); }
@@ -2742,11 +2780,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         flex: 1 1 260px;
         min-width: 240px;
       }
-      .ops-member-ops-grid {
-        display: grid;
-        grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.35fr) minmax(280px, 0.95fr);
-        gap: 18px;
-      }
       .ops-member-toolbar {
         display: flex;
         gap: 12px;
@@ -2756,7 +2789,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       }
       .ops-member-signal-strip {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
         margin-top: 14px;
       }
@@ -2778,6 +2811,17 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         margin-top: 8px;
         font-size: 1.35rem;
       }
+      .ops-member-focus-layout {
+        display: grid;
+        grid-template-columns: minmax(300px, 0.88fr) minmax(0, 1.42fr);
+        gap: 18px;
+        min-height: 0;
+      }
+      .ops-member-focus-rail,
+      .ops-member-focus-stage,
+      .ops-workspace-grid {
+        min-height: 0;
+      }
       .ops-workspace-grid {
         display: grid;
         grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.35fr) minmax(280px, 0.95fr);
@@ -2786,6 +2830,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       .ops-workbench {
         display: grid;
         gap: 12px;
+        min-height: 0;
       }
       .ops-rail-card {
         display: grid;
@@ -2850,6 +2895,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         flex-wrap: wrap;
         gap: 8px;
       }
+      .ops-member-roster-card__actions { margin-top: 2px; }
       .ops-member-tab {
         border: 1px solid var(--line);
         border-radius: 999px;
@@ -2864,10 +2910,30 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         color: #f8fbff;
         border-color: transparent;
       }
-      .ops-member-workbench,
-      .ops-member-context {
+      .ops-member-workbench { display: grid; gap: 12px; min-height: 0; }
+      .ops-member-stage {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-height: 0;
+      }
+      .ops-member-stage__header {
+        display: flex;
+        gap: 14px;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .ops-member-stage__spotlight {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.94fr) minmax(0, 1.06fr);
+        gap: 12px;
+      }
+      .ops-member-stage__body {
         display: grid;
         gap: 12px;
+        min-height: 0;
+        overflow: auto;
+        padding-right: 4px;
       }
       .ops-member-pane,
       .ops-member-note,
@@ -2932,16 +2998,70 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         width: auto;
         margin: 0;
       }
+      .ops-member-empty-inline {
+        padding: 14px 16px;
+        border-radius: 16px;
+        border: 1px dashed var(--line);
+        color: var(--muted-soft);
+        background: rgba(13,24,35,0.72);
+      }
+      .ops-member-roster {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
       .ops-member-safe {
         border-color: rgba(105,180,255,0.2);
         background: rgba(105,180,255,0.08);
       }
-      .ops-member-empty-inline {
-        padding: 14px;
-        border: 1px dashed var(--line);
-        border-radius: 16px;
-        color: var(--muted-soft);
-        background: rgba(13,24,35,0.78);
+      body[data-viewport-preference="single-screen"] {
+        overflow: hidden;
+      }
+      body[data-viewport-preference="single-screen"] main {
+        height: 100dvh;
+        max-height: 100dvh;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        gap: 14px;
+        overflow: hidden;
+        padding: 18px 20px;
+      }
+      body[data-viewport-preference="single-screen"] .ops-hero {
+        margin-bottom: 0;
+      }
+      body[data-viewport-preference="single-screen"] .ops-shell,
+      body[data-viewport-preference="single-screen"] .ops-surfaces,
+      body[data-viewport-preference="single-screen"] .ops-surface.is-active,
+      body[data-viewport-preference="single-screen"] .ops-manager-canvas,
+      body[data-viewport-preference="single-screen"] .ops-mode-panel.is-active,
+      body[data-viewport-preference="single-screen"] .ops-layout,
+      body[data-viewport-preference="single-screen"] .ops-layout-hands,
+      body[data-viewport-preference="single-screen"] .ops-workspace-grid,
+      body[data-viewport-preference="single-screen"] .ops-member-focus-layout {
+        min-height: 0;
+        height: 100%;
+      }
+      body[data-viewport-preference="single-screen"] .ops-shell {
+        grid-template-rows: auto minmax(0, 1fr);
+        overflow: hidden;
+      }
+      body[data-viewport-preference="single-screen"] .ops-surfaces {
+        overflow: hidden;
+      }
+      body[data-viewport-preference="single-screen"] .ops-mode-panel.is-active {
+        display: grid;
+        overflow: auto;
+        padding-right: 4px;
+      }
+      body[data-viewport-preference="single-screen"] .ops-member-focus-rail,
+      body[data-viewport-preference="single-screen"] .ops-member-focus-stage,
+      body[data-viewport-preference="single-screen"] .ops-member-stage {
+        overflow: hidden;
+      }
+      body[data-viewport-preference="single-screen"] .ops-scroll-stack,
+      body[data-viewport-preference="single-screen"] .ops-member-stage__body,
+      body[data-viewport-preference="single-screen"] .ops-chat-feed {
+        flex: 1 1 auto;
+        max-height: none;
       }
       @keyframes ops-ticker-scroll {
         from { transform: translateX(0); }
@@ -3001,31 +3121,44 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       @media (max-width: 1280px) {
         .ops-kpi-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-countdown-grid, .ops-countdown-grid-dual, .ops-member-signal-strip, .ops-member-activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ops-scan-grid, .ops-detail-grid, .ops-command-grid, .ops-motion-grid { grid-template-columns: 1fr; }
-        .ops-member-ops-grid { grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.15fr); }
-        .ops-member-ops-grid > :last-child { grid-column: 1 / -1; }
+        .ops-member-focus-layout { grid-template-columns: minmax(280px, 0.94fr) minmax(0, 1.06fr); }
+        .ops-member-stage__spotlight { grid-template-columns: 1fr; }
         .ops-workspace-grid { grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.15fr); }
         .ops-workspace-grid > :last-child { grid-column: 1 / -1; }
       }
       @media (max-width: 1100px) {
-        .ops-layout, .ops-layout-hands, .ops-bottom-grid, .ops-scan-grid, .ops-detail-grid, .ops-command-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-motion-grid, .ops-countdown-grid, .ops-countdown-grid-dual, .ops-member-ops-grid, .ops-workspace-grid, .ops-member-pane__split, .ops-member-form-grid { grid-template-columns: 1fr; }
+        .ops-layout, .ops-layout-hands, .ops-bottom-grid, .ops-scan-grid, .ops-detail-grid, .ops-command-grid, .ops-gauge-strip, .ops-incident-strip, .ops-sequence-grid, .ops-motion-grid, .ops-countdown-grid, .ops-countdown-grid-dual, .ops-member-focus-layout, .ops-workspace-grid, .ops-member-pane__split, .ops-member-form-grid { grid-template-columns: 1fr; }
         .ops-studio-map { grid-template-columns: 1fr; }
         .ops-map-zone-0, .ops-map-zone-1, .ops-map-zone-2, .ops-map-zone-3 { grid-column: span 1; }
         .ops-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ops-hero__top { flex-direction: column; }
         .ops-mode-nav { top: 8px; }
       }
       @media (max-width: 720px) {
         .ops-kpi-grid, .ops-member-signal-strip, .ops-member-activity-grid { grid-template-columns: 1fr; }
+        body[data-viewport-preference="single-screen"] { overflow: auto; }
+        body[data-viewport-preference="single-screen"] main {
+          height: auto;
+          max-height: none;
+          overflow: visible;
+          padding: 18px 16px 28px;
+        }
       }
     </style>
   </head>
   <body>
     <main>
       <header class="ops-hero">
-        <div>
-          <p class="ops-kicker">Studio Brain Autonomous Studio OS</p>
-          <h1>${esc(model.snapshot.twin.headline)}</h1>
-          <p>${esc(model.snapshot.twin.narrative)}</p>
-          <p class="ops-meta" style="margin-top:10px;">Generated ${esc(formatTimestamp(model.snapshot.generatedAt))} · Truth ${esc(model.snapshot.truth.readiness)} · Current risk ${esc(model.snapshot.twin.currentRisk || "none surfaced")}</p>
+        <div class="ops-hero__top">
+          <div>
+            <p class="ops-kicker">Studio Brain Autonomous Studio OS</p>
+            <h1>${esc(model.snapshot.twin.headline)}</h1>
+            <p>${esc(model.snapshot.twin.narrative)}</p>
+            <p class="ops-meta" style="margin-top:10px;">Generated ${esc(formatTimestamp(model.snapshot.generatedAt))} · Truth ${esc(model.snapshot.truth.readiness)} · Current risk ${esc(model.snapshot.twin.currentRisk || "none surfaced")}</p>
+          </div>
+          <div class="ops-hero__actions">
+            <button type="button" class="ops-button ops-button-ghost" id="ops-viewport-toggle" data-viewport-toggle="single-screen" aria-pressed="true">Single-screen focus</button>
+          </div>
         </div>
         <div class="ops-kpi-grid">
           <article class="ops-kpi"><span>Tasks</span><strong>${esc(model.snapshot.tasks.length)}</strong></article>
@@ -3057,6 +3190,41 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         forge: "lab",
       };
       const activeModes = { ...defaultModes };
+      const viewportPreferenceKey = "ops:viewport-preference";
+
+      function normalizeViewportPreference(value) {
+        return value === "document" ? "document" : "single-screen";
+      }
+
+      function readViewportPreference() {
+        try {
+          return normalizeViewportPreference(window.localStorage.getItem(viewportPreferenceKey));
+        } catch {
+          return "single-screen";
+        }
+      }
+
+      let viewportPreference = readViewportPreference();
+
+      function applyViewportPreference() {
+        document.body.dataset.viewportPreference = viewportPreference;
+        const toggle = document.getElementById("ops-viewport-toggle");
+        if (toggle) {
+          const singleScreen = viewportPreference === "single-screen";
+          toggle.textContent = singleScreen ? "Single-screen focus" : "Document flow";
+          toggle.classList.toggle("is-active", singleScreen);
+          toggle.setAttribute("aria-pressed", singleScreen ? "true" : "false");
+          toggle.setAttribute("data-viewport-toggle", viewportPreference);
+        }
+      }
+
+      function setViewportPreference(nextPreference) {
+        viewportPreference = normalizeViewportPreference(nextPreference);
+        try {
+          window.localStorage.setItem(viewportPreferenceKey, viewportPreference);
+        } catch {}
+        applyViewportPreference();
+      }
 
       function syncOpsUrl(surface) {
         if (
@@ -3156,6 +3324,12 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       document.querySelectorAll("[data-surface-tab]").forEach((button) => {
         button.addEventListener("click", () => setSurface(button.getAttribute("data-surface-tab")));
       });
+      const viewportToggle = document.getElementById("ops-viewport-toggle");
+      if (viewportToggle) {
+        viewportToggle.addEventListener("click", () => {
+          setViewportPreference(viewportPreference === "single-screen" ? "document" : "single-screen");
+        });
+      }
       document.querySelectorAll("[data-surface-mode-tab]").forEach((button) => {
         button.addEventListener("click", () => {
           const surface = button.getAttribute("data-surface-mode-tab");
@@ -3173,6 +3347,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       if (requestedMode) {
         activeModes[requestedSurface] = requestedMode;
       }
+      applyViewportPreference();
       setSurface(visibleSurfaces.includes(requestedSurface) ? requestedSurface : (visibleSurfaces[0] || "manager"));
 
       function escapeHtml(value) {
@@ -3293,6 +3468,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
 
       function allowedMemberTabs() {
         const tabs = ["overview"];
+        tabs.push("context");
         if (memberPermissions.canEditProfile) tabs.push("profile");
         if (memberPermissions.canEditMembership) tabs.push("membership");
         if (memberPermissions.canEditRole) tabs.push("roles");
@@ -3361,7 +3537,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         }
         return {
           title: "Record is healthy",
-          body: "The profile, membership, and billing references are all present. Use the context rail to inspect linked reservations or recent activity before making changes.",
+          body: "The profile, membership, and billing references are all present. Use the context view to inspect linked reservations or recent activity before making changes.",
           tab: "overview",
         };
       }
@@ -3380,20 +3556,21 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         }
         roster.innerHTML = rows.map((row) => {
           const selected = !memberState.createMode && memberState.selectedUid === row.uid;
+          const recommendation = memberRecommendation(row);
           const roles = Array.isArray(row.opsRoles) && row.opsRoles.length
             ? row.opsRoles.map((role) => \`<span class="ops-pill">\${escapeHtml(formatRoleLabel(role))}</span>\`).join("")
             : '<span class="ops-chip">No ops roles</span>';
           const billingSummary = row.billing?.paymentMethodSummary
             || (row.billing?.stripeCustomerId ? "Tokenized billing refs on file" : "No billing profile on file");
           const actions = [
-            \`<button type="button" class="ops-button" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="overview">Open</button>\`,
-            memberPermissions.canEditProfile ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="profile">Profile</button>\` : "",
-            memberPermissions.canEditMembership ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="membership">Membership</button>\` : "",
-            memberPermissions.canEditRole ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="roles">Roles</button>\` : "",
+            \`<button type="button" class="ops-button" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="overview">Focus</button>\`,
+            recommendation.tab !== "overview"
+              ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="\${escapeHtml(recommendation.tab)}">\${escapeHtml(recommendation.title)}</button>\`
+              : "",
             memberPermissions.canEditBilling ? \`<button type="button" class="ops-button ops-button-secondary" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="billing">Billing</button>\` : "",
           ].filter(Boolean).join("");
           return \`
-            <article class="ops-case ops-tone-neutral ops-member-roster-card\${selected ? " is-selected" : ""}" data-member-card="\${escapeHtml(row.uid)}">
+            <article class="ops-case ops-tone-neutral ops-member-roster-card ops-rail-card\${selected ? " is-selected" : ""}" data-member-card="\${escapeHtml(row.uid)}" data-member-open="\${escapeHtml(row.uid)}" data-member-tab="overview">
               <div class="ops-member-roster-card__head">
                 <div>
                   <p class="ops-kicker">\${escapeHtml(formatRoleLabel(row.portalRole))} · \${escapeHtml(row.membershipTier || "membership unset")}</p>
@@ -3407,7 +3584,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
                 <div><dt>Membership</dt><dd>\${escapeHtml(row.membershipTier || "none")}</dd></div>
                 <div><dt>Last seen</dt><dd>\${escapeHtml(formatPortalTimestamp(row.lastSeenAt))}</dd></div>
                 <div><dt>Billing</dt><dd>\${escapeHtml(billingSummary)}</dd></div>
-                <div><dt>Updated</dt><dd>\${escapeHtml(formatPortalTimestamp(row.updatedAt))}</dd></div>
+                <div><dt>Next move</dt><dd>\${escapeHtml(recommendation.title)}</dd></div>
               </dl>
               <div class="ops-member-roster-card__actions">\${actions}</div>
             </article>
@@ -3446,19 +3623,9 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       }
 
       function renderMemberOverview(member, activity) {
-        const recommendation = memberRecommendation(member);
         const billingSummary = member.billing?.paymentMethodSummary
           || (member.billing?.stripeCustomerId ? "Tokenized billing refs are stored." : "No billing profile has been attached yet.");
         return \`
-          <article class="ops-member-pane">
-            <p class="ops-kicker">Recommended next move</p>
-            <h3>\${escapeHtml(recommendation.title)}</h3>
-            <p class="ops-summary">\${escapeHtml(recommendation.body)}</p>
-            \${recommendation.tab !== "overview" ? \`<div class="ops-actions"><button type="button" class="ops-button" data-member-workbench-tab="\${escapeHtml(recommendation.tab)}">Open \${escapeHtml(humanizeToken(recommendation.tab))}</button></div>\` : ""}
-          </article>
-          <div class="ops-member-activity-grid">
-            \${renderActivityStats(activity)}
-          </div>
           <div class="ops-member-pane__split">
             <article class="ops-member-note">
               <p class="ops-kicker">Profile snapshot</p>
@@ -3482,6 +3649,35 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         \`;
       }
 
+      function renderMemberContextBody(member, activity) {
+        const recommendation = memberRecommendation(member);
+        const bundles = memberState.reservations.filter((bundle) => bundle.ownerUid && bundle.ownerUid === member.uid).slice(0, 4);
+        return \`
+          <article class="ops-member-note">
+            <p class="ops-kicker">Why this matters</p>
+            <h3>\${escapeHtml(recommendation.title)}</h3>
+            <p class="ops-summary">\${escapeHtml(recommendation.body)}</p>
+            \${recommendation.tab !== "overview" && recommendation.tab !== "context"
+              ? \`<div class="ops-actions"><button type="button" class="ops-button" data-member-workbench-tab="\${escapeHtml(recommendation.tab)}">Go to \${escapeHtml(humanizeToken(recommendation.tab))}</button></div>\`
+              : ""}
+          </article>
+          <article class="ops-member-note">
+            <p class="ops-kicker">Activity context</p>
+            <h3>\${escapeHtml(member.displayName)} in the flow</h3>
+            <p class="ops-summary">\${escapeHtml((activity?.reservations ?? 0) + " reservations, " + (activity?.events ?? 0) + " events, " + (activity?.supportThreads ?? 0) + " support threads, and " + (activity?.libraryLoans ?? 0) + " library loans are currently linked.")}</p>
+            <p class="ops-summary">Last reservation: \${escapeHtml(formatPortalTimestamp(activity?.lastReservationAt || null))}</p>
+          </article>
+          <article class="ops-member-note ops-member-safe">
+            <p class="ops-kicker">Billing safety</p>
+            <h3>\${escapeHtml(member.billing?.paymentMethodSummary || "No safe billing summary on file yet")}</h3>
+            <p class="ops-summary">Store only Stripe customer and payment method refs plus safe card summary and billing contact context. Never raw PAN or CVC.</p>
+          </article>
+          \${bundles.length
+            ? bundles.map(renderMemberReservation).join("")
+            : '<div class="ops-member-empty-inline">No live reservation bundles are tied to this member right now.</div>'}
+        \`;
+      }
+
       function renderMemberWorkbench() {
         const workbench = document.getElementById("ops-member-workbench");
         if (!workbench) return;
@@ -3495,62 +3691,80 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             return;
           }
           workbench.innerHTML = \`
-            <article class="ops-member-pane">
-              <div class="ops-member-workbench__header">
+            <article class="ops-member-stage">
+              <div class="ops-member-stage__header">
                 <div>
                   <p class="ops-kicker">New member</p>
                   <h2>Create a clean account record</h2>
-                  <p class="ops-summary">Start with identity, membership, and ops role mask. Add billing safely after the account exists.</p>
+                  <p class="ops-summary">Start with identity and access, then refocus the stage into billing-safe follow-through after the account exists.</p>
+                </div>
+                <div class="ops-chip-row">
+                  <span class="ops-chip is-selected">Create</span>
+                  <span class="ops-pill ops-pill-warn">Billing follows later</span>
                 </div>
               </div>
-              <form class="ops-compose-form" id="ops-member-create-form">
-                <div class="ops-member-form-grid">
-                  <label class="ops-field">
-                    <span>Email</span>
-                    <input type="email" name="email" required placeholder="member@example.com" />
-                  </label>
-                  <label class="ops-field">
-                    <span>Display name</span>
-                    <input type="text" name="displayName" required placeholder="Member name" />
-                  </label>
-                  <label class="ops-field">
-                    <span>Membership tier</span>
-                    <input type="text" name="membershipTier" list="ops-membership-tier-options" placeholder="community" />
-                  </label>
-                  <label class="ops-field">
-                    <span>Portal role</span>
-                    <select name="portalRole">
-                      \${memberPortalRoles.map((role) => \`<option value="\${escapeHtml(role)}"\${role === "member" ? " selected" : ""}>\${escapeHtml(formatRoleLabel(role))}</option>\`).join("")}
-                    </select>
-                  </label>
-                  <label class="ops-field">
-                    <span>Kiln preferences</span>
-                    <input type="text" name="kilnPreferences" placeholder="Cone 6 preferred" />
-                  </label>
-                  <div class="ops-field ops-span-2">
-                    <span>Ops roles</span>
-                    <div class="ops-member-role-grid">
-                      \${renderMemberRoleCheckboxes([], false)}
+              <div class="ops-member-stage__spotlight">
+                <article class="ops-member-note">
+                  <p class="ops-kicker">Creation path</p>
+                  <h3>Open the account, then enrich it</h3>
+                  <p class="ops-summary">Use this stage for identity, membership, and role mask. Billing and arrival context become available immediately after creation.</p>
+                </article>
+                <article class="ops-member-note ops-member-safe">
+                  <p class="ops-kicker">Safety rule</p>
+                  <h3>Never type raw card numbers here</h3>
+                  <p class="ops-summary">After you create the member, use Stripe-hosted collection and store only the customer, payment method, and safe card summary references here.</p>
+                </article>
+              </div>
+              <div class="ops-member-stage__body">
+                <form class="ops-compose-form" id="ops-member-create-form">
+                  <div class="ops-member-form-grid">
+                    <label class="ops-field">
+                      <span>Email</span>
+                      <input type="email" name="email" required placeholder="member@example.com" />
+                    </label>
+                    <label class="ops-field">
+                      <span>Display name</span>
+                      <input type="text" name="displayName" required placeholder="Member name" />
+                    </label>
+                    <label class="ops-field">
+                      <span>Membership tier</span>
+                      <input type="text" name="membershipTier" list="ops-membership-tier-options" placeholder="community" />
+                    </label>
+                    <label class="ops-field">
+                      <span>Portal role</span>
+                      <select name="portalRole">
+                        \${memberPortalRoles.map((role) => \`<option value="\${escapeHtml(role)}"\${role === "member" ? " selected" : ""}>\${escapeHtml(formatRoleLabel(role))}</option>\`).join("")}
+                      </select>
+                    </label>
+                    <label class="ops-field">
+                      <span>Kiln preferences</span>
+                      <input type="text" name="kilnPreferences" placeholder="Cone 6 preferred" />
+                    </label>
+                    <div class="ops-field ops-span-2">
+                      <span>Ops roles</span>
+                      <div class="ops-member-role-grid">
+                        \${renderMemberRoleCheckboxes([], false)}
+                      </div>
                     </div>
+                    <label class="ops-field ops-span-2">
+                      <span>Staff notes</span>
+                      <textarea name="staffNotes" rows="4" placeholder="Anything future staff should know about this person."></textarea>
+                    </label>
+                    <label class="ops-field ops-span-2">
+                      <span>Why are we creating this member?</span>
+                      <textarea name="reason" rows="3" placeholder="Onboarded from the member ops lane."></textarea>
+                    </label>
                   </div>
-                  <label class="ops-field ops-span-2">
-                    <span>Staff notes</span>
-                    <textarea name="staffNotes" rows="4" placeholder="Anything future staff should know about this person."></textarea>
-                  </label>
-                  <label class="ops-field ops-span-2">
-                    <span>Why are we creating this member?</span>
-                    <textarea name="reason" rows="3" placeholder="Onboarded from the member ops lane."></textarea>
-                  </label>
-                </div>
-                <div class="ops-actions">
-                  <button type="submit" class="ops-button">Create member</button>
-                </div>
-              </form>
-            </article>
-            <article class="ops-member-note ops-member-safe">
-              <p class="ops-kicker">Billing safety</p>
-              <h3>Card collection stays out of Studio Brain</h3>
-              <p class="ops-summary">After you create the member, use Stripe-hosted collection and save only the safe customer, payment method, and billing contact references here.</p>
+                  <div class="ops-actions">
+                    <button type="submit" class="ops-button">Create member</button>
+                  </div>
+                </form>
+                <article class="ops-member-note">
+                  <p class="ops-kicker">After create</p>
+                  <h3>The stage will refocus on the new account</h3>
+                  <p class="ops-summary">Once the account exists, this same surface flips into overview, membership, roles, billing, and context views without sending staff to another page.</p>
+                </article>
+              </div>
             </article>
           \`;
           bindMemberWorkbenchHandlers();
@@ -3562,6 +3776,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
           return;
         }
         const activity = getSelectedActivity();
+        const recommendation = memberRecommendation(member);
         const selectedTab = normalizeMemberTab(memberState.activeTab);
         memberState.activeTab = selectedTab;
         const selectedRoles = Array.isArray(member.opsRoles) ? member.opsRoles : [];
@@ -3574,6 +3789,8 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         let body = "";
         if (selectedTab === "overview") {
           body = renderMemberOverview(member, activity);
+        } else if (selectedTab === "context") {
+          body = renderMemberContextBody(member, activity);
         } else if (selectedTab === "profile") {
           body = \`
             <article class="ops-member-pane">
@@ -3702,7 +3919,7 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
                   </label>
                   <div class="ops-member-note ops-member-safe">
                     <p class="ops-kicker">Protected path</p>
-                    <h3>Raw card data is blocked</h3>
+                    <h3>Never type raw card numbers here</h3>
                     <p class="ops-summary">Collect cards in Stripe-hosted flows only. This form stores safe references and summary fields, never PAN or CVC.</p>
                   </div>
                   <label class="ops-field ops-span-2">
@@ -3716,10 +3933,10 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
           \`;
         }
         workbench.innerHTML = \`
-          <article class="ops-member-pane">
-            <div class="ops-member-workbench__header">
+          <article class="ops-member-stage">
+            <div class="ops-member-stage__header">
               <div>
-                <p class="ops-kicker">Selected member</p>
+                <p class="ops-kicker">Focus stage</p>
                 <h2>\${escapeHtml(member.displayName)}</h2>
                 <p class="ops-summary">\${escapeHtml(member.email || "No email on file.")}</p>
               </div>
@@ -3730,8 +3947,21 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
               <span class="ops-pill">\${escapeHtml(member.membershipTier || "membership unset")}</span>
               \${(member.opsRoles || []).map((role) => \`<span class="ops-pill">\${escapeHtml(formatRoleLabel(role))}</span>\`).join("") || '<span class="ops-chip">No ops roles</span>'}
             </div>
+            <div class="ops-member-stage__spotlight">
+              <article class="ops-member-note">
+                <p class="ops-kicker">Recommended next move</p>
+                <h3>\${escapeHtml(recommendation.title)}</h3>
+                <p class="ops-summary">\${escapeHtml(recommendation.body)}</p>
+                \${recommendation.tab !== selectedTab && recommendation.tab !== "context"
+                  ? \`<div class="ops-actions"><button type="button" class="ops-button" data-member-workbench-tab="\${escapeHtml(recommendation.tab)}">Focus \${escapeHtml(humanizeToken(recommendation.tab))}</button></div>\`
+                  : ""}
+              </article>
+              <div class="ops-member-activity-grid">
+                \${renderActivityStats(activity)}
+              </div>
+            </div>
+            <div class="ops-member-stage__body">\${body}</div>
           </article>
-          \${body}
         \`;
         bindMemberWorkbenchHandlers();
       }
@@ -3753,57 +3983,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         \`;
       }
 
-      function renderMemberContext() {
-        const context = document.getElementById("ops-member-context");
-        if (!context) return;
-        if (memberState.createMode) {
-          context.innerHTML = \`
-            <article class="ops-member-note">
-              <p class="ops-kicker">New member checklist</p>
-              <h3>Create first, bill second</h3>
-              <p class="ops-summary">Use the create form to establish identity, membership, and ops role mask. After that, attach Stripe customer and payment method references from a hosted payment flow.</p>
-            </article>
-            <article class="ops-member-note ops-member-safe">
-              <p class="ops-kicker">Safety rule</p>
-              <h3>No raw card details in Studio Brain</h3>
-              <p class="ops-summary">This keeps logs, audits, and backups from turning into a soft target. Only tokenized references and safe billing summaries belong here.</p>
-            </article>
-          \`;
-          return;
-        }
-        const member = getSelectedMember();
-        if (!member) {
-          context.innerHTML = '<div class="ops-empty">Select a member to see linked reservations, billing posture, and next-step context.</div>';
-          return;
-        }
-        const activity = getSelectedActivity();
-        const recommendation = memberRecommendation(member);
-        const bundles = memberState.reservations.filter((bundle) => bundle.ownerUid && bundle.ownerUid === member.uid).slice(0, 4);
-        context.innerHTML = \`
-          <article class="ops-member-note">
-            <p class="ops-kicker">Why this matters</p>
-            <h3>\${escapeHtml(recommendation.title)}</h3>
-            <p class="ops-summary">\${escapeHtml(recommendation.body)}</p>
-            \${recommendation.tab !== "overview" ? \`<div class="ops-actions"><button type="button" class="ops-button" data-member-workbench-tab="\${escapeHtml(recommendation.tab)}">Go to \${escapeHtml(recommendation.tab)}</button></div>\` : ""}
-          </article>
-          <article class="ops-member-note">
-            <p class="ops-kicker">Activity context</p>
-            <h3>\${escapeHtml(member.displayName)} in the flow</h3>
-            <p class="ops-summary">\${escapeHtml((activity?.reservations ?? 0) + " reservations, " + (activity?.events ?? 0) + " events, " + (activity?.supportThreads ?? 0) + " support threads, and " + (activity?.libraryLoans ?? 0) + " library loans are currently linked.")}</p>
-            <p class="ops-summary">Last reservation: \${escapeHtml(formatPortalTimestamp(activity?.lastReservationAt || null))}</p>
-          </article>
-          <article class="ops-member-note ops-member-safe">
-            <p class="ops-kicker">Billing safety</p>
-            <h3>\${escapeHtml(member.billing?.paymentMethodSummary || "No safe billing summary on file yet")}</h3>
-            <p class="ops-summary">Store only Stripe customer and payment method refs plus safe card summary and billing contact context. Never raw PAN or CVC.</p>
-          </article>
-          \${bundles.length
-            ? bundles.map(renderMemberReservation).join("")
-            : '<div class="ops-member-empty-inline">No live reservation bundles are tied to this member right now.</div>'}
-        \`;
-        bindMemberContextHandlers();
-      }
-
       async function hydrateMember(uid) {
         if (!uid || !memberPermissions.canView) return;
         memberState.hydratingUid = uid;
@@ -3820,7 +3999,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
           }
           renderMemberRoster();
           renderMemberWorkbench();
-          renderMemberContext();
         } catch (error) {
           showBanner(error instanceof Error ? error.message : String(error), "error");
         } finally {
@@ -3834,7 +4012,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         memberState.activeTab = normalizeMemberTab(tab || "overview");
         renderMemberRoster();
         renderMemberWorkbench();
-        renderMemberContext();
         hydrateMember(uid);
       }
 
@@ -3858,7 +4035,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             memberState.activeTab = "overview";
             renderMemberRoster();
             renderMemberWorkbench();
-            renderMemberContext();
             showBanner("Member created. The workbench is now focused on the new account.", "success");
             hydrateMember(payload.member.uid);
           }
@@ -3884,7 +4060,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             updateMemberRow(payload.member);
             renderMemberRoster();
             renderMemberWorkbench();
-            renderMemberContext();
             showBanner("Member profile updated.", "success");
           }
         } catch (error) {
@@ -3905,7 +4080,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             updateMemberRow(payload.member);
             renderMemberRoster();
             renderMemberWorkbench();
-            renderMemberContext();
             showBanner("Membership updated.", "success");
           }
         } catch (error) {
@@ -3927,7 +4101,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             updateMemberRow(payload.member);
             renderMemberRoster();
             renderMemberWorkbench();
-            renderMemberContext();
             showBanner("Role mask updated.", "success");
           }
         } catch (error) {
@@ -3958,7 +4131,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             updateMemberRow(payload.member);
             renderMemberRoster();
             renderMemberWorkbench();
-            renderMemberContext();
             showBanner("Billing-safe member profile updated.", "success");
           }
         } catch (error) {
@@ -4015,28 +4187,15 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
             await handleMemberBillingSubmit(billingForm);
           }, { once: true });
         }
-        workbench.querySelectorAll("[data-member-workbench-tab]").forEach((button) => {
-          button.addEventListener("click", () => {
-            memberState.activeTab = normalizeMemberTab(button.getAttribute("data-member-workbench-tab") || "overview");
-            renderMemberWorkbench();
-            renderMemberContext();
-          });
-        });
-      }
-
-      function bindMemberContextHandlers() {
-        const context = document.getElementById("ops-member-context");
-        if (!context) return;
-        context.querySelectorAll("[data-member-reservation-prepare]").forEach((button) => {
+        workbench.querySelectorAll("[data-member-reservation-prepare]").forEach((button) => {
           button.addEventListener("click", async () => {
             await handleMemberReservationPrepare(button.getAttribute("data-member-reservation-prepare"));
           }, { once: true });
         });
-        context.querySelectorAll("[data-member-workbench-tab]").forEach((button) => {
+        workbench.querySelectorAll("[data-member-workbench-tab]").forEach((button) => {
           button.addEventListener("click", () => {
             memberState.activeTab = normalizeMemberTab(button.getAttribute("data-member-workbench-tab") || "overview");
             renderMemberWorkbench();
-            renderMemberContext();
           });
         });
       }
@@ -4049,15 +4208,14 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
         });
       }
       const memberCreateTrigger = document.getElementById("ops-member-create-trigger");
-      if (memberCreateTrigger) {
-        memberCreateTrigger.addEventListener("click", () => {
-          memberState.createMode = true;
-          memberState.activeTab = "overview";
-          renderMemberRoster();
-          renderMemberWorkbench();
-          renderMemberContext();
-        });
-      }
+        if (memberCreateTrigger) {
+          memberCreateTrigger.addEventListener("click", () => {
+            memberState.createMode = true;
+            memberState.activeTab = "overview";
+            renderMemberRoster();
+            renderMemberWorkbench();
+          });
+        }
       document.addEventListener("click", (event) => {
         const target = event.target && typeof event.target.closest === "function"
           ? event.target.closest("[data-member-open]")
@@ -4070,7 +4228,6 @@ export function renderOpsPortalPage(model: OpsPortalPageModel): string {
       if (document.getElementById("ops-member-roster")) {
         renderMemberRoster();
         renderMemberWorkbench();
-        renderMemberContext();
         if (memberState.selectedUid && !memberState.createMode) {
           hydrateMember(memberState.selectedUid);
         }

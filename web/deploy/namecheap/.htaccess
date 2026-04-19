@@ -11,6 +11,14 @@
   RewriteRule ^assets/ - [L,E=MF_ASSET_CACHE:1]
   RewriteRule ^[^/]+\.(js|css|map)$ - [E=ROOT_COMPAT_CHUNK:1]
 
+  # Route the Studio Brain browser bridge before the SPA fallback.
+  # Guard the physical bridge entry from re-entering the rewrite loop.
+  RewriteRule ^__studio-brain/index\.php$ - [END,NC]
+  RewriteRule ^__studio-brain$ __studio-brain/index.php [QSA,END,NC]
+  RewriteRule ^__studio-brain/(.+)$ __studio-brain/index.php?bridgePath=/$1 [QSA,END,NC]
+  RewriteRule ^api/ops$ __studio-brain/index.php?bridgePath=/api/ops [QSA,END,NC]
+  RewriteRule ^api/ops/(.+)$ __studio-brain/index.php?bridgePath=/api/ops/$1 [QSA,END,NC]
+
   # Never rewrite service worker/runtime manifest endpoints.
   RewriteRule ^(registerSW\.js|sw\.js|workbox-.*\.js|manifest\.webmanifest)$ - [L]
 

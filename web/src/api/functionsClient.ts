@@ -38,6 +38,7 @@ export type LastRequest = {
 
   /** Redacted curl suitable for sharing/logging. */
   curlExample?: string;
+  includesAdminTokenHeader?: boolean;
 };
 
 export type FunctionsClientConfig = {
@@ -100,12 +101,16 @@ function makeInFlightActionKey(path: string, payload: unknown): string {
   return `${path}::${safeJsonStringify(payload)}`;
 }
 
-export function buildCurlRedacted(url: string, payload?: unknown) {
-  const headerArgs = [
-    `-H 'Content-Type: application/json'`,
-    `-H 'Authorization: Bearer <ID_TOKEN>'`,
-    `-H 'x-admin-token: <ADMIN_TOKEN>'`,
-  ].join(" ");
+export function buildCurlRedacted(
+  url: string,
+  payload?: unknown,
+  opts?: { includeAdminToken?: boolean }
+) {
+  const headers = [`-H 'Content-Type: application/json'`, `-H 'Authorization: Bearer <ID_TOKEN>'`];
+  if (opts?.includeAdminToken) {
+    headers.push(`-H 'x-admin-token: <ADMIN_TOKEN>'`);
+  }
+  const headerArgs = headers.join(" ");
 
   const body = payload
     ? `-d '${escapeSingleQuotesForBash(safeJsonStringify(payload))}'`
@@ -196,6 +201,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         payload: normalizedPayload,
         payloadRedacted: redactedPayload,
         curlExample: buildCurlRedacted(url, normalizedPayload),
+        includesAdminTokenHeader: false,
       };
       publish(req);
       publishRequestTelemetry({
@@ -252,11 +258,17 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
       }
 
       const adminToken = config.getAdminToken?.();
+      const trimmedAdminToken = adminToken?.trim();
+      const hasAdminToken = Boolean(trimmedAdminToken);
+      req.curlExample = buildCurlRedacted(url, normalizedPayload, {
+        includeAdminToken: hasAdminToken,
+      });
+      req.includesAdminTokenHeader = hasAdminToken;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${idToken}`,
       };
-      if (adminToken && adminToken.trim()) headers["x-admin-token"] = adminToken.trim();
+      if (trimmedAdminToken) headers["x-admin-token"] = trimmedAdminToken;
       if (options?.headers) {
         for (const [key, value] of Object.entries(options.headers)) {
           const normalizedKey = String(key || "").trim();
@@ -330,7 +342,9 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         ok: resp.ok,
         response: body,
         responseSnippet: stringifyResponseSnippet(body),
-        curlExample: buildCurlRedacted(url, normalizedPayload),
+        curlExample: buildCurlRedacted(url, normalizedPayload, {
+          includeAdminToken: req.includesAdminTokenHeader,
+        }),
       };
 
       if (!resp.ok) {
@@ -417,7 +431,11 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     if (!lastReq) return "";
 
     const redact = opts?.redact ?? redactDefault;
-    if (redact) return buildCurlRedacted(lastReq.url, lastReq.payload);
+    if (redact) {
+      return buildCurlRedacted(lastReq.url, lastReq.payload, {
+        includeAdminToken: lastReq.includesAdminTokenHeader,
+      });
+    }
 
     // real curl requires we have an idToken from THIS session
     if (!lastIdToken) return "";

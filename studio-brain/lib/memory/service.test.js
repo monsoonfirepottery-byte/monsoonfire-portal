@@ -56,8 +56,13 @@ const memoryConsolidationArtifactPath = () => (0, node_path_1.resolve)(__dirname
     });
     strict_1.default.equal(decision.memoryLayer, "episodic");
     strict_1.default.equal(decision.status, "accepted");
+    strict_1.default.equal(decision.lattice?.category, "decision");
+    strict_1.default.equal(decision.lattice?.truthStatus, "verified");
+    strict_1.default.equal(decision.lattice?.freshnessStatus, "fresh");
+    strict_1.default.equal(decision.lattice?.operationalStatus, "active");
     strict_1.default.equal(scratch.memoryLayer, "working");
     strict_1.default.equal(typeof scratch.metadata.expiresAt, "string");
+    strict_1.default.equal(scratch.lattice?.category, "observation");
 });
 (0, node_test_1.default)("memory service defaults Codex trace hints into accepted episodic memory", async () => {
     const service = (0, service_1.createMemoryService)({
@@ -110,6 +115,421 @@ const memoryConsolidationArtifactPath = () => (0, node_path_1.resolve)(__dirname
     strict_1.default.equal(workingOnly[0]?.memoryLayer, "working");
     strict_1.default.equal(stats.byLayer.some((entry) => entry.layer === "canonical"), true);
     strict_1.default.equal(stats.byLayer.some((entry) => entry.layer === "working"), false);
+});
+(0, node_test_1.default)("memory service safety-critical search filters stale and speculative memories", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-memory-lattice",
+        defaultAgentId: "agent:codex",
+    });
+    const freshFact = await service.capture({
+        content: "Portal contract fact: startup continuity requires trusted repo-backed evidence before high-impact actions.",
+        source: "repo-markdown",
+        clientRequestId: "fresh-fact",
+        metadata: {
+            sourceArtifactPath: "docs/runbooks/CODEX_RECOVERY.md",
+            corpusRecordId: "repo-record-fresh",
+        },
+    });
+    const staleFact = await service.capture({
+        content: "Portal contract fact: startup continuity requires trusted repo-backed evidence before high-impact actions.",
+        source: "repo-markdown",
+        clientRequestId: "stale-fact",
+        occurredAt: "2025-01-10T00:00:00.000Z",
+        lastVerifiedAt: "2025-01-10T00:00:00.000Z",
+        metadata: {
+            sourceArtifactPath: "docs/legacy/startup-memory.md",
+            corpusRecordId: "repo-record-stale",
+        },
+    });
+    const hypothesis = await service.capture({
+        content: "Hypothesis: maybe startup continuity trusted evidence still fails because of a hidden cache race.",
+        source: "manual",
+        memoryCategory: "hypothesis",
+    });
+    const rows = await service.search({
+        query: "startup continuity trusted repo-backed evidence",
+        useMode: "safety-critical",
+        layerAllowlist: ["canonical", "episodic"],
+    });
+    strict_1.default.equal(rows.some((row) => row.id === freshFact.id), true);
+    strict_1.default.equal(rows.some((row) => row.id === staleFact.id), false);
+    strict_1.default.equal(rows.some((row) => row.id === hypothesis.id), false);
+    strict_1.default.equal(rows.every((row) => row.lattice?.freshnessStatus === "fresh"), true);
+    strict_1.default.equal(rows.every((row) => row.lattice?.truthStatus === "verified" || row.lattice?.truthStatus === "trusted"), true);
+});
+(0, node_test_1.default)("memory service fills to a valid limit when strict retrieval filters would otherwise starve the result window", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-valid-fill",
+        defaultAgentId: "agent:codex",
+    });
+    for (let index = 0; index < 8; index += 1) {
+        await service.capture({
+            content: `Hypothesis ${index}: startup continuity trusted evidence might just be cache noise.`,
+            source: "manual",
+            memoryCategory: "hypothesis",
+            clientRequestId: `fill-invalid-${index}`,
+        });
+    }
+    const trusted = await service.capture({
+        content: "Fact: startup continuity trusted evidence must come from repo-backed provenance.",
+        source: "repo-markdown",
+        clientRequestId: "fill-valid-fact",
+        metadata: {
+            sourceArtifactPath: "docs/runbooks/CODEX_RECOVERY.md",
+            corpusRecordId: "repo-record-fill-valid",
+        },
+    });
+    const rows = await service.search({
+        query: "startup continuity trusted evidence provenance",
+        useMode: "safety-critical",
+        fillToValidLimit: true,
+        evidenceRequired: true,
+        minAuthorityClass: "a1-repo",
+        limit: 1,
+    });
+    strict_1.default.equal(rows.length, 1);
+    strict_1.default.equal(rows[0]?.id, trusted.id);
+    strict_1.default.equal(rows[0]?.lattice?.hasEvidence, true);
+});
+(0, node_test_1.default)("memory lattice derives review actions and stats backlog", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-memory-review",
+        defaultAgentId: "agent:codex",
+    });
+    const trusted = await service.capture({
+        content: "Portal fact: repo-backed startup guardrails are the current source of truth for risky edits.",
+        source: "repo-markdown",
+        clientRequestId: "review-fact-trusted",
+        metadata: {
+            corpusRecordId: "repo-record-review-trusted",
+            sourceArtifactPath: "docs/runbooks/startup-guardrails.md",
+        },
+    });
+    const staleFact = await service.capture({
+        content: "Portal fact: repo-backed startup guardrails are the current source of truth for risky edits.",
+        source: "repo-markdown",
+        clientRequestId: "review-fact-stale",
+        occurredAt: "2025-01-10T00:00:00.000Z",
+        lastVerifiedAt: "2025-01-10T00:00:00.000Z",
+        metadata: {
+            corpusRecordId: "repo-record-review-stale",
+            sourceArtifactPath: "docs/archive/startup-guardrails-stale.md",
+        },
+    });
+    const staleHypothesis = await service.capture({
+        content: "Hypothesis: maybe the startup continuity cache still leaks obsolete guardrails across runs.",
+        source: "manual",
+        clientRequestId: "review-hypothesis-stale",
+        occurredAt: "2025-01-10T00:00:00.000Z",
+        memoryCategory: "hypothesis",
+    });
+    const contradictedGuardrail = await service.capture({
+        content: "Guardrail: never trust contested startup memory without repo verification.",
+        source: "manual",
+        clientRequestId: "review-guardrail-conflict",
+        tags: ["guardrail"],
+        metadata: {
+            subjectKey: "startup-memory-guardrail",
+            contradictions: ["Current repo evidence conflicts with the inherited instruction."],
+        },
+    });
+    const rows = await service.recent({
+        limit: 10,
+        useMode: "debugging",
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const stats = await service.stats({});
+    strict_1.default.equal(byId.get(trusted.id)?.lattice?.reviewAction, "none");
+    strict_1.default.equal(byId.get(staleFact.id)?.lattice?.reviewAction, "revalidate");
+    strict_1.default.equal(byId.get(staleHypothesis.id)?.lattice?.reviewAction, "retire");
+    strict_1.default.equal(byId.get(contradictedGuardrail.id)?.lattice?.reviewAction, "resolve-conflict");
+    strict_1.default.equal(byId.get(contradictedGuardrail.id)?.lattice?.reviewReasons.includes("contradicted"), true);
+    strict_1.default.equal(stats.lattice?.coverage.rowsWithLattice, 4);
+    strict_1.default.equal(stats.lattice?.coverage.totalRows, 4);
+    strict_1.default.equal(stats.lattice?.coverage.ratio, 1);
+    strict_1.default.equal(stats.lattice?.backlog.reviewNow, 3);
+    strict_1.default.equal(stats.lattice?.backlog.revalidate, 1);
+    strict_1.default.equal(stats.lattice?.backlog.resolveConflict, 1);
+    strict_1.default.equal(stats.lattice?.backlog.retire, 1);
+    strict_1.default.equal(stats.lattice?.byReviewAction.some((entry) => entry.action === "resolve-conflict" && entry.count === 1), true);
+});
+(0, node_test_1.default)("memory capture redacts secret-bearing content, quarantines it, and emits a transition event", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-secret-hygiene",
+        defaultAgentId: "agent:codex",
+    });
+    const captured = await service.capture({
+        content: "Operator note: Authorization: Bearer test-redaction-token",
+        source: "manual",
+        clientRequestId: "secret-capture-1",
+    });
+    strict_1.default.equal(captured.status, "quarantined");
+    strict_1.default.equal(captured.content.includes("[redacted-token]"), true);
+    strict_1.default.equal(captured.metadata.redactionState, "redacted");
+    strict_1.default.equal(captured.metadata.secretExposure.detected, true);
+    strict_1.default.equal(captured.lattice?.secretExposure, true);
+    strict_1.default.equal(captured.transitions?.length, 1);
+    strict_1.default.equal(captured.transitions?.[0]?.toStatus, "quarantined");
+});
+(0, node_test_1.default)("memory search can require evidence and a minimum authority floor", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-evidence-policy",
+        defaultAgentId: "agent:codex",
+    });
+    const repoFact = await service.capture({
+        content: "Fact: launch trust depends on evidence-backed repo memory for startup continuity.",
+        source: "repo-markdown",
+        clientRequestId: "evidence-policy-repo",
+        metadata: {
+            sourceArtifactPath: "docs/runbooks/CODEX_RECOVERY.md",
+            corpusRecordId: "repo-record-evidence-policy",
+        },
+    });
+    await service.capture({
+        content: "Decision: launch trust depends on evidence-backed repo memory for startup continuity.",
+        source: "manual",
+        clientRequestId: "evidence-policy-manual",
+    });
+    const rows = await service.search({
+        query: "launch trust evidence-backed repo memory startup continuity",
+        evidenceRequired: true,
+        minAuthorityClass: "a1-repo",
+        limit: 5,
+    });
+    strict_1.default.equal(rows.some((row) => row.id === repoFact.id), true);
+    strict_1.default.equal(rows.every((row) => row.lattice?.hasEvidence === true), true);
+    strict_1.default.equal(rows.every((row) => row.lattice?.authorityClass === "a0-live" || row.lattice?.authorityClass === "a1-repo"), true);
+});
+(0, node_test_1.default)("memory stats surface startup, secret, and shadow MCP launch findings", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-launch-findings",
+        defaultAgentId: "agent:codex",
+    });
+    await service.capture({
+        content: "Handoff: verify startup continuity before launch.",
+        source: "codex-handoff",
+        clientRequestId: "launch-handoff",
+        metadata: {
+            rememberKind: "handoff",
+            startupEligible: true,
+            threadId: "thread-launch-findings",
+            threadEvidence: "explicit",
+        },
+    });
+    await service.capture({
+        content: "Operator note: Authorization: Bearer launch-redaction-token",
+        source: "manual",
+        clientRequestId: "launch-secret",
+    });
+    await service.capture({
+        content: "Connector result: MCP surfaced a repo sync status from an unapproved server.",
+        source: "mcp-tool:repo-sync",
+        clientRequestId: "launch-shadow-mcp",
+        metadata: {
+            mcpGovernance: {
+                approvalState: "pending",
+                shadowRisk: true,
+            },
+        },
+    });
+    const stats = await service.stats({});
+    strict_1.default.equal((stats.startupReadiness?.startupEligibleRows ?? 0) >= 1, true);
+    strict_1.default.equal((stats.startupReadiness?.handoffRows ?? 0) >= 1, true);
+    strict_1.default.equal((stats.secretExposureFindings?.canonicalBlockedRows ?? 0) >= 1, true);
+    strict_1.default.equal((stats.shadowMcpFindings?.highRiskRows ?? 0) >= 1, true);
+});
+(0, node_test_1.default)("memory capture quarantines exact conflicting loop states and emits a conflict record", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-memory-conflicts",
+        defaultAgentId: "agent:codex",
+    });
+    const resolved = await service.capture({
+        content: "Decision: startup continuity auth drift is resolved and the operator path is stable again.",
+        source: "manual",
+        tags: ["decision"],
+        metadata: {
+            subjectKey: "startup-continuity-auth-drift",
+            loopState: "resolved",
+        },
+    });
+    const conflicting = await service.capture({
+        content: "Decision: startup continuity auth drift still blocks the operator path right now.",
+        source: "manual",
+        tags: ["decision"],
+        metadata: {
+            subjectKey: "startup-continuity-auth-drift",
+            loopState: "open-loop",
+        },
+    });
+    strict_1.default.equal(conflicting.lattice?.truthStatus, "contradicted");
+    strict_1.default.equal(conflicting.lattice?.operationalStatus, "quarantined");
+    strict_1.default.equal(conflicting.lattice?.reviewAction, "resolve-conflict");
+    strict_1.default.equal(conflicting.lattice?.conflictSeverity, "hard");
+    strict_1.default.equal(conflicting.lattice?.conflictKinds.includes("exact-loop-state"), true);
+    strict_1.default.equal(conflicting.lattice?.conflictingMemoryIds.includes(resolved.id), true);
+    const debugRows = await service.recent({
+        limit: 20,
+        useMode: "debugging",
+    });
+    const conflictRecord = debugRows.find((row) => row.source === "memory-contradiction-watch" && row.lattice?.category === "conflict-record");
+    strict_1.default.ok(conflictRecord);
+    strict_1.default.equal(conflictRecord?.lattice?.truthStatus, "verified");
+    strict_1.default.equal(conflictRecord?.lattice?.operationalStatus, "active");
+    strict_1.default.equal(Array.isArray(conflictRecord?.metadata?.conflictingMemoryIds), true);
+    strict_1.default.equal((conflictRecord?.metadata?.conflictingMemoryIds).includes(conflicting.id), true);
+    const operationalRows = await service.search({
+        query: "startup continuity auth drift",
+        useMode: "operational",
+    });
+    const planningRows = await service.search({
+        query: "startup continuity auth drift conflict",
+        useMode: "planning",
+    });
+    const planningContext = await service.context({
+        query: "startup continuity auth drift conflict",
+        useMode: "planning",
+        maxItems: 10,
+        maxChars: 4000,
+    });
+    const operationalContext = await service.context({
+        query: "startup continuity auth drift",
+        useMode: "operational",
+        maxItems: 10,
+        maxChars: 4000,
+    });
+    const stats = await service.stats({});
+    const planningById = new Map(planningRows.map((row) => [row.id, row]));
+    strict_1.default.equal(operationalRows.some((row) => row.id === resolved.id), false);
+    strict_1.default.equal(operationalRows.some((row) => row.id === conflicting.id), false);
+    strict_1.default.equal(operationalRows.some((row) => row.id === conflictRecord?.id), false);
+    strict_1.default.equal(operationalContext.items.some((row) => row.id === resolved.id), false);
+    strict_1.default.equal(operationalContext.items.some((row) => row.id === conflicting.id), false);
+    strict_1.default.equal(operationalContext.items.some((row) => row.id === conflictRecord?.id), false);
+    strict_1.default.equal(operationalContext.summary.includes("Operational retrieval blocked by a hard conflict"), true);
+    strict_1.default.equal(operationalContext.diagnostics.blockedByHardConflict?.blocked, true);
+    strict_1.default.equal(operationalContext.diagnostics.blockedByHardConflict?.useMode, "operational");
+    strict_1.default.equal(operationalContext.diagnostics.blockedByHardConflict?.scope, "subject:startup-continuity-auth-drift");
+    strict_1.default.equal(operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === null
+        || operationalContext.diagnostics.blockedByHardConflict?.conflictRecordId === conflictRecord?.id, true);
+    strict_1.default.equal(operationalContext.diagnostics.blockedByHardConflict?.conflictingMemoryIds.includes(resolved.id), true);
+    strict_1.default.equal(operationalContext.diagnostics.blockedByHardConflict?.conflictingMemoryIds.includes(conflicting.id), true);
+    strict_1.default.equal(planningRows.some((row) => row.id === resolved.id), true);
+    strict_1.default.equal(planningRows.some((row) => row.id === conflicting.id), true);
+    strict_1.default.equal(planningRows.some((row) => row.id === conflictRecord?.id), true);
+    strict_1.default.equal(planningById.get(resolved.id)?.lattice?.truthStatus, "contradicted");
+    strict_1.default.equal(planningById.get(resolved.id)?.lattice?.operationalStatus, "quarantined");
+    strict_1.default.equal(planningById.get(resolved.id)?.lattice?.reviewAction, "resolve-conflict");
+    strict_1.default.equal(planningById.get(resolved.id)?.matchedBy.includes("conflict-shadow"), true);
+    strict_1.default.equal(planningContext.items.some((row) => row.id === resolved.id), true);
+    strict_1.default.equal(planningContext.items.some((row) => row.id === conflicting.id), true);
+    strict_1.default.equal(planningContext.items.some((row) => row.id === conflictRecord?.id), true);
+    strict_1.default.equal(conflictRecord?.lattice?.conflictSeverity, "hard");
+    strict_1.default.equal(conflictRecord?.lattice?.reviewAction, "none");
+    strict_1.default.equal(stats.lattice?.backlog.resolveConflict, 1);
+    strict_1.default.equal(stats.conflictBacklog?.contestedRows, 1);
+    strict_1.default.equal(stats.conflictBacklog?.quarantinedRows, 1);
+    strict_1.default.equal(stats.conflictBacklog?.retrievalShadowedRows, 2);
+});
+(0, node_test_1.default)("memory review cases open for hard conflicts and blocked diagnostics surface review guidance", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-memory-review-cases",
+        defaultAgentId: "agent:codex",
+    });
+    const resolved = await service.capture({
+        content: "Decision: startup continuity auth drift is resolved and the operator path is stable again.",
+        source: "manual",
+        tags: ["decision"],
+        metadata: {
+            subjectKey: "startup-continuity-auth-drift",
+            loopState: "resolved",
+        },
+    });
+    await service.capture({
+        content: "Decision: startup continuity auth drift still blocks the operator path right now.",
+        source: "manual",
+        tags: ["decision"],
+        metadata: {
+            subjectKey: "startup-continuity-auth-drift",
+            loopState: "open-loop",
+        },
+    });
+    const context = await service.context({
+        query: "startup continuity auth drift",
+        useMode: "operational",
+        maxItems: 8,
+        maxChars: 3_000,
+    });
+    const reviewCases = await service.listReviewCases({
+        statuses: ["open", "in-progress"],
+        limit: 10,
+    });
+    const verificationRuns = await service.listVerificationRuns({
+        caseId: reviewCases[0]?.id ?? null,
+        limit: 10,
+    });
+    const stats = await service.stats({});
+    strict_1.default.equal(context.diagnostics.blockedByHardConflict?.blocked, true);
+    strict_1.default.equal(Boolean(context.diagnostics.blockedByHardConflict?.reviewCaseId), true);
+    strict_1.default.equal(context.diagnostics.blockedByHardConflict?.recommendedActions?.includes("accept_winner"), true);
+    strict_1.default.equal(reviewCases.length >= 1, true);
+    strict_1.default.equal(reviewCases[0]?.caseType, "resolve-conflict");
+    strict_1.default.equal(reviewCases[0]?.linkedMemoryIds.includes(resolved.id), true);
+    strict_1.default.equal(verificationRuns.length >= 1, true);
+    strict_1.default.equal(verificationRuns[0]?.resultStatus === "failed" || verificationRuns[0]?.resultStatus === "needs-review", true);
+    strict_1.default.equal((stats.openReviewCases ?? 0) >= 1, true);
+    strict_1.default.equal((stats.verificationFailures24h ?? 0) >= 0, true);
+});
+(0, node_test_1.default)("memory review actions retire stale workaround memory and resolve the review case", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-memory-review-actions",
+        defaultAgentId: "agent:codex",
+    });
+    const workaround = await service.capture({
+        content: "Workaround: rely on the archived startup cache when repo verification is unavailable.",
+        source: "manual",
+        occurredAt: "2025-01-10T00:00:00.000Z",
+        memoryCategory: "workaround",
+    });
+    const reviewCase = (await service.listReviewCases({
+        statuses: ["open", "in-progress"],
+        caseTypes: ["retire"],
+        limit: 10,
+    }))[0];
+    strict_1.default.ok(reviewCase);
+    const actionResult = await service.reviewCaseAction({
+        id: reviewCase.id,
+        action: "retire_memory",
+        actorId: "staff-test",
+        selectedMemoryId: workaround.id,
+    });
+    const updated = (await service.getByIds({
+        ids: [workaround.id],
+        includeArchived: true,
+    }))[0];
+    const latestCase = await service.getReviewCase({
+        id: reviewCase.id,
+    });
+    const verificationRuns = await service.listVerificationRuns({
+        caseId: reviewCase.id,
+        limit: 10,
+    });
+    strict_1.default.equal(actionResult.reviewCase?.status, "resolved");
+    strict_1.default.equal(updated.status, "archived");
+    strict_1.default.equal(updated.lattice?.operationalStatus, "retired");
+    strict_1.default.equal(updated.lattice?.reviewAction, "none");
+    strict_1.default.equal((updated.evidence?.length ?? 0) >= 1, true);
+    strict_1.default.equal((updated.transitions?.length ?? 0) >= 1, true);
+    strict_1.default.equal(latestCase?.status, "resolved");
+    strict_1.default.equal(verificationRuns.some((row) => row.resultStatus === "passed"), true);
 });
 (0, node_test_1.default)("memory consolidation writes explainable artifacts and relationship repairs", { concurrency: false }, async () => {
     const adapter = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
@@ -1377,6 +1797,48 @@ const memoryConsolidationArtifactPath = () => (0, node_path_1.resolve)(__dirname
     });
     strict_1.default.equal(rows[0]?.id, "mem-portal");
     strict_1.default.equal(rows[2]?.id, "mem-mail");
+});
+(0, node_test_1.default)("context prefers the explicit repo lane even when the query also mentions Studio Brain", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-project-lane-context",
+    });
+    await service.capture({
+        id: "mem-studio",
+        content: "Decision: Studio Brain auth fallback should remint staff tokens for memory continuity.",
+        source: "repo-markdown",
+        metadata: {
+            projectLane: "studio-brain",
+            corpusRecordId: "fact-studio-brain-auth",
+            corpusManifestPath: "/tmp/studio-brain-manifest.json",
+            contextSignals: { decisionLike: true },
+        },
+        status: "accepted",
+        sourceConfidence: 0.84,
+    });
+    await service.capture({
+        id: "mem-portal",
+        content: "Decision: Monsoon Fire portal startup continuity should prefer portal-lane context before generic Studio Brain notes.",
+        source: "repo-markdown",
+        metadata: {
+            projectLane: "monsoonfire-portal",
+            corpusRecordId: "fact-portal-auth",
+            corpusManifestPath: "/tmp/portal-auth-manifest.json",
+            contextSignals: { decisionLike: true },
+        },
+        status: "accepted",
+        sourceConfidence: 0.84,
+    });
+    const context = await service.context({
+        query: "studio brain auth fix for monsoonfire-portal continuity",
+        maxItems: 4,
+        maxChars: 1600,
+        scanLimit: 24,
+        includeTenantFallback: false,
+        sourceAllowlist: ["repo-markdown"],
+    });
+    const repoBackedItems = context.items.filter((row) => row.source === "repo-markdown");
+    strict_1.default.equal(repoBackedItems[0]?.id, "mem-portal");
 });
 (0, node_test_1.default)("compaction-promoted memories outrank raw compaction captures for startup-style queries", async () => {
     const service = (0, service_1.createMemoryService)({

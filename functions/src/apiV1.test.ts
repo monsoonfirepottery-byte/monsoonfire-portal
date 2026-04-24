@@ -1208,6 +1208,54 @@ test("handleApiV1 dispatches /v1/library.items.list with filtering and computed 
   assert.equal(body.data.items[0]?.aggregateRating, 5);
 });
 
+test("handleApiV1 library member catalog hides placeholder ISBN rows even when older data missed manual_only", async () => {
+  const request = makeRequest(
+    "/v1/library.items.list",
+    { page: 1, pageSize: 20, sort: "recently_added" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-placeholder": {
+        title: "ISBN 9789188805553",
+        authors: [],
+        mediaType: "book",
+        status: "available",
+        coverUrl: null,
+        coverQualityStatus: "missing",
+        needsCoverReview: true,
+        createdAt: { seconds: 200 },
+      },
+      "item-ready": {
+        title: "Glaze Atlas",
+        authors: ["A. Potter"],
+        mediaType: "book",
+        status: "available",
+        createdAt: { seconds: 210 },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      items: Array<Record<string, unknown>>;
+      total: number;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.total, 1);
+  assert.deepEqual(body.data.items.map((item) => item.id), ["item-ready"]);
+});
+
 test("handleApiV1 highest_rated uses stored aggregate rating count for tie-breaks", async () => {
   const request = makeRequest(
     "/v1/library.items.list",
@@ -1496,6 +1544,36 @@ test("handleApiV1 dispatches /v1/library.items.get with projected item payload",
   assert.equal(body.data.item.detailStatus, "ready");
 });
 
+test("handleApiV1 library.items.get hides placeholder ISBN rows from members", async () => {
+  const request = makeRequest(
+    "/v1/library.items.get",
+    { itemId: "item-placeholder" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-placeholder": {
+        title: "ISBN 9789188805553",
+        authors: [],
+        mediaType: "book",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 404, JSON.stringify(response.body()));
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "NOT_FOUND");
+});
+
 test("handleApiV1 dispatches /v1/library.discovery.get with required sections", async () => {
   const request = makeRequest(
     "/v1/library.discovery.get",
@@ -1556,6 +1634,59 @@ test("handleApiV1 dispatches /v1/library.discovery.get with required sections", 
   assert.equal(body.data.mostBorrowed[0]?.id, "item-2");
   assert.equal(body.data.recentlyAdded[0]?.id, "item-3");
   assert.equal(body.data.recentlyReviewed[0]?.id, "item-3");
+});
+
+test("handleApiV1 library.discovery.get hides placeholder ISBN rows from member rails", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    { limit: 4 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-placeholder": {
+        title: "ISBN 9789188805553",
+        mediaType: "book",
+        createdAt: { seconds: 400 },
+      },
+      "item-staff-pick": {
+        title: "Staff Pick Clay",
+        mediaType: "book",
+        staffPick: true,
+        createdAt: { seconds: 300 },
+      },
+      "item-most-borrowed": {
+        title: "Popular Borrow",
+        mediaType: "book",
+        createdAt: { seconds: 200 },
+      },
+    },
+    libraryLoans: {
+      "loan-1": { itemId: "item-most-borrowed", status: "returned" },
+      "loan-2": { itemId: "item-most-borrowed", status: "checked_out" },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      staffPicks: Array<Record<string, unknown>>;
+      mostBorrowed: Array<Record<string, unknown>>;
+      recentlyAdded: Array<Record<string, unknown>>;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.ok(body.data.staffPicks.every((row) => row.id !== "item-placeholder"));
+  assert.ok(body.data.mostBorrowed.every((row) => row.id !== "item-placeholder"));
+  assert.ok(body.data.recentlyAdded.every((row) => row.id !== "item-placeholder"));
 });
 
 test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery and community signals", async () => {
@@ -7371,7 +7502,7 @@ test("notifications.markRead marks owner notification as read", async () => {
 
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const body = response.body as Record<string, unknown>;
-  const data = ((body.data ?? {}) as Record<string, unknown>) ?? {};
+  const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.ownerUid, "owner-1");
   assert.equal(data.notificationId, "notification-1");
 });
@@ -7422,7 +7553,7 @@ test("notifications.markRead is idempotent when notification is already missing"
 
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const body = response.body as Record<string, unknown>;
-  const data = ((body.data ?? {}) as Record<string, unknown>) ?? {};
+  const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.ownerUid, "owner-1");
   assert.equal(data.notificationId, "notification-missing");
   assert.equal(data.notificationMissing, true);

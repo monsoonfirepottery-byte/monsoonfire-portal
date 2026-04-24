@@ -82,6 +82,50 @@ const CONTRACT_DEFAULT_ENV = {
   STUDIO_BRAIN_SKILL_INSTALL_ROOT: "/tmp/studiobrain/skills",
 };
 
+function installPlaywrightCleanup(resources) {
+  let disposed = false;
+  let closing = null;
+
+  async function closeAll() {
+    if (closing) return closing;
+    closing = (async () => {
+      const snapshot = resources();
+      await snapshot.browser?.close().catch(() => {});
+    })();
+    return closing;
+  }
+
+  const bind = (signal, exitCode) => {
+    const handler = () => {
+      if (disposed) return;
+      disposed = true;
+      void closeAll().finally(() => {
+        process.exit(exitCode);
+      });
+    };
+    process.once(signal, handler);
+    return { signal, handler };
+  };
+
+  const subscriptions = [
+    bind("SIGINT", 130),
+    bind("SIGTERM", 143),
+  ];
+
+  return {
+    async close() {
+      disposed = true;
+      await closeAll();
+    },
+    dispose() {
+      disposed = true;
+      for (const entry of subscriptions) {
+        process.removeListener(entry.signal, entry.handler);
+      }
+    },
+  };
+}
+
 const FORBIDDEN_URL_PATTERNS = [
   /127\.0\.0\.1:8787/i,
   /localhost:8787/i,
@@ -886,6 +930,8 @@ const parseOptions = (argv) => {
     visualDiffBaselineRoot: String(process.env.PORTAL_VISUAL_DIFF_BASELINE_ROOT || "").trim(),
     visualDiffOutputRoot: String(process.env.PORTAL_VISUAL_DIFF_OUTPUT_ROOT || "").trim(),
     visualDiffPlanPath: String(process.env.PORTAL_VISUAL_DIFF_PLAN || "").trim(),
+    benchmarkProbe: false,
+    json: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -1029,9 +1075,43 @@ const parseOptions = (argv) => {
       i += 1;
       continue;
     }
+
+    if (arg === "--benchmark-probe") {
+      options.benchmarkProbe = true;
+      continue;
+    }
+
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
   }
 
   return options;
+};
+
+const emitBenchmarkProbe = (options) => {
+  const payload = {
+    schema: "agent-tool-benchmark-probe.v1",
+    tool: "portal-playwright-smoke",
+    status: "ok",
+    benchmarkProbe: true,
+    options: {
+      baseUrl: options.baseUrl,
+      outputDir: options.outputDir,
+      deep: options.deep === true,
+      requireAuth: options.requireAuth === true,
+      withAuth: options.withAuth === true,
+      headless: options.headless === true,
+      runMobile: options.runMobile === true,
+      visualDiffMode: options.visualDiffMode,
+    },
+  };
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  process.stdout.write(`benchmark-probe ok: ${payload.tool}\n`);
 };
 
 const readJsonSafe = async (path) => {
@@ -1831,6 +1911,52 @@ const waitForAuthReady = async (page) => {
   return isSignedOut > 0;
 };
 
+const verifyGoogleAuthPopupHandoff = async (browser, options, summary) => {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    userAgent: "MonsoonFirePortalPlaywrightAuth/1.0",
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.goto(options.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(800);
+    await continueThroughBetaGateIfPresent(page, summary, "auth-handoff");
+
+    const googleButton = page.getByRole("button", { name: /continue with google/i }).first();
+    await googleButton.waitFor({ timeout: 15000 });
+
+    const popupPromise = context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
+    const baseOrigin = new URL(options.baseUrl).origin;
+
+    await googleButton.click();
+
+    const popupPage = await popupPromise;
+    if (!popupPage) {
+      throw new Error("Google sign-in did not open a popup window.");
+    }
+
+    await popupPage.waitForURL(/accounts\.google\.com|firebaseapp\.com/i, { timeout: 15000 }).catch(() => {});
+    await popupPage.waitForTimeout(1200);
+
+    const popupUrl = popupPage.url();
+    const popupLooksValid =
+      /accounts\.google\.com/i.test(popupUrl) || /firebaseapp\.com\/__\/auth\/handler/i.test(popupUrl);
+    if (!popupLooksValid) {
+      throw new Error(`Google sign-in popup opened an unexpected URL: ${popupUrl || "<empty>"}`);
+    }
+
+    const currentOrigin = new URL(page.url()).origin;
+    if (currentOrigin !== baseOrigin) {
+      throw new Error(`Google sign-in changed the main tab origin to ${page.url()} instead of keeping ${baseOrigin}.`);
+    }
+
+    await popupPage.close().catch(() => {});
+  } finally {
+    await context.close();
+  }
+};
+
 const signInWithEmail = async (page, email, password, summary) => {
   if (!email || !password) {
     return { status: "skipped", reason: "missing credentials" };
@@ -1962,6 +2088,10 @@ const runOfflineRecoverySmoke = async (page, context, outputDir, summary) => {
 
 const run = async () => {
   const options = parseOptions(process.argv.slice(2));
+  if (options.benchmarkProbe) {
+    emitBenchmarkProbe(options);
+    return;
+  }
   const feedbackProfile = await resolveSmokeFeedbackProfile(options.feedbackPath);
   const summary = createSummary(options);
   summary.feedback = {
@@ -2000,7 +2130,9 @@ const run = async () => {
     detectedStudioBrainPath: "",
   };
 
-  const browser = await chromium.launch({ headless: options.headless });
+  let browser = null;
+  const cleanup = installPlaywrightCleanup(() => ({ browser }));
+  browser = await chromium.launch({ headless: options.headless });
 
   try {
     const desktopContext = await browser.newContext({
@@ -2036,6 +2168,12 @@ const run = async () => {
         status: "passed",
         details: "Portal loaded in signed-out mode.",
       });
+
+      if (!summary.baseUrlIsLocal) {
+        await check(summary, "google auth handoff uses popup", async () => {
+          await verifyGoogleAuthPopupHandoff(browser, options, summary);
+        });
+      }
 
       if (options.withAuth || options.requireAuth) {
         await check(summary, "sign-in attempt", async () => {
@@ -2387,7 +2525,7 @@ const run = async () => {
       }
       if (summary.network.authPopupWarnings.length > 0) {
         summary.notes.push(
-          "Auth popup warnings were observed (Cross-Origin-Opener-Policy). This is expected if OAuth popup flow is exercised in browser."
+          "Auth popup warnings were observed (Cross-Origin-Opener-Policy). These are non-blocking; if the portal already serves same-origin-allow-popups they may still come from upstream Google auth pages."
         );
       }
       if (summary.network.runtimeWarnings.length > 0) {
@@ -2412,7 +2550,8 @@ const run = async () => {
       }
     }
     await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-    await browser.close();
+    cleanup.dispose();
+    await cleanup.close();
   }
 };
 

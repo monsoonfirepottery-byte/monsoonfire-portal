@@ -82,5 +82,6 @@ The script:
   - deep link route returns HTML instead of 404
   - `/.well-known/*` can be read without SPA rewrite
   - cache headers on `index.html`
+  - `Cross-Origin-Opener-Policy: same-origin-allow-popups` on app-shell HTML for OAuth popup support
   - sample `/assets/*` files for long-lived cache hints (`immutable` or high `max-age`)
   - optional protected function call with a provided ID token (`PORTAL_CUTOVER_ID_TOKEN` or `--id-token`)

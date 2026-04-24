@@ -3453,7 +3453,10 @@ function readLibraryCatalogVisibility(row: Record<string, unknown>): string {
 }
 
 function isLibraryRowMemberVisible(row: Record<string, unknown>): boolean {
-  return readLibraryCatalogVisibility(row) !== "manual_only";
+  if (readLibraryCatalogVisibility(row) === "manual_only" || row.manualPassRequired === true) {
+    return false;
+  }
+  return !isPlaceholderLibraryTitle(row.title);
 }
 
 function isPlaceholderLibraryTitle(value: unknown): boolean {

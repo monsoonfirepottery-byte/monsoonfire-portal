@@ -1,6 +1,6 @@
 # Portal + Website Release Command Center
 
-Last reviewed: 2026-03-18 (notification evidence complete; security blocker remains)
+Last reviewed: 2026-04-15 (live surface refresh: auth blocker confirmed; website handoff held in phase 1)
 Operating mode: single release candidate consolidation
 
 ## Current posture
@@ -16,29 +16,22 @@ Operating mode: single release candidate consolidation
 - [docs/README.md](README.md)
 - [docs/SOURCE_OF_TRUTH_INDEX.md](SOURCE_OF_TRUTH_INDEX.md)
 - [docs/RELEASE_CANDIDATE_EVIDENCE.md](RELEASE_CANDIDATE_EVIDENCE.md)
+- [docs/audits/live-surface-audit-2026-04-15.md](audits/live-surface-audit-2026-04-15.md)
 
 ## Current live evidence
 
-- Smoke Tests: success on 2026-03-18 ([run 23268174209](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174209))
-- Lighthouse Audit: success on 2026-03-18 ([run 23268174183](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174183))
-- iOS macOS Smoke: success on 2026-03-18 ([run 23268174197](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174197))
-- `ios-build-gate`: success on 2026-03-18 ([run 23268174202](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174202))
-- Android Compile Check: success on 2026-03-17 ([run 23218840965](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23218840965))
-- Deploy to Firebase Hosting on merge: success on 2026-03-18 ([run 23259872147](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872147))
-- Portal Post-Deploy Promotion Gate: success on 2026-03-18 ([run 23259950672](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259950672))
-- Portal Daily Authenticated Canary: success on 2026-03-18 ([run 23257627816](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23257627816))
-- Local portal cutover verify refreshed on 2026-03-18:
-  - [artifacts/deploy-evidence-latest.md](../artifacts/deploy-evidence-latest.md)
-  - [output/qa/post-deploy-cutover-verify.json](../output/qa/post-deploy-cutover-verify.json)
-- Local website production smoke refreshed on 2026-03-18:
+- Fresh live portal public smoke pass on 2026-04-15:
+  - [output/playwright/portal/prod/portal-smoke-summary.json](../output/playwright/portal/prod/portal-smoke-summary.json)
+- Fresh live website public smoke pass on 2026-04-15:
   - [output/playwright/prod/smoke-summary.json](../output/playwright/prod/smoke-summary.json)
-  - Smoke currently passes after aligning the support-topic selector to the live `payments` taxonomy.
-  - Local execution required a temporary `STUDIO_BRAIN_INTEGRITY_OVERRIDE` because the smoke runner is coupled to an unrelated Studio Brain integrity guard.
-- Notification reliability proof refreshed on 2026-03-18:
-  - [output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json](../output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json)
-  - [output/qa/notification-partial-parity-local.json](../output/qa/notification-partial-parity-local.json)
-  - Production proof now covers retry exhaustion, dead letters, aggregate metrics, and stale-token cleanup after Firestore index remediation.
-  - Local parity proof covers `PUSH_PROVIDER_PARTIAL` plus invalid-token deactivation (`BadDeviceToken`) against the real notification code path.
+- Fresh live website phase-1 handoff verification on 2026-04-15:
+  - [output/playwright/prod-phase1-website/smoke-summary.json](../output/playwright/prod-phase1-website/smoke-summary.json)
+- Fresh live authenticated portal canary pass on 2026-04-15:
+  - [output/qa/portal-authenticated-canary-rc1.json](../output/qa/portal-authenticated-canary-rc1.json)
+- Fresh live Lighthouse sweep on 2026-04-15:
+  - [output/qa/lighthouse-live-2026-04-15T16-38-08Z](../output/qa/lighthouse-live-2026-04-15T16-38-08Z)
+- Consolidated audit:
+  - [docs/audits/live-surface-audit-2026-04-15.md](audits/live-surface-audit-2026-04-15.md)
 
 ## RC decisions
 
@@ -50,11 +43,14 @@ Operating mode: single release candidate consolidation
 ## Remaining blockers
 
 - RC exit is hard-gated in [docs/RELEASE_CANDIDATE_EVIDENCE.md](RELEASE_CANDIDATE_EVIDENCE.md):
+  - `RC issue 1`: Google login on `https://portal.monsoonfire.com` is not cycling users cleanly back into the live portal session
   - security rotation proof
   - final operator sign-off must remain populated and current
-- The only remaining hard-blocking issue is [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349).
 - Current blocker detail:
-  - live runtime proof still shows the push relay path failing with `APNS_RELAY_URL not configured`
+  - the live Google auth click-through currently redirects via `https://monsoonfire-portal.firebaseapp.com/__/auth/handler`, and the live bundle omits `auth.monsoonfire.com`
+  - the portal auth fix is deployed for direct testing on `https://portal.monsoonfire.com`, but a real operator Google round-trip still needs to be verified on the live surface
+  - the public website handoff is intentionally held on `https://monsoonfire.kilnfire.com` for phase 1; phase 2 cutover to `https://portal.monsoonfire.com` is deferred until explicit operator approval
+  - infra/security evidence still shows the push relay path failing with `APNS_RELAY_URL not configured`
   - APNS relay runtime configuration and rotation evidence remain incomplete
 
 ## Open GitHub issue dispositions
@@ -79,5 +75,5 @@ Operating mode: single release candidate consolidation
 - Latest successful `Smoke Tests` on `main` remains current and is not superseded by a newer failing run
 - Release evidence pack reflects current successful runs and current hard blockers only
 - Every open GitHub issue has an explicit owner, RC status, and close condition
-- Only [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) remains as a ship blocker
+- Live auth issue log is empty or explicitly accepted by the operator before ship
 - Final operator sign-off is recorded in the release evidence pack

@@ -22,11 +22,26 @@ const scorecard_1 = require("../observability/scorecard");
 const auditExport_1 = require("../observability/auditExport");
 const policyLint_1 = require("../observability/policyLint");
 const policyMetadata_1 = require("../capabilities/policyMetadata");
+const model_1 = require("../kiln/domain/model");
+const artifacts_1 = require("../kiln/services/artifacts");
+const manualEvents_1 = require("../kiln/services/manualEvents");
+const orchestration_1 = require("../kiln/services/orchestration");
+const overview_1 = require("../kiln/services/overview");
+const renderKilnCommandPage_1 = require("../kiln/ui/renderKilnCommandPage");
+const staffData_1 = require("../ops/staffData");
+const renderOpsPortalPage_1 = require("../ops/ui/renderOpsPortalPage");
 const service_1 = require("../memory/service");
+const service_2 = require("../supportOps/service");
 const collect_1 = require("../controlTower/collect");
 const firebaseProject_1 = require("../cloud/firebaseProject");
 const actions_1 = require("../controlTower/actions");
 const derive_1 = require("../controlTower/derive");
+const discord_1 = require("../supportOps/discord");
+const detail_1 = require("../agentRuntime/detail");
+const files_1 = require("../agentRuntime/files");
+const hosts_1 = require("../controlTower/hosts");
+const files_2 = require("../partner/files");
+const service_3 = require("../partner/service");
 const CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"];
 const CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"];
 const CONTROL_TOWER_STARTUP_SCORECARD_RELATIVE_PATH = ["output", "qa", "codex-startup-scorecard.json"];
@@ -87,6 +102,17 @@ function toStringList(value, maxItems = 64) {
         .map((entry) => toTrimmedString(entry))
         .filter(Boolean)
         .slice(0, Math.max(1, maxItems));
+}
+function isPartnerCheckinAction(value) {
+    return (value === "ack"
+        || value === "snooze"
+        || value === "pause"
+        || value === "redirect"
+        || value === "why_this"
+        || value === "continue");
+}
+function isPartnerOpenLoopStatus(value) {
+    return value === "delegated" || value === "paused" || value === "resolved";
 }
 function readJsonFile(path) {
     if (!(0, node_fs_1.existsSync)(path))
@@ -242,6 +268,7 @@ function readControlTowerStartupScorecard(repoRoot) {
     const supportingSignals = toObjectRecord(payload.supportingSignals);
     const toolcalls = toObjectRecord(supportingSignals.toolcalls);
     const coverage = toObjectRecord(payload.coverage);
+    const launcherCoverage = toObjectRecord(payload.launcherCoverage);
     const rubric = toObjectRecord(payload.rubric);
     return {
         schema: toTrimmedString(payload.schema) || "codex-startup-scorecard.v1",
@@ -278,12 +305,101 @@ function readControlTowerStartupScorecard(repoRoot) {
         coverage: {
             gaps: toStringList(coverage.gaps, 8),
         },
+        launcherCoverage: {
+            liveStartupSamples: toBoundedInt(launcherCoverage.liveStartupSamples, 0, 0, 1_000_000),
+            requiredLiveStartupSamples: toBoundedInt(launcherCoverage.requiredLiveStartupSamples, 5, 1, 1_000_000),
+            trustworthy: toBooleanFlag(toTrimmedString(String(launcherCoverage.trustworthy ?? "")), false),
+        },
         rubric: {
             overallScore: toNullableNumber(rubric.overallScore),
             grade: toTrimmedString(rubric.grade) || "n/a",
         },
         recommendations: toStringList(payload.recommendations, 8),
     };
+}
+function buildAgentRuntimeAttention(agentRuntime) {
+    if (!agentRuntime)
+        return [];
+    if (agentRuntime.status !== "blocked" && agentRuntime.status !== "failed")
+        return [];
+    return [
+        {
+            id: `agent-runtime-attention:${agentRuntime.runId}`,
+            title: `Inspect ${agentRuntime.title}`,
+            why: (0, collect_1.clipText)(agentRuntime.activeBlockers[0] || "The background runtime is blocked and needs an explicit next move.", 180),
+            ageMinutes: ageMinutesSince(agentRuntime.updatedAt),
+            severity: agentRuntime.status === "failed" ? "critical" : "warning",
+            actionLabel: "Inspect runtime",
+            target: { type: "ops", action: "agent-runtime" },
+        },
+    ];
+}
+function buildAgentRuntimeNextActions(agentRuntime) {
+    if (!agentRuntime)
+        return [];
+    return [
+        {
+            id: `agent-runtime-next:${agentRuntime.runId}`,
+            title: (0, collect_1.clipText)(agentRuntime.boardRow?.next || "Inspect background runtime", 120),
+            why: (0, collect_1.clipText)(agentRuntime.activeBlockers[0] || agentRuntime.goal || "Background runtime state changed.", 180),
+            ageMinutes: ageMinutesSince(agentRuntime.updatedAt),
+            actionLabel: "Open runtime",
+            target: { type: "ops", action: "agent-runtime" },
+        },
+    ];
+}
+function buildServerHostCard(raw, agentRuntime) {
+    const degradedServices = raw.services.filter((service) => service.status === "error").length;
+    const health = raw.ops.overallStatus === "error" || raw.ops.overallStatus === "waiting" ? "degraded" : "healthy";
+    return {
+        hostId: "studio-brain-server",
+        label: "Studio Brain Server",
+        environment: "server",
+        role: "control-plane",
+        connectivity: "online",
+        health,
+        lastSeenAt: raw.generatedAt,
+        ageMinutes: ageMinutesSince(raw.generatedAt),
+        currentRunId: agentRuntime?.runId ?? null,
+        agentCount: Math.max(raw.rooms.length, agentRuntime ? 1 : 0),
+        version: null,
+        summary: degradedServices > 0
+            ? `${degradedServices} service${degradedServices === 1 ? "" : "s"} degraded across the control plane.`
+            : `${raw.rooms.length} active room${raw.rooms.length === 1 ? "" : "s"} visible in the control plane.`,
+        metrics: {
+            cpuPct: null,
+            memoryPct: null,
+            load1: null,
+        },
+    };
+}
+function dedupeHosts(hosts) {
+    const seen = new Set();
+    return hosts.filter((host) => {
+        const key = `${host.environment}:${host.hostId}`;
+        if (seen.has(key))
+            return false;
+        seen.add(key);
+        return true;
+    });
+}
+function buildHostAttention(hosts) {
+    return hosts
+        .filter((host) => host.connectivity !== "online" || host.health === "degraded" || host.health === "offline")
+        .slice(0, 3)
+        .map((host) => ({
+        id: `attention:host:${host.hostId}`,
+        title: host.connectivity === "offline"
+            ? `${host.label} went offline`
+            : host.connectivity === "stale"
+                ? `${host.label} heartbeat is stale`
+                : `${host.label} is degraded`,
+        why: (0, collect_1.clipText)(host.summary, 180),
+        ageMinutes: host.ageMinutes,
+        severity: host.connectivity === "offline" || host.health === "offline" ? "critical" : "warning",
+        actionLabel: host.currentRunId ? "Open runtime" : "Inspect events",
+        target: host.currentRunId ? { type: "ops", action: "agent-runtime" } : { type: "ops", action: "events" },
+    }));
 }
 function buildControlTowerApprovals(proposals, capabilityDefinitions) {
     const definitions = new Map(capabilityDefinitions.map((capability) => [capability.id, capability]));
@@ -302,13 +418,15 @@ function buildControlTowerApprovals(proposals, capabilityDefinitions) {
             owner: policy?.owner || proposal.tenantId,
             approvalMode: policy?.approvalMode || (definition?.requiresApproval ? "required" : "exempt"),
             risk: definition?.risk || "medium",
+            previewInput: proposal.preview.input,
+            expectedEffects: proposal.preview.expectedEffects,
             target: { type: "ops", action: "approvals" },
         };
     })
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
         .slice(0, 8);
 }
-function buildSyntheticControlTowerEvents(memoryBrief, approvals) {
+function buildSyntheticControlTowerEvents(memoryBrief, approvals, agentRuntime, hosts, partner = null) {
     const output = [];
     output.push({
         id: `memory-brief:${memoryBrief.generatedAt}`,
@@ -404,6 +522,88 @@ function buildSyntheticControlTowerEvents(memoryBrief, approvals) {
             },
         });
     });
+    if (agentRuntime) {
+        output.push({
+            id: `agent-runtime:${agentRuntime.runId}:${agentRuntime.updatedAt}`,
+            at: agentRuntime.updatedAt,
+            kind: "session",
+            type: "run.status",
+            runId: agentRuntime.runId,
+            agentId: agentRuntime.agentId ?? "agent-runtime",
+            channel: "codex",
+            occurredAt: agentRuntime.updatedAt,
+            severity: agentRuntime.status === "failed" ? "critical" : agentRuntime.status === "blocked" ? "warning" : "info",
+            title: `${agentRuntime.status}: ${agentRuntime.title}`,
+            summary: (0, collect_1.clipText)(agentRuntime.activeBlockers[0] || agentRuntime.boardRow?.next || agentRuntime.goal, 220),
+            actor: agentRuntime.agentId ?? "agent-runtime",
+            roomId: null,
+            serviceId: null,
+            actionLabel: "Open runtime",
+            sourceAction: "control_tower.agent_runtime",
+            payload: {
+                hostId: agentRuntime.hostId ?? null,
+                environment: agentRuntime.environment ?? null,
+                riskLane: agentRuntime.riskLane,
+                blocker: agentRuntime.activeBlockers[0] ?? null,
+            },
+        });
+    }
+    hosts
+        .filter((host) => host.connectivity !== "online" || host.health === "degraded" || host.health === "offline")
+        .slice(0, 4)
+        .forEach((host) => {
+        output.push({
+            id: `host:${host.hostId}:${host.lastSeenAt || host.health}`,
+            at: host.lastSeenAt || new Date().toISOString(),
+            kind: "session",
+            type: "health.changed",
+            runId: host.currentRunId,
+            agentId: null,
+            channel: "ops",
+            occurredAt: host.lastSeenAt || new Date().toISOString(),
+            severity: host.connectivity === "offline" || host.health === "offline" ? "critical" : "warning",
+            title: `${host.label} ${host.connectivity === "online" ? host.health : host.connectivity}`,
+            summary: (0, collect_1.clipText)(host.summary, 220),
+            actor: host.hostId,
+            roomId: null,
+            serviceId: null,
+            actionLabel: host.currentRunId ? "Open runtime" : "Inspect events",
+            sourceAction: "control_tower.host_heartbeat",
+            payload: {
+                hostId: host.hostId,
+                environment: host.environment,
+                connectivity: host.connectivity,
+                health: host.health,
+                currentRunId: host.currentRunId,
+            },
+        });
+    });
+    if (partner) {
+        output.push({
+            id: `partner-brief:${partner.generatedAt}`,
+            at: partner.generatedAt,
+            kind: "operator",
+            type: "task.updated",
+            runId: null,
+            agentId: partner.persona.id,
+            channel: "codex",
+            occurredAt: partner.generatedAt,
+            severity: partner.needsOwnerDecision ? "warning" : "info",
+            title: partner.needsOwnerDecision ? "Chief-of-staff decision waiting" : "Chief-of-staff brief refreshed",
+            summary: (0, collect_1.clipText)(partner.summary, 220),
+            actor: partner.persona.displayName,
+            roomId: partner.openLoops[0]?.roomId ?? null,
+            serviceId: null,
+            actionLabel: "Review partner brief",
+            sourceAction: "control_tower.partner_brief",
+            payload: {
+                initiativeState: partner.initiativeState,
+                needsOwnerDecision: partner.needsOwnerDecision,
+                nextCheckInAt: partner.nextCheckInAt,
+                recommendedFocus: partner.recommendedFocus,
+            },
+        });
+    }
     return output;
 }
 function ageMinutesSince(iso) {
@@ -460,6 +660,8 @@ function shouldSurfaceMemoryNextMoves(memoryBrief, startupScorecard) {
         return false;
     if (toTrimmedString(startupScorecard.latest.sample.status).toLowerCase() !== "pass")
         return true;
+    if (startupScorecard.launcherCoverage.trustworthy !== true)
+        return true;
     if (startupScorecard.metrics.readyRate != null &&
         startupScorecard.metrics.readyRate < 0.85) {
         return true;
@@ -496,6 +698,9 @@ function buildMemoryActionNextMoves(memoryBrief, startupScorecard) {
         startupScorecard?.metrics.blockedContinuityRate != null && startupScorecard.metrics.blockedContinuityRate > 0.05
             ? `blocked continuity ${Math.round(startupScorecard.metrics.blockedContinuityRate * 100)}%`
             : "",
+        startupScorecard && startupScorecard.launcherCoverage.trustworthy !== true
+            ? `live startup coverage ${startupScorecard.launcherCoverage.liveStartupSamples}/${startupScorecard.launcherCoverage.requiredLiveStartupSamples}`
+            : "",
         toTrimmedString(memoryBrief.consolidation.actionabilityStatus).toLowerCase() &&
             toTrimmedString(memoryBrief.consolidation.actionabilityStatus).toLowerCase() !== "passed"
             ? `actionability ${toTrimmedString(memoryBrief.consolidation.actionabilityStatus)}`
@@ -514,7 +719,305 @@ function buildMemoryActionNextMoves(memoryBrief, startupScorecard) {
         target: { type: "ops", action: "memory" },
     }));
 }
-function enrichControlTowerState(state, syntheticEvents, approvals, memoryBrief, startupScorecard) {
+function buildControlTowerMemoryHealth(stats) {
+    if (!stats)
+        return null;
+    const coverage = {
+        rowsWithLattice: toBoundedInt(stats.lattice?.coverage.rowsWithLattice, 0, 0, 1_000_000),
+        totalRows: toBoundedInt(stats.lattice?.coverage.totalRows ?? stats.total, 0, 0, 1_000_000),
+        ratio: toNullableRatio(stats.lattice?.coverage.ratio),
+    };
+    const reviewBacklog = {
+        reviewNow: toBoundedInt(stats.reviewBacklog?.reviewNow ?? stats.lattice?.backlog.reviewNow, 0, 0, 1_000_000),
+        revalidate: toBoundedInt(stats.reviewBacklog?.revalidate ?? stats.lattice?.backlog.revalidate, 0, 0, 1_000_000),
+        resolveConflict: toBoundedInt(stats.reviewBacklog?.resolveConflict ?? stats.lattice?.backlog.resolveConflict, 0, 0, 1_000_000),
+        retire: toBoundedInt(stats.reviewBacklog?.retire ?? stats.lattice?.backlog.retire, 0, 0, 1_000_000),
+        folkloreRiskHigh: toBoundedInt(stats.reviewBacklog?.folkloreRiskHigh ?? stats.lattice?.backlog.folkloreRiskHigh, 0, 0, 1_000_000),
+    };
+    const openReviewCases = toBoundedInt(stats.openReviewCases, 0, 0, 1_000_000);
+    const verificationFailures24h = toBoundedInt(stats.verificationFailures24h, 0, 0, 1_000_000);
+    const emberPromotionBacklog = toBoundedInt(stats.emberPromotionBacklog, 0, 0, 1_000_000);
+    const conflictBacklog = {
+        contestedRows: toBoundedInt(stats.conflictBacklog?.contestedRows, 0, 0, 1_000_000),
+        hardConflicts: toBoundedInt(stats.conflictBacklog?.hardConflicts, 0, 0, 1_000_000),
+        quarantinedRows: toBoundedInt(stats.conflictBacklog?.quarantinedRows, 0, 0, 1_000_000),
+        conflictRecords: toBoundedInt(stats.conflictBacklog?.conflictRecords, 0, 0, 1_000_000),
+        retrievalShadowedRows: toBoundedInt(stats.conflictBacklog?.retrievalShadowedRows, 0, 0, 1_000_000),
+    };
+    const startupReadiness = {
+        startupEligibleRows: toBoundedInt(stats.startupReadiness?.startupEligibleRows, 0, 0, 1_000_000),
+        trustedStartupRows: toBoundedInt(stats.startupReadiness?.trustedStartupRows, 0, 0, 1_000_000),
+        handoffRows: toBoundedInt(stats.startupReadiness?.handoffRows, 0, 0, 1_000_000),
+        checkpointRows: toBoundedInt(stats.startupReadiness?.checkpointRows, 0, 0, 1_000_000),
+        fallbackRiskRows: toBoundedInt(stats.startupReadiness?.fallbackRiskRows, 0, 0, 1_000_000),
+    };
+    const secretExposureFindings = {
+        totalRows: toBoundedInt(stats.secretExposureFindings?.totalRows, 0, 0, 1_000_000),
+        redactedRows: toBoundedInt(stats.secretExposureFindings?.redactedRows, 0, 0, 1_000_000),
+        requiresReviewRows: toBoundedInt(stats.secretExposureFindings?.requiresReviewRows, 0, 0, 1_000_000),
+        canonicalBlockedRows: toBoundedInt(stats.secretExposureFindings?.canonicalBlockedRows, 0, 0, 1_000_000),
+        quarantinedRows: toBoundedInt(stats.secretExposureFindings?.quarantinedRows, 0, 0, 1_000_000),
+    };
+    const shadowMcpFindings = {
+        totalRows: toBoundedInt(stats.shadowMcpFindings?.totalRows, 0, 0, 1_000_000),
+        governedRows: toBoundedInt(stats.shadowMcpFindings?.governedRows, 0, 0, 1_000_000),
+        ungovernedRows: toBoundedInt(stats.shadowMcpFindings?.ungovernedRows, 0, 0, 1_000_000),
+        reviewRows: toBoundedInt(stats.shadowMcpFindings?.reviewRows, 0, 0, 1_000_000),
+        highRiskRows: toBoundedInt(stats.shadowMcpFindings?.highRiskRows, 0, 0, 1_000_000),
+    };
+    const criticalHighlights = dedupeTextList([
+        secretExposureFindings.canonicalBlockedRows > 0
+            ? `${secretExposureFindings.canonicalBlockedRows} secret-bearing memories are blocked from canonical promotion`
+            : "",
+        secretExposureFindings.quarantinedRows > 0
+            ? `${secretExposureFindings.quarantinedRows} secret-bearing memories remain quarantined`
+            : "",
+        shadowMcpFindings.highRiskRows > 0
+            ? `${shadowMcpFindings.highRiskRows} MCP memories are flagged high risk`
+            : "",
+        shadowMcpFindings.ungovernedRows > 0
+            ? `${shadowMcpFindings.ungovernedRows} MCP memories are missing governance registration`
+            : "",
+    ], 4);
+    const warningHighlights = dedupeTextList([
+        startupReadiness.fallbackRiskRows > 0
+            ? `${startupReadiness.fallbackRiskRows} startup memories still depend on fallback continuity`
+            : "",
+        reviewBacklog.resolveConflict > 0
+            ? `${reviewBacklog.resolveConflict} memory conflicts need resolution`
+            : "",
+        reviewBacklog.revalidate > 0
+            ? `${reviewBacklog.revalidate} stale memories need revalidation`
+            : "",
+        reviewBacklog.reviewNow > 0
+            ? `${reviewBacklog.reviewNow} memories are waiting for review`
+            : "",
+        openReviewCases > 0
+            ? `${openReviewCases} memory review cases are open`
+            : "",
+        verificationFailures24h > 0
+            ? `${verificationFailures24h} verification runs failed in the last 24 hours`
+            : "",
+        emberPromotionBacklog > 0
+            ? `${emberPromotionBacklog} Ember guidance promotions are waiting for review`
+            : "",
+        reviewBacklog.folkloreRiskHigh > 0
+            ? `${reviewBacklog.folkloreRiskHigh} folklore-risk memories need verification`
+            : "",
+        conflictBacklog.hardConflicts > 0
+            ? `${conflictBacklog.hardConflicts} hard conflicts remain in the lattice`
+            : "",
+        conflictBacklog.retrievalShadowedRows > 0
+            ? `${conflictBacklog.retrievalShadowedRows} memories are being shadowed by hard conflict retrieval rules`
+            : "",
+        coverage.totalRows > 0 && coverage.ratio != null && coverage.ratio < 0.95
+            ? `lattice coverage is ${Math.round(coverage.ratio * 100)}%`
+            : "",
+    ], 4);
+    const severity = criticalHighlights.length > 0
+        ? "critical"
+        : warningHighlights.length > 0 ||
+            startupReadiness.startupEligibleRows > startupReadiness.trustedStartupRows
+            ? "warning"
+            : "info";
+    const highlights = criticalHighlights.length > 0
+        ? criticalHighlights
+        : warningHighlights.length > 0
+            ? warningHighlights
+            : ["Memory trust signals are within the current launch thresholds."];
+    const summary = severity === "critical"
+        ? (0, collect_1.clipText)(`Memory launch trust needs immediate operator review: ${highlights.join("; ")}.`, 220)
+        : severity === "warning"
+            ? (0, collect_1.clipText)(`Memory launch trust is degraded but recoverable: ${highlights.join("; ")}.`, 220)
+            : "Memory launch trust is healthy and startup coverage is within the current policy thresholds.";
+    return {
+        severity,
+        summary,
+        highlights,
+        coverage,
+        reviewBacklog,
+        openReviewCases,
+        verificationFailures24h,
+        emberPromotionBacklog,
+        conflictBacklog,
+        startupReadiness,
+        secretExposureFindings,
+        shadowMcpFindings,
+    };
+}
+function buildMemoryHealthAttention(memoryHealth) {
+    if (!memoryHealth)
+        return [];
+    const items = [
+        memoryHealth.secretExposureFindings.canonicalBlockedRows > 0 || memoryHealth.secretExposureFindings.quarantinedRows > 0
+            ? {
+                id: "attention:memory:secret-exposure",
+                title: "Secret-bearing memories need review",
+                why: (0, collect_1.clipText)(memoryHealth.summary, 180),
+                ageMinutes: null,
+                severity: "critical",
+                actionLabel: "Review memory",
+                target: { type: "ops", action: "memory" },
+            }
+            : null,
+        memoryHealth.shadowMcpFindings.highRiskRows > 0 || memoryHealth.shadowMcpFindings.ungovernedRows > 0
+            ? {
+                id: "attention:memory:shadow-mcp",
+                title: "Shadow MCP memory needs governance review",
+                why: (0, collect_1.clipText)(memoryHealth.summary, 180),
+                ageMinutes: null,
+                severity: memoryHealth.shadowMcpFindings.highRiskRows > 0 ? "critical" : "warning",
+                actionLabel: "Review memory",
+                target: { type: "ops", action: "memory" },
+            }
+            : null,
+        memoryHealth.startupReadiness.fallbackRiskRows > 0 || memoryHealth.reviewBacklog.resolveConflict > 0
+            ? {
+                id: "attention:memory:startup-trust",
+                title: "Startup memory trust needs repair",
+                why: (0, collect_1.clipText)(memoryHealth.summary, 180),
+                ageMinutes: null,
+                severity: memoryHealth.startupReadiness.fallbackRiskRows > 0
+                    ? "warning"
+                    : "info",
+                actionLabel: "Review memory",
+                target: { type: "ops", action: "memory" },
+            }
+            : null,
+    ].filter((item) => item !== null);
+    return items.slice(0, 3);
+}
+function buildMemoryHealthNextMoves(memoryHealth) {
+    if (!memoryHealth || memoryHealth.severity === "info")
+        return [];
+    const titles = dedupeTextList([
+        memoryHealth.secretExposureFindings.canonicalBlockedRows > 0 || memoryHealth.secretExposureFindings.quarantinedRows > 0
+            ? "Review quarantined secret-bearing memories"
+            : "",
+        memoryHealth.shadowMcpFindings.highRiskRows > 0 || memoryHealth.shadowMcpFindings.ungovernedRows > 0
+            ? "Audit MCP governance coverage in memory"
+            : "",
+        memoryHealth.startupReadiness.fallbackRiskRows > 0
+            ? "Promote trusted startup continuity memories"
+            : "",
+        memoryHealth.reviewBacklog.resolveConflict > 0 || memoryHealth.reviewBacklog.revalidate > 0
+            ? "Work the memory conflict and revalidation backlog"
+            : "",
+        memoryHealth.reviewBacklog.folkloreRiskHigh > 0
+            ? "Verify folklore-risk memories before launch"
+            : "",
+    ], 4);
+    return titles.map((title, index) => ({
+        id: `memory-health-next:${index}:${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        title,
+        why: (0, collect_1.clipText)(memoryHealth.summary, 180),
+        ageMinutes: null,
+        actionLabel: "Review memory",
+        target: { type: "ops", action: "memory" },
+    }));
+}
+function buildPartnerAttention(partner) {
+    if (!partner)
+        return [];
+    if (partner.needsOwnerDecision) {
+        return [
+            {
+                id: "attention:partner:decision",
+                title: "Chief-of-staff decision waiting",
+                why: (0, collect_1.clipText)(partner.summary, 180),
+                ageMinutes: null,
+                severity: "warning",
+                actionLabel: "Review partner brief",
+                target: { type: "ops", action: "partner" },
+            },
+        ];
+    }
+    if (partner.initiativeState === "cooldown") {
+        return [];
+    }
+    if ((partner.openLoops ?? []).some((entry) => entry.status === "open")) {
+        return [
+            {
+                id: "attention:partner:open-loop",
+                title: "Chief-of-staff open loop needs review",
+                why: (0, collect_1.clipText)(partner.contactReason, 180),
+                ageMinutes: null,
+                severity: "info",
+                actionLabel: "Review partner brief",
+                target: { type: "ops", action: "partner" },
+            },
+        ];
+    }
+    return [];
+}
+function buildPartnerNextMoves(partner) {
+    if (!partner)
+        return [];
+    const focus = (0, collect_1.clipText)(partner.recommendedFocus || partner.contactReason, 160);
+    const actionLabel = partner.needsOwnerDecision ? "Review partner brief" : "Review cadence";
+    return [
+        {
+            id: "partner:review",
+            title: partner.needsOwnerDecision ? "Review chief-of-staff decision" : "Review chief-of-staff brief",
+            why: focus,
+            ageMinutes: null,
+            actionLabel,
+            target: { type: "ops", action: "partner" },
+        },
+    ];
+}
+function applyPartnerSignalsToRooms(rooms, partner) {
+    if (!partner)
+        return rooms;
+    const loopsByRoom = new Map();
+    for (const loop of partner.openLoops) {
+        if (!loop.roomId || loopsByRoom.has(loop.roomId))
+            continue;
+        loopsByRoom.set(loop.roomId, loop);
+    }
+    return rooms.map((room) => {
+        const loop = loopsByRoom.get(room.id);
+        if (!loop)
+            return room;
+        return {
+            ...room,
+            contactReason: partner.contactReason,
+            verifiedContext: loop.verifiedContext,
+            decisionNeeded: loop.decisionNeeded,
+        };
+    });
+}
+function applyPartnerSignalsToBoard(board, partner) {
+    if (!partner)
+        return board;
+    const loopsByRoom = new Map();
+    for (const loop of partner.openLoops) {
+        if (!loop.roomId || loopsByRoom.has(loop.roomId))
+            continue;
+        loopsByRoom.set(loop.roomId, loop);
+    }
+    return board.map((row, index) => {
+        const loop = row.roomId ? loopsByRoom.get(row.roomId) : null;
+        if (loop) {
+            return {
+                ...row,
+                contactReason: partner.contactReason,
+                verifiedContext: loop.verifiedContext,
+                decisionNeeded: loop.decisionNeeded,
+            };
+        }
+        if (index === 0 && !row.roomId) {
+            return {
+                ...row,
+                contactReason: partner.contactReason,
+                verifiedContext: partner.verifiedContext,
+                decisionNeeded: partner.singleDecisionNeeded,
+            };
+        }
+        return row;
+    });
+}
+function enrichControlTowerState(state, syntheticEvents, approvals, memoryBrief, startupScorecard, memoryHealth, agentRuntime, hosts, partner) {
     const mergedEvents = [...syntheticEvents, ...state.events]
         .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
         .slice(0, 48);
@@ -530,23 +1033,61 @@ function enrichControlTowerState(state, syntheticEvents, approvals, memoryBrief,
         actionLabel: "Open approvals",
         target: approval.target,
     }));
+    const memoryAttention = buildMemoryHealthAttention(memoryHealth);
+    const agentRuntimeAttention = buildAgentRuntimeAttention(agentRuntime);
+    const hostAttention = buildHostAttention(hosts);
+    const partnerAttention = buildPartnerAttention(partner);
     const memoryNextMoves = buildMemoryActionNextMoves(memoryBrief, startupScorecard);
-    const mergedActions = dedupeNextActions([...memoryNextMoves, ...state.actions], 6);
+    const memoryHealthMoves = buildMemoryHealthNextMoves(memoryHealth);
+    const agentRuntimeMoves = buildAgentRuntimeNextActions(agentRuntime);
+    const partnerMoves = buildPartnerNextMoves(partner);
+    const mergedActions = dedupeNextActions([...partnerMoves, ...agentRuntimeMoves, ...memoryHealthMoves, ...memoryNextMoves, ...state.actions], 6);
+    const mergedBoard = agentRuntime?.boardRow
+        ? [
+            {
+                runId: agentRuntime.runId,
+                roomId: null,
+                sessionName: null,
+                ...agentRuntime.boardRow,
+            },
+            ...state.board.filter((row) => row.id !== agentRuntime.boardRow.id),
+        ].slice(0, 8)
+        : state.board;
+    const nextRooms = applyPartnerSignalsToRooms(state.rooms, partner);
+    const nextBoard = applyPartnerSignalsToBoard(mergedBoard, partner);
     return {
         ...state,
+        rooms: nextRooms,
         approvals,
         memoryBrief,
         startupScorecard,
+        memoryHealth,
+        agentRuntime,
+        hosts,
+        partner,
+        board: nextBoard,
         events: mergedEvents,
         recentChanges: mergedEvents.slice(0, 6),
         actions: mergedActions,
         counts: {
             ...state.counts,
-            needsAttention: state.counts.needsAttention + approvalAttention.length,
+            needsAttention: state.counts.needsAttention
+                + approvalAttention.length
+                + memoryAttention.length
+                + hostAttention.length
+                + agentRuntimeAttention.length
+                + partnerAttention.length,
         },
         overview: {
             ...state.overview,
-            needsAttention: [...approvalAttention, ...state.overview.needsAttention].slice(0, 6),
+            needsAttention: [
+                ...partnerAttention,
+                ...hostAttention,
+                ...agentRuntimeAttention,
+                ...memoryAttention,
+                ...approvalAttention,
+                ...state.overview.needsAttention,
+            ].slice(0, 6),
             goodNextMoves: mergedActions,
             recentEvents: mergedEvents.slice(0, 8),
         },
@@ -793,6 +1334,21 @@ async function readRawBody(req) {
         return "";
     return Buffer.concat(chunks).toString("utf8");
 }
+async function readRawBodyLimited(req, maxBytes) {
+    const chunks = [];
+    let totalBytes = 0;
+    for await (const chunk of req) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buffer.byteLength;
+        if (totalBytes > maxBytes) {
+            throw new Error(`Request body exceeds ${maxBytes} bytes.`);
+        }
+        chunks.push(buffer);
+    }
+    if (!chunks.length)
+        return "";
+    return Buffer.concat(chunks).toString("utf8");
+}
 function parseJsonBody(raw) {
     if (!raw.trim())
         return {};
@@ -843,6 +1399,48 @@ function verifyHmacSignature(expectedHex, providedHex) {
         if (expected.length !== provided.length)
             return false;
         return node_crypto_1.default.timingSafeEqual(expected, provided);
+    }
+    catch {
+        return false;
+    }
+}
+function createSignedOpsSessionToken(secret, ttlSeconds) {
+    const nowMs = Date.now();
+    const expiresAt = nowMs + Math.max(60, Math.min(3600, ttlSeconds)) * 1000;
+    const payload = {
+        aud: "studio-brain-ops",
+        iat: nowMs,
+        exp: expiresAt,
+        nonce: node_crypto_1.default.randomBytes(12).toString("base64url"),
+    };
+    const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const signature = node_crypto_1.default.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
+    return `sbops.${payloadEncoded}.${signature}`;
+}
+function verifySignedOpsSessionToken(token, secret) {
+    const trimmed = token.trim();
+    if (!trimmed.startsWith("sbops."))
+        return false;
+    const parts = trimmed.split(".");
+    if (parts.length !== 3)
+        return false;
+    const payloadEncoded = parts[1] ?? "";
+    const providedSignature = parts[2] ?? "";
+    const expectedSignature = node_crypto_1.default.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
+    if (!verifyHmacSignature(expectedSignature, providedSignature)) {
+        return false;
+    }
+    try {
+        const decoded = JSON.parse(Buffer.from(payloadEncoded, "base64url").toString("utf8"));
+        const exp = decoded.exp ?? 0;
+        const iat = decoded.iat ?? 0;
+        if (decoded.aud !== "studio-brain-ops")
+            return false;
+        if (!Number.isFinite(exp) || exp <= Date.now())
+            return false;
+        if (!Number.isFinite(iat) || iat > Date.now() + 60_000)
+            return false;
+        return true;
     }
     catch {
         return false;
@@ -909,15 +1507,23 @@ async function verifyFirebaseAuthHeader(authorizationHeader) {
     ensureFirebaseAdminForAuth();
     const decoded = await (0, auth_1.getAuth)().verifyIdToken(match[1]);
     const roles = Array.isArray(decoded.roles) ? decoded.roles.map((value) => String(value)) : [];
-    const isStaff = decoded.staff === true || decoded.admin === true || roles.includes("staff") || roles.includes("admin");
+    const claims = decoded;
+    const portalRole = (0, staffData_1.derivePortalRoleFromClaims)(claims);
+    const opsRoles = (0, staffData_1.deriveOpsRolesFromClaims)(claims);
+    const opsCapabilities = (0, staffData_1.deriveOpsCapabilitiesFromClaims)(claims);
+    const isStaff = decoded.staff === true || decoded.admin === true || roles.includes("staff") || roles.includes("admin") || opsRoles.length > 0;
     return {
         uid: decoded.uid,
         isStaff,
         roles,
+        portalRole,
+        opsRoles,
+        opsCapabilities,
     };
 }
 function startHttpServer(params) {
-    const { host, port, logger, stateStore, eventStore, requireFreshSnapshotForReady = false, readyMaxSnapshotAgeMinutes = 240, pgCheck = postgres_1.checkPgConnection, getRuntimeStatus, getRuntimeMetrics, capabilityRuntime, allowedOrigins = [], adminToken, verifyFirebaseAuth = verifyFirebaseAuthHeader, backendHealth, memoryService = null, memoryIngestConfig, endpointRateLimits, abuseQuotaStore = new policy_1.InMemoryQuotaStore(), pilotWriteExecutor = null, controlTowerRepoRoot, controlTowerRootSession = collect_1.DEFAULT_ROOT_SESSION, controlTowerHostUser = collect_1.DEFAULT_HOST_USER, controlTowerSshHostAlias, controlTowerRunner, } = params;
+    const { host, port, logger, stateStore, eventStore, artifactStore = null, kilnStore = null, kilnEnabled = false, kilnImportMaxBytes = 5 * 1024 * 1024, kilnEnableSupportedWrites = false, kilnObservationProvider = null, requireFreshSnapshotForReady = false, readyMaxSnapshotAgeMinutes = 240, pgCheck = postgres_1.checkPgConnection, getRuntimeStatus, getRuntimeMetrics, capabilityRuntime, allowedOrigins = [], adminToken, verifyFirebaseAuth = verifyFirebaseAuthHeader, backendHealth, memoryService = null, memoryIngestConfig, opsService = null, opsIngestConfig, opsPortalConfig, endpointRateLimits, abuseQuotaStore = new policy_1.InMemoryQuotaStore(), pilotWriteExecutor = null, supportOpsStore = null, controlTowerRepoRoot, controlTowerRootSession = collect_1.DEFAULT_ROOT_SESSION, controlTowerHostUser = collect_1.DEFAULT_HOST_USER, controlTowerSshHostAlias, controlTowerRunner, } = params;
+    const resolvedKilnImportMaxBytes = Math.max(4_096, kilnImportMaxBytes);
     const rateLimits = {
         createProposalPerMinute: Math.max(1, endpointRateLimits?.createProposalPerMinute ?? 20),
         executeProposalPerMinute: Math.max(1, endpointRateLimits?.executeProposalPerMinute ?? 20),
@@ -937,6 +1543,21 @@ function startHttpServer(params) {
         allowedDiscordGuildIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordGuildIds),
         allowedDiscordChannelIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordChannelIds),
     };
+    const opsIngest = {
+        enabled: opsIngestConfig?.enabled !== false,
+        hmacSecret: opsIngestConfig?.hmacSecret?.trim() ?? "",
+        maxSkewSeconds: Math.max(30, opsIngestConfig?.maxSkewSeconds ?? 300),
+        allowedSources: toNormalizedSet(opsIngestConfig?.allowedSources),
+    };
+    const opsPortal = {
+        enabled: opsPortalConfig?.enabled ?? Boolean(opsService),
+        requireStaffAuth: opsPortalConfig?.requireStaffAuth !== false,
+        compareEnabled: opsPortalConfig?.compareEnabled !== false,
+        legacyUrl: toTrimmedString(opsPortalConfig?.legacyUrl) || null,
+        defaultSurface: toTrimmedString(opsPortalConfig?.defaultSurface) || "manager",
+    };
+    const opsSessionSecret = String(process.env.STUDIO_BRAIN_OPS_SESSION_SECRET ?? adminToken ?? "").trim();
+    const opsSessionTtlSeconds = Math.max(60, Math.min(3600, Number(process.env.STUDIO_BRAIN_OPS_SESSION_TTL_SECONDS ?? "900") || 900));
     const readControlTowerSnapshot = async () => {
         const [overseerRun, audits, proposals] = await Promise.all([
             stateStore.getLatestOverseerRun(),
@@ -957,11 +1578,35 @@ function startHttpServer(params) {
         const initialState = (0, derive_1.deriveControlTowerState)(raw, audits, { approvals });
         const memoryBrief = readControlTowerMemoryBrief(resolvedControlTowerRepoRoot, initialState.memoryBrief);
         const startupScorecard = readControlTowerStartupScorecard(resolvedControlTowerRepoRoot);
-        const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals);
-        const state = enrichControlTowerState((0, derive_1.deriveControlTowerState)(raw, audits, {
+        const agentRuntime = (0, files_1.readLatestAgentRuntimeSummary)(resolvedControlTowerRepoRoot);
+        const hosts = dedupeHosts([
+            buildServerHostCard(raw, agentRuntime),
+            ...(0, hosts_1.listControlTowerHostHeartbeats)(resolvedControlTowerRepoRoot),
+        ]);
+        const stateWithMemory = (0, derive_1.deriveControlTowerState)(raw, audits, {
             approvals,
             memoryBrief,
-        }), syntheticEvents, approvals, memoryBrief, startupScorecard);
+        });
+        const partner = (0, service_3.deriveAndPersistPartnerBrief)({
+            repoRoot: resolvedControlTowerRepoRoot,
+            generatedAt: raw.generatedAt,
+            memoryBrief,
+            rooms: stateWithMemory.rooms,
+            approvals,
+            agentRuntime,
+        });
+        let memoryHealth = null;
+        if (memoryService) {
+            try {
+                memoryHealth = buildControlTowerMemoryHealth(await memoryService.stats({}));
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.warn(`control tower memory health unavailable: ${message}`);
+            }
+        }
+        const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals, agentRuntime, hosts, partner);
+        const state = enrichControlTowerState(stateWithMemory, syntheticEvents, approvals, memoryBrief, startupScorecard, memoryHealth, agentRuntime, hosts, partner);
         return { raw, state, audits };
     };
     const appendControlTowerAudit = async (principal, action, rationale, metadata) => {
@@ -1218,7 +1863,7 @@ function startHttpServer(params) {
             return {};
         return {
             "access-control-allow-origin": origin,
-            "access-control-allow-headers": "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp",
+            "access-control-allow-headers": "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp, x-ops-ingest-signature, x-ops-ingest-timestamp, x-studio-brain-ops-session",
             "access-control-allow-methods": "GET,POST,OPTIONS",
             "access-control-max-age": "600",
             vary: "Origin",
@@ -1246,6 +1891,58 @@ function startHttpServer(params) {
         catch (error) {
             return { ok: false, message: error instanceof Error ? error.message : String(error) };
         }
+    };
+    const assertKilnAccess = (req) => assertCapabilityAuth(req, { requireAdminToken: false });
+    const assertOpsPortalAuth = async (req) => {
+        if (!opsPortal.requireStaffAuth) {
+            return { ok: true, actorId: "ops-portal:anonymous" };
+        }
+        const sessionToken = firstHeader(req.headers["x-studio-brain-ops-session"]);
+        if (opsSessionSecret && sessionToken && verifySignedOpsSessionToken(sessionToken, opsSessionSecret)) {
+            return { ok: true, actorId: "ops-session:local-portal" };
+        }
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+            return { ok: false, message: auth.message ?? "Unauthorized", actorId: "unknown" };
+        }
+        return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+    };
+    const assertHostHeartbeatAuth = async (req) => {
+        const provided = firstHeader(req.headers["x-studio-brain-admin-token"]);
+        if (adminToken && provided && provided === adminToken) {
+            return { ok: true, actorId: "machine:control-tower-host" };
+        }
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+            return { ok: false, message: auth.message, actorId: "unknown" };
+        }
+        return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+    };
+    const opsActorContext = (auth) => ({
+        actorId: auth.actorId,
+        isStaff: auth.principal?.isStaff ?? false,
+        portalRole: auth.principal?.portalRole ?? "member",
+        opsRoles: auth.principal?.opsRoles ?? [],
+        opsCapabilities: auth.principal?.opsCapabilities ?? [],
+    });
+    const kilnProviderSupport = () => kilnObservationProvider?.describeSupport() ?? null;
+    const ensureKilnRuntime = () => {
+        if (!kilnEnabled) {
+            return { ok: false, message: "Kiln overlay is disabled." };
+        }
+        if (!kilnStore) {
+            return { ok: false, message: "Kiln store is unavailable." };
+        }
+        return { ok: true };
+    };
+    const ensureKilnArtifacts = () => {
+        const runtime = ensureKilnRuntime();
+        if (!runtime.ok)
+            return runtime;
+        if (!artifactStore) {
+            return { ok: false, message: "Kiln artifact store is unavailable." };
+        }
+        return { ok: true };
     };
     const server = node_http_1.default.createServer(async (req, res) => {
         const requestId = firstHeader(req.headers["x-request-id"]) ??
@@ -1375,6 +2072,46 @@ function startHttpServer(params) {
                     statusCode = 201;
                     res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                     res.end(JSON.stringify({ ok: true, memory }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/consolidate") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = toObjectRecord(await readJsonBody(req));
+                    const result = await memoryService.consolidate(payload);
+                    try {
+                        await appendControlTowerAudit(auth.principal, "studio_brain.memory_consolidated", "Memory consolidation executed via the Studio Brain HTTP control plane.", {
+                            endpoint: "/api/memory/consolidate",
+                            mode: toTrimmedString(payload.mode) || "idle",
+                            runId: toTrimmedString(payload.runId) || null,
+                            tenantId: toTrimmedString(payload.tenantId) || null,
+                            focusAreas: toStringList(payload.focusAreas, 12),
+                            requestOrigin: toTrimmedString(payload.requestOrigin) || null,
+                            requestedTransport: toTrimmedString(payload.requestedTransport) || null,
+                            transport: toTrimmedString(payload.transport) || null,
+                            status: toTrimmedString(result?.status) || null,
+                        });
+                    }
+                    catch (auditError) {
+                        logger.warn(`memory consolidation audit append failed: ${auditError instanceof Error ? auditError.message : String(auditError)}`);
+                    }
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
                 }
                 catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
@@ -2183,6 +2920,136 @@ function startHttpServer(params) {
                     statusCode = 200;
                     res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                     res.end(JSON.stringify({ ok: true, stats }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/review-cases") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+                    const statuses = [
+                        ...url.searchParams.getAll("status"),
+                        ...url.searchParams.getAll("statuses"),
+                        ...toStringList(url.searchParams.get("status")?.split(",") ?? []),
+                    ];
+                    const caseTypes = [
+                        ...url.searchParams.getAll("caseType"),
+                        ...url.searchParams.getAll("caseTypes"),
+                        ...toStringList(url.searchParams.get("caseType")?.split(",") ?? []),
+                    ];
+                    const scopePrefixes = [
+                        ...url.searchParams.getAll("scopePrefix"),
+                        ...url.searchParams.getAll("scopePrefixes"),
+                    ].map((value) => value.trim()).filter(Boolean);
+                    const linkedMemoryIds = [
+                        ...url.searchParams.getAll("linkedMemoryId"),
+                        ...url.searchParams.getAll("linkedMemoryIds"),
+                    ].map((value) => value.trim()).filter(Boolean);
+                    const rows = await memoryService.listReviewCases({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        statuses,
+                        caseTypes,
+                        scopePrefixes,
+                        linkedMemoryIds,
+                        limit: Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.trunc(limitRaw), 200)) : 50,
+                    });
+                    const latestVerificationRuns = memoryService.listVerificationRuns
+                        ? await Promise.all(rows.map((row) => memoryService.listVerificationRuns({ tenantId: row.tenantId ?? undefined, caseId: row.id, limit: 1 })))
+                        : [];
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        rows,
+                        latestVerificationRuns: latestVerificationRuns.flatMap((entry) => entry).slice(0, rows.length),
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            const memoryReviewCaseActionMatch = memoryService && method === "POST"
+                ? url.pathname.match(/^\/api\/memory\/review-cases\/([^/]+)\/actions$/)
+                : null;
+            if (memoryService && memoryReviewCaseActionMatch) {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = toObjectRecord(await readJsonBody(req));
+                    const result = await memoryService.reviewCaseAction({
+                        ...payload,
+                        id: decodeURIComponent(memoryReviewCaseActionMatch[1] ?? ""),
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, ...result }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            const memoryReviewCaseMatch = memoryService && method === "GET"
+                ? url.pathname.match(/^\/api\/memory\/review-cases\/([^/]+)$/)
+                : null;
+            if (memoryService && memoryReviewCaseMatch) {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const reviewCase = await memoryService.getReviewCase({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        id: decodeURIComponent(memoryReviewCaseMatch[1] ?? ""),
+                    });
+                    if (!reviewCase) {
+                        statusCode = 404;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Memory review case not found." }));
+                        return;
+                    }
+                    const verificationRuns = memoryService.listVerificationRuns
+                        ? await memoryService.listVerificationRuns({
+                            tenantId: reviewCase.tenantId ?? undefined,
+                            caseId: reviewCase.id,
+                            limit: 10,
+                        })
+                        : [];
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, reviewCase, verificationRuns }));
                 }
                 catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
@@ -3095,6 +3962,196 @@ function startHttpServer(params) {
                 }));
                 return;
             }
+            if (supportOpsStore && method === "GET" && url.pathname === "/api/support-ops/queue") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const limitRaw = Number(url.searchParams.get("limit") ?? "20");
+                const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 100)) : 20;
+                const recentCases = await supportOpsStore.listRecentCases(limit);
+                let casesWithReviewLinks = recentCases;
+                if (memoryService) {
+                    const linkedCaseMap = new Map();
+                    for (const row of recentCases) {
+                        const scope = toTrimmedString(row.emberMemoryScope ?? "");
+                        if (!scope)
+                            continue;
+                        try {
+                            const reviewCases = await memoryService.listReviewCases({
+                                tenantId: undefined,
+                                statuses: ["open", "in-progress"],
+                                scopePrefixes: [scope],
+                                limit: 8,
+                            });
+                            if (reviewCases.length > 0) {
+                                linkedCaseMap.set(row.supportRequestId, reviewCases.map((entry) => entry.id));
+                            }
+                        }
+                        catch {
+                            // best-effort memory linkage
+                        }
+                    }
+                    casesWithReviewLinks = recentCases.map((row) => ({
+                        ...row,
+                        linkedMemoryReviewCaseIds: linkedCaseMap.get(row.supportRequestId) ?? row.linkedMemoryReviewCaseIds ?? [],
+                    }));
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({
+                    ok: true,
+                    summary: await supportOpsStore.getQueueSummary(),
+                    recentCases: casesWithReviewLinks,
+                }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/support-ops/persona") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, persona: (0, discord_1.getSupportAgentProfile)() }));
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/support-ops/discord/respond") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const body = toObjectRecord(await readJsonBody(req));
+                try {
+                    const draftInput = {
+                        channelId: toTrimmedString(body.channelId),
+                        threadId: toTrimmedString(body.threadId) || null,
+                        messageId: toTrimmedString(body.messageId) || null,
+                        guildId: toTrimmedString(body.guildId) || null,
+                        senderId: toTrimmedString(body.senderId) || null,
+                        senderName: toTrimmedString(body.senderName) || null,
+                        senderEmail: toTrimmedString(body.senderEmail) || null,
+                        question: toTrimmedString(body.question),
+                        receivedAt: toTrimmedString(body.receivedAt) || null,
+                    };
+                    let draft = await (0, discord_1.draftDiscordSupportReply)(draftInput);
+                    if (memoryService) {
+                        let emberContextSummary = null;
+                        try {
+                            const emberContext = await memoryService.context({
+                                agentId: "ember-support",
+                                runId: (0, service_2.buildEmberRunId)("discord", draft.conversationKey),
+                                query: draftInput.question,
+                                useMode: "planning",
+                                includeTenantFallback: true,
+                                layerAllowlist: ["working", "episodic", "canonical"],
+                                maxItems: 4,
+                                maxChars: 1_200,
+                            });
+                            emberContextSummary = toTrimmedString(emberContext.summary) || null;
+                        }
+                        catch {
+                            emberContextSummary = null;
+                        }
+                        if (emberContextSummary) {
+                            draft = await (0, discord_1.draftDiscordSupportReply)(draftInput, {
+                                emberContextSummary,
+                            });
+                        }
+                        const confusionState = /\b(overwhelmed|lost|embarrassed)\b/i.test(draftInput.question)
+                            ? "overwhelmed"
+                            : /\b(frustrated|upset|annoyed|still waiting)\b/i.test(draftInput.question)
+                                ? "frustrated"
+                                : /\b(sorry|apolog(?:y|ize|ies)|my bad)\b/i.test(draftInput.question)
+                                    ? "apologetic"
+                                    : /\b(confused|not sure|timing|delay|any chance|can i|could i|would it be okay)\b/i.test(draftInput.question)
+                                        ? "uncertain"
+                                        : /\b(thank you|thanks|appreciate)\b/i.test(draftInput.question)
+                                            ? "grateful"
+                                            : "none";
+                        const confusionReason = confusionState === "none" ? null : `discord-${confusionState}`;
+                        try {
+                            await memoryService.capture({
+                                agentId: "ember-support",
+                                runId: (0, service_2.buildEmberRunId)("discord", draft.conversationKey),
+                                source: "support:discord:working",
+                                tags: [
+                                    "ember-support",
+                                    "discord",
+                                    "working",
+                                    draft.policySlug ?? "general-support",
+                                    confusionState,
+                                ].filter(Boolean),
+                                memoryLayer: "working",
+                                memoryType: "working",
+                                memoryCategory: "observation",
+                                sourceConfidence: 0.62,
+                                importance: draft.humanReviewRequired ? 0.82 : 0.68,
+                                content: [
+                                    `Discord support thread for ${draftInput.senderName || draftInput.senderEmail || draftInput.senderId || "unknown member"}.`,
+                                    `Latest ask: ${draftInput.question}`,
+                                    emberContextSummary ? `Existing Ember context: ${emberContextSummary}` : "",
+                                    `Support summary: ${draft.supportSummary}`,
+                                    `Next safe step: ${draft.humanReviewRequired ? "human review required" : "reply drafted for safe Discord follow-up"}`,
+                                ].filter(Boolean).join(" "),
+                                metadata: {
+                                    scope: (0, service_2.buildEmberMemoryScope)("discord", draft.conversationKey),
+                                    subjectKey: (0, service_2.buildEmberMemberSubject)(draftInput.senderEmail || draftInput.senderId || draftInput.senderName),
+                                    relatedSubjects: [(0, service_2.buildEmberPatternSubject)(draft.policySlug ?? "general-support")],
+                                    emberMemoryScope: (0, service_2.buildEmberMemoryScope)("discord", draft.conversationKey),
+                                    conversationKey: draft.conversationKey,
+                                    confusionState,
+                                    confusionReason,
+                                    humanHandoff: draft.humanReviewRequired,
+                                    nextRecommendedAction: draft.humanReviewRequired ? "Escalate to human support review." : "Use the drafted Discord response as the next safe step.",
+                                    supportSummary: draft.supportSummary,
+                                    emberSummary: emberContextSummary ?? draft.supportSummary,
+                                    startupEligible: false,
+                                },
+                            });
+                        }
+                        catch {
+                            // best-effort Ember working memory capture for Discord drafts
+                        }
+                    }
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, draft }));
+                }
+                catch (error) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: false,
+                        message: error instanceof Error ? error.message : String(error),
+                    }));
+                }
+                return;
+            }
+            if (supportOpsStore && method === "GET" && url.pathname === "/api/support-ops/dead-letters") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const limitRaw = Number(url.searchParams.get("limit") ?? "20");
+                const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 100)) : 20;
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows: await supportOpsStore.listDeadLetters(limit) }));
+                return;
+            }
             if (capabilityRuntime && method === "GET" && url.pathname === "/api/connectors/health") {
                 const auth = await assertCapabilityAuth(req);
                 if (!auth.ok) {
@@ -3352,6 +4409,968 @@ function startHttpServer(params) {
                 res.end(JSON.stringify({ ok: true, rows: drafts }));
                 return;
             }
+            if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/events/ingest") {
+                if (!opsIngest.enabled) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Ops ingest endpoint is disabled." }));
+                    return;
+                }
+                if (!opsIngest.hmacSecret) {
+                    statusCode = 503;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Ops ingest endpoint is misconfigured." }));
+                    return;
+                }
+                try {
+                    const timestampRaw = firstHeader(req.headers["x-ops-ingest-timestamp"]);
+                    const signatureRaw = firstHeader(req.headers["x-ops-ingest-signature"]);
+                    const timestampSeconds = parseEpochSeconds(timestampRaw);
+                    const providedSignature = normalizeHmacSignature(signatureRaw);
+                    if (!timestampSeconds || !providedSignature) {
+                        statusCode = 401;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Missing or invalid ops ingest signature headers." }));
+                        return;
+                    }
+                    if (!isTimestampWithinSkew(timestampSeconds, Date.now(), opsIngest.maxSkewSeconds)) {
+                        statusCode = 401;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Ops ingest signature timestamp is outside allowed skew." }));
+                        return;
+                    }
+                    const parsedBody = await readJsonBodyWithRaw(req);
+                    const expectedSignature = node_crypto_1.default
+                        .createHmac("sha256", opsIngest.hmacSecret)
+                        .update(`${timestampSeconds}.${parsedBody.raw}`)
+                        .digest("hex");
+                    if (!verifyHmacSignature(expectedSignature, providedSignature)) {
+                        statusCode = 401;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Invalid ops ingest signature." }));
+                        return;
+                    }
+                    const body = parsedBody.json;
+                    const sourceSystem = toTrimmedString(body.sourceSystem || body.source).toLowerCase();
+                    if (!sourceSystem) {
+                        statusCode = 400;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "sourceSystem is required." }));
+                        return;
+                    }
+                    if (opsIngest.allowedSources.size > 0 && !opsIngest.allowedSources.has(sourceSystem)) {
+                        statusCode = 403;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Ops ingest source is not allowed." }));
+                        return;
+                    }
+                    const eventType = toTrimmedString(body.eventType);
+                    const entityKind = toTrimmedString(body.entityKind);
+                    const entityId = toTrimmedString(body.entityId);
+                    const sourceEventId = toTrimmedString(body.sourceEventId || body.clientRequestId);
+                    if (!eventType || !entityKind || !entityId || !sourceEventId) {
+                        statusCode = 400;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "eventType, entityKind, entityId, and sourceEventId are required." }));
+                        return;
+                    }
+                    const metadata = body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+                        ? body.payload
+                        : body;
+                    const result = await opsService.ingestWorldEvent({
+                        eventType,
+                        entityKind,
+                        entityId,
+                        sourceSystem,
+                        sourceEventId,
+                        actorKind: toTrimmedString(body.actorKind) || "machine",
+                        actorId: toTrimmedString(body.actorId) || `machine:${sourceSystem}`,
+                        payload: metadata,
+                        caseId: toTrimmedString(body.caseId) || null,
+                        roomId: toTrimmedString(body.roomId) || null,
+                        confidence: toNullableRatio(body.confidence) ?? 0.8,
+                        verificationClass: toTrimmedString(body.verificationClass) === "confirmed"
+                            ? "confirmed"
+                            : toTrimmedString(body.verificationClass) === "claimed"
+                                ? "claimed"
+                                : toTrimmedString(body.verificationClass) === "planned"
+                                    ? "planned"
+                                    : toTrimmedString(body.verificationClass) === "inferred"
+                                        ? "inferred"
+                                        : "observed",
+                        artifactRefs: toStringList(body.artifactRefs, 32),
+                        authPrincipal: `hmac:${sourceSystem}`,
+                        timestampSkewSeconds: Math.abs(Math.round(Date.now() / 1000) - timestampSeconds),
+                    });
+                    statusCode = result.accepted ? 202 : 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, accepted: result.accepted, event: result.event, receipt: result.receipt }));
+                }
+                catch (error) {
+                    statusCode = 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+                }
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/session/me") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const session = await opsService.getSessionMe(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, session }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/members") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const rows = await opsService.listMembers(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/members") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const portalRole = toTrimmedString(body.portalRole || body.role);
+                const opsRoles = Array.isArray(body.opsRoles) ? body.opsRoles.map((entry) => toTrimmedString(entry)).filter(Boolean) : [];
+                const result = await opsService.createMember({
+                    email: toTrimmedString(body.email) || "",
+                    displayName: toTrimmedString(body.displayName) || "",
+                    membershipTier: toTrimmedString(body.membershipTier) || null,
+                    portalRole: portalRole === "member" || portalRole === "staff" || portalRole === "admin" ? portalRole : undefined,
+                    opsRoles: opsRoles,
+                    kilnPreferences: toTrimmedString(body.kilnPreferences) || null,
+                    staffNotes: toTrimmedString(body.staffNotes) || null,
+                    reason: toTrimmedString(body.reason) || null,
+                }, opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...result }));
+                return;
+            }
+            const opsMemberDetailMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)$/) : null;
+            if (opsPortal.enabled && opsService && opsMemberDetailMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const uid = decodeURIComponent(opsMemberDetailMatch[1] ?? "");
+                const member = await opsService.getMember(uid, opsActorContext(auth));
+                if (!member) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Member ${uid} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, member }));
+                return;
+            }
+            const opsMemberProfileMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/profile$/) : null;
+            if (opsPortal.enabled && opsService && opsMemberProfileMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const uid = decodeURIComponent(opsMemberProfileMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const patch = body.patch && typeof body.patch === "object" && !Array.isArray(body.patch)
+                    ? body.patch
+                    : {};
+                const result = await opsService.updateMemberProfile({
+                    uid,
+                    reason: toTrimmedString(body.reason) || null,
+                    patch: {
+                        displayName: Object.prototype.hasOwnProperty.call(patch, "displayName") ? toTrimmedString(patch.displayName) || null : undefined,
+                        membershipTier: Object.prototype.hasOwnProperty.call(patch, "membershipTier") ? toTrimmedString(patch.membershipTier) || null : undefined,
+                        kilnPreferences: Object.prototype.hasOwnProperty.call(patch, "kilnPreferences") ? toTrimmedString(patch.kilnPreferences) || null : undefined,
+                        staffNotes: Object.prototype.hasOwnProperty.call(patch, "staffNotes") ? toTrimmedString(patch.staffNotes) || null : undefined,
+                    },
+                }, opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...result }));
+                return;
+            }
+            const opsMemberMembershipMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/membership$/) : null;
+            if (opsPortal.enabled && opsService && opsMemberMembershipMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const uid = decodeURIComponent(opsMemberMembershipMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const result = await opsService.updateMemberMembership({
+                    uid,
+                    membershipTier: toTrimmedString(body.membershipTier) || null,
+                    reason: toTrimmedString(body.reason) || null,
+                }, opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...result }));
+                return;
+            }
+            const opsMemberBillingMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/billing$/) : null;
+            if (opsPortal.enabled && opsService && opsMemberBillingMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const uid = decodeURIComponent(opsMemberBillingMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const billing = body.billing && typeof body.billing === "object" && !Array.isArray(body.billing)
+                    ? body.billing
+                    : {};
+                const forbiddenRawCardKeys = ["cardNumber", "pan", "fullPan", "cvc", "cvv", "expiry", "exp", "trackData"];
+                const forbiddenKey = forbiddenRawCardKeys.find((key) => Object.prototype.hasOwnProperty.call(billing, key) || Object.prototype.hasOwnProperty.call(body, key));
+                if (forbiddenKey) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: false,
+                        message: "Raw card data is not accepted in /ops. Use Stripe-hosted collection and store only tokenized references plus safe summaries.",
+                    }));
+                    return;
+                }
+                const result = await opsService.updateMemberBilling({
+                    uid,
+                    billing: {
+                        stripeCustomerId: Object.prototype.hasOwnProperty.call(billing, "stripeCustomerId") ? toTrimmedString(billing.stripeCustomerId) || null : undefined,
+                        defaultPaymentMethodId: Object.prototype.hasOwnProperty.call(billing, "defaultPaymentMethodId") ? toTrimmedString(billing.defaultPaymentMethodId) || null : undefined,
+                        cardBrand: Object.prototype.hasOwnProperty.call(billing, "cardBrand") ? toTrimmedString(billing.cardBrand) || null : undefined,
+                        cardLast4: Object.prototype.hasOwnProperty.call(billing, "cardLast4") ? toTrimmedString(billing.cardLast4) || null : undefined,
+                        expMonth: Object.prototype.hasOwnProperty.call(billing, "expMonth") ? toTrimmedString(billing.expMonth) || null : undefined,
+                        expYear: Object.prototype.hasOwnProperty.call(billing, "expYear") ? toTrimmedString(billing.expYear) || null : undefined,
+                        billingContactName: Object.prototype.hasOwnProperty.call(billing, "billingContactName") ? toTrimmedString(billing.billingContactName) || null : undefined,
+                        billingContactEmail: Object.prototype.hasOwnProperty.call(billing, "billingContactEmail") ? toTrimmedString(billing.billingContactEmail) || null : undefined,
+                        billingContactPhone: Object.prototype.hasOwnProperty.call(billing, "billingContactPhone") ? toTrimmedString(billing.billingContactPhone) || null : undefined,
+                    },
+                    reason: toTrimmedString(body.reason) || null,
+                }, opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...result }));
+                return;
+            }
+            const opsMemberRoleMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/role$/) : null;
+            if (opsPortal.enabled && opsService && opsMemberRoleMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const uid = decodeURIComponent(opsMemberRoleMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const portalRole = toTrimmedString(body.portalRole || body.role);
+                if (portalRole !== "member" && portalRole !== "staff" && portalRole !== "admin") {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "portalRole must be member, staff, or admin." }));
+                    return;
+                }
+                const opsRoles = Array.isArray(body.opsRoles) ? body.opsRoles.map((entry) => toTrimmedString(entry)).filter(Boolean) : [];
+                const result = await opsService.updateMemberRole({
+                    uid,
+                    portalRole,
+                    opsRoles: opsRoles,
+                    reason: toTrimmedString(body.reason) || null,
+                }, opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...result }));
+                return;
+            }
+            const opsMemberActivityMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/activity$/) : null;
+            if (opsPortal.enabled && opsService && opsMemberActivityMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const uid = decodeURIComponent(opsMemberActivityMatch[1] ?? "");
+                const activity = await opsService.getMemberActivity(uid, opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, activity }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/twin") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const twin = await opsService.getTwin();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, twin }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/truth") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const truth = await opsService.getTruth();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, truth }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/tasks") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const surface = toTrimmedString(url.searchParams.get("surface"));
+                const role = toTrimmedString(url.searchParams.get("role"));
+                let rows = await opsService.listTasks(opsActorContext(auth));
+                if (surface)
+                    rows = rows.filter((entry) => entry.surface === surface);
+                if (role)
+                    rows = rows.filter((entry) => entry.role === role);
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            const opsTaskClaimMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/claim$/) : null;
+            if (opsPortal.enabled && opsService && opsTaskClaimMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const taskId = decodeURIComponent(opsTaskClaimMatch[1] ?? "");
+                const task = await opsService.claimTask(taskId, opsActorContext(auth));
+                if (!task) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, task }));
+                return;
+            }
+            const opsTaskProofMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/proof$/) : null;
+            if (opsPortal.enabled && opsService && opsTaskProofMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const taskId = decodeURIComponent(opsTaskProofMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const mode = toTrimmedString(body.mode);
+                if (!mode) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "mode is required." }));
+                    return;
+                }
+                const proof = await opsService.addTaskProof(taskId, opsActorContext(auth), mode, toTrimmedString(body.note) || null, toStringList(body.artifactRefs, 24));
+                if (!proof) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, proof }));
+                return;
+            }
+            const opsTaskProofAcceptMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/proof\/accept$/) : null;
+            if (opsPortal.enabled && opsService && opsTaskProofAcceptMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const taskId = decodeURIComponent(opsTaskProofAcceptMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const proofId = toTrimmedString(body.proofId);
+                const status = toTrimmedString(body.status) || "accepted";
+                if (!proofId || (status !== "accepted" && status !== "rejected" && status !== "readback_pending")) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "proofId and a valid status are required." }));
+                    return;
+                }
+                const proof = await opsService.acceptTaskProof({
+                    taskId,
+                    proofId,
+                    actorId: auth.actorId,
+                    status: status,
+                    note: toTrimmedString(body.note) || null,
+                }, opsActorContext(auth));
+                if (!proof) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Proof ${proofId} not found for task ${taskId}.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, proof }));
+                return;
+            }
+            const opsTaskCompleteMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/complete$/) : null;
+            if (opsPortal.enabled && opsService && opsTaskCompleteMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const taskId = decodeURIComponent(opsTaskCompleteMatch[1] ?? "");
+                const task = await opsService.completeTask(taskId, opsActorContext(auth));
+                if (!task) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, task }));
+                return;
+            }
+            const opsTaskEscapeMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/escape$/) : null;
+            if (opsPortal.enabled && opsService && opsTaskEscapeMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const taskId = decodeURIComponent(opsTaskEscapeMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const escapeHatch = toTrimmedString(body.escapeHatch || body.escape);
+                if (!escapeHatch) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "escapeHatch is required." }));
+                    return;
+                }
+                const escape = await opsService.escapeTask({
+                    taskId,
+                    actorId: auth.actorId,
+                    escapeHatch,
+                    reason: toTrimmedString(body.reason) || null,
+                }, opsActorContext(auth));
+                if (!escape) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, escape }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/cases") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const rows = await opsService.listCases(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            const opsCaseDetailMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/cases\/([^/]+)$/) : null;
+            if (opsPortal.enabled && opsService && opsCaseDetailMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const caseId = decodeURIComponent(opsCaseDetailMatch[1] ?? "");
+                const detail = await opsService.getCase(caseId, opsActorContext(auth));
+                if (!detail.record) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Case ${caseId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...detail }));
+                return;
+            }
+            const opsCaseNoteMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/cases\/([^/]+)\/note$/) : null;
+            if (opsPortal.enabled && opsService && opsCaseNoteMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const caseId = decodeURIComponent(opsCaseNoteMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const noteBody = toTrimmedString(body.body);
+                if (!noteBody) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "body is required." }));
+                    return;
+                }
+                const note = await opsService.addCaseNote({
+                    caseId,
+                    actorId: auth.actorId,
+                    body: noteBody,
+                    metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+                        ? body.metadata
+                        : {},
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, note }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/approvals") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const rows = await opsService.listApprovals(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/reservations") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const rows = await opsService.listReservations(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            const opsReservationBundleMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/reservations\/([^/]+)\/bundle$/) : null;
+            if (opsPortal.enabled && opsService && opsReservationBundleMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const reservationId = decodeURIComponent(opsReservationBundleMatch[1] ?? "");
+                const bundle = await opsService.getReservationBundle(reservationId, opsActorContext(auth));
+                if (!bundle) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Reservation ${reservationId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, bundle }));
+                return;
+            }
+            const opsReservationPrepareMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/reservations\/([^/]+)\/prepare$/) : null;
+            if (opsPortal.enabled && opsService && opsReservationPrepareMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const reservationId = decodeURIComponent(opsReservationPrepareMatch[1] ?? "");
+                const task = await opsService.prepareReservation(reservationId, opsActorContext(auth));
+                if (!task) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Reservation ${reservationId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, task }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/events") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const rows = await opsService.listEvents(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/reports") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const rows = await opsService.listReports(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/lending") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const lending = await opsService.getLending(opsActorContext(auth));
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, lending }));
+                return;
+            }
+            const opsApprovalResolveMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/approvals\/([^/]+)\/resolve$/) : null;
+            if (opsPortal.enabled && opsService && opsApprovalResolveMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const approvalId = decodeURIComponent(opsApprovalResolveMatch[1] ?? "");
+                const body = await readJsonBody(req);
+                const status = toTrimmedString(body.status);
+                if (status !== "approved" && status !== "rejected") {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "status must be approved or rejected." }));
+                    return;
+                }
+                const approval = await opsService.resolveApproval({
+                    approvalId,
+                    status,
+                    actorId: auth.actorId,
+                    note: toTrimmedString(body.note) || null,
+                }, opsActorContext(auth));
+                if (!approval) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Approval ${approvalId} not found.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, approval }));
+                return;
+            }
+            const opsDisplayMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/displays\/([^/]+)$/) : null;
+            if (opsPortal.enabled && opsService && opsDisplayMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const stationId = decodeURIComponent(opsDisplayMatch[1] ?? "");
+                const state = await opsService.getDisplayState(stationId);
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, state }));
+                return;
+            }
+            const opsDisplayStreamMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/displays\/([^/]+)\/stream$/) : null;
+            if (opsPortal.enabled && opsService && opsDisplayStreamMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const stationId = decodeURIComponent(opsDisplayStreamMatch[1] ?? "");
+                const wantsSse = String(req.headers.accept || "")
+                    .toLowerCase()
+                    .includes("text/event-stream") || toBooleanFlag(url.searchParams.get("stream"), true);
+                if (!wantsSse) {
+                    const state = await opsService.getDisplayState(stationId);
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, state }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({
+                    "content-type": "text/event-stream; charset=utf-8",
+                    connection: "keep-alive",
+                    "x-accel-buffering": "no",
+                    ...corsHeaders,
+                    "x-request-id": requestId,
+                }));
+                let closed = false;
+                let lastSerialized = "";
+                const push = async () => {
+                    const state = await opsService.getDisplayState(stationId);
+                    const serialized = JSON.stringify({ ok: true, state });
+                    if (serialized === lastSerialized)
+                        return;
+                    lastSerialized = serialized;
+                    res.write(`event: state\ndata: ${serialized}\n\n`);
+                };
+                const timer = setInterval(() => {
+                    void push();
+                }, 10_000);
+                const heartbeat = setInterval(() => {
+                    res.write(`event: heartbeat\ndata: ${JSON.stringify({ ok: true, at: new Date().toISOString() })}\n\n`);
+                }, 15_000);
+                const cleanup = () => {
+                    if (closed)
+                        return;
+                    closed = true;
+                    clearInterval(timer);
+                    clearInterval(heartbeat);
+                    if (!res.writableEnded)
+                        res.end();
+                };
+                req.on("close", cleanup);
+                await push();
+                return;
+            }
+            const opsChatMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/chat\/([^/]+)\/send$/) : null;
+            if (opsPortal.enabled && opsService && opsChatMatch) {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const surface = decodeURIComponent(opsChatMatch[1] ?? "manager");
+                const body = await readJsonBody(req);
+                const text = toTrimmedString(body.text);
+                if (!text) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "text is required." }));
+                    return;
+                }
+                const result = await opsService.sendChat(surface, opsActorContext(auth), text);
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, ...result }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/overrides") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok || !auth.principal) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const scope = toTrimmedString(body.scope);
+                const reason = toTrimmedString(body.reason);
+                if (!scope || !reason) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "scope and reason are required." }));
+                    return;
+                }
+                const override = await opsService.requestOverride({
+                    actorId: auth.actorId,
+                    scope,
+                    reason,
+                    expiresAt: toTrimmedString(body.expiresAt) || null,
+                    requiredRole: (toTrimmedString(body.requiredRole) || "owner"),
+                    metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+                        ? body.metadata
+                        : {},
+                }, opsActorContext(auth));
+                statusCode = 202;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, override }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/ceo") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const rows = await opsService.listGrowthExperiments();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/ceo/experiments") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const title = toTrimmedString(body.title);
+                const hypothesis = toTrimmedString(body.hypothesis);
+                if (!title || !hypothesis) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "title and hypothesis are required." }));
+                    return;
+                }
+                const generatedAt = new Date().toISOString();
+                const record = {
+                    id: `growth_${node_crypto_1.default.randomUUID()}`,
+                    title,
+                    hypothesis,
+                    status: "proposed",
+                    summary: hypothesis,
+                    safetyBoundaries: ["draft_only", "no_money_without_approval", "no_owner_impersonation"],
+                    owner: auth.actorId,
+                    createdAt: generatedAt,
+                    updatedAt: generatedAt,
+                    metrics: {},
+                };
+                await opsService.createGrowthExperiment(record);
+                statusCode = 202;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, experiment: record }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/forge") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const rows = await opsService.listImprovementCases();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, rows }));
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/forge/improvement-cases") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const title = toTrimmedString(body.title);
+                const problem = toTrimmedString(body.problem);
+                if (!title || !problem) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "title and problem are required." }));
+                    return;
+                }
+                const generatedAt = new Date().toISOString();
+                const record = {
+                    id: `improvement_${node_crypto_1.default.randomUUID()}`,
+                    title,
+                    problem,
+                    status: "open",
+                    summary: problem,
+                    requiredEvaluations: ["truth-readiness", "ux-clarity", "rollback"],
+                    rollbackPlan: "Shadow first, then gate behind a feature flag with explicit rollback.",
+                    createdAt: generatedAt,
+                    updatedAt: generatedAt,
+                    metadata: {
+                        requestedBy: auth.actorId,
+                    },
+                };
+                await opsService.createImprovementCase(record);
+                statusCode = 202;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, improvementCase: record }));
+                return;
+            }
             if (method === "GET" && url.pathname === "/api/overseer/latest") {
                 const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
                 if (!auth.ok) {
@@ -3434,6 +5453,182 @@ function startHttpServer(params) {
                 statusCode = 200;
                 res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                 res.end(JSON.stringify({ ok: true, overview: state.overview, counts: state.counts, generatedAt: state.generatedAt }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/control-tower/partner/latest") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const { state } = await readControlTowerSnapshot();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({
+                    ok: true,
+                    partner: state.partner,
+                    checkins: (0, files_2.readPartnerCheckins)(resolvedControlTowerRepoRoot, 24),
+                }));
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/control-tower/partner/brief") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const { state } = await readControlTowerSnapshot();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, partner: state.partner }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/agent-runtime/latest") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const summary = (0, files_1.readLatestAgentRuntimeSummary)(resolvedControlTowerRepoRoot);
+                const events = summary ? (0, files_1.readAgentRuntimeEvents)(resolvedControlTowerRepoRoot, summary.runId, 24) : [];
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, summary, events }));
+                return;
+            }
+            const runDetailMatch = url.pathname.match(/^\/api\/agent-runtime\/runs\/([^/]+)$/);
+            if (method === "GET" && runDetailMatch) {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runId = decodeURIComponent(runDetailMatch[1] ?? "");
+                const detail = (0, detail_1.buildAgentRuntimeRunDetail)(resolvedControlTowerRepoRoot, runId);
+                if (!detail.summary && detail.events.length === 0 && detail.artifacts.length === 0) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `No runtime detail found for ${runId}.` }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, detail }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/agent-runtime/runs") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const limitRaw = Number(url.searchParams.get("limit") ?? "12");
+                const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(Math.floor(limitRaw), 50)) : 12;
+                const runs = (0, files_1.listAgentRuntimeSummaries)(resolvedControlTowerRepoRoot, limit);
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, runs }));
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/agent-runtime/events") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const event = body.event && typeof body.event === "object" ? body.event : null;
+                const summary = body.summary && typeof body.summary === "object" ? body.summary : null;
+                if (!event || !toTrimmedString(event.runId) || !toTrimmedString(event.type)) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "event.runId and event.type are required." }));
+                    return;
+                }
+                (0, files_1.appendAgentRuntimeEvent)(resolvedControlTowerRepoRoot, event);
+                if (summary && toTrimmedString(summary.runId)) {
+                    (0, files_1.writeAgentRuntimeSummary)(resolvedControlTowerRepoRoot, summary);
+                }
+                statusCode = 202;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, accepted: true, runId: event.runId }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/control-tower/hosts") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const { state } = await readControlTowerSnapshot();
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, hosts: state.hosts }));
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/control-tower/hosts/heartbeat") {
+                const auth = await assertHostHeartbeatAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const hostId = toTrimmedString(body.hostId);
+                if (!hostId) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "hostId is required." }));
+                    return;
+                }
+                const heartbeat = {
+                    schema: "control-tower-host-heartbeat.v1",
+                    hostId,
+                    label: toTrimmedString(body.label) || hostId,
+                    environment: toTrimmedString(body.environment) === "server" ? "server" : "local",
+                    role: toTrimmedString(body.role) || "operator-host",
+                    health: toTrimmedString(body.health) === "maintenance"
+                        ? "maintenance"
+                        : toTrimmedString(body.health) === "offline"
+                            ? "offline"
+                            : toTrimmedString(body.health) === "degraded"
+                                ? "degraded"
+                                : "healthy",
+                    lastSeenAt: toTrimmedString(body.lastSeenAt) || new Date().toISOString(),
+                    currentRunId: toTrimmedString(body.currentRunId) || null,
+                    agentCount: Number.isFinite(Number(body.agentCount)) ? Math.max(0, Math.floor(Number(body.agentCount))) : 0,
+                    version: toTrimmedString(body.version) || null,
+                    metrics: {
+                        cpuPct: Number.isFinite(Number(body.metrics?.cpuPct))
+                            ? Number(body.metrics.cpuPct)
+                            : null,
+                        memoryPct: Number.isFinite(Number(body.metrics?.memoryPct))
+                            ? Number(body.metrics.memoryPct)
+                            : null,
+                        load1: Number.isFinite(Number(body.metrics?.load1))
+                            ? Number(body.metrics.load1)
+                            : null,
+                    },
+                };
+                (0, hosts_1.writeControlTowerHostHeartbeat)(resolvedControlTowerRepoRoot, heartbeat);
+                statusCode = 202;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, accepted: true, hostId, actorId: auth.actorId }));
                 return;
             }
             if (method === "GET" && url.pathname === "/api/control-tower/rooms") {
@@ -3531,6 +5726,7 @@ function startHttpServer(params) {
                 let closed = false;
                 let pollTimer = null;
                 let heartbeatTimer = null;
+                let lastSnapshotSignature = "";
                 const cleanup = () => {
                     if (closed)
                         return;
@@ -3553,6 +5749,53 @@ function startHttpServer(params) {
                             res.write(`id: ${event.id}\n`);
                             res.write(`event: ${event.type}\n`);
                             res.write(`data: ${JSON.stringify(event)}\n\n`);
+                        }
+                        const snapshotSignature = node_crypto_1.default
+                            .createHash("sha1")
+                            .update(JSON.stringify({
+                            generatedAt: state.generatedAt,
+                            runtimeUpdatedAt: state.agentRuntime?.updatedAt ?? null,
+                            runtimeStatus: state.agentRuntime?.status ?? null,
+                            approvals: state.approvals.map((approval) => `${approval.id}:${approval.status}:${approval.createdAt}`),
+                            hosts: state.hosts.map((host) => ({
+                                hostId: host.hostId,
+                                lastSeenAt: host.lastSeenAt,
+                                health: host.health,
+                                connectivity: host.connectivity,
+                                currentRunId: host.currentRunId,
+                            })),
+                        }))
+                            .digest("hex");
+                        if (snapshotSignature !== lastSnapshotSignature) {
+                            lastSnapshotSignature = snapshotSignature;
+                            const pulseEvent = {
+                                id: `snapshot:${snapshotSignature}`,
+                                at: state.generatedAt,
+                                kind: "operator",
+                                type: "run.status",
+                                runId: state.agentRuntime?.runId ?? null,
+                                agentId: state.agentRuntime?.agentId ?? null,
+                                channel: "ops",
+                                occurredAt: state.generatedAt,
+                                severity: "info",
+                                title: "Control Tower snapshot refreshed",
+                                summary: "Runtime or host presence changed.",
+                                actor: "control-tower",
+                                roomId: null,
+                                serviceId: null,
+                                actionLabel: null,
+                                sourceAction: "control_tower.snapshot_refreshed",
+                                payload: {
+                                    hostCount: state.hosts.length,
+                                    approvalCount: state.approvals.length,
+                                    latestRunId: state.agentRuntime?.runId ?? null,
+                                },
+                            };
+                            if (!freshEvents.length) {
+                                res.write(`id: ${pulseEvent.id}\n`);
+                                res.write(`event: ${pulseEvent.type}\n`);
+                                res.write(`data: ${JSON.stringify(pulseEvent)}\n\n`);
+                            }
                         }
                         if (streamOnce) {
                             cleanup();
@@ -3578,6 +5821,97 @@ function startHttpServer(params) {
                     void pushSnapshot();
                 }, CONTROL_TOWER_EVENT_STREAM_POLL_MS);
                 void pushSnapshot();
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/control-tower/partner/checkins") {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const snapshot = await readControlTowerSnapshot();
+                if (!snapshot.state.partner) {
+                    statusCode = 503;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "partner brief is unavailable" }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const action = toTrimmedString(body.action);
+                if (!isPartnerCheckinAction(action)) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "action must be one of ack, snooze, pause, redirect, why_this, or continue." }));
+                    return;
+                }
+                const partner = (0, service_3.recordPartnerCheckin)({
+                    repoRoot: resolvedControlTowerRepoRoot,
+                    brief: snapshot.state.partner,
+                    actorId: auth.principal?.uid ?? "staff:unknown",
+                    action,
+                    note: toTrimmedString(body.note) || undefined,
+                    snoozeMinutes: toNullableNumber(body.snoozeMinutes) ?? undefined,
+                });
+                await appendControlTowerAudit(auth.principal, "studio_ops.control_tower.partner_checkin", `Recorded chief-of-staff command ${action}.`, {
+                    action,
+                    note: toTrimmedString(body.note) || null,
+                    snoozeMinutes: toNullableNumber(body.snoozeMinutes),
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, partner }));
+                return;
+            }
+            const controlTowerPartnerOpenLoopMatch = method === "POST" ? url.pathname.match(/^\/api\/control-tower\/partner\/open-loops\/([^/]+)$/) : null;
+            if (controlTowerPartnerOpenLoopMatch) {
+                const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const snapshot = await readControlTowerSnapshot();
+                if (!snapshot.state.partner) {
+                    statusCode = 503;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "partner brief is unavailable" }));
+                    return;
+                }
+                const loopId = decodeURIComponent(controlTowerPartnerOpenLoopMatch[1] || "");
+                const body = await readJsonBody(req);
+                const status = toTrimmedString(body.status);
+                if (!isPartnerOpenLoopStatus(status)) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "status must be delegated, paused, or resolved." }));
+                    return;
+                }
+                const loopExists = snapshot.state.partner.openLoops.some((entry) => entry.id === loopId);
+                if (!loopExists) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `open loop ${loopId} not found` }));
+                    return;
+                }
+                const partner = (0, service_3.updatePartnerOpenLoop)({
+                    repoRoot: resolvedControlTowerRepoRoot,
+                    brief: snapshot.state.partner,
+                    loopId,
+                    status,
+                    actorId: auth.principal?.uid ?? "staff:unknown",
+                    note: toTrimmedString(body.note) || undefined,
+                });
+                await appendControlTowerAudit(auth.principal, "studio_ops.control_tower.partner_open_loop_updated", `Marked ${loopId} as ${status}.`, {
+                    loopId,
+                    status,
+                    note: toTrimmedString(body.note) || null,
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, partner, openLoop: partner.openLoops.find((entry) => entry.id === loopId) ?? null }));
                 return;
             }
             const controlTowerRoomSendMatch = method === "POST" ? url.pathname.match(/^\/api\/control-tower\/rooms\/([^/]+)\/send$/) : null;
@@ -4842,6 +7176,481 @@ function startHttpServer(params) {
                 statusCode = reset ? 200 : 404;
                 res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                 res.end(JSON.stringify({ ok: reset, bucket }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/kiln/overview") {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const overview = await (0, overview_1.buildKilnOverview)(kilnStore, {
+                    enableSupportedWrites: kilnEnableSupportedWrites,
+                    providerSupport: kilnProviderSupport(),
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, overview }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/api/kiln/kilns") {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const [kilns, overview] = await Promise.all([
+                    kilnStore.listKilns(),
+                    (0, overview_1.buildKilnOverview)(kilnStore, {
+                        enableSupportedWrites: kilnEnableSupportedWrites,
+                        providerSupport: kilnProviderSupport(),
+                    }),
+                ]);
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, kilns, overview: overview.kilns }));
+                return;
+            }
+            const kilnDetailMatch = url.pathname.match(/^\/api\/kiln\/kilns\/([^/]+)$/);
+            if (method === "GET" && kilnDetailMatch) {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const kilnId = decodeURIComponent(kilnDetailMatch[1]);
+                const detail = await (0, overview_1.buildKilnDetail)(kilnStore, kilnId);
+                if (!detail.kiln) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Kiln not found." }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, detail }));
+                return;
+            }
+            const kilnRunMatch = url.pathname.match(/^\/api\/kiln\/runs\/([^/]+)$/);
+            if (method === "GET" && kilnRunMatch) {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const runId = decodeURIComponent(kilnRunMatch[1]);
+                const detail = await (0, overview_1.buildFiringRunDetail)(kilnStore, runId);
+                if (!detail.run) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Firing run not found." }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, detail }));
+                return;
+            }
+            const kilnArtifactContentMatch = url.pathname.match(/^\/api\/kiln\/artifacts\/([^/]+)\/content$/);
+            if (method === "GET" && kilnArtifactContentMatch) {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnArtifacts();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const artifactId = decodeURIComponent(kilnArtifactContentMatch[1]);
+                const artifact = await kilnStore.getArtifactRecord(artifactId);
+                if (!artifact) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Artifact not found." }));
+                    return;
+                }
+                const content = await artifactStore.get(artifact.storageKey);
+                if (!content) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Artifact content not found." }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({
+                    "content-type": artifact.contentType || "application/octet-stream",
+                    "content-length": String(content.byteLength),
+                    "content-disposition": `inline; filename="${artifact.filename.replaceAll("\"", "")}"`,
+                    ...corsHeaders,
+                    "x-request-id": requestId,
+                }));
+                res.end(content);
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/kiln/imports/genesis") {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnArtifacts();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                try {
+                    const raw = await readRawBodyLimited(req, Math.ceil(resolvedKilnImportMaxBytes * 1.6) + 8_192);
+                    const body = parseJsonBody(raw);
+                    const filename = toTrimmedString(body.filename);
+                    const contentBase64 = typeof body.contentBase64 === "string" ? body.contentBase64.trim() : "";
+                    if (!filename || !contentBase64) {
+                        statusCode = 400;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "filename and contentBase64 are required." }));
+                        return;
+                    }
+                    const content = Buffer.from(contentBase64, "base64");
+                    if (content.byteLength === 0) {
+                        statusCode = 400;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "contentBase64 did not decode to a non-empty artifact." }));
+                        return;
+                    }
+                    if (content.byteLength > resolvedKilnImportMaxBytes) {
+                        statusCode = 413;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: `Decoded artifact exceeds ${resolvedKilnImportMaxBytes} bytes.` }));
+                        return;
+                    }
+                    const result = await (0, artifacts_1.importGenesisArtifact)({
+                        artifactStore: artifactStore,
+                        kilnStore: kilnStore,
+                        providerSupport: kilnProviderSupport(),
+                        kilnId: toTrimmedString(body.kilnId) || null,
+                        filename,
+                        contentType: toTrimmedString(body.contentType) || null,
+                        content,
+                        observedAt: toTrimmedString(body.observedAt) || null,
+                        sourceLabel: toTrimmedString(body.sourceLabel) || "manual_upload",
+                        source: "manual_upload",
+                    });
+                    statusCode = 201;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    statusCode = /exceeds \d+ bytes/i.test(message) ? 413 : 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/kiln/operator-actions") {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                try {
+                    const body = await readJsonBody(req);
+                    const kilnId = toTrimmedString(body.kilnId);
+                    const actionType = toTrimmedString(body.actionType);
+                    if (!kilnId || !actionType) {
+                        statusCode = 400;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "kilnId and actionType are required." }));
+                        return;
+                    }
+                    const result = await (0, manualEvents_1.recordOperatorAction)(kilnStore, {
+                        kilnId,
+                        firingRunId: toTrimmedString(body.firingRunId) || null,
+                        actionType,
+                        requestedBy: auth.principal?.uid ?? "staff:unknown",
+                        confirmedBy: toTrimmedString(body.confirmedBy) || auth.principal?.uid || null,
+                        checklistJson: toObjectRecord(body.checklistJson),
+                        notes: toTrimmedString(body.notes) || null,
+                        completedAt: toTrimmedString(body.completedAt) || null,
+                        enableSupportedWrites: kilnEnableSupportedWrites,
+                    });
+                    statusCode = 201;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+                }
+                return;
+            }
+            if (method === "POST" && url.pathname === "/api/kiln/runs") {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const body = await readJsonBody(req);
+                const kilnId = toTrimmedString(body.kilnId);
+                if (!kilnId) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "kilnId is required." }));
+                    return;
+                }
+                const queueStateRaw = toTrimmedString(body.queueState);
+                if (queueStateRaw && !model_1.firingQueueStates.includes(queueStateRaw)) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: `Unsupported queueState: ${queueStateRaw}` }));
+                    return;
+                }
+                const run = await (0, orchestration_1.createFiringRun)(kilnStore, {
+                    kilnId,
+                    requestedBy: auth.principal?.uid ?? "staff:unknown",
+                    programName: toTrimmedString(body.programName) || null,
+                    programType: toTrimmedString(body.programType) || null,
+                    coneTarget: toTrimmedString(body.coneTarget) || null,
+                    speed: toTrimmedString(body.speed) || null,
+                    firmwareVersion: toTrimmedString(body.firmwareVersion) || null,
+                    queueState: queueStateRaw ? queueStateRaw : undefined,
+                    linkedPortalRefs: {
+                        batchIds: Array.isArray(body.batchIds) ? body.batchIds.map((entry) => String(entry)).filter(Boolean) : [],
+                        pieceIds: Array.isArray(body.pieceIds) ? body.pieceIds.map((entry) => String(entry)).filter(Boolean) : [],
+                        reservationIds: Array.isArray(body.reservationIds) ? body.reservationIds.map((entry) => String(entry)).filter(Boolean) : [],
+                        portalFiringId: toTrimmedString(body.portalFiringId) || null,
+                    },
+                });
+                statusCode = 201;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({ ok: true, run }));
+                return;
+            }
+            const kilnAckMatch = url.pathname.match(/^\/api\/kiln\/runs\/([^/]+)\/ack$/);
+            if (method === "POST" && kilnAckMatch) {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const runId = decodeURIComponent(kilnAckMatch[1]);
+                const run = await kilnStore.getFiringRun(runId);
+                if (!run) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Firing run not found." }));
+                    return;
+                }
+                try {
+                    const body = await readJsonBody(req);
+                    const actionType = toTrimmedString(body.actionType);
+                    if (!actionType) {
+                        statusCode = 400;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "actionType is required." }));
+                        return;
+                    }
+                    const result = await (0, manualEvents_1.recordOperatorAction)(kilnStore, {
+                        kilnId: run.kilnId,
+                        firingRunId: run.id,
+                        actionType,
+                        requestedBy: auth.principal?.uid ?? "staff:unknown",
+                        confirmedBy: toTrimmedString(body.confirmedBy) || auth.principal?.uid || null,
+                        checklistJson: toObjectRecord(body.checklistJson),
+                        notes: toTrimmedString(body.notes) || null,
+                        completedAt: toTrimmedString(body.completedAt) || null,
+                        enableSupportedWrites: kilnEnableSupportedWrites,
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    statusCode = 400;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+                }
+                return;
+            }
+            if (method === "GET" && url.pathname === "/kiln-command") {
+                const auth = await assertKilnAccess(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const runtime = ensureKilnRuntime();
+                if (!runtime.ok) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: runtime.message }));
+                    return;
+                }
+                const overview = await (0, overview_1.buildKilnOverview)(kilnStore, {
+                    enableSupportedWrites: kilnEnableSupportedWrites,
+                    providerSupport: kilnProviderSupport(),
+                });
+                const kilnDetails = await Promise.all(overview.kilns.map((kiln) => (0, overview_1.buildKilnDetail)(kilnStore, kiln.kilnId)));
+                const html = (0, renderKilnCommandPage_1.renderKilnCommandPage)({
+                    generatedAt: new Date().toISOString(),
+                    overview,
+                    kilnDetails,
+                    uploadMaxBytes: resolvedKilnImportMaxBytes,
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                res.end(html);
+                return;
+            }
+            if (opsPortal.enabled && opsPortal.compareEnabled && opsService && method === "GET" && url.pathname === "/ops/choice") {
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/plain; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(auth.message);
+                    return;
+                }
+                const snapshot = await opsService.getPortalSnapshot();
+                const html = (0, renderOpsPortalPage_1.renderOpsPortalChoicePage)({
+                    headline: snapshot.twin.headline,
+                    narrative: snapshot.twin.narrative,
+                    generatedAt: snapshot.generatedAt,
+                    opsUrl: `/ops?surface=${encodeURIComponent(opsPortal.defaultSurface)}`,
+                    legacyUrl: opsPortal.legacyUrl,
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                res.end(html);
+                return;
+            }
+            const opsDisplayPageMatch = method === "GET" ? url.pathname.match(/^\/ops\/display\/([^/]+)$/) : null;
+            if (opsPortal.enabled && opsService && opsDisplayPageMatch) {
+                const stationId = decodeURIComponent(opsDisplayPageMatch[1] ?? "");
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/plain; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(auth.message);
+                    return;
+                }
+                const [snapshot, displayState] = await Promise.all([
+                    opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined),
+                    opsService.getDisplayState(stationId),
+                ]);
+                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds) : null;
+                const html = (0, renderOpsPortalPage_1.renderOpsPortalPage)({
+                    snapshot,
+                    displayState,
+                    surface: "hands",
+                    stationId,
+                    sessionToken,
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                res.end(html);
+                return;
+            }
+            if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/ops") {
+                const stationId = toTrimmedString(url.searchParams.get("stationId")) || null;
+                const requestedSurface = toTrimmedString(url.searchParams.get("surface")) || opsPortal.defaultSurface;
+                const auth = await assertOpsPortalAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/plain; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(auth.message);
+                    return;
+                }
+                const snapshot = await opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined);
+                const allowedSurfaces = snapshot.session?.allowedSurfaces ?? [];
+                const resolvedSurface = allowedSurfaces.includes(requestedSurface)
+                    ? requestedSurface
+                    : allowedSurfaces[0] ?? requestedSurface;
+                const displayState = stationId ? await opsService.getDisplayState(stationId) : null;
+                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds) : null;
+                const html = (0, renderOpsPortalPage_1.renderOpsPortalPage)({
+                    snapshot,
+                    displayState,
+                    surface: resolvedSurface,
+                    stationId,
+                    sessionToken,
+                });
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+                res.end(html);
                 return;
             }
             if (method === "GET" && url.pathname === "/api/status") {

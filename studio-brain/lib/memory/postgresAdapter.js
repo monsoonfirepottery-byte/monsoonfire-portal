@@ -59,6 +59,14 @@ function parseNullableDate(value) {
     const date = new Date(String(value));
     return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
+function parseStringList(value, maxItems = 64) {
+    if (!Array.isArray(value))
+        return [];
+    return Array.from(new Set(value
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean)
+        .slice(0, maxItems)));
+}
 function clamp01(value, fallback = 0.5) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric))
@@ -245,6 +253,32 @@ function parseMemoryType(value) {
         return raw;
     return "episodic";
 }
+function parseSourceClass(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "live-check" ||
+        raw === "repo-file" ||
+        raw === "policy" ||
+        raw === "telemetry" ||
+        raw === "human" ||
+        raw === "derived" ||
+        raw === "mcp-tool" ||
+        raw === "runtime-artifact" ||
+        raw === "external-doc") {
+        return raw;
+    }
+    return null;
+}
+function parseRedactionState(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "none" ||
+        raw === "redacted" ||
+        raw === "verified-redacted" ||
+        raw === "requires-review" ||
+        raw === "quarantined") {
+        return raw;
+    }
+    return null;
+}
 function parseMemoryLayer(metadata, memoryType) {
     return (0, layers_1.normalizeMemoryLayer)(metadata.memoryLayer, (0, layers_1.normalizeMemoryLayer)(memoryType, "episodic"));
 }
@@ -260,6 +294,27 @@ function memoryLayerSql() {
       END
     )
   `;
+}
+function latticeTextSql(topLevelKey, nestedKey) {
+    return `COALESCE(NULLIF(LOWER(metadata->>'${topLevelKey}'), ''), NULLIF(LOWER(metadata->'memoryLattice'->>'${nestedKey}'), ''))`;
+}
+function latticeNumericSql(topLevelKey, nestedKey, fallback = "0") {
+    return `
+    CASE
+      WHEN COALESCE(metadata->>'${topLevelKey}', metadata->'memoryLattice'->>'${nestedKey}', '') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+        THEN COALESCE(metadata->>'${topLevelKey}', metadata->'memoryLattice'->>'${nestedKey}')::numeric
+      ELSE ${fallback}::numeric
+    END
+  `;
+}
+function mapCountRows(rows, key) {
+    return rows
+        .map((row) => ({
+        value: String(row[key] ?? "").trim().toLowerCase(),
+        count: Number(row.count ?? 0),
+    }))
+        .filter((row) => row.value.length > 0 && row.count > 0)
+        .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
 }
 function mapRowToRecord(row) {
     const metadata = asRecord(row.metadata);
@@ -283,10 +338,455 @@ function mapRowToRecord(row) {
         importance: clamp01(row.importance),
     };
 }
+function mapEvidenceRow(row) {
+    return {
+        evidenceId: String(row.evidence_id),
+        sourceClass: parseSourceClass(row.source_class) ?? "derived",
+        sourceUri: row.source_uri === null ? null : String(row.source_uri),
+        sourcePath: row.source_path === null ? null : String(row.source_path),
+        capturedAt: parseDate(row.captured_at),
+        verifiedAt: parseNullableDate(row.verified_at),
+        verifier: row.verifier === null ? null : String(row.verifier),
+        redactionState: parseRedactionState(row.redaction_state) ?? "none",
+        hash: row.hash === null ? null : String(row.hash),
+        supportsMemoryIds: parseStringList(row.supports_memory_ids, 32),
+        metadata: asRecord(row.metadata),
+    };
+}
+function mapTransitionRow(row) {
+    return {
+        transitionId: String(row.transition_id),
+        memoryId: String(row.memory_id),
+        actor: row.actor === null ? null : String(row.actor),
+        reason: row.reason === null ? null : String(row.reason),
+        at: parseDate(row.at),
+        fromStatus: row.from_status === null ? null : parseStatus(row.from_status),
+        toStatus: parseStatus(row.to_status),
+        fromTruthStatus: row.from_truth_status === null ? null : String(row.from_truth_status),
+        toTruthStatus: String(row.to_truth_status),
+        fromFreshnessStatus: row.from_freshness_status === null ? null : String(row.from_freshness_status),
+        toFreshnessStatus: String(row.to_freshness_status),
+        fromOperationalStatus: row.from_operational_status === null ? null : String(row.from_operational_status),
+        toOperationalStatus: String(row.to_operational_status),
+        evidenceIds: parseStringList(row.evidence_ids, 32),
+        metadata: asRecord(row.metadata),
+    };
+}
+function parseReviewCaseType(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "resolve-conflict" || raw === "revalidate" || raw === "retire" || raw === "promote-guidance") {
+        return raw;
+    }
+    return "revalidate";
+}
+function parseReviewCaseStatus(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "open" || raw === "in-progress" || raw === "resolved" || raw === "dismissed") {
+        return raw;
+    }
+    return "open";
+}
+function parseReviewCaseAction(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "verify_now" ||
+        raw === "accept_winner" ||
+        raw === "keep_quarantined" ||
+        raw === "retire_memory" ||
+        raw === "dismiss_case" ||
+        raw === "promote_guidance" ||
+        raw === "reject_promotion") {
+        return raw;
+    }
+    return "verify_now";
+}
+function parseVerifierKind(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "repo-head" ||
+        raw === "runtime-check" ||
+        raw === "startup-instruction" ||
+        raw === "support-policy" ||
+        raw === "support-outcome" ||
+        raw === "operator-attested") {
+        return raw;
+    }
+    return "operator-attested";
+}
+function parseVerificationTrigger(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "capture-conflict" ||
+        raw === "operational-read" ||
+        raw === "safety-read" ||
+        raw === "review-action" ||
+        raw === "startup-pack-change" ||
+        raw === "repo-diff" ||
+        raw === "support-case-resolved" ||
+        raw === "weekly-maintenance" ||
+        raw === "manual") {
+        return raw;
+    }
+    return "manual";
+}
+function parseVerificationResultStatus(value) {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "passed" || raw === "failed" || raw === "needs-review" || raw === "skipped") {
+        return raw;
+    }
+    return "needs-review";
+}
+function mapReviewCaseRow(row) {
+    return {
+        id: String(row.id ?? ""),
+        tenantId: row.tenant_id === null ? null : String(row.tenant_id),
+        caseType: parseReviewCaseType(row.case_type),
+        status: parseReviewCaseStatus(row.status),
+        scope: row.scope === null ? null : String(row.scope),
+        primaryMemoryId: row.primary_memory_id === null ? null : String(row.primary_memory_id),
+        linkedMemoryIds: parseStringList(row.linked_memory_ids, 64),
+        priority: clamp01(row.priority, 0.5),
+        reasonCodes: parseStringList(row.reason_codes, 32),
+        recommendedActions: parseStringList(row.recommended_actions, 16).map((value) => parseReviewCaseAction(value)),
+        owner: row.owner === null ? null : String(row.owner),
+        resolution: row.resolution === null ? null : String(row.resolution),
+        lastVerificationRunId: row.last_verification_run_id === null ? null : String(row.last_verification_run_id),
+        openedAt: parseDate(row.opened_at),
+        updatedAt: parseDate(row.updated_at),
+        resolvedAt: parseNullableDate(row.resolved_at),
+        metadata: asRecord(row.metadata),
+    };
+}
+function mapVerificationRunRow(row) {
+    return {
+        id: String(row.id ?? ""),
+        tenantId: row.tenant_id === null ? null : String(row.tenant_id),
+        caseId: row.case_id === null ? null : String(row.case_id),
+        targetMemoryId: row.target_memory_id === null ? null : String(row.target_memory_id),
+        verifierKind: parseVerifierKind(row.verifier_kind),
+        trigger: parseVerificationTrigger(row.trigger),
+        requestSnapshot: asRecord(row.request_snapshot),
+        resultStatus: parseVerificationResultStatus(row.result_status),
+        resultSummary: row.result_summary === null ? null : String(row.result_summary),
+        evidenceIds: parseStringList(row.evidence_ids, 64),
+        startedAt: parseDate(row.started_at),
+        finishedAt: parseNullableDate(row.finished_at),
+        metadata: asRecord(row.metadata),
+    };
+}
 function createPostgresMemoryStoreAdapter(params) {
     const tableName = sanitizeTableName(params.tableName ?? "swarm_memory");
     const vectorStore = params.vectorStore;
     const pool = (0, postgres_1.getPgPool)();
+    const latticeProjectionTable = "memory_lattice_projection";
+    const evidenceTable = "memory_evidence";
+    const transitionTable = "memory_transition_event";
+    const reviewCaseTable = "memory_review_case";
+    const verificationRunTable = "memory_verification_run";
+    const attachRecordDetails = async (rows) => {
+        const memoryIds = Array.from(new Set(rows.map((row) => String(row.id ?? "").trim()).filter(Boolean)));
+        if (memoryIds.length === 0)
+            return rows;
+        const [evidenceResult, transitionResult] = await Promise.all([
+            pool.query(`
+          SELECT
+            evidence_id,
+            memory_id,
+            source_class,
+            source_uri,
+            source_path,
+            captured_at,
+            verified_at,
+            verifier,
+            redaction_state,
+            hash,
+            supports_memory_ids,
+            metadata
+            FROM ${evidenceTable}
+           WHERE memory_id = ANY($1::text[])
+           ORDER BY captured_at ASC, evidence_id ASC
+        `, [memoryIds]),
+            pool.query(`
+          SELECT
+            transition_id,
+            memory_id,
+            actor,
+            reason,
+            at,
+            from_status,
+            to_status,
+            from_truth_status,
+            to_truth_status,
+            from_freshness_status,
+            to_freshness_status,
+            from_operational_status,
+            to_operational_status,
+            evidence_ids,
+            metadata
+            FROM ${transitionTable}
+           WHERE memory_id = ANY($1::text[])
+           ORDER BY at ASC, transition_id ASC
+        `, [memoryIds]),
+        ]);
+        const evidenceByMemoryId = new Map();
+        for (const row of evidenceResult.rows) {
+            const memoryId = String(row.memory_id ?? "").trim();
+            if (!memoryId)
+                continue;
+            const bucket = evidenceByMemoryId.get(memoryId) ?? [];
+            bucket.push(mapEvidenceRow(row));
+            evidenceByMemoryId.set(memoryId, bucket);
+        }
+        const transitionsByMemoryId = new Map();
+        for (const row of transitionResult.rows) {
+            const memoryId = String(row.memory_id ?? "").trim();
+            if (!memoryId)
+                continue;
+            const bucket = transitionsByMemoryId.get(memoryId) ?? [];
+            bucket.push(mapTransitionRow(row));
+            transitionsByMemoryId.set(memoryId, bucket);
+        }
+        return rows.map((row) => ({
+            ...row,
+            evidence: evidenceByMemoryId.get(row.id) ?? [],
+            transitions: transitionsByMemoryId.get(row.id) ?? [],
+        }));
+    };
+    const persistLatticeProjection = async (client, input) => {
+        const metadata = asRecord(input.metadata);
+        const lattice = asRecord(metadata.memoryLattice);
+        const secretExposure = asRecord(metadata.secretExposure);
+        const mcpGovernance = asRecord(metadata.mcpGovernance);
+        const sourceClass = parseSourceClass(metadata.sourceClass ?? lattice.sourceClass);
+        const redactionState = parseRedactionState(metadata.redactionState ?? lattice.redactionState);
+        const hasEvidence = Array.isArray(input.evidence)
+            ? input.evidence.length > 0
+            : Boolean(metadata.evidenceCount ?? lattice.hasEvidence);
+        const shadowMcpRisk = metadata.shadowMcpRisk === true || lattice.shadowMcpRisk === true || mcpGovernance.shadowRisk === true;
+        const startupEligible = metadata.startupEligible === true || metadata.rememberForStartup === true;
+        await client.query(`
+        INSERT INTO ${latticeProjectionTable} (
+          memory_id,
+          tenant_id,
+          memory_layer,
+          status,
+          category,
+          truth_status,
+          freshness_status,
+          operational_status,
+          authority_class,
+          review_action,
+          review_priority,
+          folklore_risk,
+          contradiction_count,
+          conflict_severity,
+          conflict_kinds,
+          conflicting_memory_ids,
+          scope,
+          last_verified_at,
+          next_review_at,
+          freshness_expires_at,
+          source_class,
+          has_evidence,
+          redaction_state,
+          secret_exposure,
+          canonical_promotion_blocked,
+          secret_quarantined,
+          shadow_mcp_risk,
+          mcp_governed,
+          mcp_approval_state,
+          review_shadow_mcp,
+          high_risk_shadow_mcp,
+          startup_eligible,
+          remember_kind,
+          updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
+          $18::timestamptz, $19::timestamptz, $20::timestamptz, $21, $22, $23, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, now()
+        )
+        ON CONFLICT (memory_id) DO UPDATE SET
+          tenant_id = EXCLUDED.tenant_id,
+          memory_layer = EXCLUDED.memory_layer,
+          status = EXCLUDED.status,
+          category = EXCLUDED.category,
+          truth_status = EXCLUDED.truth_status,
+          freshness_status = EXCLUDED.freshness_status,
+          operational_status = EXCLUDED.operational_status,
+          authority_class = EXCLUDED.authority_class,
+          review_action = EXCLUDED.review_action,
+          review_priority = EXCLUDED.review_priority,
+          folklore_risk = EXCLUDED.folklore_risk,
+          contradiction_count = EXCLUDED.contradiction_count,
+          conflict_severity = EXCLUDED.conflict_severity,
+          conflict_kinds = EXCLUDED.conflict_kinds,
+          conflicting_memory_ids = EXCLUDED.conflicting_memory_ids,
+          scope = EXCLUDED.scope,
+          last_verified_at = EXCLUDED.last_verified_at,
+          next_review_at = EXCLUDED.next_review_at,
+          freshness_expires_at = EXCLUDED.freshness_expires_at,
+          source_class = EXCLUDED.source_class,
+          has_evidence = EXCLUDED.has_evidence,
+          redaction_state = EXCLUDED.redaction_state,
+          secret_exposure = EXCLUDED.secret_exposure,
+          canonical_promotion_blocked = EXCLUDED.canonical_promotion_blocked,
+          secret_quarantined = EXCLUDED.secret_quarantined,
+          shadow_mcp_risk = EXCLUDED.shadow_mcp_risk,
+          mcp_governed = EXCLUDED.mcp_governed,
+          mcp_approval_state = EXCLUDED.mcp_approval_state,
+          review_shadow_mcp = EXCLUDED.review_shadow_mcp,
+          high_risk_shadow_mcp = EXCLUDED.high_risk_shadow_mcp,
+          startup_eligible = EXCLUDED.startup_eligible,
+          remember_kind = EXCLUDED.remember_kind,
+          updated_at = now()
+      `, [
+            input.id,
+            input.tenantId ?? null,
+            input.memoryLayer,
+            input.status,
+            String(metadata.memoryCategory ?? lattice.category ?? "") || null,
+            String(metadata.truthStatus ?? lattice.truthStatus ?? "") || null,
+            String(metadata.freshnessStatus ?? lattice.freshnessStatus ?? "") || null,
+            String(metadata.operationalStatus ?? lattice.operationalStatus ?? "") || null,
+            String(metadata.authorityClass ?? lattice.authorityClass ?? "") || null,
+            String(metadata.reviewAction ?? lattice.reviewAction ?? "") || null,
+            Number(metadata.reviewPriority ?? lattice.reviewPriority ?? 0),
+            clamp01(metadata.folkloreRisk ?? lattice.folkloreRisk, 0),
+            Math.max(0, Math.trunc(Number(metadata.contradictionCount ?? lattice.contradictionCount ?? 0))),
+            String(metadata.conflictSeverity ?? lattice.conflictSeverity ?? "") || null,
+            JSON.stringify(parseStringList(metadata.conflictKinds ?? lattice.conflictKinds, 16)),
+            JSON.stringify(parseStringList(metadata.conflictingMemoryIds ?? lattice.conflictingMemoryIds, 32)),
+            String(metadata.scope ?? lattice.scope ?? "") || null,
+            parseNullableDate(metadata.lastVerifiedAt ?? lattice.lastVerifiedAt),
+            parseNullableDate(metadata.nextReviewAt ?? lattice.nextReviewAt),
+            parseNullableDate(metadata.freshnessExpiresAt ?? lattice.freshnessExpiresAt),
+            sourceClass,
+            hasEvidence,
+            redactionState,
+            JSON.stringify(secretExposure),
+            secretExposure.canonicalPromotionBlocked === true,
+            secretExposure.quarantined === true,
+            shadowMcpRisk,
+            String(mcpGovernance.approvalState ?? "").trim().length > 0,
+            String(mcpGovernance.approvalState ?? "") || null,
+            mcpGovernance.shadowRisk === true,
+            mcpGovernance.shadowRisk === true && String(mcpGovernance.approvalState ?? "").trim().toLowerCase() !== "approved",
+            startupEligible,
+            String(metadata.rememberKind ?? "") || null,
+        ]);
+    };
+    const replaceEvidence = async (client, input) => {
+        if (!Array.isArray(input.evidence))
+            return;
+        await client.query(`DELETE FROM ${evidenceTable} WHERE memory_id = $1`, [input.id]);
+        for (const evidence of input.evidence) {
+            await client.query(`
+          INSERT INTO ${evidenceTable} (
+            evidence_id,
+            memory_id,
+            tenant_id,
+            source_class,
+            source_uri,
+            source_path,
+            captured_at,
+            verified_at,
+            verifier,
+            redaction_state,
+            hash,
+            supports_memory_ids,
+            metadata,
+            updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz, $9, $10, $11, $12::jsonb, $13::jsonb, now()
+          )
+          ON CONFLICT (evidence_id) DO UPDATE SET
+            memory_id = EXCLUDED.memory_id,
+            tenant_id = EXCLUDED.tenant_id,
+            source_class = EXCLUDED.source_class,
+            source_uri = EXCLUDED.source_uri,
+            source_path = EXCLUDED.source_path,
+            captured_at = EXCLUDED.captured_at,
+            verified_at = EXCLUDED.verified_at,
+            verifier = EXCLUDED.verifier,
+            redaction_state = EXCLUDED.redaction_state,
+            hash = EXCLUDED.hash,
+            supports_memory_ids = EXCLUDED.supports_memory_ids,
+            metadata = EXCLUDED.metadata,
+            updated_at = now()
+        `, [
+                evidence.evidenceId,
+                input.id,
+                input.tenantId ?? null,
+                evidence.sourceClass,
+                evidence.sourceUri ?? null,
+                evidence.sourcePath ?? null,
+                evidence.capturedAt,
+                evidence.verifiedAt ?? null,
+                evidence.verifier ?? null,
+                evidence.redactionState,
+                evidence.hash ?? null,
+                JSON.stringify(parseStringList(evidence.supportsMemoryIds, 32)),
+                JSON.stringify(asRecord(evidence.metadata)),
+            ]);
+        }
+    };
+    const upsertTransitionEvents = async (client, input) => {
+        if (!Array.isArray(input.transitionEvents) || input.transitionEvents.length === 0)
+            return;
+        for (const transition of input.transitionEvents) {
+            await client.query(`
+          INSERT INTO ${transitionTable} (
+            transition_id,
+            memory_id,
+            tenant_id,
+            actor,
+            reason,
+            at,
+            from_status,
+            to_status,
+            from_truth_status,
+            to_truth_status,
+            from_freshness_status,
+            to_freshness_status,
+            from_operational_status,
+            to_operational_status,
+            evidence_ids,
+            metadata
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb
+          )
+          ON CONFLICT (transition_id) DO UPDATE SET
+            memory_id = EXCLUDED.memory_id,
+            tenant_id = EXCLUDED.tenant_id,
+            actor = EXCLUDED.actor,
+            reason = EXCLUDED.reason,
+            at = EXCLUDED.at,
+            from_status = EXCLUDED.from_status,
+            to_status = EXCLUDED.to_status,
+            from_truth_status = EXCLUDED.from_truth_status,
+            to_truth_status = EXCLUDED.to_truth_status,
+            from_freshness_status = EXCLUDED.from_freshness_status,
+            to_freshness_status = EXCLUDED.to_freshness_status,
+            from_operational_status = EXCLUDED.from_operational_status,
+            to_operational_status = EXCLUDED.to_operational_status,
+            evidence_ids = EXCLUDED.evidence_ids,
+            metadata = EXCLUDED.metadata
+        `, [
+                transition.transitionId,
+                input.id,
+                input.tenantId ?? null,
+                transition.actor ?? null,
+                transition.reason ?? null,
+                transition.at,
+                transition.fromStatus ?? null,
+                transition.toStatus,
+                transition.fromTruthStatus ?? null,
+                transition.toTruthStatus,
+                transition.fromFreshnessStatus ?? null,
+                transition.toFreshnessStatus,
+                transition.fromOperationalStatus ?? null,
+                transition.toOperationalStatus,
+                JSON.stringify(parseStringList(transition.evidenceIds, 32)),
+                JSON.stringify(asRecord(transition.metadata)),
+            ]);
+        }
+    };
     return {
         async upsert(input) {
             const metadata = {
@@ -350,6 +850,21 @@ function createPostgresMemoryStoreAdapter(params) {
             catch {
                 // best-effort telemetry
             }
+            const client = await pool.connect();
+            try {
+                await client.query("BEGIN");
+                await persistLatticeProjection(client, input);
+                await replaceEvidence(client, input);
+                await upsertTransitionEvents(client, input);
+                await client.query("COMMIT");
+            }
+            catch (error) {
+                await client.query("ROLLBACK");
+                throw error;
+            }
+            finally {
+                client.release();
+            }
             const row = await pool.query(`
           SELECT
             memory_id,
@@ -369,7 +884,8 @@ function createPostgresMemoryStoreAdapter(params) {
            LIMIT 1
         `, [input.id]);
             if (row.rowCount && row.rows[0]) {
-                return mapRowToRecord(row.rows[0]);
+                const [enriched] = await attachRecordDetails([mapRowToRecord(row.rows[0])]);
+                return enriched;
             }
             return {
                 id: input.id,
@@ -387,6 +903,8 @@ function createPostgresMemoryStoreAdapter(params) {
                 memoryLayer: input.memoryLayer,
                 sourceConfidence: clamp01(input.sourceConfidence),
                 importance: clamp01(input.importance),
+                evidence: Array.isArray(input.evidence) ? input.evidence : [],
+                transitions: Array.isArray(input.transitionEvents) ? input.transitionEvents : [],
             };
         },
         async search(input) {
@@ -430,7 +948,8 @@ function createPostgresMemoryStoreAdapter(params) {
                     matchedBy: row.matchedBy,
                 };
             }).filter((row) => (0, layers_1.isAllowedMemoryLayer)(row.memoryLayer, layerAllowlist, layerDenylist));
-            const matchedByCounts = mapped.reduce((acc, row) => {
+            const enriched = await attachRecordDetails(mapped);
+            const matchedByCounts = enriched.reduce((acc, row) => {
                 for (const key of row.matchedBy) {
                     const normalized = String(key || "").trim().toLowerCase();
                     if (!normalized)
@@ -464,12 +983,12 @@ function createPostgresMemoryStoreAdapter(params) {
                     input.query,
                     input.retrievalMode ?? "hybrid",
                     rows.length,
-                    mapped.length,
-                    JSON.stringify(mapped.map((row) => row.id)),
+                    enriched.length,
+                    JSON.stringify(enriched.map((row) => row.id)),
                     JSON.stringify({
-                        topScore: mapped[0]?.score ?? null,
-                        topMatchedBy: mapped[0]?.matchedBy ?? [],
-                        topBreakdown: mapped[0]?.scoreBreakdown ?? null,
+                        topScore: enriched[0]?.score ?? null,
+                        topMatchedBy: enriched[0]?.matchedBy ?? [],
+                        topBreakdown: enriched[0]?.scoreBreakdown ?? null,
                         laneCounts: matchedByCounts,
                         minScore: input.minScore ?? null,
                     }),
@@ -479,7 +998,7 @@ function createPostgresMemoryStoreAdapter(params) {
             catch {
                 // best-effort telemetry
             }
-            return mapped;
+            return enriched;
         },
         async recent(input) {
             const values = [];
@@ -545,7 +1064,7 @@ function createPostgresMemoryStoreAdapter(params) {
          LIMIT $${values.length}
       `;
             const result = await pool.query(query, values);
-            return result.rows.map(mapRowToRecord);
+            return attachRecordDetails(result.rows.map(mapRowToRecord));
         },
         async recentCreated(input) {
             const values = [];
@@ -611,7 +1130,7 @@ function createPostgresMemoryStoreAdapter(params) {
          LIMIT $${values.length}
       `;
             const result = await pool.query(query, values);
-            return result.rows.map(mapRowToRecord);
+            return attachRecordDetails(result.rows.map(mapRowToRecord));
         },
         async getByIds(input) {
             const ids = Array.from(new Set((input.ids ?? []).map((value) => String(value ?? "").trim()).filter(Boolean)));
@@ -642,26 +1161,30 @@ function createPostgresMemoryStoreAdapter(params) {
          ORDER BY COALESCE(occurred_at, created_at) DESC, created_at DESC
       `;
             const result = await pool.query(query, values);
-            const rows = result.rows.map(mapRowToRecord);
+            const rows = await attachRecordDetails(result.rows.map(mapRowToRecord));
             return rows;
         },
         async stats(input) {
             const values = [];
             const predicates = [];
+            const projectionPredicates = [];
             const memoryLayerExpr = memoryLayerSql();
             if (input.tenantId !== undefined) {
                 values.push(input.tenantId);
                 predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
+                projectionPredicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
             }
             const allowLayers = sanitizeLayerList(input.layerAllowlist);
             if (allowLayers.length > 0) {
                 values.push(allowLayers);
                 predicates.push(`${memoryLayerExpr} = ANY($${values.length}::text[])`);
+                projectionPredicates.push(`memory_layer = ANY($${values.length}::text[])`);
             }
             const denyLayers = sanitizeLayerList(input.layerDenylist);
             if (denyLayers.length > 0) {
                 values.push(denyLayers);
                 predicates.push(`${memoryLayerExpr} <> ALL($${values.length}::text[])`);
+                projectionPredicates.push(`memory_layer <> ALL($${values.length}::text[])`);
             }
             const whereClause = predicates.length ? `WHERE ${predicates.join(" AND ")}` : "";
             const totals = await pool.query(`
@@ -697,8 +1220,163 @@ function createPostgresMemoryStoreAdapter(params) {
         ORDER BY count DESC, status ASC
            LIMIT 8
         `, values);
+            const projectionWhereClause = projectionPredicates.length ? `WHERE ${projectionPredicates.join(" AND ")}` : "";
+            const latticeCoverage = await pool.query(`
+          SELECT
+            COUNT(*) FILTER (
+              WHERE category IS NOT NULL
+                 OR truth_status IS NOT NULL
+                 OR freshness_status IS NOT NULL
+                 OR operational_status IS NOT NULL
+                 OR review_action IS NOT NULL
+            )::int AS rows_with_lattice,
+            COUNT(*) FILTER (WHERE review_action IS NOT NULL AND review_action <> 'none')::int AS review_now,
+            COUNT(*) FILTER (WHERE review_action = 'revalidate')::int AS revalidate,
+            COUNT(*) FILTER (WHERE review_action = 'resolve-conflict')::int AS resolve_conflict,
+            COUNT(*) FILTER (WHERE review_action = 'retire')::int AS retire,
+            COUNT(*) FILTER (WHERE folklore_risk >= 0.65)::int AS folklore_risk_high
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+        `, values);
+            const byCategory = await pool.query(`
+          SELECT category,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} category IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, category ASC
+           LIMIT 16
+        `, values);
+            const byTruthStatus = await pool.query(`
+          SELECT truth_status AS status,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} truth_status IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `, values);
+            const byFreshnessStatus = await pool.query(`
+          SELECT freshness_status AS status,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} freshness_status IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `, values);
+            const byOperationalStatus = await pool.query(`
+          SELECT operational_status AS status,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} operational_status IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, status ASC
+           LIMIT 8
+        `, values);
+            const byReviewAction = await pool.query(`
+          SELECT review_action AS action,
+                 COUNT(*)::int AS count
+            FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+             ${projectionWhereClause ? "AND" : "WHERE"} review_action IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, action ASC
+           LIMIT 8
+        `, values);
+            const launchFindings = await pool.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE truth_status = 'contradicted' OR operational_status = 'quarantined')::int AS contested_rows,
+            COUNT(*) FILTER (WHERE conflict_severity = 'hard')::int AS hard_conflicts,
+            COUNT(*) FILTER (WHERE operational_status = 'quarantined')::int AS quarantined_rows,
+            COUNT(*) FILTER (WHERE category = 'conflict-record')::int AS conflict_records,
+            COUNT(*) FILTER (WHERE startup_eligible)::int AS startup_eligible_rows,
+            COUNT(*) FILTER (
+              WHERE startup_eligible
+                AND operational_status = 'active'
+                AND truth_status IN ('trusted', 'verified')
+            )::int AS trusted_startup_rows,
+            COUNT(*) FILTER (WHERE remember_kind = 'handoff')::int AS handoff_rows,
+            COUNT(*) FILTER (WHERE remember_kind = 'checkpoint')::int AS checkpoint_rows,
+            COUNT(*) FILTER (WHERE startup_eligible AND has_evidence = false AND status <> 'accepted')::int AS fallback_risk_rows,
+            COUNT(*) FILTER (WHERE redaction_state IN ('redacted', 'verified-redacted'))::int AS redacted_rows,
+            COUNT(*) FILTER (WHERE redaction_state = 'requires-review')::int AS requires_review_rows,
+            COUNT(*) FILTER (WHERE canonical_promotion_blocked = true)::int AS canonical_blocked_rows,
+            COUNT(*) FILTER (WHERE secret_quarantined = true)::int AS secret_quarantined_rows,
+            COUNT(*) FILTER (
+              WHERE source_class = 'mcp-tool'
+                 OR mcp_governed = true
+                 OR mcp_approval_state IS NOT NULL
+                 OR shadow_mcp_risk = true
+            )::int AS total_shadow_rows,
+            COUNT(*) FILTER (
+              WHERE (source_class = 'mcp-tool' OR mcp_governed = true OR mcp_approval_state IS NOT NULL OR shadow_mcp_risk = true)
+                AND mcp_governed = true
+            )::int AS governed_shadow_rows,
+            COUNT(*) FILTER (
+              WHERE (source_class = 'mcp-tool' OR mcp_governed = true OR mcp_approval_state IS NOT NULL OR shadow_mcp_risk = true)
+                AND mcp_governed = false
+            )::int AS ungoverned_shadow_rows,
+            COUNT(*) FILTER (WHERE review_shadow_mcp = true)::int AS review_shadow_rows,
+            COUNT(*) FILTER (WHERE high_risk_shadow_mcp = true)::int AS high_risk_shadow_rows
+           FROM ${latticeProjectionTable}
+           ${projectionWhereClause}
+        `, values);
+            const retrievalShadow = await pool.query(`
+          WITH filtered AS (
+            SELECT memory_id, category, conflict_severity, operational_status, conflicting_memory_ids
+              FROM ${latticeProjectionTable}
+             ${projectionWhereClause}
+          ),
+          linked AS (
+            SELECT DISTINCT linked.memory_id
+              FROM filtered row
+              CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(row.conflicting_memory_ids, '[]'::jsonb)) AS linked(memory_id)
+              JOIN filtered target ON target.memory_id = linked.memory_id
+             WHERE row.category = 'conflict-record'
+               AND row.conflict_severity = 'hard'
+               AND COALESCE(row.operational_status, 'active') NOT IN ('archived', 'deprecated', 'retired')
+          )
+          SELECT COUNT(*)::int AS retrieval_shadowed_rows
+            FROM linked
+        `, values);
+            const reviewWorkflow = await pool.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE status IN ('open', 'in-progress'))::int AS open_review_cases,
+            COUNT(*) FILTER (
+              WHERE case_type = 'promote-guidance'
+                AND status IN ('open', 'in-progress')
+            )::int AS ember_promotion_backlog
+            FROM ${reviewCaseTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+        `, [input.tenantId ?? null]);
+            const verificationFailures = await pool.query(`
+          SELECT
+            COUNT(*) FILTER (
+              WHERE result_status = 'failed'
+                AND COALESCE(finished_at, started_at) >= now() - interval '24 hours'
+            )::int AS verification_failures_24h
+            FROM ${verificationRunTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+        `, [input.tenantId ?? null]);
             const total = Number(totals.rows[0]?.total ?? 0);
             const lastRaw = totals.rows[0]?.last_captured_at;
+            const rowsWithLattice = Number(latticeCoverage.rows[0]?.rows_with_lattice ?? 0);
+            const launchRow = launchFindings.rows[0] ?? {};
+            const retrievalShadowRow = retrievalShadow.rows[0] ?? {};
+            const reviewWorkflowRow = reviewWorkflow.rows[0] ?? {};
+            const verificationFailuresRow = verificationFailures.rows[0] ?? {};
+            const backlog = {
+                reviewNow: Number(latticeCoverage.rows[0]?.review_now ?? 0),
+                revalidate: Number(latticeCoverage.rows[0]?.revalidate ?? 0),
+                resolveConflict: Number(latticeCoverage.rows[0]?.resolve_conflict ?? 0),
+                retire: Number(latticeCoverage.rows[0]?.retire ?? 0),
+                folkloreRiskHigh: Number(latticeCoverage.rows[0]?.folklore_risk_high ?? 0),
+            };
             return {
                 total,
                 lastCapturedAt: lastRaw ? new Date(String(lastRaw)).toISOString() : null,
@@ -714,7 +1392,242 @@ function createPostgresMemoryStoreAdapter(params) {
                     status: parseStatus(row.status),
                     count: Number(row.count ?? 0),
                 })),
+                lattice: {
+                    coverage: {
+                        rowsWithLattice,
+                        totalRows: total,
+                        ratio: total > 0 ? Number((rowsWithLattice / total).toFixed(3)) : 0,
+                    },
+                    byCategory: mapCountRows(byCategory.rows, "category").map((row) => ({
+                        category: row.value,
+                        count: row.count,
+                    })),
+                    byTruthStatus: mapCountRows(byTruthStatus.rows, "status").map((row) => ({
+                        status: row.value,
+                        count: row.count,
+                    })),
+                    byFreshnessStatus: mapCountRows(byFreshnessStatus.rows, "status").map((row) => ({
+                        status: row.value,
+                        count: row.count,
+                    })),
+                    byOperationalStatus: mapCountRows(byOperationalStatus.rows, "status").map((row) => ({
+                        status: row.value,
+                        count: row.count,
+                    })),
+                    byReviewAction: mapCountRows(byReviewAction.rows, "action").map((row) => ({
+                        action: row.value,
+                        count: row.count,
+                    })),
+                    backlog,
+                },
+                reviewBacklog: backlog,
+                openReviewCases: Number(reviewWorkflowRow.open_review_cases ?? 0),
+                verificationFailures24h: Number(verificationFailuresRow.verification_failures_24h ?? 0),
+                emberPromotionBacklog: Number(reviewWorkflowRow.ember_promotion_backlog ?? 0),
+                conflictBacklog: {
+                    contestedRows: Number(launchRow.contested_rows ?? 0),
+                    hardConflicts: Number(launchRow.hard_conflicts ?? 0),
+                    quarantinedRows: Number(launchRow.quarantined_rows ?? 0),
+                    conflictRecords: Number(launchRow.conflict_records ?? 0),
+                    retrievalShadowedRows: Number(retrievalShadowRow.retrieval_shadowed_rows ?? 0),
+                },
+                startupReadiness: {
+                    startupEligibleRows: Number(launchRow.startup_eligible_rows ?? 0),
+                    trustedStartupRows: Number(launchRow.trusted_startup_rows ?? 0),
+                    handoffRows: Number(launchRow.handoff_rows ?? 0),
+                    checkpointRows: Number(launchRow.checkpoint_rows ?? 0),
+                    fallbackRiskRows: Number(launchRow.fallback_risk_rows ?? 0),
+                },
+                secretExposureFindings: {
+                    totalRows: total,
+                    redactedRows: Number(launchRow.redacted_rows ?? 0),
+                    requiresReviewRows: Number(launchRow.requires_review_rows ?? 0),
+                    canonicalBlockedRows: Number(launchRow.canonical_blocked_rows ?? 0),
+                    quarantinedRows: Number(launchRow.secret_quarantined_rows ?? 0),
+                },
+                shadowMcpFindings: {
+                    totalRows: Number(launchRow.total_shadow_rows ?? 0),
+                    governedRows: Number(launchRow.governed_shadow_rows ?? 0),
+                    ungovernedRows: Number(launchRow.ungoverned_shadow_rows ?? 0),
+                    reviewRows: Number(launchRow.review_shadow_rows ?? 0),
+                    highRiskRows: Number(launchRow.high_risk_shadow_rows ?? 0),
+                },
             };
+        },
+        async upsertReviewCase(input) {
+            const result = await pool.query(`
+          INSERT INTO ${reviewCaseTable} (
+            id,
+            tenant_id,
+            case_type,
+            status,
+            scope,
+            primary_memory_id,
+            linked_memory_ids,
+            priority,
+            reason_codes,
+            recommended_actions,
+            owner,
+            resolution,
+            last_verification_run_id,
+            opened_at,
+            updated_at,
+            resolved_at,
+            metadata
+          ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14::timestamptz,$15::timestamptz,$16::timestamptz,$17::jsonb
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
+            case_type = EXCLUDED.case_type,
+            status = EXCLUDED.status,
+            scope = EXCLUDED.scope,
+            primary_memory_id = EXCLUDED.primary_memory_id,
+            linked_memory_ids = EXCLUDED.linked_memory_ids,
+            priority = EXCLUDED.priority,
+            reason_codes = EXCLUDED.reason_codes,
+            recommended_actions = EXCLUDED.recommended_actions,
+            owner = EXCLUDED.owner,
+            resolution = EXCLUDED.resolution,
+            last_verification_run_id = EXCLUDED.last_verification_run_id,
+            opened_at = EXCLUDED.opened_at,
+            updated_at = EXCLUDED.updated_at,
+            resolved_at = EXCLUDED.resolved_at,
+            metadata = EXCLUDED.metadata
+          RETURNING *
+        `, [
+                input.id,
+                input.tenantId ?? null,
+                input.caseType,
+                input.status,
+                input.scope ?? null,
+                input.primaryMemoryId ?? null,
+                JSON.stringify(normalizeIdList(input.linkedMemoryIds, 64)),
+                clamp01(input.priority, 0.5),
+                JSON.stringify(parseStringList(input.reasonCodes, 32)),
+                JSON.stringify(Array.from(new Set((input.recommendedActions ?? []).map((entry) => parseReviewCaseAction(entry)))).slice(0, 16)),
+                input.owner ?? null,
+                input.resolution ?? null,
+                input.lastVerificationRunId ?? null,
+                parseDate(input.openedAt),
+                parseDate(input.updatedAt),
+                parseNullableDate(input.resolvedAt),
+                JSON.stringify(asRecord(input.metadata)),
+            ]);
+            return mapReviewCaseRow(result.rows[0]);
+        },
+        async getReviewCaseById(input) {
+            const result = await pool.query(`
+          SELECT *
+            FROM ${reviewCaseTable}
+           WHERE id = $1
+             AND ($2::text IS NULL OR tenant_id IS NOT DISTINCT FROM $2::text)
+           LIMIT 1
+        `, [String(input.id ?? "").trim(), input.tenantId ?? null]);
+            if (!result.rowCount)
+                return null;
+            return mapReviewCaseRow(result.rows[0]);
+        },
+        async listReviewCases(input) {
+            const result = await pool.query(`
+          SELECT *
+            FROM ${reviewCaseTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+             AND ($2::text[] IS NULL OR status = ANY($2::text[]))
+             AND ($3::text[] IS NULL OR case_type = ANY($3::text[]))
+             AND (
+               $4::text[] IS NULL OR EXISTS (
+                 SELECT 1
+                   FROM unnest($4::text[]) AS prefix
+                  WHERE scope IS NOT NULL
+                    AND LOWER(scope) LIKE LOWER(prefix) || '%'
+               )
+             )
+             AND (
+               $5::text[] IS NULL OR EXISTS (
+                 SELECT 1
+                   FROM jsonb_array_elements_text(COALESCE(linked_memory_ids, '[]'::jsonb)) AS linked(memory_id)
+                  WHERE linked.memory_id = ANY($5::text[])
+               )
+             )
+           ORDER BY priority DESC, updated_at DESC
+           LIMIT $6
+        `, [
+                input.tenantId ?? null,
+                input.statuses && input.statuses.length > 0 ? input.statuses : null,
+                input.caseTypes && input.caseTypes.length > 0 ? input.caseTypes : null,
+                input.scopePrefixes && input.scopePrefixes.length > 0 ? input.scopePrefixes.map((entry) => entry.toLowerCase()) : null,
+                input.linkedMemoryIds && input.linkedMemoryIds.length > 0 ? normalizeIdList(input.linkedMemoryIds, 64) : null,
+                clampLimit(input.limit ?? 50, 50),
+            ]);
+            return result.rows.map((row) => mapReviewCaseRow(row));
+        },
+        async upsertVerificationRun(input) {
+            const result = await pool.query(`
+          INSERT INTO ${verificationRunTable} (
+            id,
+            tenant_id,
+            case_id,
+            target_memory_id,
+            verifier_kind,
+            trigger,
+            request_snapshot,
+            result_status,
+            result_summary,
+            evidence_ids,
+            started_at,
+            finished_at,
+            metadata
+          ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11::timestamptz,$12::timestamptz,$13::jsonb
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
+            case_id = EXCLUDED.case_id,
+            target_memory_id = EXCLUDED.target_memory_id,
+            verifier_kind = EXCLUDED.verifier_kind,
+            trigger = EXCLUDED.trigger,
+            request_snapshot = EXCLUDED.request_snapshot,
+            result_status = EXCLUDED.result_status,
+            result_summary = EXCLUDED.result_summary,
+            evidence_ids = EXCLUDED.evidence_ids,
+            started_at = EXCLUDED.started_at,
+            finished_at = EXCLUDED.finished_at,
+            metadata = EXCLUDED.metadata
+          RETURNING *
+        `, [
+                input.id,
+                input.tenantId ?? null,
+                input.caseId ?? null,
+                input.targetMemoryId ?? null,
+                input.verifierKind,
+                input.trigger,
+                JSON.stringify(asRecord(input.requestSnapshot)),
+                input.resultStatus,
+                input.resultSummary ?? null,
+                JSON.stringify(normalizeIdList(input.evidenceIds, 64)),
+                parseDate(input.startedAt),
+                parseNullableDate(input.finishedAt),
+                JSON.stringify(asRecord(input.metadata)),
+            ]);
+            return mapVerificationRunRow(result.rows[0]);
+        },
+        async listVerificationRuns(input) {
+            const result = await pool.query(`
+          SELECT *
+            FROM ${verificationRunTable}
+           WHERE ($1::text IS NULL OR tenant_id IS NOT DISTINCT FROM $1::text)
+             AND ($2::text IS NULL OR case_id IS NOT DISTINCT FROM $2::text)
+             AND ($3::text IS NULL OR target_memory_id IS NOT DISTINCT FROM $3::text)
+           ORDER BY COALESCE(finished_at, started_at) DESC, started_at DESC
+           LIMIT $4
+        `, [
+                input.tenantId ?? null,
+                input.caseId ?? null,
+                input.targetMemoryId ?? null,
+                clampLimit(input.limit ?? 50, 50),
+            ]);
+            return result.rows.map((row) => mapVerificationRunRow(row));
         },
         async indexSignals(input) {
             const tenantScope = normalizeTenantScope(input.tenantId);

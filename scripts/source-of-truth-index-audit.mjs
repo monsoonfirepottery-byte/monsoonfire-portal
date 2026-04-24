@@ -218,8 +218,10 @@ if (!existsSync(indexPath)) {
 
 if (existsSync(codexConfigPath)) {
   const configText = readFile(codexConfigPath);
-  const observedKeys = Array.from(configText.matchAll(/^\s*\[mcp_servers\.(?<name>[A-Za-z0-9_]+)\]/gm))
-    .map((entry) => entry?.groups?.name)
+  const observedKeys = Array.from(
+    configText.matchAll(/^\s*\[mcp_servers\.(?:"(?<quoted>[^"]+)"|(?<bare>[A-Za-z0-9_-]+))\]\s*$/gm)
+  )
+    .map((entry) => entry?.groups?.quoted || entry?.groups?.bare)
     .filter(Boolean);
   const missingKeys = [...requiredMcpKeys].filter((requiredKey) => !observedKeys.includes(requiredKey));
 
@@ -327,7 +329,7 @@ for (const line of rawText.split(/\r?\n/)) {
 
 function extractMcpServerKeys(rawSource) {
   const source = String(rawSource || "");
-  const refs = source.matchAll(/mcp_servers\.([A-Za-z0-9_]+\*?)/g);
+  const refs = source.matchAll(/mcp_servers\.([A-Za-z0-9_-]+\*?)/g);
   return [...refs]
     .map((entry) => String(entry?.[1] || ""))
     .map((entry) => entry.replace(/\)$/, ""))

@@ -12,6 +12,12 @@ The run writes:
 - screenshots under `output/playwright/portal`
 - `portal-smoke-summary.json` with every check, network event, screenshot reference, and failure detail
 
+## Native-browser shadow lane
+- `npm run portal:smoke:native-browser:shadow` prepares the advisory Codex-native shadow artifacts under `output/native-browser/portal/prod`.
+- `npm run portal:smoke:native-browser:shadow:execute` runs the bounded `codex exec` wrapper and records structured evidence when native browser/computer-use is available.
+- This lane is non-gating and advisory-only today.
+- Playwright remains the authoritative portal smoke gate for CI, release signoff, and production monitoring until native browser/computer-use is actually exposed in this execution path.
+
 ## Local usage
 1. Install dependencies:
 ```bash
@@ -136,6 +142,7 @@ node ./scripts/portal-playwright-smoke.mjs --base-url https://staging.example.co
   - Request failures for critical Studio Brain/function endpoints (including request timeouts and net errors).
 - `authPopupWarnings`:
   - `Cross-Origin-Opener-Policy` messages from Firebase popup auth; these are recorded as notes and are non-blocking.
+  - If the portal already serves `Cross-Origin-Opener-Policy: same-origin-allow-popups`, repeated Chrome warnings can still originate from report-only headers on upstream Google auth pages.
 - `critical response warnings`:
   - `5xx` responses on critical endpoints.
 

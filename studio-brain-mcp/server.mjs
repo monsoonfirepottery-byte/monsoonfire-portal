@@ -1018,6 +1018,127 @@ server.registerTool(
 );
 
 server.registerTool(
+  "studio_brain_memory_consolidate",
+  {
+    title: "Studio Brain Memory Consolidate",
+    description: "Run Studio Brain memory consolidation on the host control plane and return the resulting artifact summary.",
+    inputSchema: {
+      mode: z.enum(["idle", "overnight"]).optional(),
+      runId: withOptionalString(z.string()),
+      tenantId: withOptionalString(z.string()),
+      maxCandidates: z.number().int().min(1).max(5000).optional(),
+      maxWrites: z.number().int().min(1).max(1000).optional(),
+      timeBudgetMs: z.number().int().min(5000).max(1800000).optional(),
+      focusAreas: withOptionalStringArray(),
+      baseUrl: z.string().url().optional(),
+      timeoutMs: z.number().int().positive().max(300000).optional(),
+    },
+  },
+  async ({
+    mode,
+    runId,
+    tenantId,
+    maxCandidates,
+    maxWrites,
+    timeBudgetMs,
+    focusAreas,
+    baseUrl,
+    timeoutMs,
+  }) => {
+    try {
+      const payload = await studioBrainRequest({
+        method: "POST",
+        path: "/api/memory/consolidate",
+        body: {
+          mode,
+          runId,
+          tenantId,
+          maxCandidates,
+          maxWrites,
+          timeBudgetMs,
+          focusAreas,
+          requestOrigin: "studio-brain-mcp",
+        },
+        baseUrl,
+        timeoutMs,
+      });
+      const result =
+        payload?.result && typeof payload.result === "object" && !Array.isArray(payload.result)
+          ? payload.result
+          : payload;
+      return asToolResult({
+        ok: payload?.ok !== false,
+        ...result,
+      });
+    } catch (error) {
+      return asToolError(error);
+    }
+  }
+);
+
+server.registerTool(
+  "studio_brain_memory_scrub_thread_metadata",
+  {
+    title: "Studio Brain Memory Scrub Thread Metadata",
+    description: "Run thread-metadata hygiene on the host control plane and return the resulting repair summary.",
+    inputSchema: {
+      tenantId: withOptionalString(z.string()),
+      limit: z.number().int().min(1).max(5000).optional(),
+      dryRun: z.boolean().optional(),
+      sourcePrefixes: withOptionalStringArray(),
+      includeMailLike: z.boolean().optional(),
+      maxWrites: z.number().int().min(1).max(5000).optional(),
+      writeDelayMs: z.number().int().min(0).max(60000).optional(),
+      stopAfterTimeoutErrors: z.number().int().min(1).max(100).optional(),
+      baseUrl: z.string().url().optional(),
+      timeoutMs: z.number().int().positive().max(300000).optional(),
+    },
+  },
+  async ({
+    tenantId,
+    limit,
+    dryRun,
+    sourcePrefixes,
+    includeMailLike,
+    maxWrites,
+    writeDelayMs,
+    stopAfterTimeoutErrors,
+    baseUrl,
+    timeoutMs,
+  }) => {
+    try {
+      const payload = await studioBrainRequest({
+        method: "POST",
+        path: "/api/memory/scrub-thread-metadata",
+        body: {
+          tenantId,
+          limit,
+          dryRun,
+          sourcePrefixes,
+          includeMailLike,
+          maxWrites,
+          writeDelayMs,
+          stopAfterTimeoutErrors,
+          requestOrigin: "studio-brain-mcp",
+        },
+        baseUrl,
+        timeoutMs,
+      });
+      const result =
+        payload?.result && typeof payload.result === "object" && !Array.isArray(payload.result)
+          ? payload.result
+          : payload;
+      return asToolResult({
+        ok: payload?.ok !== false,
+        ...result,
+      });
+    } catch (error) {
+      return asToolError(error);
+    }
+  }
+);
+
+server.registerTool(
   "studio_brain_loop_incidents",
   {
     title: "Studio Brain Loop Incidents",

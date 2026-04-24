@@ -203,4 +203,72 @@ describe("LendingLibraryView member detail value cues", () => {
     expect(await screen.findByText("Why this title matters")).toBeTruthy();
     expect(screen.getByText("More details are still being added for this title.")).toBeTruthy();
   });
+
+  it("renders stored cover art on the shelf even while metadata review is still pending", async () => {
+    mockListItems = [
+      {
+        id: "item-3",
+        title: "Surface Design Atlas",
+        authors: ["Studio Staff"],
+        summary: "Member-facing synopsis.",
+        detailStatus: "ready",
+        totalCopies: 1,
+        availableCopies: 1,
+        status: "available",
+        source: "openlibrary",
+        coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
+        coverQualityStatus: "needs_review",
+        needsCoverReview: true,
+      },
+    ];
+    mockDetailItem = {
+      ...mockListItems[0],
+      relatedWorkshops: [],
+    };
+
+    render(<LendingLibraryView user={buildUser()} adminToken="" isStaff={false} />);
+
+    expect(await screen.findByText("Surface Design Atlas")).toBeTruthy();
+    const coverImage = screen.getByRole("img", { name: "Surface Design Atlas" }) as HTMLImageElement;
+    expect(coverImage.getAttribute("src")).toBe("https://covers.openlibrary.org/b/id/12345-M.jpg");
+    expect(screen.queryByText("Cover pending")).toBeNull();
+  });
+
+  it("hides placeholder ISBN rows from the shared browse shelf", async () => {
+    mockListItems = [
+      {
+        id: "item-placeholder",
+        title: "ISBN 9789188805553",
+        authors: [],
+        detailStatus: "sparse",
+        totalCopies: 1,
+        availableCopies: 1,
+        status: "available",
+        source: "manual",
+      },
+      {
+        id: "item-ready",
+        title: "Flood",
+        authors: ["Stephen Baxter"],
+        summary: "Flood novel.",
+        detailStatus: "ready",
+        totalCopies: 1,
+        availableCopies: 1,
+        status: "available",
+        source: "openlibrary",
+        coverUrl: "https://covers.openlibrary.org/b/id/9543682-L.jpg",
+        coverQualityStatus: "approved",
+        needsCoverReview: false,
+      },
+    ];
+    mockDetailItem = {
+      ...mockListItems[1],
+      relatedWorkshops: [],
+    };
+
+    render(<LendingLibraryView user={buildUser()} adminToken="" isStaff={true} />);
+
+    expect(await screen.findByText("Flood")).toBeTruthy();
+    expect(screen.queryByText("ISBN 9789188805553")).toBeNull();
+  });
 });

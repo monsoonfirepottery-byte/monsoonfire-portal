@@ -48,6 +48,12 @@ const contentTypes = {
 };
 
 const supportTopicSelectors = ['[data-topic="payments"]', '[data-topic="pricing"]'];
+const knownPortalHosts = new Set(["monsoonfire.kilnfire.com", "portal.monsoonfire.com"]);
+const defaultExpectedPortalHost = String(
+  process.env.WEBSITE_EXPECTED_PORTAL_HOST ||
+  process.env.WEBSITE_PORTAL_HANDOFF_HOST ||
+  "portal.monsoonfire.com"
+).trim().toLowerCase();
 
 const ensureDir = async (dirPath) => mkdir(dirPath, { recursive: true });
 
@@ -60,7 +66,10 @@ const normalizeBaseUrl = (value) => {
 const parseOptions = (argv) => {
   const options = {
     baseUrl: null,
-    outputDir: defaultOutputRoot
+    outputDir: defaultOutputRoot,
+    expectedPortalHost: defaultExpectedPortalHost,
+    benchmarkProbe: false,
+    json: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -83,9 +92,45 @@ const parseOptions = (argv) => {
       i += 1;
       continue;
     }
+    if (arg === "--expected-portal-host") {
+      const nextValue = argv[i + 1];
+      if (!nextValue || nextValue.startsWith("--")) {
+        throw new Error("Missing value for --expected-portal-host");
+      }
+      options.expectedPortalHost = String(nextValue).trim().toLowerCase();
+      i += 1;
+      continue;
+    }
+    if (arg === "--benchmark-probe") {
+      options.benchmarkProbe = true;
+      continue;
+    }
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
   }
 
   return options;
+};
+
+const emitBenchmarkProbe = (options) => {
+  const payload = {
+    schema: "agent-tool-benchmark-probe.v1",
+    tool: "website-playwright-smoke",
+    status: "ok",
+    benchmarkProbe: true,
+    options: {
+      baseUrl: options.baseUrl,
+      outputDir: options.outputDir,
+      expectedPortalHost: options.expectedPortalHost,
+    },
+  };
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  process.stdout.write(`benchmark-probe ok: ${payload.tool}\n`);
 };
 
 function assertStudioBrainContract() {
@@ -208,13 +253,42 @@ const assert = (condition, message) => {
   }
 };
 
+const assertPortalLinks = async (page, route, expectedPortalHost) => {
+  const hrefs = await page.evaluate(() => Array.from(document.querySelectorAll("a[href]"), (anchor) => anchor.href));
+  const unexpectedKnownLinks = hrefs.filter((href) => {
+    try {
+      const hostname = new URL(href).hostname.toLowerCase();
+      return knownPortalHosts.has(hostname) && hostname !== expectedPortalHost;
+    } catch {
+      return false;
+    }
+  });
+  assert(
+    unexpectedKnownLinks.length === 0,
+    `Unexpected portal handoff links found on ${route}: ${unexpectedKnownLinks.join(", ")}`
+  );
+
+  const expectedPortalLinks = hrefs.filter((href) => {
+    try {
+      return new URL(href).hostname.toLowerCase() === expectedPortalHost;
+    } catch {
+      return false;
+    }
+  });
+  assert(expectedPortalLinks.length > 0, `Missing expected portal handoff link on ${route}: ${expectedPortalHost}.`);
+};
+
 const run = async () => {
+  const options = parseOptions(process.argv.slice(2));
+  if (options.benchmarkProbe) {
+    emitBenchmarkProbe(options);
+    return;
+  }
   applyContractDefaults();
   assertStudioBrainContract();
   assertStudioBrainIntegrity();
-
-  const options = parseOptions(process.argv.slice(2));
   const outputRoot = options.outputDir;
+  const expectedPortalHost = options.expectedPortalHost;
   let baseUrl = options.baseUrl || localBaseUrl;
   const summaryPath = resolve(outputRoot, "smoke-summary.json");
   const summary = {
@@ -222,6 +296,7 @@ const run = async () => {
     startedAt: new Date().toISOString(),
     baseUrl,
     outputDir: outputRoot,
+    expectedPortalHost,
     checks: []
   };
 
@@ -274,6 +349,7 @@ const run = async () => {
         await desktopPage.goto(`${baseUrl}${item.route}`, { waitUntil: "networkidle" });
         const hasRequiredElement = await desktopPage.locator(item.assertSelector).first().isVisible();
         assert(hasRequiredElement, `Missing required selector ${item.assertSelector} on ${item.route} (desktop).`);
+        await assertPortalLinks(desktopPage, item.route, expectedPortalHost);
         await desktopPage.screenshot({ path: resolve(outputRoot, item.name), fullPage: true });
       });
     }
@@ -288,6 +364,7 @@ const run = async () => {
         assert(hasMenuToggle, `Missing mobile menu toggle on ${item.route}.`);
         const hasRequiredElement = await mobilePage.locator(item.assertSelector).first().isVisible();
         assert(hasRequiredElement, `Missing required selector ${item.assertSelector} on ${item.route} (mobile).`);
+        await assertPortalLinks(mobilePage, item.route, expectedPortalHost);
         await mobilePage.screenshot({ path: resolve(outputRoot, item.name), fullPage: true });
       });
     }

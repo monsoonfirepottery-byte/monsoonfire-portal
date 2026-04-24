@@ -3,6 +3,8 @@ import AxeBuilder from "@axe-core/playwright";
 
 const THEME_STORAGE_KEY = "mf:websiteTheme";
 const ACCESSIBILITY_STORAGE_KEY = "mf:websiteAccessibility";
+const KNOWN_PORTAL_HOSTS = new Set(["monsoonfire.kilnfire.com", "portal.monsoonfire.com"]);
+const EXPECTED_PORTAL_HOST = String(process.env.WEBSITE_EXPECTED_PORTAL_HOST || "portal.monsoonfire.com").trim().toLowerCase();
 
 const majorPages = [
   { path: "./", label: "home", requiredSelector: "main#main h1" },
@@ -108,7 +110,7 @@ test.describe("marketing smoke coverage", () => {
     expect(await links.count()).toBeGreaterThan(0);
   });
 
-  test("portal entry links point to the portal host with scoped experiment params", async ({ page }) => {
+  test("portal entry links point to the selected handoff host with scoped experiment params", async ({ page }) => {
     for (const entry of portalEntryPages) {
       await page.goto(entry.path, { waitUntil: "networkidle" });
       const link = page.locator(entry.selector).first();
@@ -116,10 +118,10 @@ test.describe("marketing smoke coverage", () => {
 
       const href = await link.getAttribute("href");
       expect(href, `Portal entry href missing on ${entry.label}`).toBeTruthy();
-      expect(href, `Legacy kilnfire host remained on ${entry.label}`).not.toContain("monsoonfire.kilnfire.com");
 
       const parsed = new URL(href);
-      expect(parsed.hostname, `Portal host mismatch on ${entry.label}`).toBe("portal.monsoonfire.com");
+      expect(KNOWN_PORTAL_HOSTS.has(parsed.hostname), `Unexpected portal host on ${entry.label}`).toBeTruthy();
+      expect(parsed.hostname, `Portal host mismatch on ${entry.label}`).toBe(EXPECTED_PORTAL_HOST);
       expect(parsed.searchParams.get("mf_experiment"), `Experiment missing on ${entry.label}`).toBe("portal_path_v1");
       expect(parsed.searchParams.get("mf_variant"), `Variant mismatch on ${entry.label}`).toBe(entry.variant);
       expect(parsed.searchParams.get("mf_surface"), `Surface mismatch on ${entry.label}`).toBe(entry.surface);

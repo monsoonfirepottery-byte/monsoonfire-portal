@@ -29,6 +29,11 @@ tmux remains only for:
   - Active Rooms
   - Good Next Moves
   - Recent Events
+- `Chief-of-staff partner`
+  - owner-facing brief
+  - verified context
+  - one decision needed next
+  - open-loop controls
 - `Room detail`
   - objective
   - status
@@ -54,6 +59,10 @@ The browser UI is backed by Studio Brain HTTP routes:
 
 - `GET /api/control-tower/state`
 - `GET /api/control-tower/overview`
+- `GET /api/control-tower/partner/latest`
+- `POST /api/control-tower/partner/brief`
+- `POST /api/control-tower/partner/checkins`
+- `POST /api/control-tower/partner/open-loops/:id`
 - `GET /api/control-tower/rooms`
 - `GET /api/control-tower/rooms/:id`
 - `GET /api/control-tower/services`
@@ -71,6 +80,9 @@ Preserved artifacts and metadata:
 - `output/ops-cockpit/operator-state.json`
 - `output/ops-cockpit/agents/*.json`
 - `output/ops-cockpit/agent-status/*.json`
+- `output/studio-brain/partner/latest-brief.json`
+- `output/studio-brain/partner/checkins.jsonl`
+- `output/studio-brain/partner/open-loops.json`
 - `output/stability/heartbeat-summary.json`
 - `output/overseer/latest.json`
 - `output/overseer/discord/latest.json`

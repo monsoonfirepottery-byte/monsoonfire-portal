@@ -1,0 +1,187 @@
+{
+  "schema": "agent-tool-primitive-family-registry.v1",
+  "generatedAt": "2026-04-17T00:00:00.000Z",
+  "families": [
+    {
+      "familyId": "live-deploy.namecheap-portal",
+      "builder": "namecheap-live-deploy",
+      "defaults": {
+        "kind": "runtime-primitive",
+        "sideEffects": "deploy_live_portal",
+        "dryRunSupport": false,
+        "inputs": [
+          {
+            "name": "--no-build",
+            "required": false,
+            "description": "Skip the local build when artifacts are already prepared."
+          }
+        ],
+        "safeFailBehavior": "Do not retry blindly; capture deploy evidence and stop for operator review.",
+        "rollbackBehavior": "Use the deploy evidence pack and previous live artifact bundle to restore the last known-good portal.",
+        "lifecycle": {
+          "owner": "deploy-platform",
+          "class": "adapter",
+          "reviewEveryDays": 21,
+          "lastReviewedAt": "2026-04-16T00:00:00.000Z",
+          "nativeAlternative": "live-deploy-primitive",
+          "retireWhen": "Retire once live portal deploy is exposed as a native agent tool with built-in evidence and rollback."
+        }
+      },
+      "entries": [
+        {
+          "toolId": "deploy.namecheap.portal",
+          "purpose": "Deploy the live Monsoon Fire portal to the required Namecheap production path.",
+          "remotePath": "portal/",
+          "portalUrl": "https://portal.monsoonfire.com",
+          "verify": true,
+          "verificationCommand": "node ./scripts/portal-playwright-smoke.mjs --base-url https://portal.monsoonfire.com --output-dir output/playwright/portal/prod"
+        }
+      ]
+    },
+    {
+      "familyId": "verify.playwright-smoke",
+      "builder": "playwright-smoke-verifier",
+      "defaults": {
+        "kind": "runtime-primitive",
+        "sideEffects": "artifact_only",
+        "dryRunSupport": true,
+        "safeFailBehavior": "Mark verification as failed and keep the mission blocked until evidence is reviewed.",
+        "rollbackBehavior": "No rollback required; verification only.",
+        "lifecycle": {
+          "owner": "qa-platform",
+          "class": "adapter",
+          "reviewEveryDays": 21,
+          "lastReviewedAt": "2026-04-16T00:00:00.000Z",
+          "nativeAlternative": "playwright-visual-verification",
+          "retireWhen": "Retire once Playwright smoke and visual verification are native runtime capabilities."
+        }
+      },
+      "entries": [
+        {
+          "toolId": "verify.portal.smoke",
+          "purpose": "Run the required portal smoke and visual verification lane against the live portal.",
+          "script": "./scripts/portal-playwright-smoke.mjs",
+          "baseUrl": "https://portal.monsoonfire.com",
+          "outputDir": "output/playwright/portal/prod",
+          "inputs": [
+            {
+              "name": "--deep",
+              "required": false,
+              "description": "Run the deeper portal journey coverage profile."
+            }
+          ]
+        },
+        {
+          "toolId": "verify.website.smoke",
+          "purpose": "Run live website smoke verification without mutating the website deploy surface.",
+          "script": "./scripts/website-playwright-smoke.mjs",
+          "baseUrl": "https://monsoonfire.com",
+          "outputDir": "output/playwright/prod",
+          "safeFailBehavior": "Keep the mission in verification-failed state and preserve the evidence artifacts.",
+          "lifecycle": {
+            "retireWhen": "Retire once website smoke coverage is available as a native verifier primitive."
+          }
+        }
+      ]
+    },
+    {
+      "familyId": "verify.native-browser-shadow",
+      "builder": "native-browser-shadow-verifier",
+      "defaults": {
+        "kind": "runtime-primitive",
+        "selectableByAgent": false,
+        "sideEffects": "artifact_only",
+        "dryRunSupport": true,
+        "safeFailBehavior": "Keep the native-browser shadow lane advisory-only and preserve the generated handoff artifacts for operator review.",
+        "rollbackBehavior": "No rollback required; shadow verification only.",
+        "script": "./scripts/native-browser-shadow-verifier.mjs",
+        "lifecycle": {
+          "owner": "qa-platform",
+          "class": "adapter",
+          "reviewEveryDays": 14,
+          "lastReviewedAt": "2026-04-17T00:00:00.000Z",
+          "nativeAlternative": "codex-native-browser-verification",
+          "retireWhen": "Retire once Codex native browser/computer-use verification can run directly and emit release-grade artifacts without the local shadow wrapper."
+        }
+      },
+      "entries": [
+        {
+          "toolId": "verify.portal.native-browser.shadow",
+          "purpose": "Prepare advisory native-browser shadow artifacts for the live portal smoke lane.",
+          "surface": "portal",
+          "baseUrl": "https://portal.monsoonfire.com",
+          "outputDir": "output/native-browser/portal/prod",
+          "canonicalArtifactRoot": "output/playwright/portal/prod",
+          "shadowOf": "verify.portal.smoke",
+          "inputs": [
+            {
+              "name": "--deep",
+              "required": false,
+              "description": "Prepare the deeper portal native-browser shadow profile."
+            }
+          ]
+        },
+        {
+          "toolId": "verify.website.native-browser.shadow",
+          "purpose": "Prepare advisory native-browser shadow artifacts for the live website smoke lane.",
+          "surface": "website",
+          "baseUrl": "https://monsoonfire.com",
+          "outputDir": "output/native-browser/website/prod",
+          "canonicalArtifactRoot": "output/playwright/prod",
+          "shadowOf": "verify.website.smoke",
+          "expectedPortalHost": "portal.monsoonfire.com"
+        }
+      ]
+    },
+    {
+      "familyId": "verify.native-browser-shadow-exec",
+      "builder": "native-browser-shadow-verifier",
+      "defaults": {
+        "kind": "runtime-primitive",
+        "selectableByAgent": false,
+        "sideEffects": "artifact_only",
+        "dryRunSupport": true,
+        "safeFailBehavior": "Record execution failures in the shadow artifacts and keep the native-browser lane advisory-only.",
+        "rollbackBehavior": "No rollback required; advisory shadow verification only.",
+        "script": "./scripts/native-browser-shadow-verifier.mjs",
+        "execute": true,
+        "lifecycle": {
+          "owner": "qa-platform",
+          "class": "adapter",
+          "reviewEveryDays": 14,
+          "lastReviewedAt": "2026-04-18T00:00:00.000Z",
+          "nativeAlternative": "codex-native-browser-verification",
+          "retireWhen": "Retire once Codex native browser/computer-use verification can run directly and emit release-grade artifacts without the local shadow wrapper."
+        }
+      },
+      "entries": [
+        {
+          "toolId": "verify.portal.native-browser.shadow.exec",
+          "purpose": "Execute the advisory native-browser portal shadow lane through bounded codex exec.",
+          "surface": "portal",
+          "baseUrl": "https://portal.monsoonfire.com",
+          "outputDir": "output/native-browser/portal/prod",
+          "canonicalArtifactRoot": "output/playwright/portal/prod",
+          "shadowOf": "verify.portal.smoke",
+          "inputs": [
+            {
+              "name": "--deep",
+              "required": false,
+              "description": "Run the deeper portal native-browser shadow profile."
+            }
+          ]
+        },
+        {
+          "toolId": "verify.website.native-browser.shadow.exec",
+          "purpose": "Execute the advisory native-browser website shadow lane through bounded codex exec.",
+          "surface": "website",
+          "baseUrl": "https://monsoonfire.com",
+          "outputDir": "output/native-browser/website/prod",
+          "canonicalArtifactRoot": "output/playwright/prod",
+          "shadowOf": "verify.website.smoke",
+          "expectedPortalHost": "portal.monsoonfire.com"
+        }
+      ]
+    }
+  ]
+}

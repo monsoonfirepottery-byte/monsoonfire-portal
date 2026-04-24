@@ -1,0 +1,297 @@
+{
+  "schema": "agent-tool-contract-registry.v1",
+  "generatedAt": "2026-04-16T00:00:00.000Z",
+  "tools": [
+    {
+      "toolId": "memory.startup-context",
+      "kind": "mcp",
+      "command": "studio-brain-memory:startup_context",
+      "purpose": "Load bounded Studio Brain startup continuity directly from the host memory control plane before broader repo exploration.",
+      "inputs": [
+        {
+          "name": "query",
+          "required": false,
+          "description": "Optional startup query override when the default bootstrap continuity query is not enough."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/codex-startup-preflight.mjs --json",
+      "safeFailBehavior": "Fall back to bootstrap artifacts and report that live memory startup context was unavailable.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "startup.preflight",
+      "kind": "repo-script",
+      "selectableByAgent": false,
+      "command": "node ./scripts/codex-startup-preflight.mjs --json",
+      "purpose": "Load startup continuity and validate Studio Brain reachability before broader repo work.",
+      "inputs": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Emit machine-readable startup diagnostics."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/codex-startup-preflight.mjs --json",
+      "safeFailBehavior": "Block the mission and surface the recovery step from startup continuity.",
+      "rollbackBehavior": "No rollback required; this surface is read-only.",
+      "lifecycle": {
+        "owner": "agent-platform",
+        "class": "adapter",
+        "reviewEveryDays": 14,
+        "lastReviewedAt": "2026-04-16T00:00:00.000Z",
+        "nativeAlternative": "memory.startup-context",
+        "retireWhen": "Retire once the runtime can call startup continuity directly without shelling through a repo script."
+      }
+    },
+    {
+      "toolId": "startup.doctor",
+      "kind": "repo-script",
+      "selectableByAgent": false,
+      "command": "node ./scripts/codex-doctor.mjs --json",
+      "purpose": "Audit Codex startup, MCP, telemetry, and local harness health.",
+      "inputs": [
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Emit machine-readable doctor output."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/codex-doctor.mjs --json",
+      "safeFailBehavior": "Keep the run read-only and require operator review before mutate flows continue.",
+      "rollbackBehavior": "No rollback required; this surface is read-only.",
+      "lifecycle": {
+        "owner": "agent-platform",
+        "class": "adapter",
+        "reviewEveryDays": 21,
+        "lastReviewedAt": "2026-04-16T00:00:00.000Z",
+        "nativeAlternative": "native-harness-health",
+        "retireWhen": "Retire once the control plane has first-class doctor and startup diagnostics instead of script orchestration."
+      }
+    },
+    {
+      "toolId": "workspace.mutation.file-plan",
+      "kind": "repo-script",
+      "command": "node ./scripts/agent-file-plan-apply.mjs --plan <plan-path> --json",
+      "purpose": "Apply file-backed edit plans in small batches so Windows agents do not depend on oversized inline patch payloads.",
+      "inputs": [
+        {
+          "name": "--plan",
+          "required": true,
+          "description": "Path to an agent-file-plan.v1 JSON document."
+        },
+        {
+          "name": "--dry-run",
+          "required": false,
+          "description": "Validate and preview operations without mutating files."
+        }
+      ],
+      "sideEffects": "workspace_write_bounded",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/agent-file-plan-apply.mjs --plan <plan-path> --dry-run --json",
+      "safeFailBehavior": "Stop the mutate phase and fall back to smaller file-by-file plans instead of retrying the same oversized payload.",
+      "rollbackBehavior": "Use expected hashes and the run ledger to reconstruct and restore prior file contents if a bounded file plan misfires.",
+      "lifecycle": {
+        "owner": "agent-platform",
+        "class": "bridge",
+        "reviewEveryDays": 14,
+        "lastReviewedAt": "2026-04-16T00:00:00.000Z",
+        "nativeAlternative": "functions.apply_patch",
+        "retireWhen": "Retire once Windows-native patch primitives can reliably handle large multi-file payloads without path or transport failures."
+      }
+    },
+    {
+      "toolId": "memory.search",
+      "kind": "mcp",
+      "command": "studio-brain-memory:search",
+      "purpose": "Search Studio Brain memory rows directly through MCP instead of shelling through repo-local HTTP helper scripts.",
+      "inputs": [
+        {
+          "name": "query",
+          "required": true,
+          "description": "Focused memory query text such as a feature name, blocker, loop key, or exact error string."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs search --query \"portal continuity\" --limit 3",
+      "safeFailBehavior": "Report the memory bridge failure and fall back to canonical corpus artifacts when appropriate.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "memory.health",
+      "kind": "mcp",
+      "command": "studio-brain-memory:health",
+      "purpose": "Check Studio Brain host reachability directly through the MCP bridge before assuming a memory or control-plane failure is task-specific.",
+      "inputs": [],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./studio-brain-mcp/smoke.mjs",
+      "safeFailBehavior": "Report that Studio Brain is unreachable and fall back to local continuity artifacts instead of retrying blind.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "memory.recent",
+      "kind": "mcp",
+      "command": "studio-brain-memory:recent",
+      "purpose": "List recent Studio Brain memory entries directly from the host control plane.",
+      "inputs": [
+        {
+          "name": "limit",
+          "required": false,
+          "description": "Maximum number of recent memory rows to return."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs recent --limit 5",
+      "safeFailBehavior": "Report the recent-memory retrieval failure and continue with bounded local context if available.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "memory.stats",
+      "kind": "mcp",
+      "command": "studio-brain-memory:stats",
+      "purpose": "Fetch aggregate Studio Brain memory counts and source breakdowns through the host-native MCP bridge.",
+      "inputs": [],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs stats",
+      "safeFailBehavior": "Report the memory-stats retrieval failure without mutating the run.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "memory.context",
+      "kind": "mcp",
+      "command": "studio-brain-memory:context",
+      "purpose": "Assemble a bounded Studio Brain memory pack for the current task before broader repo exploration.",
+      "inputs": [
+        {
+          "name": "query",
+          "required": true,
+          "description": "Targeted task or feature query."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs stats",
+      "safeFailBehavior": "Fall back to canonical corpus artifacts and note that live memory retrieval was unavailable.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "memory.remember",
+      "kind": "mcp",
+      "command": "studio-brain-memory:remember",
+      "purpose": "Write durable Studio Brain progress, decisions, blockers, and handoffs through the host memory control plane.",
+      "inputs": [
+        {
+          "name": "items",
+          "required": false,
+          "description": "Optional batched memory items when saving more than one durable fact or handoff in a turn."
+        }
+      ],
+      "sideEffects": "memory_write",
+      "dryRunSupport": false,
+      "verificationCommand": "node ./scripts/open-memory.mjs recent --limit 5",
+      "safeFailBehavior": "Surface the write failure and keep the run resumable through the local handoff path instead of assuming the save succeeded.",
+      "rollbackBehavior": "Use memory review surfaces to inspect, quarantine, or reverse suspect writes if a bad save slips through."
+    },
+    {
+      "toolId": "memory.hygiene.scrub-thread-metadata",
+      "kind": "mcp",
+      "command": "studio-brain-memory:scrub-thread-metadata",
+      "purpose": "Repair stale synthetic thread metadata through the Studio Brain host control plane instead of running laptop-side memory hygiene loops.",
+      "inputs": [
+        {
+          "name": "dryRun",
+          "required": false,
+          "description": "Inspect eligible repairs without applying them."
+        }
+      ],
+      "sideEffects": "memory_hygiene_write",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs scrub-thread-metadata --dry-run true --limit 50",
+      "safeFailBehavior": "Stop after the dry-run wave and require operator review before any live repair pass.",
+      "rollbackBehavior": "Use memory review and repair receipts to reverse or quarantine suspect metadata writes."
+    },
+    {
+      "toolId": "memory.consolidate",
+      "kind": "mcp",
+      "command": "studio-brain-memory:consolidate",
+      "purpose": "Execute memory consolidation on the Ubuntu Studio Brain host through the MCP/control plane instead of local database access.",
+      "inputs": [
+        {
+          "name": "mode",
+          "required": false,
+          "description": "Consolidation mode such as idle or overnight."
+        }
+      ],
+      "sideEffects": "memory_hygiene_write",
+      "dryRunSupport": false,
+      "verificationCommand": "node ./scripts/open-memory-consolidate.mjs --json",
+      "safeFailBehavior": "Stop and surface the host-side auth or control-plane error instead of retrying local database access.",
+      "rollbackBehavior": "Use the resulting consolidation artifact and memory review surfaces to quarantine or revert suspect follow-on writes if needed."
+    },
+    {
+      "toolId": "memory.loop-incidents",
+      "kind": "mcp",
+      "command": "studio-brain-memory:loop_incidents",
+      "purpose": "List Studio Brain loop incidents directly from the host control plane for ops triage and blocker identification.",
+      "inputs": [
+        {
+          "name": "query",
+          "required": false,
+          "description": "Optional focused incident query, owner, loop key, or lane filter."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs incidents --limit 5",
+      "safeFailBehavior": "Report that loop-incident retrieval failed and continue with bounded local context or direct repo evidence.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "memory.loop-action-plan",
+      "kind": "mcp",
+      "command": "studio-brain-memory:loop_action_plan",
+      "purpose": "Build a bounded Studio Brain loop action plan through the host-native MCP bridge instead of reconstructing one from ad hoc script flows.",
+      "inputs": [
+        {
+          "name": "query",
+          "required": false,
+          "description": "Optional action-plan focus query or owner lane hint."
+        }
+      ],
+      "sideEffects": "read_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/open-memory.mjs action-plan --limit 5 --max-actions 5",
+      "safeFailBehavior": "Report the action-plan retrieval failure and keep the run in a bounded analysis state instead of improvising a broad ops sweep.",
+      "rollbackBehavior": "No rollback required; this surface is read-only."
+    },
+    {
+      "toolId": "github.pr.gate",
+      "kind": "repo-script",
+      "command": "node ./scripts/pr-gate.mjs",
+      "purpose": "Run the repo PR gate before claiming a change is ready for publish or review.",
+      "inputs": [],
+      "sideEffects": "artifact_only",
+      "dryRunSupport": true,
+      "verificationCommand": "node ./scripts/pr-gate.mjs",
+      "safeFailBehavior": "Keep the mission blocked and attach the PR gate output as verifier evidence.",
+      "rollbackBehavior": "No rollback required; verification only.",
+      "lifecycle": {
+        "owner": "agent-platform",
+        "class": "adapter",
+        "reviewEveryDays": 21,
+        "lastReviewedAt": "2026-04-16T00:00:00.000Z",
+        "nativeAlternative": "github-pr-gate",
+        "retireWhen": "Retire once PR gating is exposed as a first-class native capability with structured results."
+      }
+    }
+  ]
+}

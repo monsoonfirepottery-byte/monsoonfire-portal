@@ -589,4 +589,9 @@ function run(argv) {
 }
 
 export { runIntegrityCheck };
-run(process.argv);
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : "";
+const currentModulePath = fileURLToPath(import.meta.url);
+if (invokedPath && invokedPath === currentModulePath) {
+  run(process.argv);
+}

@@ -45,6 +45,51 @@ function parseArgs(argv) {
   return options;
 }
 
+function installPlaywrightCleanup(resources) {
+  let disposed = false;
+  let closing = null;
+
+  async function closeAll() {
+    if (closing) return closing;
+    closing = (async () => {
+      const snapshot = resources();
+      await snapshot.page?.close().catch(() => {});
+      await snapshot.browser?.close().catch(() => {});
+    })();
+    return closing;
+  }
+
+  const bind = (signal, exitCode) => {
+    const handler = () => {
+      if (disposed) return;
+      disposed = true;
+      void closeAll().finally(() => {
+        process.exit(exitCode);
+      });
+    };
+    process.once(signal, handler);
+    return { signal, handler };
+  };
+
+  const subscriptions = [
+    bind("SIGINT", 130),
+    bind("SIGTERM", 143),
+  ];
+
+  return {
+    async close() {
+      disposed = true;
+      await closeAll();
+    },
+    dispose() {
+      disposed = true;
+      for (const entry of subscriptions) {
+        process.removeListener(entry.signal, entry.handler);
+      }
+    },
+  };
+}
+
 function buildFixtureModel() {
   const generatedAt = "2026-04-18T21:00:00.000Z";
   return {
@@ -187,8 +232,11 @@ async function main() {
   const html = renderOpsPortalPage(buildFixtureModel());
   const bridgeHtml = "<!doctype html><html><body style=\"margin:0;background:#020812\"><iframe id=\"ops-bridge\" style=\"width:1440px;height:2000px;border:0\"></iframe></body></html>";
 
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+  let browser = null;
+  let page = null;
+  const cleanup = installPlaywrightCleanup(() => ({ browser, page }));
+  browser = await chromium.launch({ headless: true });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
 
   page.on("console", (message) => {
     if (message.type() === "error") {
@@ -240,7 +288,8 @@ async function main() {
   } finally {
     summary.finishedAt = new Date().toISOString();
     await writeFile(options.summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-    await browser.close();
+    cleanup.dispose();
+    await cleanup.close();
     if (options.asJson) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
     }

@@ -1691,45 +1691,65 @@ function verifyHmacSignature(expectedHex: string, providedHex: string): boolean 
   }
 }
 
-function createSignedOpsSessionToken(secret: string, ttlSeconds: number): string {
+function createSignedOpsSessionToken(secret: string, ttlSeconds: number, principal?: AuthPrincipal | null): string {
   const nowMs = Date.now();
   const expiresAt = nowMs + Math.max(60, Math.min(3600, ttlSeconds)) * 1000;
-  const payload = {
+  const payload: SignedOpsSessionClaims = {
     aud: "studio-brain-ops",
     iat: nowMs,
     exp: expiresAt,
     nonce: crypto.randomBytes(12).toString("base64url"),
+    uid: principal?.uid ?? "ops-session:local-portal",
+    isStaff: principal?.isStaff ?? true,
+    roles: Array.isArray(principal?.roles) && principal.roles.length > 0 ? principal.roles : ["staff"],
+    portalRole: principal?.portalRole ?? "staff",
+    opsRoles: Array.isArray(principal?.opsRoles) ? principal.opsRoles : [],
+    opsCapabilities: Array.isArray(principal?.opsCapabilities) ? principal.opsCapabilities : [],
   };
   const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = crypto.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
   return `sbops.${payloadEncoded}.${signature}`;
 }
 
-function verifySignedOpsSessionToken(token: string, secret: string): boolean {
+function verifySignedOpsSessionToken(token: string, secret: string): AuthPrincipal | null {
   const trimmed = token.trim();
-  if (!trimmed.startsWith("sbops.")) return false;
+  if (!trimmed.startsWith("sbops.")) return null;
   const parts = trimmed.split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   const payloadEncoded = parts[1] ?? "";
   const providedSignature = parts[2] ?? "";
   const expectedSignature = crypto.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
   if (!verifyHmacSignature(expectedSignature, providedSignature)) {
-    return false;
+    return null;
   }
   try {
-    const decoded = JSON.parse(Buffer.from(payloadEncoded, "base64url").toString("utf8")) as {
-      aud?: string;
-      exp?: number;
-      iat?: number;
-    };
+    const decoded = JSON.parse(Buffer.from(payloadEncoded, "base64url").toString("utf8")) as Partial<SignedOpsSessionClaims>;
     const exp = decoded.exp ?? 0;
     const iat = decoded.iat ?? 0;
-    if (decoded.aud !== "studio-brain-ops") return false;
-    if (!Number.isFinite(exp) || exp <= Date.now()) return false;
-    if (!Number.isFinite(iat) || iat > Date.now() + 60_000) return false;
-    return true;
+    if (decoded.aud !== "studio-brain-ops") return null;
+    if (!Number.isFinite(exp) || exp <= Date.now()) return null;
+    if (!Number.isFinite(iat) || iat > Date.now() + 60_000) return null;
+    const uid = toTrimmedString(decoded.uid);
+    if (!uid) return null;
+    const portalRole = decoded.portalRole === "admin" || decoded.portalRole === "staff" || decoded.portalRole === "member"
+      ? decoded.portalRole
+      : "member";
+    return {
+      uid,
+      isStaff: decoded.isStaff !== false,
+      roles: Array.isArray(decoded.roles)
+        ? decoded.roles.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        : ["staff"],
+      portalRole,
+      opsRoles: Array.isArray(decoded.opsRoles)
+        ? decoded.opsRoles.filter((entry): entry is OpsHumanRole => typeof entry === "string")
+        : [],
+      opsCapabilities: Array.isArray(decoded.opsCapabilities)
+        ? decoded.opsCapabilities.filter((entry): entry is OpsCapability => typeof entry === "string")
+        : [],
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -1788,6 +1808,13 @@ type AuthPrincipal = {
   portalRole: OpsPortalRole;
   opsRoles: OpsHumanRole[];
   opsCapabilities: OpsCapability[];
+};
+
+type SignedOpsSessionClaims = AuthPrincipal & {
+  aud: string;
+  exp: number;
+  iat: number;
+  nonce: string;
 };
 
 function ensureFirebaseAdminForAuth(): void {
@@ -2317,8 +2344,9 @@ export function startHttpServer(params: {
       return { ok: true, actorId: "ops-portal:anonymous" };
     }
     const sessionToken = firstHeader(req.headers["x-studio-brain-ops-session"]);
-    if (opsSessionSecret && sessionToken && verifySignedOpsSessionToken(sessionToken, opsSessionSecret)) {
-      return { ok: true, actorId: "ops-session:local-portal" };
+    const sessionPrincipal = opsSessionSecret && sessionToken ? verifySignedOpsSessionToken(sessionToken, opsSessionSecret) : null;
+    if (sessionPrincipal) {
+      return { ok: true, principal: sessionPrincipal, actorId: sessionPrincipal.uid };
     }
     const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
     if (!auth.ok) {
@@ -8373,7 +8401,7 @@ export function startHttpServer(params: {
           opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined),
           opsService.getDisplayState(stationId),
         ]);
-        const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds) : null;
+        const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal ?? null) : null;
         const html = renderOpsPortalPage({
           snapshot,
           displayState,
@@ -8403,7 +8431,7 @@ export function startHttpServer(params: {
           ? requestedSurface
           : allowedSurfaces[0] ?? requestedSurface;
         const displayState = stationId ? await opsService.getDisplayState(stationId) : null;
-        const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds) : null;
+        const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal ?? null) : null;
         const html = renderOpsPortalPage({
           snapshot,
           displayState,

@@ -202,6 +202,22 @@ if (includeSmoke) {
       required: true,
     },
     {
+      name: "ops portal bridge smoke",
+      kind: "command",
+      command: "npm",
+      args: ["run", "ops:portal:bridge:smoke"],
+      remediation: "Fix Studio Brain /ops iframe bridge regressions and rerun `npm run ops:portal:bridge:smoke` locally.",
+      required: true,
+    },
+    {
+      name: "ops portal public smoke",
+      kind: "command",
+      command: "npm",
+      args: ["run", "ops:portal:public:smoke"],
+      remediation: "Fix hosted /ops bridge regressions and rerun `npm run ops:portal:public:smoke` locally.",
+      required: true,
+    },
+    {
       name: "website smoke",
       kind: "command",
       command: "npm",

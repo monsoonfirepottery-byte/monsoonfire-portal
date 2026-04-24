@@ -83,10 +83,14 @@ const remoteUploadPath = `${remotePathWithSlash}${remoteUploadDirName}`;
 
 const webDist = resolve(repoRoot, "web", "dist");
 const htaccessTemplate = resolve(repoRoot, "web", "deploy", "namecheap", ".htaccess");
+const studioBrainBridgeSourceDir = resolve(repoRoot, "web", "deploy", "namecheap", "__studio-brain");
 const wellKnownSourceDir = resolve(repoRoot, "website", ".well-known");
 const requiredWellKnownFiles = ["apple-app-site-association", "assetlinks.json"];
 if (!existsSync(htaccessTemplate)) {
   fail(`Missing template: ${htaccessTemplate}`);
+}
+if (!existsSync(studioBrainBridgeSourceDir)) {
+  fail(`Missing Studio Brain bridge source directory: ${studioBrainBridgeSourceDir}`);
 }
 if (!existsSync(wellKnownSourceDir)) {
   fail(`Missing well-known source directory: ${wellKnownSourceDir}`);
@@ -161,6 +165,7 @@ try {
 
   cpSync(webDist, stageDir, { recursive: true });
   cpSync(htaccessTemplate, resolve(stageDir, ".htaccess"));
+  cpSync(studioBrainBridgeSourceDir, resolve(stageDir, "__studio-brain"), { recursive: true });
   // Use website/.well-known as the single source and mirror both paths for host compatibility.
   cpSync(wellKnownSourceDir, resolve(stageDir, ".well-known"), { recursive: true });
   cpSync(wellKnownSourceDir, resolve(stageDir, "well-known"), { recursive: true });

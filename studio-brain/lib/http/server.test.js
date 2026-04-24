@@ -15,10 +15,12 @@ const memoryStore_1 = require("../kiln/memoryStore");
 const artifacts_1 = require("../kiln/services/artifacts");
 const manualEvents_1 = require("../kiln/services/manualEvents");
 const orchestration_1 = require("../kiln/services/orchestration");
+const service_1 = require("../ops/service");
+const store_1 = require("../ops/store");
 const memoryStores_1 = require("../stores/memoryStores");
 const runtime_1 = require("../capabilities/runtime");
 const inMemoryAdapter_1 = require("../memory/inMemoryAdapter");
-const service_1 = require("../memory/service");
+const service_2 = require("../memory/service");
 const logger = {
     debug: () => { },
     info: () => { },
@@ -77,12 +79,21 @@ function buildIngestHeaders(secret, payload, timestampSeconds = Math.trunc(Date.
         "x-memory-ingest-signature": `v1=${signature}`,
     };
 }
+function buildOpsIngestHeaders(secret, payload, timestampSeconds = Math.trunc(Date.now() / 1000)) {
+    const raw = JSON.stringify(payload);
+    const signature = node_crypto_1.default.createHmac("sha256", secret).update(`${timestampSeconds}.${raw}`).digest("hex");
+    return {
+        "content-type": "application/json",
+        "x-ops-ingest-timestamp": `${timestampSeconds}`,
+        "x-ops-ingest-signature": `v1=${signature}`,
+    };
+}
 async function withServer(options, run) {
     const stateStore = options.stateStore ?? new memoryStores_1.MemoryStateStore();
     const eventStore = options.eventStore ?? new memoryStores_1.MemoryEventStore();
     const capabilityRuntime = new runtime_1.CapabilityRuntime(runtime_1.defaultCapabilities, eventStore);
     const memoryService = options.memoryService ??
-        (0, service_1.createMemoryService)({
+        (0, service_2.createMemoryService)({
             store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
             defaultTenantId: "monsoonfire-main",
             defaultAgentId: "test-agent",
@@ -99,13 +110,85 @@ async function withServer(options, run) {
         memoryService,
         verifyFirebaseAuth: async (authorizationHeader) => {
             if (authorizationHeader === "Bearer test-staff") {
-                return { uid: "staff-test-uid", isStaff: true, roles: ["staff"] };
+                return {
+                    uid: "staff-test-uid",
+                    isStaff: true,
+                    roles: ["staff"],
+                    portalRole: "staff",
+                    opsRoles: ["support_ops", "kiln_lead"],
+                    opsCapabilities: [
+                        "surface:hands",
+                        "surface:internet",
+                        "members:view",
+                        "members:create",
+                        "members:edit_profile",
+                        "members:edit_membership",
+                        "members:edit_role",
+                        "members:edit_billing",
+                        "approvals:view",
+                        "tasks:claim:any",
+                        "tasks:escape",
+                        "proof:submit",
+                        "proof:accept",
+                        "reservations:view",
+                        "reservations:prepare",
+                        "events:view",
+                        "reports:view",
+                        "overrides:request",
+                    ],
+                };
             }
             if (authorizationHeader === "Bearer test-admin") {
-                return { uid: "admin-test-uid", isStaff: true, roles: ["staff", "admin"] };
+                return {
+                    uid: "admin-test-uid",
+                    isStaff: true,
+                    roles: ["staff", "admin"],
+                    portalRole: "admin",
+                    opsRoles: ["owner"],
+                    opsCapabilities: [
+                        "surface:owner",
+                        "surface:manager",
+                        "surface:hands",
+                        "surface:internet",
+                        "surface:ceo",
+                        "surface:forge",
+                        "members:view",
+                        "members:create",
+                        "members:edit_profile",
+                        "members:edit_membership",
+                        "members:edit_role",
+                        "members:edit_owner_role",
+                        "members:edit_billing",
+                        "approvals:view",
+                        "approvals:manage",
+                        "tasks:claim:any",
+                        "tasks:escape",
+                        "proof:submit",
+                        "proof:accept",
+                        "reservations:view",
+                        "reservations:prepare",
+                        "events:view",
+                        "reports:view",
+                        "lending:view",
+                        "finance:view",
+                        "finance:act",
+                        "overrides:request",
+                        "overrides:approve",
+                        "identity:manage",
+                        "strategy:ceo",
+                        "forge:manage",
+                    ],
+                };
             }
             if (authorizationHeader === "Bearer test-member") {
-                return { uid: "member-test-uid", isStaff: false, roles: [] };
+                return {
+                    uid: "member-test-uid",
+                    isStaff: false,
+                    roles: [],
+                    portalRole: "member",
+                    opsRoles: [],
+                    opsCapabilities: [],
+                };
             }
             throw new Error("Missing Authorization header.");
         },
@@ -233,6 +316,7 @@ function createControlTowerFixture() {
     const root = (0, node_fs_1.mkdtempSync)((0, node_path_1.join)((0, node_os_1.tmpdir)(), "studio-brain-control-tower-"));
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "agents"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "agent-status"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "hosts"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "stability"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "overseer", "discord"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-brief"), { recursive: true });
@@ -247,6 +331,23 @@ function createControlTowerFixture() {
         room: "portal",
         summary: "Portal lane",
         objective: "Investigate portal issue and report the next safe move.",
+    }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "hosts", "micah-laptop.json"), `${JSON.stringify({
+        schema: "control-tower-host-heartbeat.v1",
+        hostId: "micah-laptop",
+        label: "Micah Laptop",
+        environment: "local",
+        role: "operator-laptop",
+        health: "healthy",
+        lastSeenAt: "2026-03-30T10:04:00.000Z",
+        currentRunId: "run-background-1",
+        agentCount: 1,
+        version: "dev",
+        metrics: {
+            cpuPct: 24,
+            memoryPct: 48,
+            load1: 0.62,
+        },
     }, null, 2)}\n`, "utf8");
     (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "stability", "heartbeat-summary.json"), `${JSON.stringify({ status: "pass", checkedAt: "2026-03-30T10:00:00.000Z" }, null, 2)}\n`, "utf8");
     (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-brief", "latest.json"), `${JSON.stringify({
@@ -358,6 +459,9 @@ function createControlTowerFixture() {
         generatedAt: "2026-03-30T10:06:00.000Z",
         runId: "run-background-1",
         missionId: "mission-background-1",
+        hostId: "studio-brain-server",
+        agentId: "agent-runtime",
+        environment: "server",
         status: "blocked",
         riskLane: "high_risk",
         title: "Portal Runtime Mission",
@@ -444,6 +548,7 @@ function createControlTowerFixture() {
             blocker: "Verifier checks failed.",
             next: "Inspect runtime",
             last_update: "2026-03-30T10:06:00.000Z",
+            runId: "run-background-1",
             contactReason: "Studio Brain verified the blocked portal lane and is asking for one owner decision before it keeps moving.",
             verifiedContext: [
                 "Verifier checks failed.",
@@ -794,7 +899,7 @@ function createControlTowerRunner() {
     });
 });
 (0, node_test_1.default)("support queue endpoint returns Ember review link metadata", async () => {
-    const memoryService = (0, service_1.createMemoryService)({
+    const memoryService = (0, service_2.createMemoryService)({
         store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
         defaultTenantId: "monsoonfire-main",
         defaultAgentId: "test-agent",
@@ -1346,6 +1451,428 @@ function createControlTowerRunner() {
         strict_1.default.equal(payload.scorecard.metrics.length, 5);
         const rows = await eventStore.listRecent(10);
         strict_1.default.ok(rows.some((row) => row.action === "studio_ops.scorecard_computed"));
+    });
+});
+(0, node_test_1.default)("ops portal routes expose twin state and allow claiming tasks", async () => {
+    const opsService = (0, service_1.createOpsService)({ store: new store_1.MemoryOpsStore() });
+    const task = (0, service_1.createHumanTaskSeed)({
+        id: "task_ops_portal_claim",
+        title: "Unload kiln 1",
+        surface: "hands",
+        role: "kiln_lead",
+        zone: "Kiln Room",
+        whyNow: "Kiln 1 is ready for unload.",
+        whyYou: "Kiln leads own kiln unloading and proof.",
+        evidenceSummary: "The kiln lane says the run is ready for unload.",
+        consequenceIfDelayed: "The next firing stays blocked.",
+        instructions: ["Open the kiln safely.", "Unload the ware.", "Record proof."],
+        priority: "p0",
+        proofModes: ["manual_confirm"],
+        preferredProofMode: "manual_confirm",
+    });
+    await opsService.upsertTask(task);
+    await withServer({
+        opsService,
+        opsPortalConfig: {
+            enabled: true,
+            requireStaffAuth: true,
+            compareEnabled: true,
+            legacyUrl: "https://portal.monsoonfire.com/staff",
+        },
+    }, async (baseUrl) => {
+        const twinResponse = await fetch(`${baseUrl}/api/ops/twin`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(twinResponse.status, 200);
+        const twinPayload = (await twinResponse.json());
+        strict_1.default.equal(twinPayload.ok, true);
+        strict_1.default.equal(typeof twinPayload.twin.headline, "string");
+        const tasksResponse = await fetch(`${baseUrl}/api/ops/tasks`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(tasksResponse.status, 200);
+        const tasksPayload = (await tasksResponse.json());
+        strict_1.default.equal(tasksPayload.ok, true);
+        strict_1.default.ok(tasksPayload.rows.some((row) => row.id === task.id));
+        const claimResponse = await fetch(`${baseUrl}/api/ops/tasks/${encodeURIComponent(task.id)}/claim`, {
+            method: "POST",
+            headers: {
+                authorization: "Bearer test-staff",
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({}),
+        });
+        strict_1.default.equal(claimResponse.status, 200);
+        const claimPayload = (await claimResponse.json());
+        strict_1.default.equal(claimPayload.ok, true);
+        strict_1.default.equal(claimPayload.task.claimedBy, "staff-test-uid");
+        strict_1.default.equal(claimPayload.task.status, "claimed");
+        const unauthorizedPortalResponse = await fetch(`${baseUrl}/ops`);
+        strict_1.default.equal(unauthorizedPortalResponse.status, 401);
+        const portalResponse = await fetch(`${baseUrl}/ops`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(portalResponse.status, 200);
+        const html = await portalResponse.text();
+        strict_1.default.ok(html.includes("Studio Manager voice"));
+        strict_1.default.ok(html.includes("Hands lane"));
+        const choiceResponse = await fetch(`${baseUrl}/ops/choice`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(choiceResponse.status, 200);
+        const choiceHtml = await choiceResponse.text();
+        strict_1.default.ok(choiceHtml.includes("Legacy staff experience"));
+        strict_1.default.ok(choiceHtml.includes("Autonomous Studio OS"));
+    });
+});
+(0, node_test_1.default)("ops staff replacement routes expose session context and member management flows", async () => {
+    const store = new store_1.MemoryOpsStore();
+    let member = {
+        uid: "member-1",
+        email: "member@example.com",
+        displayName: "Studio Member",
+        membershipTier: "drop-in",
+        kilnPreferences: "Cone 6 preferred",
+        staffNotes: "Prefers pickup texts.",
+        billing: null,
+        portalRole: "member",
+        opsRoles: [],
+        opsCapabilities: [],
+        createdAt: "2026-04-17T00:00:00.000Z",
+        updatedAt: "2026-04-17T00:00:00.000Z",
+        lastSeenAt: "2026-04-16T20:00:00.000Z",
+        metadata: {},
+    };
+    const opsService = (0, service_1.createOpsService)({
+        store,
+        staffDataSource: {
+            async listMembers() { return [member]; },
+            async getMember(uid) { return uid === member.uid ? member : null; },
+            async createMember(input) {
+                member = {
+                    ...member,
+                    uid: "member-2",
+                    email: input.email,
+                    displayName: input.displayName,
+                    membershipTier: input.membershipTier ?? null,
+                    staffNotes: input.staffNotes ?? null,
+                    portalRole: input.portalRole ?? "member",
+                    opsRoles: input.opsRoles ?? [],
+                    updatedAt: "2026-04-17T01:55:00.000Z",
+                };
+                return {
+                    member: member,
+                    created: {
+                        uid: member.uid,
+                        email: input.email,
+                        displayName: input.displayName,
+                        membershipTier: input.membershipTier ?? null,
+                        portalRole: input.portalRole ?? "member",
+                        opsRoles: input.opsRoles ?? [],
+                        reason: input.reason ?? null,
+                        createdAt: "2026-04-17T01:55:00.000Z",
+                    },
+                    audit: {
+                        id: "audit-create-route",
+                        uid: "member-2",
+                        kind: "create",
+                        actorId: input.actorId,
+                        summary: "Member created.",
+                        reason: input.reason ?? null,
+                        createdAt: "2026-04-17T01:55:00.000Z",
+                        payload: { email: input.email },
+                    },
+                };
+            },
+            async updateMemberProfile(input) {
+                member = {
+                    ...member,
+                    displayName: input.patch.displayName ?? member.displayName,
+                    kilnPreferences: input.patch.kilnPreferences ?? member.kilnPreferences,
+                    staffNotes: input.patch.staffNotes ?? member.staffNotes,
+                    updatedAt: "2026-04-17T02:00:00.000Z",
+                };
+                return {
+                    member: member,
+                    audit: {
+                        id: "audit-profile-route",
+                        uid: member.uid,
+                        kind: "profile",
+                        actorId: input.actorId,
+                        summary: "Profile updated.",
+                        reason: input.reason ?? null,
+                        createdAt: "2026-04-17T02:00:00.000Z",
+                        payload: input.patch,
+                    },
+                };
+            },
+            async updateMemberBilling(input) {
+                member = {
+                    ...member,
+                    billing: {
+                        stripeCustomerId: input.billing.stripeCustomerId ?? null,
+                        defaultPaymentMethodId: input.billing.defaultPaymentMethodId ?? null,
+                        cardBrand: input.billing.cardBrand ?? null,
+                        cardLast4: input.billing.cardLast4 ?? null,
+                        expMonth: input.billing.expMonth ?? null,
+                        expYear: input.billing.expYear ?? null,
+                        paymentMethodSummary: "Visa · •••• 4242 · exp 08/2030",
+                        billingContactName: input.billing.billingContactName ?? null,
+                        billingContactEmail: input.billing.billingContactEmail ?? null,
+                        billingContactPhone: input.billing.billingContactPhone ?? null,
+                        storageMode: "stripe_tokenized_only",
+                        updatedAt: "2026-04-17T02:03:00.000Z",
+                    },
+                    updatedAt: "2026-04-17T02:03:00.000Z",
+                };
+                return {
+                    member: member,
+                    audit: {
+                        id: "audit-billing-route",
+                        uid: member.uid,
+                        kind: "billing",
+                        actorId: input.actorId,
+                        summary: "Billing updated.",
+                        reason: input.reason ?? null,
+                        createdAt: "2026-04-17T02:03:00.000Z",
+                        payload: input.billing,
+                    },
+                };
+            },
+            async updateMemberMembership(input) {
+                member = {
+                    ...member,
+                    membershipTier: input.membershipTier,
+                    updatedAt: "2026-04-17T02:05:00.000Z",
+                };
+                return {
+                    member: member,
+                    audit: {
+                        id: "audit-membership-route",
+                        uid: member.uid,
+                        editedByUid: input.actorId,
+                        beforeTier: "drop-in",
+                        afterTier: input.membershipTier,
+                        reason: input.reason ?? null,
+                        createdAt: "2026-04-17T02:05:00.000Z",
+                        summary: "Membership updated.",
+                    },
+                };
+            },
+            async updateMemberRole(input) {
+                member = {
+                    ...member,
+                    portalRole: input.portalRole,
+                    opsRoles: input.opsRoles,
+                    updatedAt: "2026-04-17T02:10:00.000Z",
+                };
+                return {
+                    member: member,
+                    audit: {
+                        id: "audit-role-route",
+                        uid: member.uid,
+                        editedByUid: input.actorId,
+                        beforePortalRole: "member",
+                        afterPortalRole: input.portalRole,
+                        beforeOpsRoles: [],
+                        afterOpsRoles: input.opsRoles,
+                        reason: input.reason ?? null,
+                        createdAt: "2026-04-17T02:10:00.000Z",
+                        summary: "Role updated.",
+                    },
+                };
+            },
+            async getMemberActivity(uid) {
+                return {
+                    uid,
+                    reservations: 1,
+                    libraryLoans: 0,
+                    supportThreads: 1,
+                    events: 2,
+                    lastReservationAt: member.lastSeenAt,
+                    lastLoanAt: null,
+                    lastEventAt: member.lastSeenAt,
+                };
+            },
+            async listReservations() { return []; },
+            async getReservationBundle() { return null; },
+            async listEvents() { return []; },
+            async listReports() { return []; },
+            async getLendingSnapshot() {
+                return {
+                    requests: [],
+                    loans: [],
+                    recommendationCount: 0,
+                    tagSubmissionCount: 0,
+                    coverReviewCount: 0,
+                    generatedAt: "2026-04-17T00:00:00.000Z",
+                };
+            },
+        },
+    });
+    await withServer({
+        opsService,
+        opsPortalConfig: {
+            enabled: true,
+            requireStaffAuth: true,
+        },
+    }, async (baseUrl) => {
+        const sessionResponse = await fetch(`${baseUrl}/api/ops/session/me`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(sessionResponse.status, 200);
+        const sessionPayload = (await sessionResponse.json());
+        strict_1.default.equal(sessionPayload.ok, true);
+        strict_1.default.equal(sessionPayload.session.actorId, "staff-test-uid");
+        strict_1.default.ok(sessionPayload.session.allowedSurfaces.includes("internet"));
+        strict_1.default.ok(sessionPayload.session.allowedModes.internet.includes("member-ops"));
+        const membersResponse = await fetch(`${baseUrl}/api/ops/members`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(membersResponse.status, 200);
+        const membersPayload = (await membersResponse.json());
+        strict_1.default.equal(membersPayload.ok, true);
+        strict_1.default.equal(membersPayload.rows[0]?.uid, "member-1");
+        const createResponse = await fetch(`${baseUrl}/api/ops/members`, {
+            method: "POST",
+            headers: {
+                authorization: "Bearer test-staff",
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({
+                email: "newmember@example.com",
+                displayName: "New Member",
+                membershipTier: "community",
+                reason: "Create route test.",
+            }),
+        });
+        strict_1.default.equal(createResponse.status, 200);
+        const createPayload = (await createResponse.json());
+        strict_1.default.equal(createPayload.ok, true);
+        strict_1.default.equal(createPayload.member.uid, "member-2");
+        const membershipResponse = await fetch(`${baseUrl}/api/ops/members/member-1/membership`, {
+            method: "POST",
+            headers: {
+                authorization: "Bearer test-staff",
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({
+                membershipTier: "community",
+                reason: "Route-level update test.",
+            }),
+        });
+        strict_1.default.equal(membershipResponse.status, 200);
+        const membershipPayload = (await membershipResponse.json());
+        strict_1.default.equal(membershipPayload.ok, true);
+        strict_1.default.equal(membershipPayload.member.membershipTier, "community");
+        const billingResponse = await fetch(`${baseUrl}/api/ops/members/member-2/billing`, {
+            method: "POST",
+            headers: {
+                authorization: "Bearer test-staff",
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({
+                reason: "Billing route test.",
+                billing: {
+                    stripeCustomerId: "cus_123",
+                    defaultPaymentMethodId: "pm_123",
+                    cardBrand: "Visa",
+                    cardLast4: "4242",
+                    expMonth: "08",
+                    expYear: "2030",
+                    billingContactEmail: "billing@example.com",
+                },
+            }),
+        });
+        strict_1.default.equal(billingResponse.status, 200);
+        const billingPayload = (await billingResponse.json());
+        strict_1.default.equal(billingPayload.ok, true);
+        strict_1.default.equal(billingPayload.member.billing?.stripeCustomerId, "cus_123");
+        strict_1.default.equal(billingPayload.member.billing?.cardLast4, "4242");
+        const rawCardRejected = await fetch(`${baseUrl}/api/ops/members/member-2/billing`, {
+            method: "POST",
+            headers: {
+                authorization: "Bearer test-staff",
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({
+                billing: {
+                    cardNumber: "4242424242424242",
+                },
+            }),
+        });
+        strict_1.default.equal(rawCardRejected.status, 400);
+        const activityResponse = await fetch(`${baseUrl}/api/ops/members/member-1/activity`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(activityResponse.status, 200);
+        const activityPayload = (await activityResponse.json());
+        strict_1.default.equal(activityPayload.ok, true);
+        strict_1.default.equal(activityPayload.activity.reservations, 1);
+        strict_1.default.equal(activityPayload.activity.supportThreads, 1);
+    });
+});
+(0, node_test_1.default)("ops portal can be disabled independently from the rest of the server", async () => {
+    const opsService = (0, service_1.createOpsService)({ store: new store_1.MemoryOpsStore() });
+    await withServer({
+        opsService,
+        opsPortalConfig: {
+            enabled: false,
+        },
+    }, async (baseUrl) => {
+        const portalResponse = await fetch(`${baseUrl}/ops`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(portalResponse.status, 404);
+        const twinResponse = await fetch(`${baseUrl}/api/ops/twin`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(twinResponse.status, 404);
+    });
+});
+(0, node_test_1.default)("ops ingest endpoint accepts signed events and dedupes repeated source ids", async () => {
+    const secret = "ops-secret";
+    const opsService = (0, service_1.createOpsService)({ store: new store_1.MemoryOpsStore() });
+    const payload = {
+        sourceSystem: "kilnaid",
+        eventType: "kiln.run_status_changed",
+        entityKind: "kiln",
+        entityId: "kiln-1",
+        sourceEventId: "evt-ops-1",
+        actorKind: "machine",
+        actorId: "kilnaid-bridge",
+        payload: { phase: "ready_for_unload" },
+    };
+    await withServer({
+        opsService,
+        opsIngestConfig: {
+            enabled: true,
+            hmacSecret: secret,
+            allowedSources: ["kilnaid"],
+            maxSkewSeconds: 300,
+        },
+        opsPortalConfig: {
+            enabled: true,
+        },
+    }, async (baseUrl) => {
+        const first = await fetch(`${baseUrl}/api/ops/events/ingest`, {
+            method: "POST",
+            headers: buildOpsIngestHeaders(secret, payload),
+            body: JSON.stringify(payload),
+        });
+        strict_1.default.equal(first.status, 202);
+        const firstPayload = (await first.json());
+        strict_1.default.equal(firstPayload.ok, true);
+        strict_1.default.equal(firstPayload.accepted, true);
+        const second = await fetch(`${baseUrl}/api/ops/events/ingest`, {
+            method: "POST",
+            headers: buildOpsIngestHeaders(secret, payload),
+            body: JSON.stringify(payload),
+        });
+        strict_1.default.equal(second.status, 200);
+        const secondPayload = (await second.json());
+        strict_1.default.equal(secondPayload.ok, true);
+        strict_1.default.equal(secondPayload.accepted, false);
     });
 });
 (0, node_test_1.default)("handler failure returns 500 without crashing server", async () => {
@@ -2770,6 +3297,8 @@ function createControlTowerRunner() {
             strict_1.default.equal(payload.state.agentRuntime?.status, "blocked");
             strict_1.default.equal(payload.state.agentRuntime?.boardRow.owner, "agent-runtime");
             strict_1.default.equal(payload.state.board[0]?.owner, "agent-runtime");
+            strict_1.default.equal(payload.state.hosts.some((entry) => entry.hostId === "studio-brain-server"), true);
+            strict_1.default.equal(payload.state.hosts.some((entry) => entry.hostId === "micah-laptop" && entry.environment === "local"), true);
             strict_1.default.equal(payload.state.partner?.initiativeState, "waiting_on_owner");
             strict_1.default.equal(payload.state.partner?.needsOwnerDecision, true);
             strict_1.default.match(payload.state.partner?.contactReason ?? "", /owner decision/i);
@@ -2786,8 +3315,8 @@ function createControlTowerRunner() {
             strict_1.default.equal(payload.state.overview.goodNextMoves.some((entry) => /promoted approval summary memory/i.test(entry.title)), false);
             strict_1.default.equal(payload.state.overview.goodNextMoves.some((entry) => /audit mcp governance coverage in memory|review quarantined secret-bearing memories/i.test(entry.title)), true);
             strict_1.default.equal(payload.state.overview.needsAttention.some((entry) => /secret-bearing memories need review|shadow mcp memory needs governance review/i.test(entry.title)), true);
-            strict_1.default.ok(payload.state.recentChanges.some((entry) => entry.type === "memory.promoted"));
-            strict_1.default.ok(payload.state.recentChanges.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));
+            strict_1.default.ok(payload.state.events.some((entry) => entry.type === "memory.promoted"));
+            strict_1.default.ok(payload.state.events.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));
             const roomResponse = await fetch(`${baseUrl}/api/control-tower/rooms/portal`, {
                 headers: { authorization: "Bearer test-staff" },
             });
@@ -3030,6 +3559,7 @@ function createControlTowerRunner() {
         await withServer({
             controlTowerRepoRoot: fixture.root,
             controlTowerRunner: runner,
+            adminToken: "test-admin-token",
         }, async (baseUrl) => {
             const latestResponse = await fetch(`${baseUrl}/api/agent-runtime/latest`, {
                 headers: { authorization: "Bearer test-staff" },
@@ -3040,11 +3570,22 @@ function createControlTowerRunner() {
             strict_1.default.equal(latestPayload.summary?.runId, "run-background-1");
             strict_1.default.equal(latestPayload.summary?.status, "blocked");
             strict_1.default.equal(latestPayload.events[0]?.type, "mission.state.changed");
+            const detailResponse = await fetch(`${baseUrl}/api/agent-runtime/runs/run-background-1`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            strict_1.default.equal(detailResponse.status, 200);
+            const detailPayload = (await detailResponse.json());
+            strict_1.default.equal(detailPayload.ok, true);
+            strict_1.default.equal(detailPayload.detail.runId, "run-background-1");
+            strict_1.default.match(detailPayload.detail.whyStuck ?? "", /Verifier checks failed/i);
+            strict_1.default.equal(detailPayload.detail.steps.some((entry) => entry.kind === "mission"), true);
+            strict_1.default.equal(detailPayload.detail.artifacts.some((entry) => entry.artifactId === "summary.json"), true);
             const eventResponse = await fetch(`${baseUrl}/api/agent-runtime/events`, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
                     authorization: "Bearer test-staff",
+                    "x-studio-brain-admin-token": "test-admin-token",
                 },
                 body: JSON.stringify({
                     event: {
@@ -3092,6 +3633,36 @@ function createControlTowerRunner() {
             const runsPayload = (await runsResponse.json());
             strict_1.default.equal(runsPayload.ok, true);
             strict_1.default.equal(runsPayload.runs.some((entry) => entry.runId === "run-background-2"), true);
+            const hostHeartbeatResponse = await fetch(`${baseUrl}/api/control-tower/hosts/heartbeat`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    "x-studio-brain-admin-token": "test-admin-token",
+                },
+                body: JSON.stringify({
+                    hostId: "micah-laptop",
+                    label: "Micah Laptop",
+                    environment: "local",
+                    role: "operator-laptop",
+                    health: "healthy",
+                    lastSeenAt: "2026-03-30T10:11:00.000Z",
+                    currentRunId: "run-background-2",
+                    agentCount: 1,
+                    metrics: {
+                        cpuPct: 18,
+                        memoryPct: 52,
+                        load1: 0.5,
+                    },
+                }),
+            });
+            strict_1.default.equal(hostHeartbeatResponse.status, 202);
+            const hostsResponse = await fetch(`${baseUrl}/api/control-tower/hosts`, {
+                headers: { authorization: "Bearer test-staff" },
+            });
+            strict_1.default.equal(hostsResponse.status, 200);
+            const hostsPayload = (await hostsResponse.json());
+            strict_1.default.equal(hostsPayload.ok, true);
+            strict_1.default.equal(hostsPayload.hosts.some((entry) => entry.hostId === "micah-laptop" && entry.currentRunId === "run-background-2"), true);
         });
     }
     finally {

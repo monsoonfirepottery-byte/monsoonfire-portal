@@ -82,6 +82,50 @@ const CONTRACT_DEFAULT_ENV = {
   STUDIO_BRAIN_SKILL_INSTALL_ROOT: "/tmp/studiobrain/skills",
 };
 
+function installPlaywrightCleanup(resources) {
+  let disposed = false;
+  let closing = null;
+
+  async function closeAll() {
+    if (closing) return closing;
+    closing = (async () => {
+      const snapshot = resources();
+      await snapshot.browser?.close().catch(() => {});
+    })();
+    return closing;
+  }
+
+  const bind = (signal, exitCode) => {
+    const handler = () => {
+      if (disposed) return;
+      disposed = true;
+      void closeAll().finally(() => {
+        process.exit(exitCode);
+      });
+    };
+    process.once(signal, handler);
+    return { signal, handler };
+  };
+
+  const subscriptions = [
+    bind("SIGINT", 130),
+    bind("SIGTERM", 143),
+  ];
+
+  return {
+    async close() {
+      disposed = true;
+      await closeAll();
+    },
+    dispose() {
+      disposed = true;
+      for (const entry of subscriptions) {
+        process.removeListener(entry.signal, entry.handler);
+      }
+    },
+  };
+}
+
 const FORBIDDEN_URL_PATTERNS = [
   /127\.0\.0\.1:8787/i,
   /localhost:8787/i,
@@ -2086,7 +2130,9 @@ const run = async () => {
     detectedStudioBrainPath: "",
   };
 
-  const browser = await chromium.launch({ headless: options.headless });
+  let browser = null;
+  const cleanup = installPlaywrightCleanup(() => ({ browser }));
+  browser = await chromium.launch({ headless: options.headless });
 
   try {
     const desktopContext = await browser.newContext({
@@ -2504,7 +2550,8 @@ const run = async () => {
       }
     }
     await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-    await browser.close();
+    cleanup.dispose();
+    await cleanup.close();
   }
 };
 

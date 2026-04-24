@@ -45,6 +45,7 @@ function withPatchedEnv(patch, run) {
         PGPASSWORD: "super-secret",
         GOOGLE_APPLICATION_CREDENTIALS: "C:\\\\tmp\\\\service-account.json",
         STUDIO_BRAIN_ADMIN_TOKEN: "token",
+        STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: "ops-pii-key",
         STUDIO_BRAIN_OPENAI_API_KEY: "sk-local",
         STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET: "ingest-secret",
         STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
@@ -57,6 +58,7 @@ function withPatchedEnv(patch, run) {
         strict_1.default.equal(safe.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY, "[set]");
         strict_1.default.equal(safe.PGPASSWORD, "[redacted]");
         strict_1.default.equal(safe.GOOGLE_APPLICATION_CREDENTIALS, "[set]");
+        strict_1.default.equal(safe.STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY, "[set]");
         strict_1.default.equal(safe.STUDIO_BRAIN_OPENAI_API_KEY, "[set]");
         strict_1.default.equal(safe.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET, "[set]");
         strict_1.default.equal(safe.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "[set]");
@@ -186,5 +188,74 @@ function withPatchedEnv(patch, run) {
         strict_1.default.deepEqual(env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES, ["discord", "bot"]);
         strict_1.default.deepEqual(env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS, ["guild-1", "guild-2"]);
         strict_1.default.deepEqual(env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS, ["chan-1", "chan-2"]);
+    });
+});
+(0, node_test_1.default)("support email reply mode disabled does not require separate reply credentials", () => {
+    withPatchedEnv({
+        STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+        STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "gmail",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: "reader-client-id",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: "reader-client-secret",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: "reader-refresh-token",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "disabled",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    }, () => {
+        const env = (0, env_1.readEnv)();
+        strict_1.default.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED, true);
+        strict_1.default.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE, "disabled");
+    });
+});
+(0, node_test_1.default)("support email separate reply mode requires reply credentials", () => {
+    withPatchedEnv({
+        STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+        STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "gmail",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_OAUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: "reader-client-id",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: "reader-client-secret",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: "reader-refresh-token",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "separate",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_OAUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    }, () => {
+        strict_1.default.throws(() => (0, env_1.readEnv)(), /STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_ID|STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_CLIENT_SECRET|STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_GMAIL_REFRESH_TOKEN/);
+    });
+});
+(0, node_test_1.default)("namecheap support email provider validates without Gmail OAuth fields", () => {
+    withPatchedEnv({
+        STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+        STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "namecheap_private_email",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_ID: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_CLIENT_SECRET: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_GMAIL_REFRESH_TOKEN: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME: "support@monsoonfire.com",
+        STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD: "namecheap-password",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "disabled",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    }, () => {
+        const env = (0, env_1.readEnv)();
+        strict_1.default.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER, "namecheap_private_email");
+        strict_1.default.equal(env.STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME, "support@monsoonfire.com");
+    });
+});
+(0, node_test_1.default)("namecheap separate reply mode requires separate login credentials", () => {
+    withPatchedEnv({
+        STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: "true",
+        STUDIO_BRAIN_SUPPORT_EMAIL_PROVIDER: "namecheap_private_email",
+        STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_USERNAME: "support@monsoonfire.com",
+        STUDIO_BRAIN_SUPPORT_EMAIL_NAMECHEAP_PASSWORD: "namecheap-password",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_MODE: "separate",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD: "",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_AUTH_SOURCE: "env",
+        STUDIO_BRAIN_SUPPORT_EMAIL_INGEST_BEARER_TOKEN: "ingest-token",
+    }, () => {
+        strict_1.default.throws(() => (0, env_1.readEnv)(), /STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_USERNAME|STUDIO_BRAIN_SUPPORT_EMAIL_REPLY_NAMECHEAP_PASSWORD/);
     });
 });

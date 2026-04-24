@@ -259,11 +259,6 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
 
       const adminToken = config.getAdminToken?.();
       const trimmedAdminToken = adminToken?.trim();
-      const hasAdminToken = Boolean(trimmedAdminToken);
-      req.curlExample = buildCurlRedacted(url, normalizedPayload, {
-        includeAdminToken: hasAdminToken,
-      });
-      req.includesAdminTokenHeader = hasAdminToken;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${idToken}`,
@@ -277,6 +272,13 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
           headers[normalizedKey] = normalizedValue;
         }
       }
+      const includesAdminTokenHeader = Object.entries(headers).some(
+        ([key, value]) => key.trim().toLowerCase() === "x-admin-token" && value.trim() !== ""
+      );
+      req.curlExample = buildCurlRedacted(url, normalizedPayload, {
+        includeAdminToken: includesAdminTokenHeader,
+      });
+      req.includesAdminTokenHeader = includesAdminTokenHeader;
 
       let resp: Response;
       let didTimeout = false;

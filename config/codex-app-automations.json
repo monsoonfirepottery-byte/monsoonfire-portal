@@ -1,0 +1,95 @@
+{
+  "schema": "codex-app-automation-manifest.v1",
+  "generatedAt": "2026-04-24T00:00:00.000Z",
+  "defaults": {
+    "threadReuse": "reuse-existing-thread",
+    "maxRuntimeMinutes": 45,
+    "memoryWritePolicy": "handoff-candidates-only",
+    "dedupeWindowHours": 20,
+    "reviewQueue": "codex-app"
+  },
+  "automations": [
+    {
+      "automationId": "codex-pr-green-daily",
+      "title": "Daily PR Green Sweep",
+      "schedule": "0 7 * * *",
+      "command": "npm run codex:pr-green:daily:persist",
+      "riskLane": "background",
+      "approvalPolicy": "auto_review_ok",
+      "dedupeKey": "codex-pr-green-daily",
+      "requiredArtifacts": [
+        ".codex/pr-green-log.md"
+      ],
+      "successCriteria": [
+        "Open PR failures are summarized with next actions.",
+        "No rerun or mutation happens without an existing repo guard allowing it."
+      ]
+    },
+    {
+      "automationId": "codex-interaction-daily",
+      "title": "Daily Interaction Audit",
+      "schedule": "30 7 * * *",
+      "command": "npm run codex:interaction:daily:persist",
+      "riskLane": "background",
+      "approvalPolicy": "auto_review_ok",
+      "dedupeKey": "codex-interaction-daily",
+      "requiredArtifacts": [
+        ".codex/interaction-log.md"
+      ],
+      "successCriteria": [
+        "Repeated failure signatures are classified before retry.",
+        "Any durable recommendation is left as reviewable memory candidate."
+      ]
+    },
+    {
+      "automationId": "portal-automation-weekly-digest",
+      "title": "Portal Automation Weekly Digest",
+      "schedule": "0 8 * * 1",
+      "command": "npm run portal:automation:weekly-digest",
+      "riskLane": "background",
+      "approvalPolicy": "auto_review_ok",
+      "dedupeKey": "portal-automation-weekly-digest",
+      "requiredArtifacts": [
+        "output/qa/portal-automation-weekly-digest.json",
+        "output/qa/portal-automation-weekly-digest.md"
+      ],
+      "successCriteria": [
+        "Repeated automation signatures are grouped rather than duplicated.",
+        "Any proposed issue/PR action remains reviewable."
+      ]
+    },
+    {
+      "automationId": "codex-harness-doctor-nightly",
+      "title": "Nightly Codex Harness Doctor",
+      "schedule": "0 2 * * *",
+      "command": "npm run codex:doctor:strict",
+      "riskLane": "background",
+      "approvalPolicy": "no_approval",
+      "dedupeKey": "codex-harness-doctor-nightly",
+      "requiredArtifacts": [
+        "output/codex-doctor/latest.json",
+        "output/codex-app-doctor/latest.json"
+      ],
+      "successCriteria": [
+        "Startup, MCP, app, and memory surfaces are audited.",
+        "Strict failures produce an actionable blocker summary."
+      ]
+    },
+    {
+      "automationId": "portal-promotion-gate-watch",
+      "title": "Portal Promotion Gate Watch",
+      "schedule": "0 */6 * * *",
+      "command": "npm run portal:promotion:gate",
+      "riskLane": "background",
+      "approvalPolicy": "human_required_for_mutation",
+      "dedupeKey": "portal-promotion-gate-watch",
+      "requiredArtifacts": [
+        "output/qa/post-deploy-promotion-gate.json"
+      ],
+      "successCriteria": [
+        "Live portal risk remains visible.",
+        "Any deploy, rollback, or support-send follow-up requires human approval."
+      ]
+    }
+  ]
+}

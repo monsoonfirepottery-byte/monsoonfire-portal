@@ -1,0 +1,46 @@
+{
+  "schema": "codex-model-policy.v1",
+  "generatedAt": "2026-04-24T00:00:00.000Z",
+  "roles": {
+    "implementation_default": {
+      "preferred": [
+        "gpt-5.5",
+        "gpt-5.4"
+      ],
+      "reasoningEffort": "medium",
+      "fallback": "gpt-5.4"
+    },
+    "planning_deep": {
+      "preferred": [
+        "gpt-5.5",
+        "gpt-5.4"
+      ],
+      "reasoningEffort": "high",
+      "fallback": "gpt-5.4"
+    },
+    "fast_ui_iteration": {
+      "preferred": [
+        "gpt-5.4-mini",
+        "gpt-5.4"
+      ],
+      "reasoningEffort": "low",
+      "fallback": "gpt-5.4-mini"
+    },
+    "cheap_hygiene": {
+      "preferred": [
+        "gpt-5.4-mini",
+        "gpt-5.4"
+      ],
+      "reasoningEffort": "low",
+      "fallback": "gpt-5.4-mini"
+    },
+    "approval_review": {
+      "preferred": [
+        "gpt-5.5",
+        "gpt-5.4"
+      ],
+      "reasoningEffort": "medium",
+      "fallback": "gpt-5.4"
+    }
+  }
+}

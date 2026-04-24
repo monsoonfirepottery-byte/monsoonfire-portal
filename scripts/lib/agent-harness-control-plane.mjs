@@ -13,6 +13,9 @@ export const DEFAULT_AGENT_TOOL_REGISTRY_PATH = "config/agent-tool-contracts.jso
 export const DEFAULT_AGENT_TOOL_PRIMITIVE_FAMILY_PATH = "config/agent-tool-primitives.json";
 export const DEFAULT_AGENT_RUNS_ROOT = "output/agent-runs";
 export const DEFAULT_INTENT_PLAN_PATH = "artifacts/intent-plan.generated.json";
+export const DEFAULT_CODEX_MODEL_POLICY_PATH = "config/codex-model-policy.json";
+
+const VALID_MODEL_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -85,6 +88,46 @@ function normalizeNativeSpec(nativeSpec) {
   };
 }
 
+function normalizeApprovalPolicy(policy) {
+  if (!policy || typeof policy !== "object") return null;
+  const tier = clean(policy.tier);
+  if (!tier) return null;
+  const requiredEvidence = normalizeStringList(policy.requiredEvidence || [], 32);
+  return {
+    tier,
+    ...(clean(policy.why) ? { why: clean(policy.why) } : {}),
+    ...(requiredEvidence.length > 0 ? { requiredEvidence } : {}),
+    ...(policy.blockedIfDirty !== undefined ? { blockedIfDirty: Boolean(policy.blockedIfDirty) } : {}),
+    ...(policy.liveSurface !== undefined ? { liveSurface: Boolean(policy.liveSurface) } : {}),
+  };
+}
+
+function envKeyForModelRole(roleName, suffix = "") {
+  const normalized = clean(roleName).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  return suffix ? `CODEX_MODEL_${normalized}_${suffix}` : `CODEX_MODEL_${normalized}`;
+}
+
+function normalizeModelPolicyRole(roleName, role, env = process.env) {
+  const preferred = normalizeStringList(role?.preferred || [], 16);
+  const fallback = clean(role?.fallback) || preferred.at(-1) || "";
+  const modelOverride = clean(env?.[envKeyForModelRole(roleName)] || "");
+  const effortOverride = clean(env?.[envKeyForModelRole(roleName, "REASONING_EFFORT")] || "");
+  const configuredEffort = clean(role?.reasoningEffort || "medium");
+  const reasoningEffort = VALID_MODEL_REASONING_EFFORTS.has(effortOverride)
+    ? effortOverride
+    : VALID_MODEL_REASONING_EFFORTS.has(configuredEffort)
+      ? configuredEffort
+      : "medium";
+  const model = modelOverride || preferred[0] || fallback;
+  return {
+    model,
+    reasoningEffort,
+    fallback,
+    preferred,
+    source: modelOverride ? "env" : "policy",
+  };
+}
+
 function mergeToolDefinition(defaults = {}, entry = {}) {
   const merged = {
     ...defaults,
@@ -98,6 +141,14 @@ function mergeToolDefinition(defaults = {}, entry = {}) {
     merged.lifecycle = {
       ...(lifecycleDefaults || {}),
       ...(lifecycleEntry || {}),
+    };
+  }
+  const approvalDefaults = defaults.approvalPolicy && typeof defaults.approvalPolicy === "object" ? defaults.approvalPolicy : null;
+  const approvalEntry = entry.approvalPolicy && typeof entry.approvalPolicy === "object" ? entry.approvalPolicy : null;
+  if (approvalDefaults || approvalEntry) {
+    merged.approvalPolicy = {
+      ...(approvalDefaults || {}),
+      ...(approvalEntry || {}),
     };
   }
   return merged;
@@ -131,6 +182,10 @@ function pickToolContractFields(tool, overrides = {}) {
       overrides.nativeSpec !== undefined
         ? overrides.nativeSpec
         : tool.nativeSpec,
+    approvalPolicy:
+      overrides.approvalPolicy !== undefined
+        ? overrides.approvalPolicy
+        : tool.approvalPolicy,
   };
 
   return {
@@ -148,6 +203,7 @@ function pickToolContractFields(tool, overrides = {}) {
     ...(resolved.lifecycle && typeof resolved.lifecycle === "object" ? { lifecycle: resolved.lifecycle } : {}),
     ...(resolved.generatedFrom && typeof resolved.generatedFrom === "object" ? { generatedFrom: resolved.generatedFrom } : {}),
     ...(normalizeNativeSpec(resolved.nativeSpec) ? { nativeSpec: normalizeNativeSpec(resolved.nativeSpec) } : {}),
+    ...(normalizeApprovalPolicy(resolved.approvalPolicy) ? { approvalPolicy: normalizeApprovalPolicy(resolved.approvalPolicy) } : {}),
   };
 }
 
@@ -244,6 +300,7 @@ function compileNativeBrowserShadowVerifierFamily(family) {
     const expectedPortalHost = clean(entry?.expectedPortalHost || defaults.expectedPortalHost);
     const deep = entry?.deep === true || (entry?.deep === undefined && defaults.deep === true);
     const execute = entry?.execute === true || (entry?.execute === undefined && defaults.execute === true);
+    const appHandoff = entry?.appHandoff === true || (entry?.appHandoff === undefined && defaults.appHandoff === true);
     const argv = ["node", script];
     if (surface) argv.push("--surface", surface);
     if (baseUrl) argv.push("--base-url", baseUrl);
@@ -252,7 +309,8 @@ function compileNativeBrowserShadowVerifierFamily(family) {
     if (canonicalArtifactRoot) argv.push("--canonical-artifact-root", canonicalArtifactRoot);
     if (expectedPortalHost) argv.push("--expected-portal-host", expectedPortalHost);
     if (deep) argv.push("--deep");
-    if (execute) argv.push("--execute");
+    if (appHandoff) argv.push("--app-handoff");
+    else if (execute) argv.push("--execute");
     const probeArgv = [...argv, "--benchmark-probe", "--json"];
     const inputs = normalizeToolInputContracts(
       entry.inputs ??
@@ -260,6 +318,7 @@ function compileNativeBrowserShadowVerifierFamily(family) {
         [
           { name: "--deep", required: false, description: "Prepare the deeper native-browser shadow profile." },
           { name: "--execute", required: false, description: "Run the bounded codex.exec shadow lane instead of only preparing artifacts." },
+          { name: "--app-handoff", required: false, description: "Prepare a Codex desktop in-app browser handoff instead of shell execution." },
         ],
     );
     return pickToolContractFields(merged, {
@@ -457,6 +516,18 @@ export function validateToolContractRegistry(registry) {
       }
       if (!clean(lifecycle.retireWhen)) findings.push({ severity: "error", message: `${toolId} is missing lifecycle.retireWhen.` });
     }
+    if (tool?.approvalPolicy !== undefined) {
+      const approvalPolicy = normalizeApprovalPolicy(tool.approvalPolicy);
+      const validTiers = new Set(["no_approval", "auto_review_ok", "human_required", "human_required_for_mutation"]);
+      if (!approvalPolicy) {
+        findings.push({ severity: "error", message: `${toolId} has invalid approvalPolicy metadata.` });
+      } else if (!validTiers.has(approvalPolicy.tier)) {
+        findings.push({ severity: "error", message: `${toolId} has unknown approvalPolicy tier: ${approvalPolicy.tier}.` });
+      }
+      if (/deploy|send|cleanup|delete|memory_write|hygiene_write/i.test(clean(tool.sideEffects)) && approvalPolicy?.tier === "no_approval") {
+        findings.push({ severity: "warning", message: `${toolId} declares mutating side effects with no_approval.` });
+      }
+    }
   }
 
   return {
@@ -568,6 +639,83 @@ export function loadToolContractRegistry(
   };
 }
 
+export function validateCodexModelPolicy(policy) {
+  const findings = [];
+  if (!policy || typeof policy !== "object") {
+    findings.push({ severity: "error", message: "Codex model policy must be an object." });
+    return { status: "fail", findings, roles: {} };
+  }
+  if (policy.schema !== "codex-model-policy.v1") {
+    findings.push({ severity: "error", message: `Unexpected model policy schema: ${policy.schema || "missing"}.` });
+  }
+  const roles = policy.roles && typeof policy.roles === "object" ? policy.roles : {};
+  if (Object.keys(roles).length === 0) {
+    findings.push({ severity: "error", message: "Codex model policy must include at least one role." });
+  }
+  for (const [roleName, role] of Object.entries(roles)) {
+    const preferred = normalizeStringList(role?.preferred || [], 16);
+    if (preferred.length === 0 && !clean(role?.fallback)) {
+      findings.push({ severity: "error", message: `${roleName} must include preferred models or a fallback model.` });
+    }
+    const effort = clean(role?.reasoningEffort || "medium");
+    if (!VALID_MODEL_REASONING_EFFORTS.has(effort)) {
+      findings.push({ severity: "error", message: `${roleName} has invalid reasoningEffort: ${effort || "missing"}.` });
+    }
+  }
+  return {
+    status: findings.some((finding) => finding.severity === "error") ? "fail" : "pass",
+    findings,
+    roles,
+  };
+}
+
+export function loadCodexModelPolicy(repoRoot, policyPath = DEFAULT_CODEX_MODEL_POLICY_PATH) {
+  const absolutePath = resolve(repoRoot, policyPath);
+  const policy = readJsonFileIfExists(absolutePath);
+  const validation = validateCodexModelPolicy(policy);
+  if (validation.status !== "pass") {
+    const summary = validation.findings.map((finding) => finding.message).join("; ");
+    throw new Error(`Codex model policy is invalid: ${summary}`);
+  }
+  return {
+    absolutePath,
+    relativePath: relative(repoRoot, absolutePath).replaceAll("\\", "/"),
+    policy,
+    validation,
+  };
+}
+
+export function resolveCodexModelPolicy(repoRoot, options = {}, dependencies = {}) {
+  const policyBundle = dependencies.policyBundle ?? loadCodexModelPolicy(repoRoot, options.policyPath);
+  const policy = dependencies.policy ?? policyBundle.policy;
+  const env = dependencies.env ?? process.env;
+  const roles = policy.roles && typeof policy.roles === "object" ? policy.roles : {};
+  const resolvedRoles = Object.fromEntries(
+    Object.entries(roles).map(([roleName, role]) => [roleName, normalizeModelPolicyRole(roleName, role, env)]),
+  );
+  const implementationDefault = resolvedRoles.implementation_default || normalizeModelPolicyRole("implementation_default", {}, env);
+  const planningDeep = resolvedRoles.planning_deep || implementationDefault;
+  const cheapHygiene = resolvedRoles.cheap_hygiene || implementationDefault;
+  const fastUiIteration = resolvedRoles.fast_ui_iteration || implementationDefault;
+  const approvalReview = resolvedRoles.approval_review || implementationDefault;
+  return {
+    schema: "agent-model-policy.v1",
+    generatedAt: clean(options.generatedAt) || new Date().toISOString(),
+    source: policyBundle.relativePath || clean(options.policyPath) || DEFAULT_CODEX_MODEL_POLICY_PATH,
+    standard: implementationDefault.model,
+    planning: planningDeep.model,
+    hygiene: cheapHygiene.model,
+    roles: {
+      implementation_default: implementationDefault,
+      planning_deep: planningDeep,
+      fast_ui_iteration: fastUiIteration,
+      cheap_hygiene: cheapHygiene,
+      approval_review: approvalReview,
+      ...resolvedRoles,
+    },
+  };
+}
+
 function inferRiskLane(selectedIntents, preferredLane = "") {
   const normalizedPreferred = clean(preferredLane).toLowerCase();
   if (normalizedPreferred === "interactive" || normalizedPreferred === "background" || normalizedPreferred === "high_risk") {
@@ -635,6 +783,17 @@ export function buildMissionEnvelope(repoRoot, options = {}, dependencies = {}) 
   const runId = clean(options.runId) || `agent-run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const missionId = clean(options.missionId) || `mission_${stableHash(requestedIntentIds.join("|"), 18)}`;
   const generatedAt = clean(options.generatedAt) || new Date().toISOString();
+  const modelPolicy =
+    dependencies.modelPolicy ||
+    resolveCodexModelPolicy(
+      repoRoot,
+      { policyPath: options.modelPolicyPath, generatedAt },
+      {
+        policyBundle: dependencies.modelPolicyBundle,
+        policy: dependencies.modelPolicyConfig,
+        env: dependencies.env,
+      },
+    );
 
   const verifierChecks = normalizeStringList(selectedIntents.flatMap((intent) => intent.doneCriteria?.requiredChecks || []), 256);
   const verifierArtifacts = normalizeStringList(selectedIntents.flatMap((intent) => intent.doneCriteria?.requiredArtifacts || []), 256);
@@ -664,11 +823,7 @@ export function buildMissionEnvelope(repoRoot, options = {}, dependencies = {}) 
     goal,
     nonGoals,
     riskLane,
-    modelPolicy: {
-      standard: "gpt-5.4",
-      planning: "gpt-5.4-pro",
-      hygiene: "gpt-5.4-mini",
-    },
+    modelPolicy,
     selectedIntents: selectedIntents.map((intent) => ({
       intentId: intent.intentId,
       title: intent.title,

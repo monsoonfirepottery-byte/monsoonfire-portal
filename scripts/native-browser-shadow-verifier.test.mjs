@@ -18,9 +18,17 @@ test("parseArgs enables execute mode and codex exec defaults", () => {
 
   assert.equal(parsed.surface, "website");
   assert.equal(parsed.execute, true);
+  assert.equal(parsed.mode, "execute");
   assert.equal(parsed.model, "gpt-5.4-mini");
   assert.equal(parsed.reasoningEffort, "low");
   assert.equal(parsed.timeoutMs, 90000);
+});
+
+test("parseArgs supports Codex app handoff mode without executing", () => {
+  const parsed = parseArgs(["--surface", "portal", "--app-handoff"]);
+  assert.equal(parsed.surface, "portal");
+  assert.equal(parsed.execute, false);
+  assert.equal(parsed.mode, "app-handoff");
 });
 
 test("buildExecutionSchema requires bounded native-browser result fields", () => {

@@ -18,6 +18,17 @@
         ],
         "safeFailBehavior": "Do not retry blindly; capture deploy evidence and stop for operator review.",
         "rollbackBehavior": "Use the deploy evidence pack and previous live artifact bundle to restore the last known-good portal.",
+        "approvalPolicy": {
+          "tier": "human_required",
+          "why": "Live Namecheap deploy changes the production portal surface.",
+          "requiredEvidence": [
+            "deploy preflight",
+            "playwright smoke result",
+            "deploy evidence pack"
+          ],
+          "blockedIfDirty": true,
+          "liveSurface": true
+        },
         "lifecycle": {
           "owner": "deploy-platform",
           "class": "adapter",
@@ -47,6 +58,10 @@
         "dryRunSupport": true,
         "safeFailBehavior": "Mark verification as failed and keep the mission blocked until evidence is reviewed.",
         "rollbackBehavior": "No rollback required; verification only.",
+        "approvalPolicy": {
+          "tier": "no_approval",
+          "why": "Playwright smoke verification is artifact-only."
+        },
         "lifecycle": {
           "owner": "qa-platform",
           "class": "adapter",
@@ -95,6 +110,10 @@
         "safeFailBehavior": "Keep the native-browser shadow lane advisory-only and preserve the generated handoff artifacts for operator review.",
         "rollbackBehavior": "No rollback required; shadow verification only.",
         "script": "./scripts/native-browser-shadow-verifier.mjs",
+        "approvalPolicy": {
+          "tier": "no_approval",
+          "why": "Codex app browser handoff is advisory visual evidence only."
+        },
         "lifecycle": {
           "owner": "qa-platform",
           "class": "adapter",
@@ -134,6 +153,53 @@
       ]
     },
     {
+      "familyId": "verify.native-browser-app-handoff",
+      "builder": "native-browser-shadow-verifier",
+      "defaults": {
+        "kind": "runtime-primitive",
+        "selectableByAgent": false,
+        "sideEffects": "artifact_only",
+        "dryRunSupport": true,
+        "safeFailBehavior": "Prepare Codex desktop browser handoff artifacts and keep the lane advisory-only until visual evidence is reviewed.",
+        "rollbackBehavior": "No rollback required; app-browser handoff is read-only verification guidance.",
+        "script": "./scripts/native-browser-shadow-verifier.mjs",
+        "appHandoff": true,
+        "approvalPolicy": {
+          "tier": "no_approval",
+          "why": "Codex desktop in-app browser handoff is read-only and produces artifacts only."
+        },
+        "lifecycle": {
+          "owner": "qa-platform",
+          "class": "adapter",
+          "reviewEveryDays": 14,
+          "lastReviewedAt": "2026-04-24T00:00:00.000Z",
+          "nativeAlternative": "codex-app-in-app-browser",
+          "retireWhen": "Retire once the app browser can run named verification contracts directly and persist structured evidence."
+        }
+      },
+      "entries": [
+        {
+          "toolId": "verify.portal.codex-app-browser",
+          "purpose": "Prepare a Codex desktop in-app browser handoff for the live portal smoke lane.",
+          "surface": "portal",
+          "baseUrl": "https://portal.monsoonfire.com",
+          "outputDir": "output/native-browser/portal/prod",
+          "canonicalArtifactRoot": "output/playwright/portal/prod",
+          "shadowOf": "verify.portal.smoke"
+        },
+        {
+          "toolId": "verify.website.codex-app-browser",
+          "purpose": "Prepare a Codex desktop in-app browser handoff for the live website smoke lane.",
+          "surface": "website",
+          "baseUrl": "https://monsoonfire.com",
+          "outputDir": "output/native-browser/website/prod",
+          "canonicalArtifactRoot": "output/playwright/prod",
+          "shadowOf": "verify.website.smoke",
+          "expectedPortalHost": "portal.monsoonfire.com"
+        }
+      ]
+    },
+    {
       "familyId": "verify.native-browser-shadow-exec",
       "builder": "native-browser-shadow-verifier",
       "defaults": {
@@ -145,6 +211,10 @@
         "rollbackBehavior": "No rollback required; advisory shadow verification only.",
         "script": "./scripts/native-browser-shadow-verifier.mjs",
         "execute": true,
+        "approvalPolicy": {
+          "tier": "no_approval",
+          "why": "Bounded native-browser shadow execution is read-only and non-gating."
+        },
         "lifecycle": {
           "owner": "qa-platform",
           "class": "adapter",

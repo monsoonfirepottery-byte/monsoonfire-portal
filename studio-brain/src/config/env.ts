@@ -20,6 +20,7 @@ const REPO_ROOT = resolve(STUDIO_BRAIN_ROOT, "..");
 
 const RUNTIME_ENFORCED_SENSITIVE_VARS = new Set([
   "STUDIO_BRAIN_ADMIN_TOKEN",
+  "STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY",
   "STUDIO_BRAIN_OPENAI_API_KEY",
   "STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET",
   "STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY",
@@ -70,6 +71,7 @@ const EnvSchema = z.object({
   STUDIO_BRAIN_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   STUDIO_BRAIN_ALLOWED_ORIGINS: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
   STUDIO_BRAIN_ADMIN_TOKEN: z.string().optional(),
+  STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: z.string().optional(),
   STUDIO_BRAIN_JOB_INTERVAL_MS: z.coerce.number().int().min(10_000).max(86_400_000).default(15 * 60 * 1000),
   STUDIO_BRAIN_JOB_INITIAL_DELAY_MS: z.coerce.number().int().min(0).max(300_000).default(0),
   STUDIO_BRAIN_JOB_JITTER_MS: z.coerce.number().int().min(0).max(120_000).default(0),
@@ -149,6 +151,13 @@ const EnvSchema = z.object({
 
   STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: BoolFromString.default(false),
   STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: BoolFromString.default(true),
+  STUDIO_BRAIN_ENABLE_OPS_PORTAL: BoolFromString.default(false),
+  STUDIO_BRAIN_REQUIRE_STAFF_FOR_OPS_PORTAL: BoolFromString.default(true),
+  STUDIO_BRAIN_ENABLE_OPS_PORTAL_CHOICE: BoolFromString.default(true),
+  STUDIO_BRAIN_OPS_PORTAL_LEGACY_URL: z.string().default(""),
+  STUDIO_BRAIN_OPS_PORTAL_DEFAULT_SURFACE: z
+    .enum(["manager", "owner", "hands", "internet", "ceo", "forge"])
+    .default("manager"),
   STUDIO_BRAIN_FUNCTIONS_BASE_URL: z.string().default("https://us-central1-monsoonfire-portal.cloudfunctions.net"),
   STUDIO_BRAIN_SUPPORT_EMAIL_ENABLED: BoolFromString.default(false),
   STUDIO_BRAIN_SUPPORT_EMAIL_STARTUP_SYNC: BoolFromString.default(true),
@@ -498,6 +507,7 @@ export function redactEnvForLogs(env: BrainEnv): Record<string, string | number 
     STUDIO_BRAIN_LOG_LEVEL: env.STUDIO_BRAIN_LOG_LEVEL,
     STUDIO_BRAIN_ALLOWED_ORIGINS: env.STUDIO_BRAIN_ALLOWED_ORIGINS,
     STUDIO_BRAIN_ADMIN_TOKEN: env.STUDIO_BRAIN_ADMIN_TOKEN ? "[set]" : null,
+    STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: env.STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY ? "[set]" : null,
     STUDIO_BRAIN_JOB_INTERVAL_MS: env.STUDIO_BRAIN_JOB_INTERVAL_MS,
     STUDIO_BRAIN_JOB_INITIAL_DELAY_MS: env.STUDIO_BRAIN_JOB_INITIAL_DELAY_MS,
     STUDIO_BRAIN_JOB_JITTER_MS: env.STUDIO_BRAIN_JOB_JITTER_MS,

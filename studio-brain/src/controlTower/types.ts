@@ -24,6 +24,9 @@ export type ControlTowerEventType =
   | "health.changed";
 export type ControlTowerContinuityState = "ready" | "continuity_degraded" | "missing";
 export type ControlTowerMemoryConsolidationMode = "idle" | "scheduled" | "running" | "repair" | "unavailable";
+export type ControlTowerHostEnvironment = "local" | "server";
+export type ControlTowerHostHealth = "healthy" | "degraded" | "offline" | "maintenance";
+export type ControlTowerHostConnectivity = "online" | "stale" | "offline";
 
 export type ControlTowerTheme = {
   name: "desert-night" | "paper-day";
@@ -184,6 +187,7 @@ export type ControlTowerBoardRow = {
   blocker: string;
   next: string;
   last_update: string | null;
+  runId?: string | null;
   roomId: string | null;
   sessionName: string | null;
   contactReason?: string | null;
@@ -215,7 +219,29 @@ export type ControlTowerApprovalItem = {
   owner: string;
   approvalMode: "required" | "exempt";
   risk: "low" | "medium" | "high" | "critical";
+  previewInput?: Record<string, unknown>;
+  expectedEffects?: string[];
   target: ControlTowerActionTarget;
+};
+
+export type ControlTowerHostCard = {
+  hostId: string;
+  label: string;
+  environment: ControlTowerHostEnvironment;
+  role: string;
+  connectivity: ControlTowerHostConnectivity;
+  health: ControlTowerHostHealth;
+  lastSeenAt: string | null;
+  ageMinutes: number | null;
+  currentRunId: string | null;
+  agentCount: number;
+  version: string | null;
+  summary: string;
+  metrics: {
+    cpuPct: number | null;
+    memoryPct: number | null;
+    load1: number | null;
+  };
 };
 
 export type ControlTowerMemoryConsolidation = {
@@ -441,6 +467,7 @@ export type ControlTowerState = {
   startupScorecard: ControlTowerStartupScorecard | null;
   memoryHealth: ControlTowerMemoryHealth | null;
   agentRuntime: AgentRuntimeSummary | null;
+  hosts: ControlTowerHostCard[];
   partner: PartnerBrief | null;
   events: ControlTowerEvent[];
   recentChanges: ControlTowerEvent[];

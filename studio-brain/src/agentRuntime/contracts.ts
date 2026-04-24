@@ -2,6 +2,7 @@ import type { AgentRuntimePartnerContext } from "../partner/contracts";
 
 export type AgentRuntimeRiskLane = "interactive" | "background" | "high_risk";
 export type AgentRuntimeStatus = "queued" | "running" | "blocked" | "verified" | "completed" | "failed";
+export type AgentRuntimeEnvironment = "local" | "server";
 
 export type RatholeSignal = {
   signalId: string;
@@ -40,6 +41,9 @@ export type AgentRuntimeSummary = {
   generatedAt?: string;
   runId: string;
   missionId: string;
+  hostId?: string | null;
+  agentId?: string | null;
+  environment?: AgentRuntimeEnvironment | null;
   status: AgentRuntimeStatus;
   riskLane: AgentRuntimeRiskLane;
   title: string;
@@ -66,8 +70,74 @@ export type AgentRuntimeSummary = {
     blocker: string;
     next: string;
     last_update: string | null;
+    runId?: string | null;
     contactReason?: string | null;
     verifiedContext?: string[];
     decisionNeeded?: string | null;
   };
+};
+
+export type AgentRuntimeTraceStepStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "blocked"
+  | "skipped"
+  | "info";
+
+export type AgentRuntimeTraceStep = {
+  stepId: string;
+  runId: string;
+  title: string;
+  kind: "mission" | "verification" | "tool" | "diagnostic" | "event";
+  status: AgentRuntimeTraceStepStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  summary: string;
+  evidenceRefs: string[];
+  rawEventIds: string[];
+};
+
+export type AgentRuntimeToolCall = {
+  toolCallId: string;
+  runId: string;
+  toolName: string;
+  status: "requested" | "streaming" | "completed" | "failed";
+  requestedAt: string | null;
+  completedAt: string | null;
+  summary: string;
+  sideEffectClass: "read" | "write" | "unknown";
+};
+
+export type AgentRuntimeArtifact = {
+  artifactId: string;
+  runId: string;
+  label: string;
+  kind: "json" | "ledger" | "text" | "file";
+  path: string;
+  sizeBytes: number | null;
+  updatedAt: string | null;
+  preview: string | null;
+};
+
+export type AgentRuntimeDiagnostic = {
+  id: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  summary: string;
+  recommendedAction: string | null;
+};
+
+export type AgentRuntimeRunDetail = {
+  schema: "agent-runtime-run-detail.v1";
+  generatedAt: string;
+  runId: string;
+  summary: AgentRuntimeSummary | null;
+  events: RunLedgerEvent[];
+  steps: AgentRuntimeTraceStep[];
+  toolCalls: AgentRuntimeToolCall[];
+  diagnostics: AgentRuntimeDiagnostic[];
+  artifacts: AgentRuntimeArtifact[];
+  whyStuck: string | null;
 };

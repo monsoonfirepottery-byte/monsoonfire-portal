@@ -11,6 +11,7 @@ const DEFAULT_CONFIRMATION = "CLEAN LOCAL ARTIFACTS";
 
 const DEFAULT_TARGETS = [
   { path: "output/playwright", reason: "Playwright screenshots, traces, and videos" },
+  { path: "output/native-browser", reason: "Native-browser shadow verification artifacts" },
   { path: "output/stability", reason: "Reliability heartbeat artifacts" },
   { path: "output/cutover-gate", reason: "Cutover gate run artifacts" },
   { path: "output/phased-smoke-gate", reason: "Phased smoke gate artifacts" },

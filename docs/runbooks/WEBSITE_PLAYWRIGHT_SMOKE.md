@@ -10,6 +10,12 @@ Provide a fast browser-level smoke check for the marketing site that validates:
 Outputs screenshots under `output/playwright/` for debugging and release evidence.
 Also writes `smoke-summary.json` with per-check status and failure detail (if any).
 
+## Native-browser shadow lane
+- `npm run website:smoke:native-browser:shadow` prepares the advisory Codex-native shadow artifacts under `output/native-browser/website/prod`.
+- `npm run website:smoke:native-browser:shadow:execute` runs the bounded `codex exec` wrapper and records structured evidence when native browser/computer-use is available.
+- This lane is non-gating and advisory-only today.
+- Playwright remains the authoritative website smoke gate for CI, release signoff, and production monitoring until native browser/computer-use is actually exposed in this execution path.
+
 ## Local usage
 1. Install root dependencies:
 ```bash

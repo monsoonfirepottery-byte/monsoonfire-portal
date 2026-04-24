@@ -1744,7 +1744,60 @@ test("ops scorecard endpoint returns KPI status and records compute event", asyn
 });
 
 test("ops portal routes expose twin state and allow claiming tasks", async () => {
-  const opsService = createOpsService({ store: new MemoryOpsStore() });
+  const member = {
+    uid: "member-1",
+    email: "member@example.com",
+    displayName: "Studio Member",
+    membershipTier: "drop-in",
+    kilnPreferences: "Cone 6 preferred",
+    staffNotes: "Prefers pickup texts.",
+    billing: null,
+    portalRole: "member" as const,
+    opsRoles: [] as string[],
+    opsCapabilities: [] as string[],
+    createdAt: "2026-04-17T00:00:00.000Z",
+    updatedAt: "2026-04-17T00:00:00.000Z",
+    lastSeenAt: "2026-04-16T20:00:00.000Z",
+    metadata: {},
+  };
+  const opsService = createOpsService({
+    store: new MemoryOpsStore(),
+    staffDataSource: {
+      async listMembers() { return [member as never]; },
+      async getMember(uid) { return uid === member.uid ? (member as never) : null; },
+      async createMember() { throw new Error("not used in this test"); },
+      async updateMemberProfile() { throw new Error("not used in this test"); },
+      async updateMemberBilling() { throw new Error("not used in this test"); },
+      async updateMemberMembership() { throw new Error("not used in this test"); },
+      async updateMemberRole() { throw new Error("not used in this test"); },
+      async getMemberActivity(uid) {
+        return {
+          uid,
+          reservations: 1,
+          libraryLoans: 0,
+          supportThreads: 1,
+          events: 0,
+          lastReservationAt: member.lastSeenAt,
+          lastLoanAt: null,
+          lastEventAt: member.lastSeenAt,
+        };
+      },
+      async listReservations() { return []; },
+      async getReservationBundle() { return null; },
+      async listEvents() { return []; },
+      async listReports() { return []; },
+      async getLendingSnapshot() {
+        return {
+          requests: [],
+          loans: [],
+          recommendationCount: 0,
+          tagSubmissionCount: 0,
+          coverReviewCount: 0,
+          generatedAt: "2026-04-17T00:00:00.000Z",
+        };
+      },
+    },
+  });
   const task = createHumanTaskSeed({
     id: "task_ops_portal_claim",
     title: "Unload kiln 1",
@@ -1771,6 +1824,7 @@ test("ops portal routes expose twin state and allow claiming tasks", async () =>
         compareEnabled: true,
         legacyUrl: "https://portal.monsoonfire.com/staff",
       },
+      adminToken: "test-ops-session-secret",
     },
     async (baseUrl) => {
       const twinResponse = await fetch(`${baseUrl}/api/ops/twin`, {
@@ -1820,8 +1874,43 @@ test("ops portal routes expose twin state and allow claiming tasks", async () =>
       });
       assert.equal(portalResponse.status, 200);
       const html = await portalResponse.text();
-      assert.ok(html.includes("Studio Manager voice"));
+      assert.ok(html.includes("Command deck"));
       assert.ok(html.includes("Hands lane"));
+      assert.ok(html.includes("Windows that move today"));
+      assert.ok(html.includes('id="ops-hands-workbench"'));
+      assert.ok(html.includes('id="ops-support-workbench"'));
+
+      const marker = '<script id="ops-portal-model" type="application/json">';
+      const modelStart = html.indexOf(marker);
+      assert.ok(modelStart >= 0);
+      const modelBodyStart = modelStart + marker.length;
+      const modelEnd = html.indexOf("</script>", modelBodyStart);
+      const portalModel = JSON.parse(html.slice(modelBodyStart, modelEnd)) as {
+        sessionToken?: string;
+      };
+      assert.equal(typeof portalModel.sessionToken, "string");
+
+      const sessionHeaders = { "x-studio-brain-ops-session": String(portalModel.sessionToken) };
+      const sessionMeResponse = await fetch(`${baseUrl}/api/ops/session/me`, {
+        headers: sessionHeaders,
+      });
+      assert.equal(sessionMeResponse.status, 200);
+      const sessionMePayload = (await sessionMeResponse.json()) as {
+        ok: boolean;
+        session: { actorId: string };
+      };
+      assert.equal(sessionMePayload.ok, true);
+      assert.equal(sessionMePayload.session.actorId, "staff-test-uid");
+
+      const memberDetailResponse = await fetch(`${baseUrl}/api/ops/members/member-1`, {
+        headers: sessionHeaders,
+      });
+      assert.equal(memberDetailResponse.status, 200);
+
+      const memberActivityResponse = await fetch(`${baseUrl}/api/ops/members/member-1/activity`, {
+        headers: sessionHeaders,
+      });
+      assert.equal(memberActivityResponse.status, 200);
 
       const choiceResponse = await fetch(`${baseUrl}/ops/choice`, {
         headers: { authorization: "Bearer test-staff" },
@@ -2056,6 +2145,7 @@ test("ops staff replacement routes expose session context and member management 
         enabled: true,
         requireStaffAuth: true,
       },
+      adminToken: "test-ops-session-secret",
     },
     async (baseUrl) => {
       const sessionResponse = await fetch(`${baseUrl}/api/ops/session/me`, {
@@ -2179,6 +2269,22 @@ test("ops staff replacement routes expose session context and member management 
       assert.equal(activityPayload.ok, true);
       assert.equal(activityPayload.activity.reservations, 1);
       assert.equal(activityPayload.activity.supportThreads, 1);
+
+      const portalResponse = await fetch(`${baseUrl}/ops?surface=internet&mode=member-ops`, {
+        headers: { authorization: "Bearer test-staff" },
+      });
+      assert.equal(portalResponse.status, 200);
+      const portalHtml = await portalResponse.text();
+      assert.ok(portalHtml.includes('id="ops-member-workbench"'));
+      assert.ok(portalHtml.includes('id="ops-member-create-trigger"'));
+      assert.ok(portalHtml.includes('data-viewport-toggle="single-screen"'));
+      assert.ok(portalHtml.includes("Never type raw card numbers here"));
+      assert.ok(portalHtml.includes("Roster and onboarding"));
+      assert.ok(portalHtml.includes("One member, one intent"));
+      assert.ok(portalHtml.includes('class="ops-shell"'));
+      assert.ok(!portalHtml.includes('window.prompt("Display name"'));
+      assert.ok(!portalHtml.includes('window.prompt("Membership tier"'));
+      assert.ok(!portalHtml.includes('window.prompt("Comma-separated ops roles"'));
     },
   );
 });

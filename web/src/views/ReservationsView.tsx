@@ -61,7 +61,7 @@ const INTAKE_MODE_OPTIONS: Array<{
   {
     id: "SHELF_PURCHASE",
     label: "Standard shelf purchase",
-    detail: "Best for most drop-offs. Pay for the shelf space your work uses.",
+    detail: "Best for most drop-offs. We confirm shelf space together at intake.",
   },
   {
     id: "WHOLE_KILN",
@@ -600,7 +600,7 @@ function getCheckinJourneySnapshot(intakeMode: IntakeMode) {
 
   return {
     heading: "Standard shelf booking",
-    nextStep: "Next step: submit the intake, then the studio confirms the booking and queue lane.",
+    nextStep: "Next step: submit the intake, then the studio confirms shelf space and the queue lane.",
     detail:
       "Intake collects the work details now, booking confirms shelf space, and queue, firing, cooldown, and pickup stay visible after that.",
   };
@@ -3251,7 +3251,11 @@ export default function ReservationsView({
         kilnId,
         intakeMode,
       });
-      setFormStatus(mode === "staff" ? "Check-in saved. You're ready for the next one." : "Check-in sent. You're all set.");
+      setFormStatus(
+        mode === "staff"
+          ? "Check-in saved. You're ready for the next one."
+          : "Check-in sent. We’ll confirm shelf count with you at drop-off."
+      );
       setSubmitCelebrationActive(true);
       playCheckinSuccessTone();
       resetForm();
@@ -3343,7 +3347,7 @@ export default function ReservationsView({
                 </select>
               </label>
               <p className="form-helper staff-client-note">
-                Staff submissions do not charge automatically. Pricing is handled offline.
+                Staff submissions do not charge automatically. Charges are handled offline.
               </p>
             </div>
           ) : null}
@@ -3660,7 +3664,7 @@ export default function ReservationsView({
                             ? "Free when eligible"
                             : option.id === "WHOLE_KILN"
                               ? `Flat firing ${formatUsd(FULL_KILN_CUSTOM_PRICE)}`
-                              : `Estimated firing ${
+                              : `Firing charge ${
                                   Number.isFinite(shelfPurchaseEstimate)
                                     ? formatUsd(shelfPurchaseEstimate as number)
                                     : "We’ll confirm"
@@ -3700,7 +3704,7 @@ export default function ReservationsView({
                       })}
                     </div>
                     <p className="form-helper checkin-policy-chip">
-                      We bill by shelf space or whole kiln only. We do not bill by kiln volume.
+                      Charges are based on shelf space or whole kiln rather than kiln volume.
                     </p>
                     {intakeMode === "COMMUNITY_SHELF" ? (
                       <div className="notice inline-alert">
@@ -3718,7 +3722,7 @@ export default function ReservationsView({
 
                 <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
                   <div className="estimate-summary-header">
-                    <div className="estimate-label">Estimate summary</div>
+                    <div className="estimate-label">Charge summary</div>
                     <span className="estimate-chip soft">Reviewed with you in person</span>
                     {intakeMode === "WHOLE_KILN" ? (
                       <span className="estimate-chip">
@@ -3746,18 +3750,18 @@ export default function ReservationsView({
                       selfLoadedKilnRequested ||
                       placementPreferenceRequested ||
                       prepaidStorageRequested
-                        ? "Total estimate"
-                        : "Estimated cost"}
+                        ? "Total charge"
+                        : "Check-in charge"}
                     </span>
                     <strong className={animateEstimate ? "estimate-amount animate" : "estimate-amount"}>
-                      {totalEstimate != null ? formatUsd(totalEstimate) : "We’ll confirm pricing"}
+                      {totalEstimate != null ? formatUsd(totalEstimate) : "We’ll confirm the charge"}
                     </strong>
                     {animateEstimate ? <span className="estimate-updated">updated</span> : null}
                   </div>
                   <div className="estimate-reassure">
                     {intakeMode === "COMMUNITY_SHELF"
-                      ? "Community shelf pieces are free, lowest priority, and only placed with shelf-owner permission."
-                      : "You only pay for what survives the firing. We confirm everything in person. You won’t be overcharged."}
+                      ? "Community shelf pieces stay free, lowest priority, and only move forward when a shelf owner opts in."
+                      : "We confirm shelf count with you at drop-off so the check-in charge is correct."}
                   </div>
                   {estimatedCostWithDelivery != null &&
                   (useStudioGlazes ||
@@ -3768,7 +3772,7 @@ export default function ReservationsView({
                     prepaidStorageRequested) ? (
                     <div className="estimate-breakdown">
                       <div className="estimate-line">
-                        <span>Firing estimate</span>
+                        <span>Firing charge</span>
                         <span>{formatUsd(estimatedCostWithDelivery)}</span>
                       </div>
                       {useStudioGlazes && glazeAccessCost != null ? (
@@ -3811,7 +3815,7 @@ export default function ReservationsView({
                         </div>
                       ) : null}
                       <div className="estimate-line total">
-                        <span>Total estimate</span>
+                        <span>Total charge</span>
                         <span>{formatUsd(totalEstimate ?? 0)}</span>
                       </div>
                     </div>
@@ -3820,7 +3824,9 @@ export default function ReservationsView({
                     Based on: {kilnLabel} · {firingLabel} · {intakeModeLabel} ·{" "}
                     {formatHalfShelfCount(estimatedHalfShelvesRounded)}
                   </div>
-                  <div className="estimate-meta">We confirm final shelf count together at drop-off.</div>
+                  <div className="estimate-meta">
+                    Final shelf count is confirmed with you at drop-off.
+                  </div>
                   {selectedKiln?.id === "reduction-raku" ? (
                     <div className="estimate-meta">
                       Raku is always glaze pricing. We&apos;ll confirm space together.
@@ -3904,7 +3910,7 @@ export default function ReservationsView({
                   See available glazes
                 </a>
                 {useStudioGlazes && totalEstimate != null ? (
-                  <div className="addon-total">New estimate: {formatUsd(totalEstimate)}</div>
+                  <div className="addon-total">New total charge: {formatUsd(totalEstimate)}</div>
                 ) : null}
               </div>
               <div className="addon-section">
@@ -4061,7 +4067,7 @@ export default function ReservationsView({
                   pickupDeliveryRequested ||
                   returnDeliveryRequested) &&
                 totalEstimate != null ? (
-                  <div className="addon-total">New estimate: {formatUsd(totalEstimate)}</div>
+                  <div className="addon-total">New total charge: {formatUsd(totalEstimate)}</div>
                 ) : null}
               </div>
               </fieldset>
@@ -4241,6 +4247,7 @@ export default function ReservationsView({
                       <li>Tiny-load lane only: under one half shelf per check-in.</li>
                       <li>Placed last and only when donated shelf space is open.</li>
                       <li>Does not trigger firing schedules or move dates forward.</li>
+                      <li>If the load no longer fits this lane, staff will help move it into the right option.</li>
                       <li>Rush and paid shelf add-ons stay disabled in this mode.</li>
                     </ul>
                   </div>
@@ -4705,7 +4712,7 @@ export default function ReservationsView({
                       {`Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
                     </span>
                     <span>{`Mode: ${reservationIntakeLabel}${
-                      reservation.estimatedCost != null ? ` · Est. ${formatUsd(reservation.estimatedCost)}` : ""
+                      reservation.estimatedCost != null ? ` · Charge ${formatUsd(reservation.estimatedCost)}` : ""
                     }`}</span>
                   </div>
                   <div className="reservation-row">

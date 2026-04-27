@@ -2,12 +2,12 @@
 slug: "damage-responsibility"
 title: "Damage & responsibility"
 status: "active"
-version: "2026-04-02"
-effectiveDate: "2026-04-02"
-reviewDate: "2026-10-02"
+version: "2026-04-15"
+effectiveDate: "2026-04-15"
+reviewDate: "2026-10-15"
 owner: "Studio Operations"
 sourceUrl: "/policies/damage-responsibility/"
-summary: "Firing carries process variation. Damage reports are acknowledged with a documented review path, and any remedy is decided only after human review."
+summary: "Firing carries process variation. Damage reports are acknowledged with a documented review path, and confirmed studio-side mistakes default to generous firing-service credits after human review."
 tags:
   - "policies"
   - "kiln"
@@ -54,8 +54,9 @@ All pieces handled in the studio workflow from intake to pickup.
 - Ceramics can and do develop glaze and structural variation; some defects are process-level.
 - Damage related to unapproved materials, packaging, or non-compliance is generally outside studio
   coverage.
-- If damage is found to be due to handling or kiln/service error, the team reviews case-by-case.
+- If damage is found to be due to handling or kiln/service error, the team reviews the incident and the default financial remedy is a generous firing-service credit for the affected work.
 - Customer-facing damage reports should receive acknowledgment and a documented next review step once the incident is logged.
+- Larger remedies such as remake, replacement, or anything beyond the default service credit remain case-by-case and require human review.
 - No refund, remake, credit, replacement, or other remedy is guaranteed before human review closes with evidence and workflow context.
 - Customers should package for return or pickup transport with sufficient protection.
 
@@ -64,6 +65,7 @@ All pieces handled in the studio workflow from intake to pickup.
 - Include material compliance and condition requirements at submission.
 - Capture intake photos where possible for later review.
 - Keep incident status and resolution notes in timeline messages for accountability.
+- Keep the final review outcome explicit so billing/support can apply the correct credit path when studio fault is confirmed.
 
 ## Enforcement
 

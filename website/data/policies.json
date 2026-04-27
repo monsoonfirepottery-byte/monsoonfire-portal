@@ -35,14 +35,14 @@
   },
   {
     "title": "Damage & responsibility",
-    "body": "<p>Firing carries process variation. Damage reports are acknowledged with a documented review path, and any remedy is decided only after human review.</p>",
+    "body": "<p>Firing carries process variation. Damage reports are acknowledged with a documented review path, and confirmed studio-side mistakes default to generous firing-service credits after human review.</p>",
     "tags": [
       "policies",
       "kiln",
       "responsibility"
     ],
     "status": "active",
-    "effectiveDate": "2026-04-02"
+    "effectiveDate": "2026-04-15"
   },
   {
     "title": "Firing & scheduling policy",
@@ -68,14 +68,14 @@
   },
   {
     "title": "Payment, refunds, and cancellations",
-    "body": "<p>Paid requests can receive full refunds before work starts, unpaid cancellations are penalty-free, and started work is reviewed on a prorated basis.</p>",
+    "body": "<p>Firing services are charged when work is accepted into service, unpaid cancellations before acceptance are penalty-free, and confirmed studio-side firing mistakes are resolved with generous credits after review.</p>",
     "tags": [
       "payments",
       "billing",
       "policy"
     ],
     "status": "active",
-    "effectiveDate": "2026-04-02"
+    "effectiveDate": "2026-04-15"
   },
   {
     "title": "Safety & kiln rules",

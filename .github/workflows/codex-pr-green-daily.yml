@@ -1,4 +1,5 @@
 name: Codex PR Green Daily
+# side-effects: Apply mode may rerun GitHub Actions and update rolling issues; manual dispatch defaults to dry-run unless apply=true.
 
 on:
   workflow_dispatch:

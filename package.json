@@ -492,10 +492,10 @@
     "firebase-functions": "^7.2.5"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.1",
+    "@axe-core/playwright": "^4.11.2",
     "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.59.1",
-    "firebase-tools": "15.14.0",
+    "firebase-tools": "15.15.0",
     "playwright": "^1.58.2"
   },
   "overrides": {

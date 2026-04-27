@@ -83,6 +83,18 @@ import type {
   ControlTowerStartupScorecard,
   ControlTowerState,
 } from "../controlTower/types";
+import type { MemoryOpsSnapshot } from "../memoryOps/contracts";
+import {
+  buildMemoryOpsAttention,
+  buildMemoryOpsEvents,
+  buildMemoryOpsNextMoves,
+  buildMemoryOpsServiceCards,
+  summarizeMemoryOpsForControlTower,
+} from "../memoryOps/controlTower";
+import {
+  approveMemoryOpsAction,
+  readMemoryOpsSnapshot,
+} from "../memoryOps/state";
 import { draftDiscordSupportReply, getSupportAgentProfile } from "../supportOps/discord";
 import type { AgentRuntimeSummary, RunLedgerEvent } from "../agentRuntime/contracts";
 import { buildAgentRuntimeRunDetail } from "../agentRuntime/detail";
@@ -1205,6 +1217,7 @@ function enrichControlTowerState(
   memoryBrief: ControlTowerMemoryBrief,
   startupScorecard: ControlTowerStartupScorecard | null,
   memoryHealth: ControlTowerMemoryHealth | null,
+  memoryOpsSnapshot: MemoryOpsSnapshot | null,
   agentRuntime: AgentRuntimeSummary | null,
   hosts: ControlTowerHostCard[],
   partner: PartnerBrief | null,
@@ -1225,6 +1238,10 @@ function enrichControlTowerState(
       target: approval.target,
     }));
   const memoryAttention = buildMemoryHealthAttention(memoryHealth);
+  const memoryOpsSummary = summarizeMemoryOpsForControlTower(memoryOpsSnapshot);
+  const memoryOpsAttention = buildMemoryOpsAttention(memoryOpsSnapshot);
+  const memoryOpsMoves = buildMemoryOpsNextMoves(memoryOpsSnapshot);
+  const memoryOpsServices = buildMemoryOpsServiceCards(memoryOpsSnapshot);
   const agentRuntimeAttention = buildAgentRuntimeAttention(agentRuntime);
   const hostAttention = buildHostAttention(hosts);
   const partnerAttention = buildPartnerAttention(partner);
@@ -1233,8 +1250,8 @@ function enrichControlTowerState(
   const agentRuntimeMoves = buildAgentRuntimeNextActions(agentRuntime);
   const partnerMoves = buildPartnerNextMoves(partner);
   const mergedActions = dedupeNextActions(
-    [...partnerMoves, ...agentRuntimeMoves, ...memoryHealthMoves, ...memoryNextMoves, ...state.actions],
-    6,
+    [...partnerMoves, ...agentRuntimeMoves, ...memoryHealthMoves, ...memoryNextMoves, ...memoryOpsMoves, ...state.actions],
+    8,
   );
   const mergedBoard = agentRuntime?.boardRow
     ? [
@@ -1257,9 +1274,11 @@ function enrichControlTowerState(
     memoryBrief,
     startupScorecard,
     memoryHealth,
+    memoryOps: memoryOpsSummary,
     agentRuntime,
     hosts,
     partner,
+    services: [...memoryOpsServices, ...state.services],
     board: nextBoard,
     events: mergedEvents,
     recentChanges: mergedEvents.slice(0, 6),
@@ -1270,6 +1289,7 @@ function enrichControlTowerState(
         state.counts.needsAttention
           + approvalAttention.length
           + memoryAttention.length
+          + memoryOpsAttention.length
           + hostAttention.length
           + agentRuntimeAttention.length
           + partnerAttention.length,
@@ -1280,6 +1300,7 @@ function enrichControlTowerState(
         ...partnerAttention,
         ...hostAttention,
         ...agentRuntimeAttention,
+        ...memoryOpsAttention,
         ...memoryAttention,
         ...approvalAttention,
         ...state.overview.needsAttention,
@@ -2010,7 +2031,11 @@ export function startHttpServer(params: {
         logger.warn(`control tower memory health unavailable: ${message}`);
       }
     }
-    const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals, agentRuntime, hosts, partner);
+    const memoryOpsSnapshot = readMemoryOpsSnapshot(resolvedControlTowerRepoRoot);
+    const syntheticEvents = [
+      ...buildSyntheticControlTowerEvents(memoryBrief, approvals, agentRuntime, hosts, partner),
+      ...buildMemoryOpsEvents(memoryOpsSnapshot),
+    ];
     const state = enrichControlTowerState(
       stateWithMemory,
       syntheticEvents,
@@ -2018,6 +2043,7 @@ export function startHttpServer(params: {
       memoryBrief,
       startupScorecard,
       memoryHealth,
+      memoryOpsSnapshot,
       agentRuntime,
       hosts,
       partner,
@@ -3622,6 +3648,105 @@ export function startHttpServer(params: {
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(JSON.stringify({ ok: false, message }));
         }
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/memory/ops/status") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const snapshot = readMemoryOpsSnapshot(resolvedControlTowerRepoRoot);
+        let stats: MemoryStats | null = null;
+        let statsError: string | null = null;
+        if (memoryService) {
+          try {
+            stats = await withRouteTimeout(memoryService.stats({}), 1_500, "memory ops status stats");
+          } catch (error) {
+            statsError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            status: {
+              snapshot,
+              lastSidecarHeartbeat: snapshot?.supervisor.heartbeatAt ?? null,
+              pressure: memoryPressureSnapshot(),
+              stats,
+              statsError,
+            },
+          })
+        );
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/memory/ops/actions") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const snapshot = readMemoryOpsSnapshot(resolvedControlTowerRepoRoot);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            actions: snapshot?.actions ?? [],
+            generatedAt: snapshot?.generatedAt ?? null,
+            heartbeatAt: snapshot?.supervisor.heartbeatAt ?? null,
+          })
+        );
+        return;
+      }
+
+      const memoryOpsApproveMatch = url.pathname.match(/^\/api\/memory\/ops\/actions\/([^/]+)\/approve$/);
+      if (method === "POST" && memoryOpsApproveMatch) {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const payload = await readJsonBody(req);
+        const actionId = decodeURIComponent(memoryOpsApproveMatch[1] ?? "");
+        const rationale = typeof payload.rationale === "string" ? payload.rationale.trim() : "";
+        const actor = auth.principal?.uid ?? "staff:unknown";
+        const result = approveMemoryOpsAction({
+          repoRoot: resolvedControlTowerRepoRoot,
+          actionId,
+          actor,
+          rationale,
+        });
+        if (!result.ok) {
+          statusCode = result.statusCode;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: result.message }));
+          return;
+        }
+        await appendControlTowerAudit(
+          auth.principal,
+          "studio_ops.memory_ops.action_approved",
+          rationale || `Approved memory ops action ${actionId}.`,
+          {
+            actionId,
+            policy: result.action.policy,
+            executionKind: result.action.execution.kind,
+            receiptId: result.receipt.id,
+          },
+        );
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, action: result.action, receipt: result.receipt, snapshot: result.snapshot }));
         return;
       }
 
@@ -6787,6 +6912,37 @@ export function startHttpServer(params: {
         const serviceId = decodeURIComponent(controlTowerServiceActionMatch[1] || "");
         const body = await readJsonBody(req);
         const action = toTrimmedString(body.action) || "status";
+        const memoryOpsServiceIds = new Set([
+          "memory-responsiveness",
+          "memory-dba",
+          "memory-docker",
+          "memory-stuck-items",
+          "memory-ops-approvals",
+          "memory-ops-sidecar",
+        ]);
+        if (memoryOpsServiceIds.has(serviceId)) {
+          const snapshot = readMemoryOpsSnapshot(resolvedControlTowerRepoRoot);
+          if (action !== "status") {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Memory ops recovery actions must use /api/memory/ops/actions." }));
+            return;
+          }
+          await appendControlTowerAudit(
+            auth.principal,
+            "studio_ops.memory_ops.status_refreshed",
+            `Refreshed ${serviceId}.`,
+            {
+              serviceId,
+              action,
+              heartbeatAt: snapshot?.supervisor.heartbeatAt ?? null,
+            },
+          );
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, message: "Memory ops sidecar status refreshed.", snapshot }));
+          return;
+        }
         const result = runControlTowerServiceAction(
           { service: serviceId, action },
           { hostUser: resolvedControlTowerHostUser, runner: controlTowerRunner },

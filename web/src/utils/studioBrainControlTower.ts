@@ -471,6 +471,18 @@ export type ControlTowerOverview = {
   recentEvents: ControlTowerEvent[];
 };
 
+export type ControlTowerMemoryOpsSummary = {
+  status: "healthy" | "degraded" | "critical" | "unknown";
+  summary: string;
+  heartbeatAt: string | null;
+  findingCount: number;
+  criticalFindingCount: number;
+  warningFindingCount: number;
+  pendingApprovalCount: number;
+  stuckItemCount: number;
+  services: Array<{ id: string; label: string; health: "healthy" | "degraded" | "critical" | "unknown"; summary: string }>;
+};
+
 export type ControlTowerState = {
   generatedAt: string;
   theme: ControlTowerTheme;
@@ -505,6 +517,7 @@ export type ControlTowerState = {
   memoryBrief: ControlTowerMemoryBrief;
   startupScorecard: ControlTowerStartupScorecard | null;
   memoryHealth?: Record<string, unknown> | null;
+  memoryOps?: ControlTowerMemoryOpsSummary | null;
   agentRuntime: AgentRuntimeRunSummary | null;
   hosts: ControlTowerHostCard[];
   partner: PartnerBrief | null;

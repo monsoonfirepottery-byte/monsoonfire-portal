@@ -1,6 +1,7 @@
 import type { AuditEvent, OverseerRunRecord } from "../stores/interfaces";
 import type { AgentRuntimeSummary } from "../agentRuntime/contracts";
 import type { PartnerBrief } from "../partner/contracts";
+import type { MemoryOpsControlTowerSummary } from "../memoryOps/controlTower";
 
 export type ControlTowerAgentStatus = "working" | "waiting" | "idle" | "parked" | "error";
 export type ControlTowerHealth = "healthy" | "waiting" | "error" | "neutral";
@@ -467,6 +468,7 @@ export type ControlTowerState = {
   memoryBrief: ControlTowerMemoryBrief;
   startupScorecard: ControlTowerStartupScorecard | null;
   memoryHealth: ControlTowerMemoryHealth | null;
+  memoryOps: MemoryOpsControlTowerSummary | null;
   agentRuntime: AgentRuntimeSummary | null;
   hosts: ControlTowerHostCard[];
   partner: PartnerBrief | null;

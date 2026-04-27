@@ -27,6 +27,9 @@ Use this runbook for the broader Studio Brain host-control stack that sits behin
   - `studio-brain-disk-alert.timer`
   - `studio-brain-healthcheck.timer`
   - `studio-brain-reboot-watch.timer`
+- the user-level Studio Brain memory ops sidecar:
+  - `studio-brain-memory-ops-supervisor.service`
+  - `studio-brain-memory-ops-supervisor.timer`
 
 ## Commands
 
@@ -78,6 +81,8 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
   Default: `https://portal.monsoonfire.com/staff/cockpit/control-tower`
 - `STUDIO_BRAIN_MOSH_UDP_RANGE`
   Default: `60000:61000`
+- `STUDIO_BRAIN_MEMORY_OPS_INTERVAL_MS`
+  Default: `60000`
 
 ## Notes
 
@@ -88,6 +93,7 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
 - `deploy-runtime` calls [`scripts/deploy-studio-brain-host.py`](./STUDIO_BRAIN_HOST_DEPLOY.md) from the current checkout, which is the repo-backed way to clear live runtime and integrity drift on the host.
 - `install-stack` uses the existing SSH key path, escalates with the stored sudo password, and then runs the tracked Ansible playbook locally on the Ubuntu host.
 - `install-stack` refreshes the tracked monitoring stack, the base CUPS print stack, and the periodic backup/disk/healthcheck timers, so `studio:ops:install` is the repo-backed way to reconcile those host resources after the runtime is current.
+- `install-stack` also enables the user-level memory ops sidecar. The sidecar writes `output/studio-brain/memory-ops/latest.json`, `state.json`, and `events.jsonl`, and it executes only safe repairs unless a Control Tower approval has marked a recovery action as approved.
 - `reconcile` is the normal merge/deploy sync cycle: full runtime deploy first, then stack install, then a fresh status snapshot.
 - `status` now reports the remote checkout branch, head commit, and tracked dirty-file count under `workspace` so stale host branches are visible before they become integrity noise.
 - `scripts/install-studiobrain-healthcheck.sh` now installs the backup, disk-alert, healthcheck, and reboot-watch timers as one tracked bundle. The reboot watcher checks `/var/run/reboot-required` every 15 minutes and sends at most one Discord update per UTC day, only when the reboot-required state has changed, which is safer for the encrypted Studio Brain host than unattended auto-reboots.

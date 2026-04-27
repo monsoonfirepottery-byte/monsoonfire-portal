@@ -75,6 +75,7 @@ STATIC_SUPPORT_PATHS = (
     REPO_ROOT / "scripts" / "install-studiobrain-discord-relay.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-healthcheck.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-monitoring.sh",
+    REPO_ROOT / "scripts" / "install-studiobrain-memory-ops.sh",
     REPO_ROOT / "config" / "studiobrain" / "discord" / "agentcontrol-runtime-catalog.json",
     REPO_ROOT / "config" / "studiobrain" / "discord" / "agentcontrol-memes.json",
     REPO_ROOT / "config" / "studiobrain" / "fail2ban" / "sshd.local",
@@ -88,6 +89,8 @@ STATIC_SUPPORT_PATHS = (
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.service",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.timer",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.sh",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "user" / "studio-brain-memory-ops-supervisor.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "user" / "studio-brain-memory-ops-supervisor.timer",
 )
 HOST_DRIFT_ALLOWLIST_PATH = REPO_ROOT / "studio-brain" / "host-drift-allowlist.json"
 DISCORD_ENV_PATH = REPO_ROOT / "secrets" / "studio-brain" / "discord-mcp.env"
@@ -555,6 +558,41 @@ def install_remote_discord_relay(ssh: "paramiko.SSHClient") -> dict[str, object]
     }
 
 
+def install_remote_memory_ops(ssh: "paramiko.SSHClient") -> dict[str, object]:
+    local_installer = REPO_ROOT / "scripts" / "install-studiobrain-memory-ops.sh"
+    if not local_installer.exists():
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "source_missing",
+            "message": "Current checkout does not include scripts/install-studiobrain-memory-ops.sh; leaving any existing host sidecar install unchanged.",
+            "stdout": [],
+            "stderr": [],
+            "serviceState": [],
+            "timerState": [],
+        }
+    command = f"cd {REMOTE_PARENT} && bash ./scripts/install-studiobrain-memory-ops.sh"
+    out, err, code = ssh_exec(ssh, command, timeout=180)
+    service_state, _, _ = ssh_exec(
+        ssh,
+        "systemctl --user show -p ActiveState -p SubState -p NRestarts studio-brain-memory-ops-supervisor.service",
+        timeout=30,
+    )
+    timer_state, _, _ = ssh_exec(
+        ssh,
+        "systemctl --user show -p ActiveState -p SubState -p NextElapseUSecRealtime studio-brain-memory-ops-supervisor.timer",
+        timeout=30,
+    )
+    return {
+        "ok": code == 0,
+        "exitCode": code,
+        "stdout": [line for line in out.splitlines() if line.strip()][-20:],
+        "stderr": [line for line in err.splitlines() if line.strip()][-20:],
+        "serviceState": [line for line in service_state.splitlines() if line.strip()],
+        "timerState": [line for line in timer_state.splitlines() if line.strip()],
+    }
+
+
 def run_remote_json(ssh: "paramiko.SSHClient", command: str, timeout: int = 120) -> dict[str, object]:
     wrapped_command = f"""
 python3 - <<'PY'
@@ -905,6 +943,7 @@ tar -xzf {remote_archive}
         remote_admin_token, admin_token_source = ensure_remote_admin_token(ssh)
         restart = restart_remote(ssh, env["STUDIO_BRAIN_MCP_BASE_URL"])
         discord_relay = install_remote_discord_relay(ssh)
+        memory_ops = install_remote_memory_ops(ssh)
         backup_refresh = run_remote_json(
             ssh,
             f"cd {REMOTE_PARENT} && node ./scripts/studiobrain-backup-drill.mjs verify --json --strict --mode live_host_authoritative --approved-remote-runner",
@@ -974,6 +1013,8 @@ tar -xzf {remote_archive}
             blockers.append("ssh_fail2ban_allowlist_install_failed")
         if not discord_relay["ok"]:
             blockers.append("discord_relay_install_failed")
+        if not memory_ops["ok"]:
+            blockers.append("memory_ops_sidecar_install_failed")
         if not posture["ok"]:
             blockers.append("authoritative_posture_failed")
         if not backup_freshness["ok"]:
@@ -994,6 +1035,7 @@ tar -xzf {remote_archive}
             "runtimeEnvSync": runtime_env_sync,
             "restart": restart,
             "discordRelay": discord_relay,
+            "memoryOps": memory_ops,
             "backupRefresh": backup_refresh,
             "opsCockpit": ops_cockpit,
             "posture": posture,

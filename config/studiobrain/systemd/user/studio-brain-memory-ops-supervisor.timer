@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep Studio Brain memory ops supervisor active
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=5m
+Unit=studio-brain-memory-ops-supervisor.service
+
+[Install]
+WantedBy=timers.target

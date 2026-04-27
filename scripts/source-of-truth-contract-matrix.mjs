@@ -113,14 +113,14 @@ const androidExtraRequestResponse = {
 };
 
 addFinding(
-  "warn",
+  "warning",
   "diff",
   "API doc endpoint coverage vs web contract",
   {
     missingInWeb: docsMissingFromWeb,
     missingInDoc: webMissingFromDocs,
   },
-  docsMissingFromWeb.length === 0 && webMissingFromDocs.length === 0 ? "pass" : "warn",
+  docsMissingFromWeb.length === 0 && webMissingFromDocs.length === 0 ? "pass" : "warning",
 );
 
 addFinding(
@@ -134,18 +134,18 @@ addFinding(
 );
 
 addFinding(
-  "warn",
+  "warning",
   "backend-drift",
   "Backend methods without explicit web/doc contract surface",
   {
     backendOnly: backendLegacyOnly.slice(0, 80),
     truncated: backendLegacyOnly.length > 80,
   },
-  backendLegacyOnly.length === 0 ? "pass" : "warn",
+  backendLegacyOnly.length === 0 ? "pass" : "warning",
 );
 
 addFinding(
-  "warn",
+  "warning",
   "mobile-parity",
   "iOS contract mirror mismatch (web request/response type names)",
   {
@@ -154,11 +154,11 @@ addFinding(
     iosExtraRequestTypes: iosExtraRequestResponse.request.slice(0, 60),
     iosExtraResponseTypes: iosExtraRequestResponse.response.slice(0, 60),
   },
-  iosMissingRequestResponse.request.length === 0 && iosMissingRequestResponse.response.length === 0 ? "pass" : "warn",
+  iosMissingRequestResponse.request.length === 0 && iosMissingRequestResponse.response.length === 0 ? "pass" : "warning",
 );
 
 addFinding(
-  "warn",
+  "warning",
   "mobile-parity",
   "Android contract mirror mismatch (web request/response type names)",
   {
@@ -169,18 +169,18 @@ addFinding(
   },
   androidMissingRequestResponse.request.length === 0 && androidMissingRequestResponse.response.length === 0
     ? "pass"
-    : "warn",
+    : "warning",
 );
 
 addFinding(
-  "warn",
+  "warning",
   "route-coverage",
   "Docs/API routes not represented in API V1 allowlist",
   {
     docsRouteSet: [...docsRoutePaths].slice(0, 80),
     apiV1RouteCount: backendRoutePaths.length,
   },
-  webMethods.size === 0 || backendRoutePaths.length > 0 ? "pass" : "warn",
+  webMethods.size === 0 || backendRoutePaths.length > 0 ? "pass" : "warning",
 );
 
 report.diffs = {
@@ -576,11 +576,13 @@ function deriveMethodsFromRoute(route) {
 }
 
 function addFinding(severity, category, message, details = {}, status = severity) {
+  const normalizedSeverity = severity === "warn" ? "warning" : severity;
+  const normalizedStatus = status === "warn" ? "warning" : status;
   report.checks.push({
-    severity,
+    severity: normalizedSeverity,
     category,
     message,
-    status,
+    status: normalizedStatus,
     details,
   });
 }
@@ -647,7 +649,7 @@ function formatText(payload) {
   lines.push(`checks=${payload.checks.length}, errors=${countSeverities("error", payload.checks)}, warnings=${countSeverities("warning", payload.checks)}`);
   lines.push("");
   for (const check of payload.checks) {
-    const prefix = check.status === "error" ? "[ERROR]" : check.status === "warn" ? "[WARN]" : "[PASS]";
+    const prefix = check.status === "error" ? "[ERROR]" : check.status === "warning" ? "[WARN]" : "[PASS]";
     lines.push(`${prefix} ${check.category}: ${check.message}`);
     if (check.details && Object.keys(check.details).length > 0) {
       lines.push(`  ${JSON.stringify(check.details)}`);

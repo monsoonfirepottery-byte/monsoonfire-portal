@@ -11,6 +11,7 @@ function parseArgs(argv) {
     prefix: "pr",
     keep: 60,
     maxDelete: 30,
+    dryRun: false,
     json: false,
   };
 
@@ -20,6 +21,10 @@ function parseArgs(argv) {
     if (!arg) continue;
     if (arg === "--json") {
       options.json = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      options.dryRun = true;
       continue;
     }
     if (arg === "--project") {
@@ -220,8 +225,10 @@ async function main() {
     keep: options.keep,
     maxDelete: options.maxDelete,
     credentialSource: auth.credentialSource,
+    dryRun: options.dryRun,
     totalChannels: 0,
     prefixedChannels: 0,
+    plannedDelete: [],
     deleted: [],
     skipped: [],
     errors: [],
@@ -250,6 +257,10 @@ async function main() {
     const prunedCandidates = prChannels.slice(options.keep, options.keep + options.maxDelete);
     for (const channel of prunedCandidates) {
       try {
+        if (options.dryRun) {
+          output.plannedDelete.push(channel.id);
+          continue;
+        }
         await runCommand(
           "npx",
           [
@@ -291,6 +302,9 @@ async function main() {
   console.log(
     `firebase-preview-prune: project=${output.project} prefixed=${output.prefixedChannels} deleted=${output.deleted.length}`,
   );
+  if (output.dryRun && output.plannedDelete.length > 0) {
+    console.log(`dry-run planned deletions: ${output.plannedDelete.join(", ")}`);
+  }
   if (output.skipped.length > 0) {
     for (const note of output.skipped) {
       console.log(`- ${note}`);

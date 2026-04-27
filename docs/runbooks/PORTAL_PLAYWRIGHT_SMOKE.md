@@ -159,4 +159,4 @@ node ./scripts/portal-playwright-smoke.mjs --base-url https://staging.example.co
 
 ## Non-staff QA loop
 For full release readiness (functionality + smoke + UX), use:
-- [Portal QA Loop - Non-Staff Pages](/home/wuff/monsoonfire-portal/docs/runbooks/PORTAL_QA_LOOP_NON_STAFF.md)
+- [Portal QA Loop - Non-Staff Pages](PORTAL_QA_LOOP_NON_STAFF.md)

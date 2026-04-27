@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseCodexConfigToml, readCanonicalSetFromDocs } from "./audit-codex-mcp.mjs";
+import {
+  collectRepoCodexConfigErrors,
+  parseCodexConfigToml,
+  readCanonicalSetFromDocs,
+} from "./audit-codex-mcp.mjs";
 
 test("parseCodexConfigToml ignores nested MCP tool tables while keeping quoted server ids", () => {
   const toml = `
@@ -47,4 +51,32 @@ test("readCanonicalSetFromDocs accepts hyphenated MCP ids and ignores wildcard a
   assert.equal(keys.has("open_memory"), true);
   assert.equal(keys.has("studio-brain-memory"), true);
   assert.equal(keys.has("agentOrchestration"), false);
+});
+
+test("collectRepoCodexConfigErrors rejects non-canonical and machine-specific MCP entries", () => {
+  const canonical = new Set(["open_memory", "studio-brain-memory"]);
+  const toml = `
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.open_memory]
+command = "/bin/bash"
+args = ["/home/wuff/monsoonfire-portal/scripts/open-memory-mcp-launch.sh"]
+enabled = true
+`;
+
+  const errors = collectRepoCodexConfigErrors(toml, canonical);
+
+  assert.equal(errors.some((entry) => entry.includes("mcp_servers.context7")), true);
+  assert.equal(errors.some((entry) => entry.includes("/home/wuff/monsoonfire-portal")), true);
+});
+
+test("collectRepoCodexConfigErrors allows repo config without MCP server blocks", () => {
+  const canonical = new Set(["open_memory", "studio-brain-memory"]);
+  const toml = `
+[features]
+multi_agent = true
+`;
+
+  assert.deepEqual(collectRepoCodexConfigErrors(toml, canonical), []);
 });

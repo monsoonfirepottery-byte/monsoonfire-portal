@@ -5,6 +5,8 @@ const STUDIO_BRAIN_ENV = (import.meta.env ?? {}) as ImportMetaEnv;
 const STUDIO_BRAIN_BASE_URL_OVERRIDE_KEY = "mf:studio-brain-base-url";
 const LOCAL_STUDIO_BRAIN_PORT = 8787;
 const LOCAL_LOOPBACK_IPv6 = "[::1]";
+const SAME_ORIGIN_STUDIO_BRAIN_BRIDGE_PATH = "/__studio-brain";
+const SAME_ORIGIN_STUDIO_BRAIN_BRIDGE_HOSTS = new Set(["portal.monsoonfire.com"]);
 
 type ResolveStudioBrainOptions = {
   configuredBaseUrl?: string;
@@ -112,6 +114,19 @@ function resolveLocalStudioBrainBaseUrl(browserHostname?: string): string {
   return host ? `http://${host}:${LOCAL_STUDIO_BRAIN_PORT}` : "";
 }
 
+function resolveSameOriginStudioBrainBridgeBaseUrl(browserHostname?: string): string {
+  const hostname = resolveBrowserHostname(browserHostname);
+  if (!SAME_ORIGIN_STUDIO_BRAIN_BRIDGE_HOSTS.has(hostname)) {
+    return "";
+  }
+
+  if (typeof window !== "undefined" && window.location.hostname.toLowerCase() === hostname) {
+    return trimRightSlash(window.location.origin) + SAME_ORIGIN_STUDIO_BRAIN_BRIDGE_PATH;
+  }
+
+  return `https://${hostname}${SAME_ORIGIN_STUDIO_BRAIN_BRIDGE_PATH}`;
+}
+
 function isLocalStudioBrainUrl(value: string): boolean {
   const hostname = parseStudioBrainHostname(value);
   if (!hostname) return false;
@@ -164,6 +179,16 @@ function resolveStudioBrainBaseUrlFromContext({
     if (localBaseUrl) {
       return {
         baseUrl: localBaseUrl,
+        configured: false,
+        enabled: true,
+        reason: "",
+      };
+    }
+
+    const sameOriginBridgeBaseUrl = resolveSameOriginStudioBrainBridgeBaseUrl(browserHost);
+    if (sameOriginBridgeBaseUrl) {
+      return {
+        baseUrl: sameOriginBridgeBaseUrl,
         configured: false,
         enabled: true,
         reason: "",

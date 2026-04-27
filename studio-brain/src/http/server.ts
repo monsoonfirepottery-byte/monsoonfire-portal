@@ -41,6 +41,10 @@ import { recordOperatorAction } from "../kiln/services/manualEvents";
 import { createFiringRun } from "../kiln/services/orchestration";
 import { buildFiringRunDetail, buildKilnDetail, buildKilnOverview } from "../kiln/services/overview";
 import { renderKilnCommandPage } from "../kiln/ui/renderKilnCommandPage";
+import type { OpsService } from "../ops/service";
+import type { OpsCapability, OpsDegradeMode, GrowthExperiment, ImprovementCase, OpsHumanRole, OpsPortalRole, ProofMode, TaskEscapeHatch } from "../ops/contracts";
+import { deriveOpsCapabilitiesFromClaims, deriveOpsRolesFromClaims, derivePortalRoleFromClaims } from "../ops/staffData";
+import { renderOpsPortalChoicePage, renderOpsPortalPage } from "../ops/ui/renderOpsPortalPage";
 import type { SupportOpsStore } from "../supportOps/store";
 import { MemoryValidationError } from "../memory/service";
 import {
@@ -71,21 +75,31 @@ import { deriveControlTowerState, deriveRoomDetail } from "../controlTower/deriv
 import type {
   ControlTowerApprovalItem,
   ControlTowerEvent,
+  ControlTowerHostCard,
   ControlTowerMemoryHealth,
   ControlTowerMemoryBrief,
   ControlTowerNextAction,
+  ControlTowerRawState,
   ControlTowerStartupScorecard,
   ControlTowerState,
 } from "../controlTower/types";
 import { draftDiscordSupportReply, getSupportAgentProfile } from "../supportOps/discord";
 import type { AgentRuntimeSummary, RunLedgerEvent } from "../agentRuntime/contracts";
+import { buildAgentRuntimeRunDetail } from "../agentRuntime/detail";
 import {
   appendAgentRuntimeEvent,
   listAgentRuntimeSummaries,
+  normalizeAgentRuntimeRunId,
   readAgentRuntimeEvents,
   readLatestAgentRuntimeSummary,
   writeAgentRuntimeSummary,
 } from "../agentRuntime/files";
+import {
+  listControlTowerHostHeartbeats,
+  normalizeControlTowerHostId,
+  writeControlTowerHostHeartbeat,
+  type ControlTowerHostHeartbeat,
+} from "../controlTower/hosts";
 import type { PartnerBrief, PartnerCheckinAction } from "../partner/contracts";
 import { readPartnerCheckins } from "../partner/files";
 import {
@@ -428,6 +442,72 @@ function buildAgentRuntimeNextActions(agentRuntime: AgentRuntimeSummary | null):
   ];
 }
 
+function buildServerHostCard(raw: ControlTowerRawState, agentRuntime: AgentRuntimeSummary | null): ControlTowerHostCard {
+  const degradedServices = raw.services.filter((service) => service.status === "error").length;
+  const health: ControlTowerHostCard["health"] =
+    raw.ops.overallStatus === "error" || raw.ops.overallStatus === "waiting" ? "degraded" : "healthy";
+  return {
+    hostId: "studio-brain-server",
+    label: "Studio Brain Server",
+    environment: "server",
+    role: "control-plane",
+    connectivity: "online",
+    health,
+    lastSeenAt: raw.generatedAt,
+    ageMinutes: ageMinutesSince(raw.generatedAt),
+    currentRunId: agentRuntime?.runId ?? null,
+    agentCount: Math.max(raw.rooms.length, agentRuntime ? 1 : 0),
+    version: null,
+    summary:
+      degradedServices > 0
+        ? `${degradedServices} service${degradedServices === 1 ? "" : "s"} degraded across the control plane.`
+        : `${raw.rooms.length} active room${raw.rooms.length === 1 ? "" : "s"} visible in the control plane.`,
+    metrics: {
+      cpuPct: null,
+      memoryPct: null,
+      load1: null,
+    },
+  };
+}
+
+function dedupeHosts(hosts: ControlTowerHostCard[]): ControlTowerHostCard[] {
+  const seen = new Set<string>();
+  return hosts.filter((host) => {
+    const key = `${host.environment}:${host.hostId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildHostAttention(hosts: ControlTowerHostCard[]): Array<{
+  id: string;
+  title: string;
+  why: string;
+  ageMinutes: number | null;
+  severity: "info" | "warning" | "critical";
+  actionLabel: string;
+  target: ControlTowerNextAction["target"];
+}> {
+  return hosts
+    .filter((host) => host.connectivity !== "online" || host.health === "degraded" || host.health === "offline")
+    .slice(0, 3)
+    .map((host) => ({
+      id: `attention:host:${host.hostId}`,
+      title:
+        host.connectivity === "offline"
+          ? `${host.label} went offline`
+          : host.connectivity === "stale"
+            ? `${host.label} heartbeat is stale`
+            : `${host.label} is degraded`,
+      why: clipText(host.summary, 180),
+      ageMinutes: host.ageMinutes,
+      severity: host.connectivity === "offline" || host.health === "offline" ? "critical" : "warning",
+      actionLabel: host.currentRunId ? "Open runtime" : "Inspect events",
+      target: host.currentRunId ? { type: "ops", action: "agent-runtime" } : { type: "ops", action: "events" },
+    }));
+}
+
 function buildControlTowerApprovals(
   proposals: ActionProposal[],
   capabilityDefinitions: CapabilityDefinition[],
@@ -449,6 +529,8 @@ function buildControlTowerApprovals(
         owner: policy?.owner || proposal.tenantId,
         approvalMode: policy?.approvalMode || (definition?.requiresApproval ? "required" : "exempt"),
         risk: definition?.risk || "medium",
+        previewInput: proposal.preview.input,
+        expectedEffects: proposal.preview.expectedEffects,
         target: { type: "ops", action: "approvals" },
       } satisfies ControlTowerApprovalItem;
     })
@@ -459,6 +541,8 @@ function buildControlTowerApprovals(
 function buildSyntheticControlTowerEvents(
   memoryBrief: ControlTowerMemoryBrief,
   approvals: ControlTowerApprovalItem[],
+  agentRuntime: AgentRuntimeSummary | null,
+  hosts: ControlTowerHostCard[],
   partner: PartnerBrief | null = null,
 ): ControlTowerEvent[] {
   const output: ControlTowerEvent[] = [];
@@ -558,6 +642,64 @@ function buildSyntheticControlTowerEvents(
           status: approval.status,
           approvalMode: approval.approvalMode,
           risk: approval.risk,
+        },
+      });
+    });
+
+  if (agentRuntime) {
+    output.push({
+      id: `agent-runtime:${agentRuntime.runId}:${agentRuntime.updatedAt}`,
+      at: agentRuntime.updatedAt,
+      kind: "session",
+      type: "run.status",
+      runId: agentRuntime.runId,
+      agentId: agentRuntime.agentId ?? "agent-runtime",
+      channel: "codex",
+      occurredAt: agentRuntime.updatedAt,
+      severity: agentRuntime.status === "failed" ? "critical" : agentRuntime.status === "blocked" ? "warning" : "info",
+      title: `${agentRuntime.status}: ${agentRuntime.title}`,
+      summary: clipText(agentRuntime.activeBlockers[0] || agentRuntime.boardRow?.next || agentRuntime.goal, 220),
+      actor: agentRuntime.agentId ?? "agent-runtime",
+      roomId: null,
+      serviceId: null,
+      actionLabel: "Open runtime",
+      sourceAction: "control_tower.agent_runtime",
+      payload: {
+        hostId: agentRuntime.hostId ?? null,
+        environment: agentRuntime.environment ?? null,
+        riskLane: agentRuntime.riskLane,
+        blocker: agentRuntime.activeBlockers[0] ?? null,
+      },
+    });
+  }
+
+  hosts
+    .filter((host) => host.connectivity !== "online" || host.health === "degraded" || host.health === "offline")
+    .slice(0, 4)
+    .forEach((host) => {
+      output.push({
+        id: `host:${host.hostId}:${host.lastSeenAt || host.health}`,
+        at: host.lastSeenAt || new Date().toISOString(),
+        kind: "session",
+        type: "health.changed",
+        runId: host.currentRunId,
+        agentId: null,
+        channel: "ops",
+        occurredAt: host.lastSeenAt || new Date().toISOString(),
+        severity: host.connectivity === "offline" || host.health === "offline" ? "critical" : "warning",
+        title: `${host.label} ${host.connectivity === "online" ? host.health : host.connectivity}`,
+        summary: clipText(host.summary, 220),
+        actor: host.hostId,
+        roomId: null,
+        serviceId: null,
+        actionLabel: host.currentRunId ? "Open runtime" : "Inspect events",
+        sourceAction: "control_tower.host_heartbeat",
+        payload: {
+          hostId: host.hostId,
+          environment: host.environment,
+          connectivity: host.connectivity,
+          health: host.health,
+          currentRunId: host.currentRunId,
         },
       });
     });
@@ -1066,6 +1208,7 @@ function enrichControlTowerState(
   startupScorecard: ControlTowerStartupScorecard | null,
   memoryHealth: ControlTowerMemoryHealth | null,
   agentRuntime: AgentRuntimeSummary | null,
+  hosts: ControlTowerHostCard[],
   partner: PartnerBrief | null,
 ): ControlTowerState {
   const mergedEvents = [...syntheticEvents, ...state.events]
@@ -1085,6 +1228,7 @@ function enrichControlTowerState(
     }));
   const memoryAttention = buildMemoryHealthAttention(memoryHealth);
   const agentRuntimeAttention = buildAgentRuntimeAttention(agentRuntime);
+  const hostAttention = buildHostAttention(hosts);
   const partnerAttention = buildPartnerAttention(partner);
   const memoryNextMoves = buildMemoryActionNextMoves(memoryBrief, startupScorecard);
   const memoryHealthMoves = buildMemoryHealthNextMoves(memoryHealth);
@@ -1097,6 +1241,7 @@ function enrichControlTowerState(
   const mergedBoard = agentRuntime?.boardRow
     ? [
         {
+          runId: agentRuntime.runId,
           roomId: null,
           sessionName: null,
           ...agentRuntime.boardRow,
@@ -1115,6 +1260,7 @@ function enrichControlTowerState(
     startupScorecard,
     memoryHealth,
     agentRuntime,
+    hosts,
     partner,
     board: nextBoard,
     events: mergedEvents,
@@ -1124,15 +1270,17 @@ function enrichControlTowerState(
       ...state.counts,
       needsAttention:
         state.counts.needsAttention
-        + approvalAttention.length
-        + memoryAttention.length
-        + agentRuntimeAttention.length
-        + partnerAttention.length,
+          + approvalAttention.length
+          + memoryAttention.length
+          + hostAttention.length
+          + agentRuntimeAttention.length
+          + partnerAttention.length,
     },
     overview: {
       ...state.overview,
       needsAttention: [
         ...partnerAttention,
+        ...hostAttention,
         ...agentRuntimeAttention,
         ...memoryAttention,
         ...approvalAttention,
@@ -1455,6 +1603,13 @@ export type MemoryIngestConfig = {
   allowedDiscordChannelIds?: string[];
 };
 
+export type OpsIngestConfig = {
+  enabled?: boolean;
+  hmacSecret?: string | null;
+  maxSkewSeconds?: number;
+  allowedSources?: string[];
+};
+
 type ParsedJsonBody = {
   raw: string;
   json: Record<string, unknown>;
@@ -1538,6 +1693,96 @@ function verifyHmacSignature(expectedHex: string, providedHex: string): boolean 
   }
 }
 
+type SignedOpsSessionPrincipal = Pick<AuthPrincipal, "uid" | "isStaff" | "roles" | "portalRole" | "opsRoles" | "opsCapabilities">;
+
+function createSignedOpsSessionToken(secret: string, ttlSeconds: number, principal: SignedOpsSessionPrincipal): string {
+  const nowMs = Date.now();
+  const expiresAt = nowMs + Math.max(60, Math.min(3600, ttlSeconds)) * 1000;
+  const payload = {
+    aud: "studio-brain-ops",
+    sub: principal.uid,
+    principal: {
+      uid: principal.uid,
+      isStaff: principal.isStaff,
+      roles: principal.roles,
+      portalRole: principal.portalRole,
+      opsRoles: principal.opsRoles,
+      opsCapabilities: principal.opsCapabilities,
+    },
+    iat: nowMs,
+    exp: expiresAt,
+    nonce: crypto.randomBytes(12).toString("base64url"),
+  };
+  const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
+  return `sbops.${payloadEncoded}.${signature}`;
+}
+
+function parseSignedOpsSessionPrincipal(value: unknown): AuthPrincipal | null {
+  const payload = toObjectRecord(value);
+  const uid = toTrimmedString(payload.uid);
+  if (!uid) return null;
+  const portalRoleRaw = toTrimmedString(payload.portalRole);
+  const portalRole: OpsPortalRole =
+    portalRoleRaw === "admin" || portalRoleRaw === "staff" || portalRoleRaw === "member" ? portalRoleRaw : "member";
+  const opsRoles = toStringList(payload.opsRoles, 32).filter((entry): entry is OpsHumanRole =>
+    [
+      "owner",
+      "member_ops",
+      "support_ops",
+      "kiln_lead",
+      "floor_staff",
+      "events_ops",
+      "library_ops",
+      "finance_ops",
+    ].includes(entry)
+  );
+  const opsCapabilities = toStringList(payload.opsCapabilities, 96).filter(Boolean) as OpsCapability[];
+  const roles = toStringList(payload.roles, 32);
+  const isStaff = payload.isStaff === true || portalRole === "admin" || portalRole === "staff" || opsRoles.length > 0;
+  if (!isStaff) return null;
+  return {
+    uid,
+    isStaff,
+    roles,
+    portalRole,
+    opsRoles,
+    opsCapabilities,
+  };
+}
+
+function verifySignedOpsSessionToken(token: string, secret: string): AuthPrincipal | null {
+  const trimmed = token.trim();
+  if (!trimmed.startsWith("sbops.")) return null;
+  const parts = trimmed.split(".");
+  if (parts.length !== 3) return null;
+  const payloadEncoded = parts[1] ?? "";
+  const providedSignature = parts[2] ?? "";
+  const expectedSignature = crypto.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
+  if (!verifyHmacSignature(expectedSignature, providedSignature)) {
+    return null;
+  }
+  try {
+    const decoded = JSON.parse(Buffer.from(payloadEncoded, "base64url").toString("utf8")) as {
+      aud?: string;
+      exp?: number;
+      iat?: number;
+      principal?: unknown;
+      sub?: string;
+    };
+    const exp = decoded.exp ?? 0;
+    const iat = decoded.iat ?? 0;
+    if (decoded.aud !== "studio-brain-ops") return null;
+    if (!Number.isFinite(exp) || exp <= Date.now()) return null;
+    if (!Number.isFinite(iat) || iat > Date.now() + 60_000) return null;
+    const principal = parseSignedOpsSessionPrincipal(decoded.principal);
+    if (!principal || principal.uid !== decoded.sub) return null;
+    return principal;
+  } catch {
+    return null;
+  }
+}
+
 function toNormalizedSet(values: string[] | undefined): Set<string> {
   return new Set(
     (values ?? [])
@@ -1590,6 +1835,9 @@ type AuthPrincipal = {
   uid: string;
   isStaff: boolean;
   roles: string[];
+  portalRole: OpsPortalRole;
+  opsRoles: OpsHumanRole[];
+  opsCapabilities: OpsCapability[];
 };
 
 function ensureFirebaseAdminForAuth(): void {
@@ -1608,11 +1856,18 @@ async function verifyFirebaseAuthHeader(authorizationHeader: string | undefined)
   ensureFirebaseAdminForAuth();
   const decoded = await getAuth().verifyIdToken(match[1]);
   const roles = Array.isArray(decoded.roles) ? decoded.roles.map((value) => String(value)) : [];
-  const isStaff = decoded.staff === true || decoded.admin === true || roles.includes("staff") || roles.includes("admin");
+  const claims = decoded as Record<string, unknown>;
+  const portalRole = derivePortalRoleFromClaims(claims);
+  const opsRoles = deriveOpsRolesFromClaims(claims);
+  const opsCapabilities = deriveOpsCapabilitiesFromClaims(claims);
+  const isStaff = decoded.staff === true || decoded.admin === true || roles.includes("staff") || roles.includes("admin") || opsRoles.length > 0;
   return {
     uid: decoded.uid,
     isStaff,
     roles,
+    portalRole,
+    opsRoles,
+    opsCapabilities,
   };
 }
 
@@ -1640,6 +1895,15 @@ export function startHttpServer(params: {
   backendHealth?: () => Promise<BackendHealthReport>;
   memoryService?: MemoryService | null;
   memoryIngestConfig?: MemoryIngestConfig;
+  opsService?: OpsService | null;
+  opsIngestConfig?: OpsIngestConfig;
+  opsPortalConfig?: {
+    enabled?: boolean;
+    requireStaffAuth?: boolean;
+    compareEnabled?: boolean;
+    legacyUrl?: string;
+    defaultSurface?: string;
+  };
   endpointRateLimits?: Partial<EndpointRateLimitConfig>;
   abuseQuotaStore?: QuotaStore;
   pilotWriteExecutor?: PilotWriteExecutor | null;
@@ -1674,6 +1938,9 @@ export function startHttpServer(params: {
     backendHealth,
     memoryService = null,
     memoryIngestConfig,
+    opsService = null,
+    opsIngestConfig,
+    opsPortalConfig,
     endpointRateLimits,
     abuseQuotaStore = new InMemoryQuotaStore(),
     pilotWriteExecutor = null,
@@ -1704,6 +1971,21 @@ export function startHttpServer(params: {
     allowedDiscordGuildIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordGuildIds),
     allowedDiscordChannelIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordChannelIds),
   };
+  const opsIngest = {
+    enabled: opsIngestConfig?.enabled !== false,
+    hmacSecret: opsIngestConfig?.hmacSecret?.trim() ?? "",
+    maxSkewSeconds: Math.max(30, opsIngestConfig?.maxSkewSeconds ?? 300),
+    allowedSources: toNormalizedSet(opsIngestConfig?.allowedSources),
+  };
+  const opsPortal = {
+    enabled: opsPortalConfig?.enabled ?? Boolean(opsService),
+    requireStaffAuth: opsPortalConfig?.requireStaffAuth !== false,
+    compareEnabled: opsPortalConfig?.compareEnabled !== false,
+    legacyUrl: toTrimmedString(opsPortalConfig?.legacyUrl) || null,
+    defaultSurface: toTrimmedString(opsPortalConfig?.defaultSurface) || "manager",
+  };
+  const opsSessionSecret = String(process.env.STUDIO_BRAIN_OPS_SESSION_SECRET ?? adminToken ?? "").trim();
+  const opsSessionTtlSeconds = Math.max(60, Math.min(3600, Number(process.env.STUDIO_BRAIN_OPS_SESSION_TTL_SECONDS ?? "900") || 900));
 
   const readControlTowerSnapshot = async () => {
     const [overseerRun, audits, proposals] = await Promise.all([
@@ -1726,6 +2008,10 @@ export function startHttpServer(params: {
     const memoryBrief = readControlTowerMemoryBrief(resolvedControlTowerRepoRoot, initialState.memoryBrief);
     const startupScorecard = readControlTowerStartupScorecard(resolvedControlTowerRepoRoot);
     const agentRuntime = readLatestAgentRuntimeSummary(resolvedControlTowerRepoRoot);
+    const hosts = dedupeHosts([
+      buildServerHostCard(raw, agentRuntime),
+      ...listControlTowerHostHeartbeats(resolvedControlTowerRepoRoot),
+    ]);
     const stateWithMemory = deriveControlTowerState(raw, audits, {
       approvals,
       memoryBrief,
@@ -1734,10 +2020,10 @@ export function startHttpServer(params: {
       repoRoot: resolvedControlTowerRepoRoot,
       generatedAt: raw.generatedAt,
       memoryBrief,
-      rooms: stateWithMemory.rooms,
-      approvals,
-      agentRuntime,
-    });
+        rooms: stateWithMemory.rooms,
+        approvals,
+        agentRuntime,
+      });
     let memoryHealth: ControlTowerMemoryHealth | null = null;
     if (memoryService) {
       try {
@@ -1747,7 +2033,7 @@ export function startHttpServer(params: {
         logger.warn(`control tower memory health unavailable: ${message}`);
       }
     }
-    const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals, partner);
+    const syntheticEvents = buildSyntheticControlTowerEvents(memoryBrief, approvals, agentRuntime, hosts, partner);
     const state = enrichControlTowerState(
       stateWithMemory,
       syntheticEvents,
@@ -1756,6 +2042,7 @@ export function startHttpServer(params: {
       startupScorecard,
       memoryHealth,
       agentRuntime,
+      hosts,
       partner,
     );
     return { raw, state, audits };
@@ -1800,8 +2087,10 @@ export function startHttpServer(params: {
     if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
     return fallback;
   };
+  const maxActiveImportsBeforeBackfill = parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000);
   const memoryPressureConfig = {
-    maxActiveImportsBeforeBackfill: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000),
+    maxActiveImportsBeforeBackfill,
+    maxActiveImportRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS", maxActiveImportsBeforeBackfill, 1, 1_000),
     maxConcurrentBackfills: parseBoundedEnvInt("STUDIO_BRAIN_MAX_CONCURRENT_BACKFILLS", 1, 1, 100),
     retryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_BACKFILL_RETRY_AFTER_SECONDS", 20, 1, 3600),
     maxActiveImportsBeforeQueryDegrade: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_DEGRADE", 4, 0, 10_000),
@@ -1904,6 +2193,7 @@ export function startHttpServer(params: {
     latency: latencySnapshot(),
     thresholds: {
       maxActiveImportsBeforeBackfill: thresholds.maxActiveImportsBeforeBackfill,
+      maxActiveImportRequests: thresholds.maxActiveImportRequests,
       maxConcurrentBackfills: thresholds.maxConcurrentBackfills,
       retryAfterSeconds: thresholds.retryAfterSeconds,
       maxActiveImportsBeforeQueryDegrade: thresholds.maxActiveImportsBeforeQueryDegrade,
@@ -2039,7 +2329,7 @@ export function startHttpServer(params: {
     return {
       "access-control-allow-origin": origin,
       "access-control-allow-headers":
-        "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp",
+        "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp, x-ops-ingest-signature, x-ops-ingest-timestamp, x-studio-brain-ops-session",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-max-age": "600",
       vary: "Origin",
@@ -2073,6 +2363,62 @@ export function startHttpServer(params: {
   };
   const assertKilnAccess = (req: http.IncomingMessage) =>
     assertCapabilityAuth(req, { requireAdminToken: false });
+  const assertOpsPortalAuth = async (
+    req: http.IncomingMessage,
+  ): Promise<{ ok: true; principal?: AuthPrincipal; actorId: string } | { ok: false; message: string; actorId: string }> => {
+    if (!opsPortal.requireStaffAuth) {
+      return { ok: true, actorId: "ops-portal:anonymous" };
+    }
+    const sessionToken = firstHeader(req.headers["x-studio-brain-ops-session"]);
+    if (opsSessionSecret && sessionToken) {
+      const principal = verifySignedOpsSessionToken(sessionToken, opsSessionSecret);
+      if (principal) {
+        return { ok: true, principal, actorId: principal.uid };
+      }
+    }
+    const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+    if (!auth.ok) {
+      return { ok: false, message: auth.message ?? "Unauthorized", actorId: "unknown" };
+    }
+    return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+  };
+  const memoryImportPressureRejection = (route: string, requestId: string) => {
+    const thresholds = resolveDynamicMemoryThresholds();
+    if (activeImportRequests < thresholds.maxActiveImportRequests) return null;
+    const pressure = memoryPressureSnapshot(thresholds);
+    logger.warn("memory_import_shed", {
+      route,
+      reason: "active-import-pressure",
+      pressure,
+      requestId,
+    });
+    return {
+      message: "Memory import is busy; retry later.",
+      reason: "active-import-pressure",
+      retryAfterSeconds: thresholds.retryAfterSeconds,
+      pressure,
+    };
+  };
+  const assertHostHeartbeatAuth = async (
+    req: http.IncomingMessage,
+  ): Promise<{ ok: boolean; message?: string; principal?: AuthPrincipal; actorId: string }> => {
+    const provided = firstHeader(req.headers["x-studio-brain-admin-token"]);
+    if (adminToken && provided && provided === adminToken) {
+      return { ok: true, actorId: "machine:control-tower-host" };
+    }
+    const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+    if (!auth.ok) {
+      return { ok: false, message: auth.message, actorId: "unknown" };
+    }
+    return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+  };
+  const opsActorContext = (auth: { principal?: AuthPrincipal; actorId: string }) => ({
+    actorId: auth.actorId,
+    isStaff: auth.principal?.isStaff ?? false,
+    portalRole: auth.principal?.portalRole ?? "member",
+    opsRoles: auth.principal?.opsRoles ?? [],
+    opsCapabilities: auth.principal?.opsCapabilities ?? [],
+  });
   const kilnProviderSupport = () => kilnObservationProvider?.describeSupport() ?? null;
   const ensureKilnRuntime = (): { ok: true } | { ok: false; message: string } => {
     if (!kilnEnabled) {
@@ -2382,6 +2728,21 @@ export function startHttpServer(params: {
               res.end(JSON.stringify({ ok: false, message: "clientRequestId is required for memory ingest." }));
               return;
             }
+          }
+          const pressureRejection = memoryImportPressureRejection("/api/memory/ingest", requestId);
+          if (pressureRejection) {
+            statusCode = 429;
+            res.writeHead(
+              statusCode,
+              withSecurityHeaders({
+                "content-type": "application/json",
+                ...corsHeaders,
+                "retry-after": String(pressureRejection.retryAfterSeconds),
+                "x-request-id": requestId,
+              })
+            );
+            res.end(JSON.stringify({ ok: false, ...pressureRejection }));
+            return;
           }
 
           let memory;
@@ -3876,6 +4237,21 @@ export function startHttpServer(params: {
           res.end(JSON.stringify({ ok: false, message: auth.message }));
           return;
         }
+        const pressureRejection = memoryImportPressureRejection("/api/memory/import", requestId);
+        if (pressureRejection) {
+          statusCode = 429;
+          res.writeHead(
+            statusCode,
+            withSecurityHeaders({
+              "content-type": "application/json",
+              ...corsHeaders,
+              "retry-after": String(pressureRejection.retryAfterSeconds),
+              "x-request-id": requestId,
+            })
+          );
+          res.end(JSON.stringify({ ok: false, ...pressureRejection }));
+          return;
+        }
         try {
           const payload = await readJsonBody(req);
           let result;
@@ -4689,6 +5065,1005 @@ export function startHttpServer(params: {
         return;
       }
 
+      if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/events/ingest") {
+        if (!opsIngest.enabled) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Ops ingest endpoint is disabled." }));
+          return;
+        }
+        if (!opsIngest.hmacSecret) {
+          statusCode = 503;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Ops ingest endpoint is misconfigured." }));
+          return;
+        }
+        try {
+          const timestampRaw = firstHeader(req.headers["x-ops-ingest-timestamp"]);
+          const signatureRaw = firstHeader(req.headers["x-ops-ingest-signature"]);
+          const timestampSeconds = parseEpochSeconds(timestampRaw);
+          const providedSignature = normalizeHmacSignature(signatureRaw);
+          if (!timestampSeconds || !providedSignature) {
+            statusCode = 401;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Missing or invalid ops ingest signature headers." }));
+            return;
+          }
+          if (!isTimestampWithinSkew(timestampSeconds, Date.now(), opsIngest.maxSkewSeconds)) {
+            statusCode = 401;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Ops ingest signature timestamp is outside allowed skew." }));
+            return;
+          }
+          const parsedBody = await readJsonBodyWithRaw(req);
+          const expectedSignature = crypto
+            .createHmac("sha256", opsIngest.hmacSecret)
+            .update(`${timestampSeconds}.${parsedBody.raw}`)
+            .digest("hex");
+          if (!verifyHmacSignature(expectedSignature, providedSignature)) {
+            statusCode = 401;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Invalid ops ingest signature." }));
+            return;
+          }
+          const body = parsedBody.json;
+          const sourceSystem = toTrimmedString(body.sourceSystem || body.source).toLowerCase();
+          if (!sourceSystem) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "sourceSystem is required." }));
+            return;
+          }
+          if (opsIngest.allowedSources.size > 0 && !opsIngest.allowedSources.has(sourceSystem)) {
+            statusCode = 403;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Ops ingest source is not allowed." }));
+            return;
+          }
+          const eventType = toTrimmedString(body.eventType);
+          const entityKind = toTrimmedString(body.entityKind);
+          const entityId = toTrimmedString(body.entityId);
+          const sourceEventId = toTrimmedString(body.sourceEventId || body.clientRequestId);
+          if (!eventType || !entityKind || !entityId || !sourceEventId) {
+            statusCode = 400;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "eventType, entityKind, entityId, and sourceEventId are required." }));
+            return;
+          }
+          const metadata =
+            body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+              ? (body.payload as Record<string, unknown>)
+              : body;
+          const result = await opsService.ingestWorldEvent({
+            eventType,
+            entityKind,
+            entityId,
+            sourceSystem,
+            sourceEventId,
+            actorKind: toTrimmedString(body.actorKind) || "machine",
+            actorId: toTrimmedString(body.actorId) || `machine:${sourceSystem}`,
+            payload: metadata,
+            caseId: toTrimmedString(body.caseId) || null,
+            roomId: toTrimmedString(body.roomId) || null,
+            confidence: toNullableRatio(body.confidence) ?? 0.8,
+            verificationClass:
+              toTrimmedString(body.verificationClass) === "confirmed"
+                ? "confirmed"
+                : toTrimmedString(body.verificationClass) === "claimed"
+                  ? "claimed"
+                  : toTrimmedString(body.verificationClass) === "planned"
+                    ? "planned"
+                    : toTrimmedString(body.verificationClass) === "inferred"
+                      ? "inferred"
+                      : "observed",
+            artifactRefs: toStringList(body.artifactRefs, 32),
+            authPrincipal: `hmac:${sourceSystem}`,
+            timestampSkewSeconds: Math.abs(Math.round(Date.now() / 1000) - timestampSeconds),
+          });
+          statusCode = result.accepted ? 202 : 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, accepted: result.accepted, event: result.event, receipt: result.receipt }));
+        } catch (error) {
+          statusCode = 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/session/me") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const session = await opsService.getSessionMe(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, session }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/members") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const rows = await opsService.listMembers(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/members") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const portalRole = toTrimmedString(body.portalRole || body.role) as OpsPortalRole;
+        const opsRoles = Array.isArray(body.opsRoles) ? body.opsRoles.map((entry) => toTrimmedString(entry)).filter(Boolean) : [];
+        const result = await opsService.createMember({
+          email: toTrimmedString(body.email) || "",
+          displayName: toTrimmedString(body.displayName) || "",
+          membershipTier: toTrimmedString(body.membershipTier) || null,
+          portalRole: portalRole === "member" || portalRole === "staff" || portalRole === "admin" ? portalRole : undefined,
+          opsRoles: opsRoles as OpsHumanRole[],
+          kilnPreferences: toTrimmedString(body.kilnPreferences) || null,
+          staffNotes: toTrimmedString(body.staffNotes) || null,
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      const opsMemberDetailMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberDetailMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberDetailMatch[1] ?? "");
+        const member = await opsService.getMember(uid, opsActorContext(auth));
+        if (!member) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Member ${uid} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, member }));
+        return;
+      }
+
+      const opsMemberProfileMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/profile$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberProfileMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberProfileMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const patch = body.patch && typeof body.patch === "object" && !Array.isArray(body.patch)
+          ? body.patch as Record<string, unknown>
+          : {};
+        const result = await opsService.updateMemberProfile({
+          uid,
+          reason: toTrimmedString(body.reason) || null,
+          patch: {
+            displayName: Object.prototype.hasOwnProperty.call(patch, "displayName") ? toTrimmedString(patch.displayName) || null : undefined,
+            membershipTier: Object.prototype.hasOwnProperty.call(patch, "membershipTier") ? toTrimmedString(patch.membershipTier) || null : undefined,
+            kilnPreferences: Object.prototype.hasOwnProperty.call(patch, "kilnPreferences") ? toTrimmedString(patch.kilnPreferences) || null : undefined,
+            staffNotes: Object.prototype.hasOwnProperty.call(patch, "staffNotes") ? toTrimmedString(patch.staffNotes) || null : undefined,
+          },
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      const opsMemberMembershipMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/membership$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberMembershipMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberMembershipMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const result = await opsService.updateMemberMembership({
+          uid,
+          membershipTier: toTrimmedString(body.membershipTier) || null,
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      const opsMemberBillingMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/billing$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberBillingMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberBillingMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const billing = body.billing && typeof body.billing === "object" && !Array.isArray(body.billing)
+          ? body.billing as Record<string, unknown>
+          : {};
+        const forbiddenRawCardKeys = ["cardNumber", "pan", "fullPan", "cvc", "cvv", "expiry", "exp", "trackData"];
+        const forbiddenKey = forbiddenRawCardKeys.find((key) => Object.prototype.hasOwnProperty.call(billing, key) || Object.prototype.hasOwnProperty.call(body, key));
+        if (forbiddenKey) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({
+            ok: false,
+            message: "Raw card data is not accepted in /ops. Use Stripe-hosted collection and store only tokenized references plus safe summaries.",
+          }));
+          return;
+        }
+        const result = await opsService.updateMemberBilling({
+          uid,
+          billing: {
+            stripeCustomerId: Object.prototype.hasOwnProperty.call(billing, "stripeCustomerId") ? toTrimmedString(billing.stripeCustomerId) || null : undefined,
+            defaultPaymentMethodId: Object.prototype.hasOwnProperty.call(billing, "defaultPaymentMethodId") ? toTrimmedString(billing.defaultPaymentMethodId) || null : undefined,
+            cardBrand: Object.prototype.hasOwnProperty.call(billing, "cardBrand") ? toTrimmedString(billing.cardBrand) || null : undefined,
+            cardLast4: Object.prototype.hasOwnProperty.call(billing, "cardLast4") ? toTrimmedString(billing.cardLast4) || null : undefined,
+            expMonth: Object.prototype.hasOwnProperty.call(billing, "expMonth") ? toTrimmedString(billing.expMonth) || null : undefined,
+            expYear: Object.prototype.hasOwnProperty.call(billing, "expYear") ? toTrimmedString(billing.expYear) || null : undefined,
+            billingContactName: Object.prototype.hasOwnProperty.call(billing, "billingContactName") ? toTrimmedString(billing.billingContactName) || null : undefined,
+            billingContactEmail: Object.prototype.hasOwnProperty.call(billing, "billingContactEmail") ? toTrimmedString(billing.billingContactEmail) || null : undefined,
+            billingContactPhone: Object.prototype.hasOwnProperty.call(billing, "billingContactPhone") ? toTrimmedString(billing.billingContactPhone) || null : undefined,
+          },
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      const opsMemberRoleMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/role$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberRoleMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberRoleMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const portalRole = toTrimmedString(body.portalRole || body.role) as OpsPortalRole;
+        if (portalRole !== "member" && portalRole !== "staff" && portalRole !== "admin") {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "portalRole must be member, staff, or admin." }));
+          return;
+        }
+        const opsRoles = Array.isArray(body.opsRoles) ? body.opsRoles.map((entry) => toTrimmedString(entry)).filter(Boolean) : [];
+        const result = await opsService.updateMemberRole({
+          uid,
+          portalRole,
+          opsRoles: opsRoles as OpsHumanRole[],
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      const opsMemberActivityMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/members\/([^/]+)\/activity$/) : null;
+      if (opsPortal.enabled && opsService && opsMemberActivityMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const uid = decodeURIComponent(opsMemberActivityMatch[1] ?? "");
+        const activity = await opsService.getMemberActivity(uid, opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, activity }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/twin") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const twin = await opsService.getTwin();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, twin }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/truth") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const truth = await opsService.getTruth();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, truth }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/tasks") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const surface = toTrimmedString(url.searchParams.get("surface"));
+        const role = toTrimmedString(url.searchParams.get("role"));
+        let rows = await opsService.listTasks(opsActorContext(auth));
+        if (surface) rows = rows.filter((entry) => entry.surface === surface);
+        if (role) rows = rows.filter((entry) => entry.role === role);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      const opsTaskClaimMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/claim$/) : null;
+      if (opsPortal.enabled && opsService && opsTaskClaimMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const taskId = decodeURIComponent(opsTaskClaimMatch[1] ?? "");
+        const task = await opsService.claimTask(taskId, opsActorContext(auth));
+        if (!task) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, task }));
+        return;
+      }
+
+      const opsTaskProofMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/proof$/) : null;
+      if (opsPortal.enabled && opsService && opsTaskProofMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const taskId = decodeURIComponent(opsTaskProofMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const mode = toTrimmedString(body.mode) as ProofMode;
+        if (!mode) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "mode is required." }));
+          return;
+        }
+        const proof = await opsService.addTaskProof(taskId, opsActorContext(auth), mode, toTrimmedString(body.note) || null, toStringList(body.artifactRefs, 24));
+        if (!proof) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, proof }));
+        return;
+      }
+
+      const opsTaskProofAcceptMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/proof\/accept$/) : null;
+      if (opsPortal.enabled && opsService && opsTaskProofAcceptMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const taskId = decodeURIComponent(opsTaskProofAcceptMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const proofId = toTrimmedString(body.proofId);
+        const status = toTrimmedString(body.status) || "accepted";
+        if (!proofId || (status !== "accepted" && status !== "rejected" && status !== "readback_pending")) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "proofId and a valid status are required." }));
+          return;
+        }
+        const proof = await opsService.acceptTaskProof({
+          taskId,
+          proofId,
+          actorId: auth.actorId,
+          status: status as "accepted" | "rejected" | "readback_pending",
+          note: toTrimmedString(body.note) || null,
+        }, opsActorContext(auth));
+        if (!proof) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Proof ${proofId} not found for task ${taskId}.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, proof }));
+        return;
+      }
+
+      const opsTaskCompleteMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/complete$/) : null;
+      if (opsPortal.enabled && opsService && opsTaskCompleteMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const taskId = decodeURIComponent(opsTaskCompleteMatch[1] ?? "");
+        const task = await opsService.completeTask(taskId, opsActorContext(auth));
+        if (!task) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, task }));
+        return;
+      }
+
+      const opsTaskEscapeMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/tasks\/([^/]+)\/escape$/) : null;
+      if (opsPortal.enabled && opsService && opsTaskEscapeMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const taskId = decodeURIComponent(opsTaskEscapeMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const escapeHatch = toTrimmedString(body.escapeHatch || body.escape) as TaskEscapeHatch;
+        if (!escapeHatch) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "escapeHatch is required." }));
+          return;
+        }
+        const escape = await opsService.escapeTask({
+          taskId,
+          actorId: auth.actorId,
+          escapeHatch,
+          reason: toTrimmedString(body.reason) || null,
+        }, opsActorContext(auth));
+        if (!escape) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Task ${taskId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, escape }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/cases") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const rows = await opsService.listCases(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      const opsCaseDetailMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/cases\/([^/]+)$/) : null;
+      if (opsPortal.enabled && opsService && opsCaseDetailMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const caseId = decodeURIComponent(opsCaseDetailMatch[1] ?? "");
+        const detail = await opsService.getCase(caseId, opsActorContext(auth));
+        if (!detail.record) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Case ${caseId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...detail }));
+        return;
+      }
+
+      const opsCaseNoteMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/cases\/([^/]+)\/note$/) : null;
+      if (opsPortal.enabled && opsService && opsCaseNoteMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const caseId = decodeURIComponent(opsCaseNoteMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const noteBody = toTrimmedString(body.body);
+        if (!noteBody) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "body is required." }));
+          return;
+        }
+        const note = await opsService.addCaseNote({
+          caseId,
+          actorId: auth.actorId,
+          body: noteBody,
+          metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+            ? (body.metadata as Record<string, unknown>)
+            : {},
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, note }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/approvals") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const rows = await opsService.listApprovals(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/reservations") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const rows = await opsService.listReservations(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      const opsReservationBundleMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/reservations\/([^/]+)\/bundle$/) : null;
+      if (opsPortal.enabled && opsService && opsReservationBundleMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const reservationId = decodeURIComponent(opsReservationBundleMatch[1] ?? "");
+        const bundle = await opsService.getReservationBundle(reservationId, opsActorContext(auth));
+        if (!bundle) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Reservation ${reservationId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, bundle }));
+        return;
+      }
+
+      const opsReservationPrepareMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/reservations\/([^/]+)\/prepare$/) : null;
+      if (opsPortal.enabled && opsService && opsReservationPrepareMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const reservationId = decodeURIComponent(opsReservationPrepareMatch[1] ?? "");
+        const task = await opsService.prepareReservation(reservationId, opsActorContext(auth));
+        if (!task) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Reservation ${reservationId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, task }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/events") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const rows = await opsService.listEvents(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/reports") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const rows = await opsService.listReports(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/lending") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const lending = await opsService.getLending(opsActorContext(auth));
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, lending }));
+        return;
+      }
+
+      const opsApprovalResolveMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/approvals\/([^/]+)\/resolve$/) : null;
+      if (opsPortal.enabled && opsService && opsApprovalResolveMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const approvalId = decodeURIComponent(opsApprovalResolveMatch[1] ?? "");
+        const body = await readJsonBody(req);
+        const status = toTrimmedString(body.status);
+        if (status !== "approved" && status !== "rejected") {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "status must be approved or rejected." }));
+          return;
+        }
+        const approval = await opsService.resolveApproval({
+          approvalId,
+          status,
+          actorId: auth.actorId,
+          note: toTrimmedString(body.note) || null,
+        }, opsActorContext(auth));
+        if (!approval) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `Approval ${approvalId} not found.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, approval }));
+        return;
+      }
+
+      const opsDisplayMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/displays\/([^/]+)$/) : null;
+      if (opsPortal.enabled && opsService && opsDisplayMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const stationId = decodeURIComponent(opsDisplayMatch[1] ?? "");
+        const state = await opsService.getDisplayState(stationId);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, state }));
+        return;
+      }
+
+      const opsDisplayStreamMatch = method === "GET" ? url.pathname.match(/^\/api\/ops\/displays\/([^/]+)\/stream$/) : null;
+      if (opsPortal.enabled && opsService && opsDisplayStreamMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const stationId = decodeURIComponent(opsDisplayStreamMatch[1] ?? "");
+        const wantsSse =
+          String(req.headers.accept || "")
+            .toLowerCase()
+            .includes("text/event-stream") || toBooleanFlag(url.searchParams.get("stream"), true);
+        if (!wantsSse) {
+          const state = await opsService.getDisplayState(stationId);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, state }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(
+          statusCode,
+          withSecurityHeaders({
+            "content-type": "text/event-stream; charset=utf-8",
+            connection: "keep-alive",
+            "x-accel-buffering": "no",
+            ...corsHeaders,
+            "x-request-id": requestId,
+          }),
+        );
+        let closed = false;
+        let lastSerialized = "";
+        const push = async () => {
+          const state = await opsService.getDisplayState(stationId);
+          const serialized = JSON.stringify({ ok: true, state });
+          if (serialized === lastSerialized) return;
+          lastSerialized = serialized;
+          res.write(`event: state\ndata: ${serialized}\n\n`);
+        };
+        const timer = setInterval(() => {
+          void push();
+        }, 10_000);
+        const heartbeat = setInterval(() => {
+          res.write(`event: heartbeat\ndata: ${JSON.stringify({ ok: true, at: new Date().toISOString() })}\n\n`);
+        }, 15_000);
+        const cleanup = () => {
+          if (closed) return;
+          closed = true;
+          clearInterval(timer);
+          clearInterval(heartbeat);
+          if (!res.writableEnded) res.end();
+        };
+        req.on("close", cleanup);
+        await push();
+        return;
+      }
+
+      const opsChatMatch = method === "POST" ? url.pathname.match(/^\/api\/ops\/chat\/([^/]+)\/send$/) : null;
+      if (opsPortal.enabled && opsService && opsChatMatch) {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const surface = decodeURIComponent(opsChatMatch[1] ?? "manager");
+        const body = await readJsonBody(req);
+        const text = toTrimmedString(body.text);
+        if (!text) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "text is required." }));
+          return;
+        }
+        const result = await opsService.sendChat(surface, opsActorContext(auth), text);
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, ...result }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/overrides") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok || !auth.principal) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.ok ? "Unauthorized" : auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const scope = toTrimmedString(body.scope);
+        const reason = toTrimmedString(body.reason);
+        if (!scope || !reason) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "scope and reason are required." }));
+          return;
+        }
+        const override = await opsService.requestOverride({
+          actorId: auth.actorId,
+          scope,
+          reason,
+          expiresAt: toTrimmedString(body.expiresAt) || null,
+          requiredRole: (toTrimmedString(body.requiredRole) || "owner") as OpsHumanRole,
+          metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+            ? body.metadata as Record<string, unknown>
+            : {},
+        }, opsActorContext(auth));
+        statusCode = 202;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, override }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/ceo") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const rows = await opsService.listGrowthExperiments();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/ceo/experiments") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const title = toTrimmedString(body.title);
+        const hypothesis = toTrimmedString(body.hypothesis);
+        if (!title || !hypothesis) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "title and hypothesis are required." }));
+          return;
+        }
+        const generatedAt = new Date().toISOString();
+        const record: GrowthExperiment = {
+          id: `growth_${crypto.randomUUID()}`,
+          title,
+          hypothesis,
+          status: "proposed",
+          summary: hypothesis,
+          safetyBoundaries: ["draft_only", "no_money_without_approval", "no_owner_impersonation"],
+          owner: auth.actorId,
+          createdAt: generatedAt,
+          updatedAt: generatedAt,
+          metrics: {},
+        };
+        await opsService.createGrowthExperiment(record);
+        statusCode = 202;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, experiment: record }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/api/ops/forge") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const rows = await opsService.listImprovementCases();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, rows }));
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "POST" && url.pathname === "/api/ops/forge/improvement-cases") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const title = toTrimmedString(body.title);
+        const problem = toTrimmedString(body.problem);
+        if (!title || !problem) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "title and problem are required." }));
+          return;
+        }
+        const generatedAt = new Date().toISOString();
+        const record: ImprovementCase = {
+          id: `improvement_${crypto.randomUUID()}`,
+          title,
+          problem,
+          status: "open",
+          summary: problem,
+          requiredEvaluations: ["truth-readiness", "ux-clarity", "rollback"],
+          rollbackPlan: "Shadow first, then gate behind a feature flag with explicit rollback.",
+          createdAt: generatedAt,
+          updatedAt: generatedAt,
+          metadata: {
+            requestedBy: auth.actorId,
+          },
+        };
+        await opsService.createImprovementCase(record);
+        statusCode = 202;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, improvementCase: record }));
+        return;
+      }
+
       if (method === "GET" && url.pathname === "/api/overseer/latest") {
         const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
         if (!auth.ok) {
@@ -4832,6 +6207,29 @@ export function startHttpServer(params: {
         return;
       }
 
+      const runDetailMatch = url.pathname.match(/^\/api\/agent-runtime\/runs\/([^/]+)$/);
+      if (method === "GET" && runDetailMatch) {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const runId = decodeURIComponent(runDetailMatch[1] ?? "");
+        const detail = buildAgentRuntimeRunDetail(resolvedControlTowerRepoRoot, runId);
+        if (!detail.summary && detail.events.length === 0 && detail.artifacts.length === 0) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: `No runtime detail found for ${runId}.` }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, detail }));
+        return;
+      }
+
       if (method === "GET" && url.pathname === "/api/agent-runtime/runs") {
         const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
         if (!auth.ok) {
@@ -4873,6 +6271,74 @@ export function startHttpServer(params: {
         statusCode = 202;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
         res.end(JSON.stringify({ ok: true, accepted: true, runId: event.runId }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/control-tower/hosts") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const { state } = await readControlTowerSnapshot();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, hosts: state.hosts }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/control-tower/hosts/heartbeat") {
+        const auth = await assertHostHeartbeatAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const body = await readJsonBody(req);
+        const hostId = toTrimmedString(body.hostId);
+        if (!hostId) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "hostId is required." }));
+          return;
+        }
+        const heartbeat: ControlTowerHostHeartbeat = {
+          schema: "control-tower-host-heartbeat.v1",
+          hostId,
+          label: toTrimmedString(body.label) || hostId,
+          environment: toTrimmedString(body.environment) === "server" ? "server" : "local",
+          role: toTrimmedString(body.role) || "operator-host",
+          health:
+            toTrimmedString(body.health) === "maintenance"
+              ? "maintenance"
+              : toTrimmedString(body.health) === "offline"
+                ? "offline"
+                : toTrimmedString(body.health) === "degraded"
+                  ? "degraded"
+                  : "healthy",
+          lastSeenAt: toTrimmedString(body.lastSeenAt) || new Date().toISOString(),
+          currentRunId: toTrimmedString(body.currentRunId) || null,
+          agentCount: Number.isFinite(Number(body.agentCount)) ? Math.max(0, Math.floor(Number(body.agentCount))) : 0,
+          version: toTrimmedString(body.version) || null,
+          metrics: {
+            cpuPct: Number.isFinite(Number((body.metrics as Record<string, unknown> | undefined)?.cpuPct))
+              ? Number((body.metrics as Record<string, unknown>).cpuPct)
+              : null,
+            memoryPct: Number.isFinite(Number((body.metrics as Record<string, unknown> | undefined)?.memoryPct))
+              ? Number((body.metrics as Record<string, unknown>).memoryPct)
+              : null,
+            load1: Number.isFinite(Number((body.metrics as Record<string, unknown> | undefined)?.load1))
+              ? Number((body.metrics as Record<string, unknown>).load1)
+              : null,
+          },
+        };
+        writeControlTowerHostHeartbeat(resolvedControlTowerRepoRoot, heartbeat);
+        statusCode = 202;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, accepted: true, hostId, actorId: auth.actorId }));
         return;
       }
 
@@ -4988,6 +6454,7 @@ export function startHttpServer(params: {
         let closed = false;
         let pollTimer: NodeJS.Timeout | null = null;
         let heartbeatTimer: NodeJS.Timeout | null = null;
+        let lastSnapshotSignature = "";
 
         const cleanup = () => {
           if (closed) return;
@@ -5007,6 +6474,55 @@ export function startHttpServer(params: {
               res.write(`id: ${event.id}\n`);
               res.write(`event: ${event.type}\n`);
               res.write(`data: ${JSON.stringify(event)}\n\n`);
+            }
+            const snapshotSignature = crypto
+              .createHash("sha1")
+              .update(
+                JSON.stringify({
+                  generatedAt: state.generatedAt,
+                  runtimeUpdatedAt: state.agentRuntime?.updatedAt ?? null,
+                  runtimeStatus: state.agentRuntime?.status ?? null,
+                  approvals: state.approvals.map((approval) => `${approval.id}:${approval.status}:${approval.createdAt}`),
+                  hosts: state.hosts.map((host) => ({
+                    hostId: host.hostId,
+                    lastSeenAt: host.lastSeenAt,
+                    health: host.health,
+                    connectivity: host.connectivity,
+                    currentRunId: host.currentRunId,
+                  })),
+                }),
+              )
+              .digest("hex");
+            if (snapshotSignature !== lastSnapshotSignature) {
+              lastSnapshotSignature = snapshotSignature;
+              const pulseEvent: ControlTowerEvent = {
+                id: `snapshot:${snapshotSignature}`,
+                at: state.generatedAt,
+                kind: "operator",
+                type: "run.status",
+                runId: state.agentRuntime?.runId ?? null,
+                agentId: state.agentRuntime?.agentId ?? null,
+                channel: "ops",
+                occurredAt: state.generatedAt,
+                severity: "info",
+                title: "Control Tower snapshot refreshed",
+                summary: "Runtime or host presence changed.",
+                actor: "control-tower",
+                roomId: null,
+                serviceId: null,
+                actionLabel: null,
+                sourceAction: "control_tower.snapshot_refreshed",
+                payload: {
+                  hostCount: state.hosts.length,
+                  approvalCount: state.approvals.length,
+                  latestRunId: state.agentRuntime?.runId ?? null,
+                },
+              };
+              if (!freshEvents.length) {
+                res.write(`id: ${pulseEvent.id}\n`);
+                res.write(`event: ${pulseEvent.type}\n`);
+                res.write(`data: ${JSON.stringify(pulseEvent)}\n\n`);
+              }
             }
             if (streamOnce) {
               cleanup();
@@ -6917,6 +8433,92 @@ export function startHttpServer(params: {
           overview,
           kilnDetails,
           uploadMaxBytes: resolvedKilnImportMaxBytes,
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+        res.end(html);
+        return;
+      }
+
+      if (opsPortal.enabled && opsPortal.compareEnabled && opsService && method === "GET" && url.pathname === "/ops/choice") {
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/plain; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+          res.end(auth.message);
+          return;
+        }
+        const snapshot = await opsService.getPortalSnapshot();
+        const html = renderOpsPortalChoicePage({
+          headline: snapshot.twin.headline,
+          narrative: snapshot.twin.narrative,
+          generatedAt: snapshot.generatedAt,
+          opsUrl: `/ops?surface=${encodeURIComponent(opsPortal.defaultSurface)}`,
+          legacyUrl: opsPortal.legacyUrl,
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+        res.end(html);
+        return;
+      }
+
+      const opsDisplayPageMatch = method === "GET" ? url.pathname.match(/^\/ops\/display\/([^/]+)$/) : null;
+      if (opsPortal.enabled && opsService && opsDisplayPageMatch) {
+        const stationId = decodeURIComponent(opsDisplayPageMatch[1] ?? "");
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/plain; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+          res.end(auth.message);
+          return;
+        }
+        const [snapshot, displayState] = await Promise.all([
+          opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined),
+          opsService.getDisplayState(stationId),
+        ]);
+        const sessionToken =
+          auth.ok && auth.principal && opsSessionSecret
+            ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal)
+            : null;
+        const html = renderOpsPortalPage({
+          snapshot,
+          displayState,
+          surface: "hands",
+          stationId,
+          sessionToken,
+        });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+        res.end(html);
+        return;
+      }
+
+      if (opsPortal.enabled && opsService && method === "GET" && url.pathname === "/ops") {
+        const stationId = toTrimmedString(url.searchParams.get("stationId")) || null;
+        const requestedSurface = toTrimmedString(url.searchParams.get("surface")) || opsPortal.defaultSurface;
+        const auth = await assertOpsPortalAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/plain; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));
+          res.end(auth.message);
+          return;
+        }
+        const snapshot = await opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined);
+        const allowedSurfaces = snapshot.session?.allowedSurfaces ?? [];
+        const resolvedSurface = allowedSurfaces.includes(requestedSurface as typeof allowedSurfaces[number])
+          ? requestedSurface
+          : allowedSurfaces[0] ?? requestedSurface;
+        const displayState = stationId ? await opsService.getDisplayState(stationId) : null;
+        const sessionToken =
+          auth.ok && auth.principal && opsSessionSecret
+            ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal)
+            : null;
+        const html = renderOpsPortalPage({
+          snapshot,
+          displayState,
+          surface: resolvedSurface,
+          stationId,
+          sessionToken,
         });
         statusCode = 200;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "text/html; charset=utf-8", ...corsHeaders, "x-request-id": requestId }));

@@ -646,6 +646,7 @@ function deriveControlTowerState(raw, audits = [], options = {}) {
         startupScorecard: null,
         memoryHealth: null,
         agentRuntime: null,
+        hosts: [],
         partner: null,
         events,
         recentChanges: events.slice(0, 6),

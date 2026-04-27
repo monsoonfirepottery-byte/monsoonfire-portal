@@ -84,6 +84,7 @@ export type AssociationScoutAvailabilityReason =
   | "disabled"
   | "missing-api-key"
   | "missing-codex-executable"
+  | "provider-auth-failed"
   | "missing-provider-credentials"
   | null;
 

@@ -11297,6 +11297,16 @@ function createMemoryService(options) {
             executionRoot: associationScoutAvailability.executionRoot,
             reason: associationScoutAvailability.reason,
         };
+        let associationScoutDisabledAfterFailure = false;
+        const isNonRetryableAssociationScoutFailure = (error) => {
+            const message = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+            return (message.includes("401 unauthorized")
+                || message.includes("refresh token")
+                || message.includes("access token could not be refreshed")
+                || message.includes("provided authentication token is expired")
+                || message.includes("invalid_api_key")
+                || message.includes("incorrect api key"));
+        };
         const loadExistingPromotionCandidates = async () => {
             const existing = filterExpiredMemoryRecords(await options.store.recent({
                 tenantId,
@@ -11354,6 +11364,8 @@ function createMemoryService(options) {
         const scoutAssociationBundle = async (bundle) => {
             if (!associationScout)
                 return null;
+            if (associationScoutDisabledAfterFailure)
+                return null;
             if (associationBundleCount >= MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MAX_BUNDLES)
                 return null;
             const startedAtMs = Date.now();
@@ -11395,13 +11407,20 @@ function createMemoryService(options) {
             catch (error) {
                 associationBundleCount += 1;
                 phaseTimingsMs.associationScout += Date.now() - startedAtMs;
+                const scoutErrorMessage = error instanceof Error ? error.message : String(error);
+                const boundedScoutErrorMessage = scoutErrorMessage.replace(/\s+/g, " ").trim().slice(0, 1200);
+                if (isNonRetryableAssociationScoutFailure(error)) {
+                    associationScoutDisabledAfterFailure = true;
+                    associationScoutStatus.available = false;
+                    associationScoutStatus.reason = "provider-auth-failed";
+                }
                 recordPhaseAudit({
                     phase: "associationScout",
                     event: "failed",
                     bundleId: bundle.bundleId,
                     clusterKey: bundle.primary.id,
                     durationMs: Date.now() - startedAtMs,
-                    reason: error instanceof Error ? error.message : String(error),
+                    reason: boundedScoutErrorMessage,
                     summary: `Association bundle ${bundle.bundleId} failed.`,
                 });
                 if (associationErrors.length < 12) {
@@ -11410,7 +11429,7 @@ function createMemoryService(options) {
                         bundleType: bundle.bundleType,
                         themeType: bundle.themeType,
                         themeKey: bundle.themeKey,
-                        error: error instanceof Error ? error.message : String(error),
+                        error: boundedScoutErrorMessage,
                     });
                 }
                 return null;

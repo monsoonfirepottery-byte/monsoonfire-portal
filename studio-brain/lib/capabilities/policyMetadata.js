@@ -20,6 +20,30 @@ exports.capabilityPolicyMetadata = {
         rollbackPlan: "Reverse correction proposal and re-sync with Stripe records.",
         escalationPath: "Route reconciliation exceptions to ops-primary + finance-primary.",
     },
+    "support.billing.adjustment": {
+        owner: "Support Ops",
+        approvalMode: "required",
+        rollbackPlan: "Revoke the proposed billing action, preserve the case audit trail, and confirm the member-facing thread stays unchanged until manual review.",
+        escalationPath: "Route billing exception requests to support-primary + finance-primary with support case and message evidence.",
+    },
+    "support.reservation.override": {
+        owner: "Support Ops",
+        approvalMode: "required",
+        rollbackPlan: "Cancel the proposed reservation change, restore the prior queue state, and record the rationale on the mirrored support case.",
+        escalationPath: "Route reservation exceptions to support-primary + studio-ops-primary with queue evidence.",
+    },
+    "support.queue.override": {
+        owner: "Support Ops",
+        approvalMode: "required",
+        rollbackPlan: "Withdraw the queue/deadline proposal, preserve the original ordering, and note the blocked promise in the support audit trail.",
+        escalationPath: "Route queue or deadline guarantee requests to support-primary + kiln-ops-primary.",
+    },
+    "support.access.exception": {
+        owner: "Trust & Safety",
+        approvalMode: "required",
+        rollbackPlan: "Void the access exception proposal, rotate any affected credentials outside the email channel, and keep the case in security hold.",
+        escalationPath: "Route access exception or credential requests to trust-safety-primary + ops-primary immediately.",
+    },
     "hubitat.devices.read": {
         owner: "Integrations",
         approvalMode: "exempt",

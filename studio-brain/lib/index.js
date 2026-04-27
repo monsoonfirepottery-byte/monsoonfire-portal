@@ -36,6 +36,8 @@ const namecheapPrivateEmailAdapter_1 = require("./supportOps/namecheapPrivateEma
 const portalIngestAuth_1 = require("./supportOps/portalIngestAuth");
 const store_1 = require("./supportOps/store");
 const service_2 = require("./supportOps/service");
+const store_2 = require("./ops/store");
+const service_3 = require("./ops/service");
 function parseArtifactPort(endpoint, fallback) {
     try {
         const parsed = new URL(endpoint);
@@ -243,6 +245,15 @@ async function main() {
     ], logger);
     const capabilityRuntime = new runtime_1.CapabilityRuntime(runtime_1.defaultCapabilities, eventStore, new postgresStores_1.PostgresProposalStore(), new postgresStores_1.PostgresQuotaStore(), new postgresStores_1.PostgresPolicyStore(), connectorRegistry);
     const supportOpsStore = new store_1.PostgresSupportOpsStore();
+    const opsStore = new store_2.PostgresOpsStore();
+    const opsService = (0, service_3.createOpsService)({
+        store: opsStore,
+        logger,
+        kilnStore,
+        supportOpsStore,
+        stateStore,
+        eventStore,
+    });
     const recordSupportLoopSignal = async (input) => {
         const captured = await memoryService.capture({
             content: input.note,
@@ -740,6 +751,23 @@ async function main() {
             allowedSources: env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES,
             allowedDiscordGuildIds: env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS,
             allowedDiscordChannelIds: env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS,
+        },
+        opsService,
+        opsIngestConfig: {
+            enabled: String(process.env.STUDIO_BRAIN_OPS_INGEST_ENABLED ?? "true").trim().toLowerCase() !== "false",
+            hmacSecret: String(process.env.STUDIO_BRAIN_OPS_INGEST_HMAC_SECRET ?? env.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET ?? "").trim(),
+            maxSkewSeconds: Math.max(30, Number.parseInt(String(process.env.STUDIO_BRAIN_OPS_INGEST_MAX_SKEW_SECONDS ?? env.STUDIO_BRAIN_MEMORY_INGEST_MAX_SKEW_SECONDS ?? "300"), 10) || 300),
+            allowedSources: String(process.env.STUDIO_BRAIN_OPS_INGEST_ALLOWED_SOURCES ?? "")
+                .split(",")
+                .map((entry) => entry.trim())
+                .filter(Boolean),
+        },
+        opsPortalConfig: {
+            enabled: env.STUDIO_BRAIN_ENABLE_OPS_PORTAL,
+            requireStaffAuth: env.STUDIO_BRAIN_REQUIRE_STAFF_FOR_OPS_PORTAL,
+            compareEnabled: env.STUDIO_BRAIN_ENABLE_OPS_PORTAL_CHOICE,
+            legacyUrl: env.STUDIO_BRAIN_OPS_PORTAL_LEGACY_URL,
+            defaultSurface: env.STUDIO_BRAIN_OPS_PORTAL_DEFAULT_SURFACE,
         },
         pilotWriteExecutor: env.STUDIO_BRAIN_ENABLE_WRITE_EXECUTION
             ? (0, pilotWriteExecutor_1.createPilotWriteExecutor)({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })

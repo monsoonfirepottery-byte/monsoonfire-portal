@@ -23,6 +23,9 @@ describe("studioBrain URL resolution", () => {
   });
 
   it("defaults to empty on production-like hosts when unset", () => {
+    expect(resolveStudioBrainBaseUrlWithContext({ browserHostname: "portal.monsoonfire.com" })).toBe(
+      "https://portal.monsoonfire.com/__studio-brain"
+    );
     expect(resolveStudioBrainBaseUrlWithContext({ browserHostname: "monsoonfire-portal.web.app" })).toBe("");
     expect(resolveStudioBrainBaseUrlWithContext({ browserHostname: "example.com" })).toBe("");
   });
@@ -153,6 +156,12 @@ describe("resolveStudioBrainBaseUrlResolution", () => {
   });
 
   it("returns disabled state and a reason on production-like hosts when unset", () => {
+    const portalResolution = resolveStudioBrainBaseUrlResolution({ browserHostname: "portal.monsoonfire.com" });
+    expect(portalResolution.configured).toBe(false);
+    expect(portalResolution.enabled).toBe(true);
+    expect(portalResolution.baseUrl).toBe("https://portal.monsoonfire.com/__studio-brain");
+    expect(portalResolution.reason).toBe("");
+
     const resolution = resolveStudioBrainBaseUrlResolution({ browserHostname: "monsoonfire-portal.web.app" });
     expect(resolution.configured).toBe(false);
     expect(resolution.enabled).toBe(false);

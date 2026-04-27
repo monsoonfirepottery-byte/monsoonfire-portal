@@ -158,7 +158,11 @@ Use these defaults unless the user explicitly overrides them in-session.
     - Mail corpus export: `npm run open-memory:mail:corpus -- --run-id <id> --snapshot <path>`
     - SQLite materialization: `npm run open-memory:corpus:sqlite -- --manifest <path>`
     - Local corpus query: `npm run open-memory:corpus:query -- --db <path> --record-type hypothesis --text <term>`
-  - Open Memory / Studio Brain is now an optional adapter and lookup surface, not the source of truth.
+  - In Codex Desktop startup for this repo, load Studio Brain startup context first as the continuity and orientation layer before broad repo reads.
+    - If startup continuity is fallback-only, thread scope is missing, or the reported lane does not match this repo, run 1-2 repo-targeted memory searches immediately before broad exploration.
+    - After startup memory, run `git status --short --branch` early so fresh worktree state overrides older cleanliness memories.
+    - Repo code and local files remain the source of truth for risky edits; memory is guidance, not proof.
+  - Open Memory / Studio Brain remains a startup and lookup surface, but not the sole source of truth.
     - Health check: `npm run open-memory -- stats`
   - Treat external memory workspace as a downstream review/import workspace:
     - `C:\Users\micah\.codex\memory`

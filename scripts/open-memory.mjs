@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 
 import crypto from "node:crypto";
-import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadCodexAutomationEnv } from "./lib/codex-automation-env.mjs";
+import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 import { buildImportCommandPayload } from "./lib/open-memory-import-utils.mjs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REPO_ROOT = resolve(__dirname, "..");
 
 function parseArgs(argv) {
   const positionals = [];
@@ -67,6 +75,29 @@ function normalizeBearer(value) {
   const token = String(value).trim();
   if (!token) return null;
   return /^bearer\s+/i.test(token) ? token : `Bearer ${token}`;
+}
+
+function clean(value) {
+  return String(value ?? "").trim();
+}
+
+function resolveTenantId(flagValue, env = process.env) {
+  return clean(
+    flagValue ||
+      env.OPEN_MEMORY_TENANT_ID ||
+      env.STUDIO_BRAIN_MEMORY_TENANT_ID ||
+      env.STUDIO_BRAIN_DEFAULT_TENANT_ID ||
+      env.STUDIO_BRAIN_TENANT_ID ||
+      ""
+  );
+}
+
+function resolveStudioBrainAuthorization(flagValue, env = process.env) {
+  return normalizeBearer(flagValue || env.STUDIO_BRAIN_AUTH_TOKEN || env.STUDIO_BRAIN_ID_TOKEN || env.STUDIO_BRAIN_MCP_ID_TOKEN || "");
+}
+
+function resolveStudioBrainAdminToken(flagValue, env = process.env) {
+  return clean(flagValue || env.STUDIO_BRAIN_ADMIN_TOKEN || env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || "");
 }
 
 async function readStdinText() {
@@ -250,11 +281,17 @@ async function main() {
     return;
   }
 
+  loadCodexAutomationEnv({ repoRoot: REPO_ROOT, env: process.env });
+  if (!clean(flags.auth)) {
+    await hydrateStudioBrainAuthFromPortal({ repoRoot: REPO_ROOT, env: process.env }).catch(() => null);
+  }
+  const resolvedTenantId = resolveTenantId(flags["tenant-id"], process.env);
+  if (resolvedTenantId && !clean(flags["tenant-id"])) {
+    flags["tenant-id"] = resolvedTenantId;
+  }
   const baseUrl = String(flags["base-url"] ?? resolveStudioBrainBaseUrlFromEnv({ env: process.env })).replace(/\/$/, "");
-  const authorization = normalizeBearer(
-    flags.auth ?? process.env.STUDIO_BRAIN_AUTH_TOKEN ?? process.env.STUDIO_BRAIN_ID_TOKEN ?? ""
-  );
-  const adminToken = String(flags["admin-token"] ?? process.env.STUDIO_BRAIN_ADMIN_TOKEN ?? "").trim();
+  const authorization = resolveStudioBrainAuthorization(flags.auth, process.env);
+  const adminToken = resolveStudioBrainAdminToken(flags["admin-token"], process.env);
   const requestTimeoutMs = intFlag(flags["timeout-ms"], intFlag(process.env.OPEN_MEMORY_HTTP_TIMEOUT_MS, 30000));
   const requestRetryMax = intFlag(flags["retry-max"], intFlag(process.env.OPEN_MEMORY_HTTP_RETRIES, 2));
   const requestRetryBaseMs = intFlag(

@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 
 import crypto from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as z from "zod/v4";
 import { mintStaffIdTokenFromPortalEnv } from "./lib/firebase-auth-token.mjs";
+import { loadCodexAutomationEnv } from "./lib/codex-automation-env.mjs";
+import { resolvePortalCredentialsPath } from "./lib/studio-brain-startup-auth.mjs";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REPO_ROOT = resolve(__dirname, "..");
+loadCodexAutomationEnv({ repoRoot: REPO_ROOT, env: process.env });
 const baseUrl = resolveStudioBrainBaseUrlFromEnv({ env: process.env });
 
 function normalizeBearer(value) {
@@ -30,15 +38,21 @@ function parseIntValue(value, fallback = 2) {
   return Math.max(1, parsed);
 }
 
-let authorization = normalizeBearer(process.env.STUDIO_BRAIN_AUTH_TOKEN ?? process.env.STUDIO_BRAIN_ID_TOKEN ?? "");
-const adminToken = String(process.env.STUDIO_BRAIN_ADMIN_TOKEN ?? "").trim();
+export function resolveMcpDefaultCredentialsPath({ repoRoot = REPO_ROOT, env = process.env } = {}) {
+  return resolvePortalCredentialsPath(repoRoot, env) || resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+}
+
+let authorization = normalizeBearer(
+  process.env.STUDIO_BRAIN_AUTH_TOKEN ?? process.env.STUDIO_BRAIN_ID_TOKEN ?? process.env.STUDIO_BRAIN_MCP_ID_TOKEN ?? ""
+);
+const adminToken = String(process.env.STUDIO_BRAIN_ADMIN_TOKEN ?? process.env.STUDIO_BRAIN_MCP_ADMIN_TOKEN ?? "").trim();
 const ingestSecret = String(process.env.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET ?? "").trim();
 let lastIdTokenRefreshAtMs = 0;
 
 async function mintStaffAuthorizationHeader() {
   const minted = await mintStaffIdTokenFromPortalEnv({
     env: process.env,
-    defaultCredentialsPath: "./secrets/portal/portal-agent-staff.json",
+    defaultCredentialsPath: resolveMcpDefaultCredentialsPath(),
     preferRefreshToken: true,
   });
   if (!minted.ok || !minted.token) return null;
@@ -59,6 +73,9 @@ function isExpiredIdTokenResponse(status, payload) {
 }
 
 async function requestOnce(path, method = "GET", body = undefined) {
+  if (!authorization) {
+    authorization = await mintStaffAuthorizationHeader().catch(() => null);
+  }
   const headers = { "content-type": "application/json" };
   if (authorization) headers.authorization = authorization;
   if (adminToken) headers["x-studio-brain-admin-token"] = adminToken;
@@ -1133,7 +1150,9 @@ async function main() {
   process.stderr.write("open-memory MCP server running on stdio\n");
 }
 
-main().catch((error) => {
-  process.stderr.write(`open-memory-mcp failed: ${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    process.stderr.write(`open-memory-mcp failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
+  });
+}

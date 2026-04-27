@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   STARTUP_REASON_CODES,
+  buildStartupContract,
   classifyStartupReason,
   evaluateStartupLatency,
   inspectTokenFreshness,
@@ -45,4 +46,36 @@ test("evaluateStartupLatency reports budget pressure", () => {
   assert.equal(evaluateStartupLatency(100).state, "healthy");
   assert.equal(evaluateStartupLatency(2000).state, "at_risk");
   assert.equal(evaluateStartupLatency(5000).state, "over_budget");
+});
+
+test("buildStartupContract treats trusted local validated startup as pass even when transcript ordering is unproven", () => {
+  const contract = buildStartupContract({
+    reasonCode: STARTUP_REASON_CODES.OK,
+    continuityState: "ready",
+    diagnostics: {
+      presentationProjectLane: "monsoonfire-portal",
+      threadScopedItemCount: 4,
+      groundingAuthority: "validated-local",
+      startupContextStage: "local-validated-short-circuit",
+      startupCache: {
+        shortCircuitLocal: true,
+      },
+    },
+    telemetry: {
+      transcriptOrderingProven: false,
+      groundingLineEmitted: true,
+      repoReadsBeforeStartupContext: 0,
+    },
+    tokenFreshness: {
+      state: "fresh",
+    },
+    studioBrainReachable: true,
+    mcpBridgeOk: true,
+  });
+
+  assert.equal(contract.status, "pass");
+  assert.equal(contract.transcriptOrderingProven, false);
+  assert.equal(contract.orderingSatisfied, true);
+  assert.equal(contract.trustedLocalFastPath, true);
+  assert.deepEqual(contract.degradationBuckets, []);
 });

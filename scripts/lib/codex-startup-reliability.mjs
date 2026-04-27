@@ -292,6 +292,23 @@ export function buildStartupContract({
   const fallbackOnly =
     diagnostics?.fallbackOnly === true ||
     (normalizedContinuityState !== "ready" && normalizedReasonCode === STARTUP_REASON_CODES.OK);
+  const startupContextStage = clean(diagnostics?.startupContextStage || diagnostics?.startupPacket?.startupContextStage);
+  const startupCache =
+    diagnostics?.startupCache && typeof diagnostics.startupCache === "object"
+      ? diagnostics.startupCache
+      : diagnostics?.startupPacket?.startupCache && typeof diagnostics.startupPacket.startupCache === "object"
+        ? diagnostics.startupPacket.startupCache
+        : {};
+  const trustedLocalFastPath =
+    normalizedContinuityState === "ready" &&
+    trustedGrounding &&
+    threadScopedItemCount > 0 &&
+    diagnostics?.manualOnly !== true &&
+    (
+      startupCache.shortCircuitLocal === true ||
+      startupContextStage === "local-validated-short-circuit"
+    );
+  const orderingSatisfied = transcriptOrderingProven || trustedLocalFastPath;
   const compactionDominated = diagnostics?.compactionDominated === true;
   const startupSourceQuality = clean(
     diagnostics?.startupSourceQuality || diagnostics?.laneSourceQuality || diagnostics?.groundingQuality
@@ -323,7 +340,7 @@ export function buildStartupContract({
     normalizedContinuityState === "ready" && !trustedGrounding
       ? STARTUP_DEGRADATION_BUCKETS.GROUNDING_UNTRUSTED
       : "",
-    transcriptOrderingProven ? "" : STARTUP_DEGRADATION_BUCKETS.ORDERING_UNPROVEN,
+    orderingSatisfied ? "" : STARTUP_DEGRADATION_BUCKETS.ORDERING_UNPROVEN,
     Number.isFinite(repoReadsBeforeStartupContext) && repoReadsBeforeStartupContext > 0
       ? STARTUP_DEGRADATION_BUCKETS.PRE_START_REPO_READS_DETECTED
       : "",
@@ -363,6 +380,7 @@ export function buildStartupContract({
     presentationProjectLane,
     threadScopedItemCount,
     transcriptOrderingProven,
+    orderingSatisfied,
     degradationBuckets,
     missingStartupIngredients,
     dominantGoal: clean(diagnostics?.dominantGoal || diagnostics?.goal),
@@ -372,6 +390,7 @@ export function buildStartupContract({
     laneSourceQuality: clean(diagnostics?.laneSourceQuality || diagnostics?.groundingQuality || "missing"),
     startupSourceQuality: startupSourceQuality || "missing",
     fallbackOnly,
+    trustedLocalFastPath,
   };
 }
 

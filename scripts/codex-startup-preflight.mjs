@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAutomationStartupMemoryContext } from "./codex/open-memory-automation.mjs";
 import { loadCodexAutomationEnv } from "./lib/codex-automation-env.mjs";
+import { readRepoStatus } from "./lib/codex-worktree-utils.mjs";
 import {
   buildThreadBootstrapQuery,
   readThreadHistoryLines,
   readThreadName,
   resolveCodexThreadContext,
 } from "./lib/codex-session-memory-utils.mjs";
+import { inferProjectLane } from "./lib/hybrid-memory-utils.mjs";
 import {
   STARTUP_REASON_CODES,
   buildStartupContract,
@@ -47,6 +50,19 @@ function normalizeLocalArtifactRepair(value) {
     source: clean(value.source),
     capturedFrom: clean(value.capturedFrom),
   };
+}
+
+function dedupeStrings(values = []) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values) {
+    const normalized = clean(value);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+  return output;
 }
 
 function parseArgs(argv) {
@@ -106,6 +122,120 @@ function resolvePreflightStartupQuery() {
     threadName,
     historyLines,
   }) || "codex shell startup preflight";
+}
+
+function inspectRepoStartupGuidance(repoRoot = REPO_ROOT) {
+  const agentsPath = resolve(repoRoot, "AGENTS.md");
+  if (!existsSync(agentsPath)) {
+    return {
+      agentsPath,
+      hasAgentsFile: false,
+      startupMemoryFirst: false,
+      optionalMemoryAdapter: false,
+      repoTruthGuard: false,
+      targetedSearchGuidance: false,
+      aligned: false,
+      mismatchDetected: false,
+      state: "missing",
+    };
+  }
+
+  const agentsText = readFileSync(agentsPath, "utf8");
+  const startupMemoryFirst =
+    /startup context first|studio brain startup context first|memory-first startup|before broad repo reads/i.test(agentsText);
+  const optionalMemoryAdapter = /optional adapter and lookup surface/i.test(agentsText);
+  const repoTruthGuard = /not the sole source of truth|repo.*source of truth|verify code-level claims against the repo/i.test(
+    agentsText
+  );
+  const targetedSearchGuidance =
+    /repo-targeted memory search|targeted memory search|git status --short --branch|lane mismatch|fallback-only/i.test(agentsText);
+  const aligned = startupMemoryFirst && repoTruthGuard && targetedSearchGuidance;
+  const mismatchDetected = optionalMemoryAdapter && !startupMemoryFirst;
+  return {
+    agentsPath,
+    hasAgentsFile: true,
+    startupMemoryFirst,
+    optionalMemoryAdapter,
+    repoTruthGuard,
+    targetedSearchGuidance,
+    aligned,
+    mismatchDetected,
+    state: aligned ? "aligned" : mismatchDetected ? "mismatch" : "partial",
+  };
+}
+
+function inspectRepoContext({
+  repoRoot = REPO_ROOT,
+  startupPresentationLane = "",
+  threadScopedItemCount = 0,
+  fallbackOnly = false,
+  fallbackUsed = false,
+  startupContextStage = "",
+  startupCache = {},
+} = {}) {
+  const repoBase = basename(repoRoot) || "workspace";
+  const repoProjectLane = clean(
+    inferProjectLane({
+      path: repoRoot,
+      title: repoBase,
+    })
+  );
+  let repoStatus = {
+    branch: "",
+    detached: false,
+    dirty: false,
+    dirtyCount: 0,
+    error: "",
+  };
+  try {
+    repoStatus = {
+      ...readRepoStatus(repoRoot),
+      error: "",
+    };
+  } catch (error) {
+    repoStatus = {
+      branch: "",
+      detached: false,
+      dirty: false,
+      dirtyCount: 0,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const laneMismatchDetected = Boolean(
+    repoProjectLane &&
+      startupPresentationLane &&
+      repoProjectLane.toLowerCase() !== startupPresentationLane.toLowerCase()
+  );
+  const trustedLocalFastPath =
+    clean(startupContextStage).toLowerCase() === "local-validated-short-circuit" ||
+    startupCache?.shortCircuitLocal === true;
+  const targetedFollowupRecommended =
+    laneMismatchDetected ||
+    fallbackOnly ||
+    (fallbackUsed && !trustedLocalFastPath) ||
+    Math.max(0, Number(threadScopedItemCount || 0)) <= 0;
+  const followupQueries = targetedFollowupRecommended
+    ? dedupeStrings([
+        `${repoBase} blocker`,
+        repoProjectLane ? `${repoProjectLane} blocker` : "",
+        `${repoBase} deploy`,
+        `${repoBase} regression`,
+      ]).slice(0, 4)
+    : [];
+
+  return {
+    repoRoot,
+    repoBase,
+    repoProjectLane,
+    startupPresentationLane: clean(startupPresentationLane),
+    laneMismatchDetected,
+    trustedLocalFastPath,
+    targetedFollowupRecommended,
+    followupQueries,
+    repoStatus,
+    startupGuidance: inspectRepoStartupGuidance(repoRoot),
+  };
 }
 
 async function probeStudioBrainReachability(baseUrl) {
@@ -229,6 +359,7 @@ async function main() {
     startupDiagnostics.startupCache && typeof startupDiagnostics.startupCache === "object"
       ? startupDiagnostics.startupCache
       : {};
+  const fallbackUsed = startupDiagnostics.fallbackUsed === true;
   const trustMismatchDetected =
     (
       clean(startup.continuityState || "").toLowerCase() === "ready" &&
@@ -238,6 +369,15 @@ async function main() {
       startupDiagnostics.publishTrustedGrounding !== true &&
       Boolean(clean(startup.dominantGoal || startup.topBlocker || startup.nextRecommendedAction))
     );
+  const repoContext = inspectRepoContext({
+    repoRoot: REPO_ROOT,
+    startupPresentationLane: presentationProjectLane,
+    threadScopedItemCount,
+    fallbackOnly: startupContract.fallbackOnly,
+    fallbackUsed,
+    startupContextStage,
+    startupCache,
+  });
   const startupPacket = {
     schema: "codex-startup-packet.v1",
     observationKey,
@@ -255,6 +395,17 @@ async function main() {
     startupContextStage,
     startupCache,
     trustMismatchDetected,
+    repoContext: {
+      repoProjectLane: repoContext.repoProjectLane,
+      startupPresentationLane: repoContext.startupPresentationLane,
+      laneMismatchDetected: repoContext.laneMismatchDetected,
+      trustedLocalFastPath: repoContext.trustedLocalFastPath,
+      targetedFollowupRecommended: repoContext.targetedFollowupRecommended,
+      repoBranch: repoContext.repoStatus.branch,
+      repoDirty: repoContext.repoStatus.dirty,
+      repoDirtyCount: repoContext.repoStatus.dirtyCount,
+      startupGuidanceState: repoContext.startupGuidance.state,
+    },
     degradationBuckets: startupContract.degradationBuckets,
     missingStartupIngredients: startupContract.missingStartupIngredients,
     latencyBreakdown: {
@@ -303,6 +454,7 @@ async function main() {
         laneSourceQuality: startupContract.laneSourceQuality,
         startupSourceQuality: startupContract.startupSourceQuality,
         fallbackOnly: startupContract.fallbackOnly,
+        fallbackUsed,
         startupContextStage,
         startupCache,
         trustMismatchDetected,
@@ -328,6 +480,7 @@ async function main() {
           rolloutPath: transcriptTelemetry.rolloutPath,
         },
       },
+      repoContext,
       ...(mcpBridge ? { mcpBridge } : {}),
     },
   };
@@ -372,6 +525,7 @@ async function main() {
         laneSourceQuality: startupContract.laneSourceQuality,
         startupSourceQuality: startupContract.startupSourceQuality,
         fallbackOnly: startupContract.fallbackOnly,
+        fallbackUsed,
         startupContextStage,
         startupCache,
         trustMismatchDetected,
@@ -398,6 +552,7 @@ async function main() {
         transcriptSource: transcriptTelemetry.source,
         threadId: transcriptTelemetry.threadId || null,
         rolloutPath: transcriptTelemetry.rolloutPath || null,
+        repoContext,
       },
       telemetryCoverage: {
         startupSource: transcriptTelemetry.source,
@@ -457,6 +612,7 @@ async function main() {
           laneSourceQuality: startupContract.laneSourceQuality,
           startupSourceQuality: startupContract.startupSourceQuality,
           fallbackOnly: startupContract.fallbackOnly,
+          fallbackUsed,
           startupContextStage,
           startupCache,
           trustMismatchDetected,
@@ -484,6 +640,7 @@ async function main() {
           transcriptSource: transcriptTelemetry.source,
           threadId: transcriptTelemetry.threadId || null,
           rolloutPath: transcriptTelemetry.rolloutPath || null,
+          repoContext,
         },
         telemetryCoverage: {
           startupSource: transcriptTelemetry.source,
@@ -523,6 +680,22 @@ async function main() {
   );
   process.stdout.write(`dream cycle: ${report.checks.startupContext.consolidationMode}\n`);
   process.stdout.write(`startup latency: ${startupLatency.latencyMs ?? "n/a"}ms (${startupLatency.state})\n`);
+  process.stdout.write(`repo lane: ${repoContext.repoProjectLane || "unresolved"}\n`);
+  process.stdout.write(
+    `repo worktree: ${
+      repoContext.repoStatus.error
+        ? `unavailable (${repoContext.repoStatus.error})`
+        : repoContext.repoStatus.dirty
+          ? `dirty (${repoContext.repoStatus.dirtyCount}) on ${repoContext.repoStatus.branch || "unknown"}`
+          : `clean on ${repoContext.repoStatus.branch || "unknown"}`
+    }\n`
+  );
+  process.stdout.write(`repo startup guidance: ${repoContext.startupGuidance.state}\n`);
+  if (repoContext.targetedFollowupRecommended) {
+    process.stdout.write(
+      `repo-targeted follow-up: recommended (${repoContext.followupQueries.join("; ") || "refine startup search"})\n`
+    );
+  }
   if (mcpBridge) {
     process.stdout.write(`mcp bridge: ${mcpBridge.ok ? "reachable" : `unreachable (${mcpBridge.error || "unknown"})`}\n`);
   }

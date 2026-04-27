@@ -29,6 +29,10 @@ output/real-estate/public-data/
 tmp-firebase.json
 tmp/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Local import/runtime datasets
 imports/
 artifacts/runs/

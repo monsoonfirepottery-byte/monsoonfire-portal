@@ -1,15 +1,15 @@
 # Production Wave Review Workflow
 
 Current production reference wave:
-- [production-wave-2026-03-06f](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f)
+- Historical owner-local artifact root: `output/memory/production-wave-2026-03-06f`
 
 Primary artifacts:
-- [wave-summary.json](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f/wave-summary.json)
-- [ingest-catalog.json](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f/ingest-catalog.json)
-- [cross-source-review.json](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f/cross-source-review.json)
-- [cross-source-review.md](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f/cross-source-review.md)
-- [production-review.json](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f/production-review.json)
-- [production-review.md](/home/wuff/monsoonfire-portal/output/memory/production-wave-2026-03-06f/production-review.md)
+- `output/memory/production-wave-2026-03-06f/wave-summary.json`
+- `output/memory/production-wave-2026-03-06f/ingest-catalog.json`
+- `output/memory/production-wave-2026-03-06f/cross-source-review.json`
+- `output/memory/production-wave-2026-03-06f/cross-source-review.md`
+- `output/memory/production-wave-2026-03-06f/production-review.json`
+- `output/memory/production-wave-2026-03-06f/production-review.md`
 
 Why this matters:
 - The wave is complete across all current vectors.

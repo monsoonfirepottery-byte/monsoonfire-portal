@@ -70,7 +70,7 @@ When apply mode is enabled, the workflow can:
 - The wait step uses `gh pr checks --required --watch --fail-fast`, so long GitHub lanes such as smoke, lighthouse, and mobile builds stay part of the ship instead of becoming a manual follow-up.
 - If no clean default-branch worktree is available, deploy is blocked on purpose rather than deploying from a dirty feature branch.
 - Direct `node ./scripts/ship-workflow.mjs ...` runs accept the full `--flag` syntax.
-- `npm run ship...` shorthands also accept positional aliases like `apply`, `portal`, `474`, `skip-cleanup`, `skip-sync`, `skip-merge`, and `pr=474`.
+- Ship workflow npm shorthands also accept positional aliases like `apply`, `portal`, `474`, `skip-cleanup`, `skip-sync`, `skip-merge`, and `pr=474`.
 
 ## Studio Brain close-out
 

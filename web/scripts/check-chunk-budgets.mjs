@@ -38,11 +38,11 @@ const requiredRouteChunks = [
 ];
 // Total budgets re-baselined after the StaffView lazy split, dependency refresh,
 // kiln queue timeline route, client-facing My Pieces redesign, portal handoff
-// attribution path, Studio Brain control tower actionability bridge, reservation
-// notification policy controls, and the current live-surface trust tranche while
-// keeping future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_820_000;
-const MAX_TOTAL_CSS_BYTES = 292_000;
+// attribution path, Studio Brain control tower actionability bridge, host/runtime
+// incident surfaces, reservation notification policy controls, and the current
+// live-surface trust tranche while keeping future regressions visible.
+const MAX_TOTAL_JS_BYTES = 1_850_000;
+const MAX_TOTAL_CSS_BYTES = 293_500;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

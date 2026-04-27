@@ -25,13 +25,14 @@ import {
   writeContinuityEnvelope,
   writeHandoffArtifact,
 } from "../lib/codex-session-memory-utils.mjs";
+import { loadCodexAutomationEnv } from "../lib/codex-automation-env.mjs";
 import { inferProjectLane } from "../lib/hybrid-memory-utils.mjs";
 import { stableHash } from "../lib/pst-memory-utils.mjs";
 import { hydrateStudioBrainAuthFromPortal } from "../lib/studio-brain-startup-auth.mjs";
 import { resolveStudioBrainBaseUrlFromEnv } from "../studio-brain-url-resolution.mjs";
 import { notifyAutomationOutcome } from "./phone-notify.mjs";
 
-const DEFAULT_TIMEOUT_MS = 3500;
+const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_CLI_TIMEOUT_MS = 12000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1437,7 +1438,13 @@ async function safeNotifyAutomationOutcome(payload) {
 }
 
 function resolveTenantId(env) {
-  return clean(env.OPEN_MEMORY_TENANT_ID || env.STUDIO_BRAIN_MEMORY_TENANT_ID || "");
+  return clean(
+    env.OPEN_MEMORY_TENANT_ID ||
+      env.STUDIO_BRAIN_MEMORY_TENANT_ID ||
+      env.STUDIO_BRAIN_DEFAULT_TENANT_ID ||
+      env.STUDIO_BRAIN_TENANT_ID ||
+      ""
+  );
 }
 
 function resolveAgentId(env, fallback) {
@@ -2050,6 +2057,7 @@ function writeMemoryBriefArtifact(brief) {
 }
 
 async function ensureAutomationAuth(env = process.env) {
+  loadCodexAutomationEnv({ repoRoot: REPO_ROOT, env });
   const tokenFreshness = inspectTokenFreshness(resolveStudioBrainAuthToken(env));
   if (tokenFreshness.state === "fresh" || tokenFreshness.state === "expiring") {
     return {

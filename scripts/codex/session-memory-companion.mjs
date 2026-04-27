@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readdirSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -30,6 +30,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const OPEN_MEMORY_SCRIPT = resolve(REPO_ROOT, "scripts", "open-memory.mjs");
+const COMPANION_LOCK_FILENAME = "session-memory-companion.lock.json";
+const COMPAT_IMPORT_CONTENT_LIMIT = 18_000;
+const COMPAT_IMPORT_TRUNCATION_MARKER = " [truncated for import compatibility]";
 
 function usage() {
   process.stdout.write(
@@ -56,6 +59,22 @@ function clean(value) {
   return String(value ?? "").trim();
 }
 
+function readEnvBool(env, key, fallback = false) {
+  const raw = clean(env?.[key]).toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function readEnvNumber(env, key, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const raw = clean(env?.[key]);
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
 function sleep(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
@@ -76,6 +95,100 @@ function parentAlive(parentPid) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function pidAlive(pid) {
+  const numericPid = Number(pid);
+  if (!Number.isFinite(numericPid) || numericPid <= 0) return false;
+  try {
+    process.kill(numericPid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readJsonFile(path) {
+  try {
+    return parseJson(readFileSync(path, "utf8"), null);
+  } catch {
+    return null;
+  }
+}
+
+function lockOwnerIsStale(owner, staleMs) {
+  const ownerPid = Number(owner?.pid ?? 0);
+  if (!pidAlive(ownerPid)) return true;
+  const createdAtMs = Date.parse(clean(owner?.createdAt));
+  const ageMs = Number.isFinite(createdAtMs) ? Date.now() - createdAtMs : 0;
+  if (ageMs < staleMs) return false;
+  const ownerParentPid = Number(owner?.parentPid ?? 0);
+  return ownerParentPid > 0 && !parentAlive(ownerParentPid);
+}
+
+function acquireCompanionLock({ runtimePaths, threadInfo, parentPid, env }) {
+  mkdirSync(runtimePaths.runtimeDir, { recursive: true });
+  const lockPath = resolve(runtimePaths.runtimeDir, COMPANION_LOCK_FILENAME);
+  const staleMs = readEnvNumber(env, "CODEX_SESSION_MEMORY_LOCK_STALE_MS", 30 * 60 * 1000, {
+    min: 60_000,
+    max: 24 * 60 * 60 * 1000,
+  });
+  const payload = {
+    pid: process.pid,
+    parentPid: Number(parentPid) || 0,
+    threadId: threadInfo.threadId,
+    rolloutPath: threadInfo.rolloutPath,
+    cwd: threadInfo.cwd || "",
+    createdAt: new Date().toISOString(),
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = openSync(lockPath, "wx");
+      try {
+        writeFileSync(fd, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      } finally {
+        closeSync(fd);
+      }
+      let released = false;
+      return {
+        lockPath,
+        release() {
+          if (released) return;
+          released = true;
+          const current = readJsonFile(lockPath);
+          if (Number(current?.pid ?? 0) === process.pid) {
+            rmSync(lockPath, { force: true });
+          }
+        },
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      const owner = readJsonFile(lockPath);
+      if (lockOwnerIsStale(owner, staleMs)) {
+        rmSync(lockPath, { force: true });
+        continue;
+      }
+      process.stderr.write(
+        `session-memory-companion skipped: thread ${threadInfo.threadId} is already owned by pid ${Number(owner?.pid ?? 0) || "unknown"}.\n`
+      );
+      return null;
+    }
+  }
+
+  throw new Error(`Unable to acquire companion lock at ${lockPath}.`);
+}
+
+function installLockRelease(lock) {
+  process.once("exit", () => {
+    lock.release();
+  });
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => {
+      lock.release();
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    });
   }
 }
 
@@ -100,13 +213,15 @@ function readJsonlRows(path) {
 function shrinkRowsForCompat(rows) {
   return rows.map((row) => {
     const content = String(row?.content ?? "");
-    if (content.length <= 18_000) return row;
+    if (content.length <= COMPAT_IMPORT_CONTENT_LIMIT) return row;
+    const clipAt = Math.max(0, COMPAT_IMPORT_CONTENT_LIMIT - COMPAT_IMPORT_TRUNCATION_MARKER.length);
     return {
       ...row,
-      content: `${content.slice(0, 17_980).trimEnd()} [truncated for import compatibility]`,
+      content: `${content.slice(0, clipAt).trimEnd()}${COMPAT_IMPORT_TRUNCATION_MARKER}`,
       metadata: {
         ...(row?.metadata && typeof row.metadata === "object" ? row.metadata : {}),
         importCompatibilityClip: true,
+        originalContentLength: Number(row?.metadata?.originalContentLength ?? 0) || content.length,
       },
     };
   });
@@ -121,9 +236,23 @@ function importPayloadHasCompatFailure(payload) {
   return results.some((entry) => /content.*20,?000|content.*max|max.*content|too_big|too long|validation/i.test(clean(entry?.error)));
 }
 
-function importPendingFile(path, env) {
-  const authToken = clean(env.STUDIO_BRAIN_AUTH_TOKEN || env.STUDIO_BRAIN_ID_TOKEN || env.STUDIO_BRAIN_MCP_ID_TOKEN || "");
-  const adminToken = clean(env.STUDIO_BRAIN_ADMIN_TOKEN || env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || "");
+function openMemoryImportEnv(env) {
+  const childEnv = { ...env };
+  const mcpAuthToken = clean(env.STUDIO_BRAIN_MCP_ID_TOKEN);
+  if (!clean(childEnv.STUDIO_BRAIN_AUTH_TOKEN) && !clean(childEnv.STUDIO_BRAIN_ID_TOKEN) && mcpAuthToken) {
+    childEnv.STUDIO_BRAIN_ID_TOKEN = mcpAuthToken;
+  }
+  const mcpAdminToken = clean(env.STUDIO_BRAIN_MCP_ADMIN_TOKEN);
+  if (!clean(childEnv.STUDIO_BRAIN_ADMIN_TOKEN) && mcpAdminToken) {
+    childEnv.STUDIO_BRAIN_ADMIN_TOKEN = mcpAdminToken;
+  }
+  return childEnv;
+}
+
+function importPendingFile(path, env, options = {}) {
+  const importTimeoutMs = Number(options.importTimeoutMs ?? 120_000);
+  const disableRunBurstLimit = Boolean(options.disableRunBurstLimit);
+  const childEnv = openMemoryImportEnv(env);
   const args = [
     OPEN_MEMORY_SCRIPT,
     "import",
@@ -131,21 +260,18 @@ function importPendingFile(path, env) {
     path,
     "--continue-on-error",
     "true",
-    "--disable-run-burst-limit",
-    "true",
   ];
-  if (authToken) {
-    args.push("--auth", authToken);
-  }
-  if (adminToken) {
-    args.push("--admin-token", adminToken);
+  if (disableRunBurstLimit) {
+    args.push("--disable-run-burst-limit", "true");
   }
   const runImport = () =>
     spawnSync(process.execPath, args, {
       cwd: REPO_ROOT,
-      env,
+      env: childEnv,
       encoding: "utf8",
       maxBuffer: 1024 * 1024 * 16,
+      timeout: importTimeoutMs,
+      killSignal: "SIGTERM",
     });
 
   const rerunWithCompatShrink = () => {
@@ -197,8 +323,18 @@ function importPendingFile(path, env) {
 
   return {
     ok: false,
-    error: combined || `open-memory import exited with status ${result.status ?? "unknown"}`,
+    error:
+      combined ||
+      clean(result.error ? `${result.error.code || result.error.name || "error"}: ${result.error.message}` : "") ||
+      `open-memory import exited with status ${result.status ?? "unknown"}`,
   };
+}
+
+function importFailureBackoffActive(state, nowMs, failureBackoffMs) {
+  if (failureBackoffMs <= 0 || !clean(state?.lastImportError)) return false;
+  const lastAttemptMs = Date.parse(clean(state?.lastImportAttemptAt));
+  if (!Number.isFinite(lastAttemptMs)) return false;
+  return nowMs - lastAttemptMs < failureBackoffMs;
 }
 
 function queueCompaction(threadInfo, products, watermark, runtimePaths) {
@@ -253,6 +389,19 @@ async function processLoop({
   env,
 }) {
   const settings = compactionSettingsFromEnv(env);
+  const importTimeoutMs = readEnvNumber(env, "CODEX_SESSION_MEMORY_IMPORT_TIMEOUT_MS", 120_000, {
+    min: 5_000,
+    max: 15 * 60 * 1000,
+  });
+  const failureBackoffMs = readEnvNumber(env, "CODEX_SESSION_MEMORY_IMPORT_FAILURE_BACKOFF_MS", 60_000, {
+    min: 0,
+    max: 60 * 60 * 1000,
+  });
+  const maxImportsPerLoop = readEnvNumber(env, "CODEX_SESSION_MEMORY_MAX_IMPORTS_PER_LOOP", 1, {
+    min: 1,
+    max: 25,
+  });
+  const disableRunBurstLimit = readEnvBool(env, "CODEX_SESSION_MEMORY_DISABLE_RUN_BURST_LIMIT", false);
   const watermark = readCompactionWatermark(runtimePaths.compactionWatermarkPath);
   watermark.threadId = threadInfo.threadId;
   watermark.rolloutPath = threadInfo.rolloutPath;
@@ -289,9 +438,17 @@ async function processLoop({
       };
     }
 
+    let importsThisLoop = 0;
+    const nowMs = Date.now();
     for (const pendingPath of listPendingJsonl(runtimePaths.pendingDir)) {
       const compactionId = clean(pendingPath.split(/[/\\]/).pop() || "").replace(/\.jsonl$/i, "");
-      const result = importPendingFile(pendingPath, env);
+      const state = watermark.compactions?.[compactionId] || {};
+      if (importFailureBackoffActive(state, nowMs, failureBackoffMs)) continue;
+      const result = importPendingFile(pendingPath, env, {
+        disableRunBurstLimit,
+        importTimeoutMs,
+      });
+      importsThisLoop += 1;
       if (result.ok) {
         rmSync(pendingPath, { force: true });
         watermark.compactions[compactionId] = {
@@ -310,6 +467,7 @@ async function processLoop({
           queuePath: pendingPath,
         };
       }
+      if (importsThisLoop >= maxImportsPerLoop) break;
     }
 
     watermark.lastProcessedLine = entries.length;
@@ -354,15 +512,22 @@ async function main() {
   }
 
   const runtimePaths = runtimePathsForThread(threadInfo.threadId);
-  await processLoop({
-    threadInfo,
-    runtimePaths,
-    startupContextPath,
-    parentPid,
-    once,
-    pollMs,
-    env: process.env,
-  });
+  const lock = acquireCompanionLock({ runtimePaths, threadInfo, parentPid, env: process.env });
+  if (!lock) return;
+  installLockRelease(lock);
+  try {
+    await processLoop({
+      threadInfo,
+      runtimePaths,
+      startupContextPath,
+      parentPid,
+      once,
+      pollMs,
+      env: process.env,
+    });
+  } finally {
+    lock.release();
+  }
 }
 
 main().catch((error) => {

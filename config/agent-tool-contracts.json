@@ -18,7 +18,11 @@
       "dryRunSupport": true,
       "verificationCommand": "node ./scripts/codex-startup-preflight.mjs --json",
       "safeFailBehavior": "Fall back to bootstrap artifacts and report that live memory startup context was unavailable.",
-      "rollbackBehavior": "No rollback required; this surface is read-only."
+      "rollbackBehavior": "No rollback required; this surface is read-only.",
+      "approvalPolicy": {
+        "tier": "no_approval",
+        "why": "Read-only startup continuity lookup."
+      }
     },
     {
       "toolId": "startup.preflight",
@@ -38,6 +42,10 @@
       "verificationCommand": "node ./scripts/codex-startup-preflight.mjs --json",
       "safeFailBehavior": "Block the mission and surface the recovery step from startup continuity.",
       "rollbackBehavior": "No rollback required; this surface is read-only.",
+      "approvalPolicy": {
+        "tier": "no_approval",
+        "why": "Read-only startup continuity check."
+      },
       "lifecycle": {
         "owner": "agent-platform",
         "class": "adapter",
@@ -65,6 +73,10 @@
       "verificationCommand": "node ./scripts/codex-doctor.mjs --json",
       "safeFailBehavior": "Keep the run read-only and require operator review before mutate flows continue.",
       "rollbackBehavior": "No rollback required; this surface is read-only.",
+      "approvalPolicy": {
+        "tier": "no_approval",
+        "why": "Read-only harness health audit."
+      },
       "lifecycle": {
         "owner": "agent-platform",
         "class": "adapter",
@@ -96,6 +108,15 @@
       "verificationCommand": "node ./scripts/agent-file-plan-apply.mjs --plan <plan-path> --dry-run --json",
       "safeFailBehavior": "Stop the mutate phase and fall back to smaller file-by-file plans instead of retrying the same oversized payload.",
       "rollbackBehavior": "Use expected hashes and the run ledger to reconstruct and restore prior file contents if a bounded file plan misfires.",
+      "approvalPolicy": {
+        "tier": "auto_review_ok",
+        "why": "Workspace writes are bounded by a file plan and dry-run verifier; high-risk missions still require tool-budget approval.",
+        "requiredEvidence": [
+          "dry-run result",
+          "changed file list"
+        ],
+        "blockedIfDirty": true
+      },
       "lifecycle": {
         "owner": "agent-platform",
         "class": "bridge",
@@ -199,7 +220,15 @@
       "dryRunSupport": false,
       "verificationCommand": "node ./scripts/open-memory.mjs recent --limit 5",
       "safeFailBehavior": "Surface the write failure and keep the run resumable through the local handoff path instead of assuming the save succeeded.",
-      "rollbackBehavior": "Use memory review surfaces to inspect, quarantine, or reverse suspect writes if a bad save slips through."
+      "rollbackBehavior": "Use memory review surfaces to inspect, quarantine, or reverse suspect writes if a bad save slips through.",
+      "approvalPolicy": {
+        "tier": "auto_review_ok",
+        "why": "Durable memory writes are allowed for explicit handoffs, blockers, and user-requested saves; speculative personal facts still need human confirmation.",
+        "requiredEvidence": [
+          "handoff packet",
+          "memory item kind"
+        ]
+      }
     },
     {
       "toolId": "memory.hygiene.scrub-thread-metadata",
@@ -217,7 +246,14 @@
       "dryRunSupport": true,
       "verificationCommand": "node ./scripts/open-memory.mjs scrub-thread-metadata --dry-run true --limit 50",
       "safeFailBehavior": "Stop after the dry-run wave and require operator review before any live repair pass.",
-      "rollbackBehavior": "Use memory review and repair receipts to reverse or quarantine suspect metadata writes."
+      "rollbackBehavior": "Use memory review and repair receipts to reverse or quarantine suspect metadata writes.",
+      "approvalPolicy": {
+        "tier": "human_required_for_mutation",
+        "why": "Memory hygiene can rewrite durable metadata and should remain human-approved after dry-run evidence.",
+        "requiredEvidence": [
+          "dry-run repair receipt"
+        ]
+      }
     },
     {
       "toolId": "memory.consolidate",
@@ -235,7 +271,14 @@
       "dryRunSupport": false,
       "verificationCommand": "node ./scripts/open-memory-consolidate.mjs --json",
       "safeFailBehavior": "Stop and surface the host-side auth or control-plane error instead of retrying local database access.",
-      "rollbackBehavior": "Use the resulting consolidation artifact and memory review surfaces to quarantine or revert suspect follow-on writes if needed."
+      "rollbackBehavior": "Use the resulting consolidation artifact and memory review surfaces to quarantine or revert suspect follow-on writes if needed.",
+      "approvalPolicy": {
+        "tier": "auto_review_ok",
+        "why": "Host-side consolidation is an established maintenance primitive, but artifacts must remain reviewable.",
+        "requiredEvidence": [
+          "consolidation artifact"
+        ]
+      }
     },
     {
       "toolId": "memory.loop-incidents",
@@ -284,6 +327,10 @@
       "verificationCommand": "node ./scripts/pr-gate.mjs",
       "safeFailBehavior": "Keep the mission blocked and attach the PR gate output as verifier evidence.",
       "rollbackBehavior": "No rollback required; verification only.",
+      "approvalPolicy": {
+        "tier": "no_approval",
+        "why": "Verification-only PR gate."
+      },
       "lifecycle": {
         "owner": "agent-platform",
         "class": "adapter",

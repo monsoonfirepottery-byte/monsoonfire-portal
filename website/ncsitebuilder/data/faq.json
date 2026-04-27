@@ -46,7 +46,7 @@
   },
   {
     "question": "Do you offer credits if work is damaged?",
-    "answer": "<p>If damage is the studio's fault (for example: loading error, incorrect firing type), we credit the full impacted half-shelf bisque or glaze fee. If the issue is maker-side (dryness, construction/process fault, or firing-temp miscommunication), no firing credit is issued.</p>",
+    "answer": "<p>If review shows the issue was studio-side, we apply generous credits to the affected firing service. If the issue is maker-side (dryness, construction/process fault, or firing-temp miscommunication), no firing credit is automatic.</p>",
     "tags": ["kiln", "policies", "payments"]
   },
   {
@@ -56,7 +56,7 @@
   },
   {
     "question": "When are charges processed for firing?",
-    "answer": "<p>Firing fees are charged at unloading, after we confirm there was no studio-fault issue that should receive credit.</p>",
+    "answer": "<p>Firing services are charged when the work is accepted into service. If review later confirms a studio-side firing mistake, we apply generous credits after that review.</p>",
     "tags": ["payments", "kiln", "policies"]
   },
   {

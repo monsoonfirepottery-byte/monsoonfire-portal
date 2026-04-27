@@ -131,6 +131,21 @@ Retained as compatibility or diagnostics:
 3. Use room drawers and explicit buttons for normal operator actions.
 4. Use tmux attach only when you need shell-level recovery or a direct lane attach.
 
+### Chief-of-Staff Audit
+
+Run the bounded fixture audit when you want to prove the Chief-of-Staff partner loop behaves end to end without touching live host state.
+
+- Command: `npm run studio:ops:cos:audit`
+- Report: `output/qa/studiobrain-chief-of-staff-audit.json`
+- Verifies:
+  - `GET /api/control-tower/state`
+  - `GET /api/control-tower/partner/latest`
+  - `POST /api/control-tower/partner/brief`
+  - `POST /api/control-tower/partner/checkins`
+  - `POST /api/control-tower/partner/open-loops/:id`
+  - persisted partner artifacts in `output/studio-brain/partner/*`
+  - control-tower audit entries for partner checkins and open-loop updates
+
 ## Rollback
 
 Because the browser route was introduced additively, rollback is straightforward:

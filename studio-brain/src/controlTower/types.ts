@@ -236,6 +236,7 @@ export type ControlTowerHostCard = {
   currentRunId: string | null;
   agentCount: number;
   version: string | null;
+  metadata?: Record<string, unknown>;
   summary: string;
   metrics: {
     cpuPct: number | null;

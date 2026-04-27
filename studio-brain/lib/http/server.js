@@ -1404,7 +1404,7 @@ function verifyHmacSignature(expectedHex, providedHex) {
         return false;
     }
 }
-function createSignedOpsSessionToken(secret, ttlSeconds) {
+function createSignedOpsSessionToken(secret, ttlSeconds, principal) {
     const nowMs = Date.now();
     const expiresAt = nowMs + Math.max(60, Math.min(3600, ttlSeconds)) * 1000;
     const payload = {
@@ -1412,6 +1412,12 @@ function createSignedOpsSessionToken(secret, ttlSeconds) {
         iat: nowMs,
         exp: expiresAt,
         nonce: node_crypto_1.default.randomBytes(12).toString("base64url"),
+        uid: principal?.uid ?? "ops-session:local-portal",
+        isStaff: principal?.isStaff ?? true,
+        roles: Array.isArray(principal?.roles) && principal.roles.length > 0 ? principal.roles : ["staff"],
+        portalRole: principal?.portalRole ?? "staff",
+        opsRoles: Array.isArray(principal?.opsRoles) ? principal.opsRoles : [],
+        opsCapabilities: Array.isArray(principal?.opsCapabilities) ? principal.opsCapabilities : [],
     };
     const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
     const signature = node_crypto_1.default.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
@@ -1420,30 +1426,49 @@ function createSignedOpsSessionToken(secret, ttlSeconds) {
 function verifySignedOpsSessionToken(token, secret) {
     const trimmed = token.trim();
     if (!trimmed.startsWith("sbops."))
-        return false;
+        return null;
     const parts = trimmed.split(".");
     if (parts.length !== 3)
-        return false;
+        return null;
     const payloadEncoded = parts[1] ?? "";
     const providedSignature = parts[2] ?? "";
     const expectedSignature = node_crypto_1.default.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
     if (!verifyHmacSignature(expectedSignature, providedSignature)) {
-        return false;
+        return null;
     }
     try {
         const decoded = JSON.parse(Buffer.from(payloadEncoded, "base64url").toString("utf8"));
         const exp = decoded.exp ?? 0;
         const iat = decoded.iat ?? 0;
         if (decoded.aud !== "studio-brain-ops")
-            return false;
+            return null;
         if (!Number.isFinite(exp) || exp <= Date.now())
-            return false;
+            return null;
         if (!Number.isFinite(iat) || iat > Date.now() + 60_000)
-            return false;
-        return true;
+            return null;
+        const uid = toTrimmedString(decoded.uid);
+        if (!uid)
+            return null;
+        const portalRole = decoded.portalRole === "admin" || decoded.portalRole === "staff" || decoded.portalRole === "member"
+            ? decoded.portalRole
+            : "member";
+        return {
+            uid,
+            isStaff: decoded.isStaff !== false,
+            roles: Array.isArray(decoded.roles)
+                ? decoded.roles.filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+                : ["staff"],
+            portalRole,
+            opsRoles: Array.isArray(decoded.opsRoles)
+                ? decoded.opsRoles.filter((entry) => typeof entry === "string")
+                : [],
+            opsCapabilities: Array.isArray(decoded.opsCapabilities)
+                ? decoded.opsCapabilities.filter((entry) => typeof entry === "string")
+                : [],
+        };
     }
     catch {
-        return false;
+        return null;
     }
 }
 function toNormalizedSet(values) {
@@ -1650,8 +1675,10 @@ function startHttpServer(params) {
             return false;
         return fallback;
     };
+    const maxActiveImportsBeforeBackfill = parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000);
     const memoryPressureConfig = {
-        maxActiveImportsBeforeBackfill: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000),
+        maxActiveImportsBeforeBackfill,
+        maxActiveImportRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS", maxActiveImportsBeforeBackfill, 1, 1_000),
         maxConcurrentBackfills: parseBoundedEnvInt("STUDIO_BRAIN_MAX_CONCURRENT_BACKFILLS", 1, 1, 100),
         retryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_BACKFILL_RETRY_AFTER_SECONDS", 20, 1, 3600),
         maxActiveImportsBeforeQueryDegrade: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_DEGRADE", 4, 0, 10_000),
@@ -1745,6 +1772,7 @@ function startHttpServer(params) {
         latency: latencySnapshot(),
         thresholds: {
             maxActiveImportsBeforeBackfill: thresholds.maxActiveImportsBeforeBackfill,
+            maxActiveImportRequests: thresholds.maxActiveImportRequests,
             maxConcurrentBackfills: thresholds.maxConcurrentBackfills,
             retryAfterSeconds: thresholds.retryAfterSeconds,
             maxActiveImportsBeforeQueryDegrade: thresholds.maxActiveImportsBeforeQueryDegrade,
@@ -1898,14 +1926,33 @@ function startHttpServer(params) {
             return { ok: true, actorId: "ops-portal:anonymous" };
         }
         const sessionToken = firstHeader(req.headers["x-studio-brain-ops-session"]);
-        if (opsSessionSecret && sessionToken && verifySignedOpsSessionToken(sessionToken, opsSessionSecret)) {
-            return { ok: true, actorId: "ops-session:local-portal" };
+        const sessionPrincipal = opsSessionSecret && sessionToken ? verifySignedOpsSessionToken(sessionToken, opsSessionSecret) : null;
+        if (sessionPrincipal) {
+            return { ok: true, principal: sessionPrincipal, actorId: sessionPrincipal.uid };
         }
         const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
         if (!auth.ok) {
             return { ok: false, message: auth.message ?? "Unauthorized", actorId: "unknown" };
         }
         return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+    };
+    const memoryImportPressureRejection = (route, requestId) => {
+        const thresholds = resolveDynamicMemoryThresholds();
+        if (activeImportRequests < thresholds.maxActiveImportRequests)
+            return null;
+        const pressure = memoryPressureSnapshot(thresholds);
+        logger.warn("memory_import_shed", {
+            route,
+            reason: "active-import-pressure",
+            pressure,
+            requestId,
+        });
+        return {
+            message: "Memory import deferred due current import pressure.",
+            reason: "active-import-pressure",
+            retryAfterSeconds: thresholds.retryAfterSeconds,
+            pressure,
+        };
     };
     const assertHostHeartbeatAuth = async (req) => {
         const provided = firstHeader(req.headers["x-studio-brain-admin-token"]);
@@ -2199,6 +2246,18 @@ function startHttpServer(params) {
                             res.end(JSON.stringify({ ok: false, message: "clientRequestId is required for memory ingest." }));
                             return;
                         }
+                    }
+                    const pressureRejection = memoryImportPressureRejection("/api/memory/ingest", requestId);
+                    if (pressureRejection) {
+                        statusCode = 429;
+                        res.writeHead(statusCode, withSecurityHeaders({
+                            "content-type": "application/json",
+                            ...corsHeaders,
+                            "x-request-id": requestId,
+                            "retry-after": String(pressureRejection.retryAfterSeconds),
+                        }));
+                        res.end(JSON.stringify({ ok: false, ...pressureRejection }));
+                        return;
                     }
                     let memory;
                     activeImportRequests += 1;
@@ -3632,6 +3691,18 @@ function startHttpServer(params) {
                     statusCode = 401;
                     res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                     res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const pressureRejection = memoryImportPressureRejection("/api/memory/import", requestId);
+                if (pressureRejection) {
+                    statusCode = 429;
+                    res.writeHead(statusCode, withSecurityHeaders({
+                        "content-type": "application/json",
+                        ...corsHeaders,
+                        "x-request-id": requestId,
+                        "retry-after": String(pressureRejection.retryAfterSeconds),
+                    }));
+                    res.end(JSON.stringify({ ok: false, ...pressureRejection }));
                     return;
                 }
                 try {
@@ -7611,7 +7682,7 @@ function startHttpServer(params) {
                     opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined),
                     opsService.getDisplayState(stationId),
                 ]);
-                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds) : null;
+                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal ?? null) : null;
                 const html = (0, renderOpsPortalPage_1.renderOpsPortalPage)({
                     snapshot,
                     displayState,
@@ -7640,7 +7711,7 @@ function startHttpServer(params) {
                     ? requestedSurface
                     : allowedSurfaces[0] ?? requestedSurface;
                 const displayState = stationId ? await opsService.getDisplayState(stationId) : null;
-                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds) : null;
+                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal ?? null) : null;
                 const html = (0, renderOpsPortalPage_1.renderOpsPortalPage)({
                     snapshot,
                     displayState,

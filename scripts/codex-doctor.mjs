@@ -22,6 +22,12 @@ const REPO_ROOT = resolve(__dirname, "..");
 
 const DEFAULT_ARTIFACT = "output/codex-doctor/latest.json";
 const DEFAULT_TOOLCALL_WINDOW_HOURS = 168;
+const DEFAULT_CHILD_SCRIPT_TIMEOUT_MS = 30_000;
+const CHILD_SCRIPT_TIMEOUTS_MS = {
+  "scripts/open-memory.mjs": 15_000,
+  "scripts/codex-startup-preflight.mjs": 45_000,
+  "scripts/codex-app-doctor.mjs": 15_000,
+};
 
 function clean(value) {
   return String(value ?? "").trim();
@@ -173,6 +179,26 @@ function toMs(value) {
   return Number.isFinite(millis) ? millis : null;
 }
 
+function resolveChildScriptTimeoutMs(relativePath) {
+  return Number(CHILD_SCRIPT_TIMEOUTS_MS[relativePath] || DEFAULT_CHILD_SCRIPT_TIMEOUT_MS);
+}
+
+function buildScriptRunDetails(run, { includeStdout = false, includeStderr = false } = {}) {
+  const details = {
+    command: run.command,
+    durationMs: Number.isFinite(run.durationMs) ? run.durationMs : null,
+    timeoutMs: Number.isFinite(run.timeoutMs) ? run.timeoutMs : null,
+    timedOut: run.timedOut === true,
+  };
+
+  if (run.exitCode !== undefined) details.exitCode = run.exitCode;
+  if (clean(run.signal)) details.signal = clean(run.signal);
+  if (clean(run.error)) details.error = clean(run.error);
+  if (includeStdout) details.stdout = run.stdout;
+  if (includeStderr) details.stderr = run.stderr;
+  return details;
+}
+
 function readCurrentToolcallWindow(repoRoot, windowHours = DEFAULT_TOOLCALL_WINDOW_HOURS) {
   const toolcallPath = resolve(repoRoot, ".codex", "toolcalls.ndjson");
   const cutoffMs = Date.now() - windowHours * 60 * 60 * 1000;
@@ -242,21 +268,42 @@ function runNodeScript(relativePath, extraArgs = [], { repoRoot = REPO_ROOT, env
     };
   }
 
+  const timeoutMs = resolveChildScriptTimeoutMs(relativePath);
+  const startedAt = Date.now();
   const result = spawnSync(process.execPath, [absolutePath, ...extraArgs], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 1024 * 1024 * 12,
     env,
+    timeout: timeoutMs,
   });
+  const durationMs = Date.now() - startedAt;
+  const timedOut = result.error instanceof Error && result.error.code === "ETIMEDOUT";
+  const errorMessage = result.error instanceof Error ? clean(result.error.message) : "";
+  const stderrParts = [];
+  const rawStderr = clean(result.stderr || "");
+  if (rawStderr) stderrParts.push(rawStderr);
+  if (timedOut) {
+    stderrParts.push(`Timed out after ${timeoutMs}ms while running ${relativePath}.`);
+  } else if (errorMessage && !stderrParts.includes(errorMessage)) {
+    stderrParts.push(errorMessage);
+  }
+  const stdout = String(result.stdout || "");
+  const stderr = stderrParts.join("\n");
 
   return {
-    ok: result.status === 0,
-    exitCode: result.status,
-    stdout: String(result.stdout || ""),
-    stderr: String(result.stderr || ""),
-    json: parseJsonOutput(result.stdout),
+    ok: result.status === 0 && !timedOut,
+    exitCode: result.status ?? null,
+    stdout,
+    stderr,
+    json: parseJsonOutput(stdout),
     command: `node ${relativePath} ${extraArgs.join(" ")}`.trim(),
+    durationMs,
+    timeoutMs,
+    timedOut,
+    signal: clean(result.signal),
+    error: errorMessage,
   };
 }
 
@@ -406,6 +453,45 @@ export async function runCodexDoctor({
     );
   }
 
+  const codexAppDoctorRun = runNodeScriptImpl("scripts/codex-app-doctor.mjs", ["--json"], { repoRoot, env });
+  const codexAppDoctorPayload = codexAppDoctorRun.json;
+  if (!codexAppDoctorPayload) {
+    checkCollector.push(
+      "codex-app-doctor",
+      "warning",
+      false,
+      codexAppDoctorRun.timedOut === true
+        ? `Codex app doctor timed out after ${codexAppDoctorRun.timeoutMs}ms.`
+        : "Unable to parse Codex app doctor output.",
+      {
+        ...buildScriptRunDetails(codexAppDoctorRun, { includeStdout: true, includeStderr: true }),
+        command: codexAppDoctorRun.command,
+      },
+    );
+  } else {
+    checkCollector.push(
+      "codex-app-doctor",
+      "info",
+      codexAppDoctorPayload.status !== "fail",
+      codexAppDoctorPayload.status === "pass"
+        ? "Codex app doctor passed."
+        : codexAppDoctorPayload.status === "warn"
+          ? "Codex app doctor reported advisory warnings."
+          : "Codex app doctor reported blocking errors.",
+      {
+        ...buildScriptRunDetails(codexAppDoctorRun),
+        command: codexAppDoctorRun.command,
+        status: codexAppDoctorPayload.status,
+        summary: codexAppDoctorPayload.summary,
+        appVersion: codexAppDoctorPayload.app?.package?.version || null,
+        cliVersion: codexAppDoctorPayload.codexCli?.preferred?.version || null,
+        browserUseAvailable: codexAppDoctorPayload.capabilities?.browserUse?.available === true,
+        studioBrainMemoryMcp: codexAppDoctorPayload.config?.hasStudioBrainMemory === true,
+        artifactPath: codexAppDoctorPayload.artifactPath,
+      },
+    );
+  }
+
   const docsDriftRun = runNodeScriptImpl("scripts/codex-docs-drift-check.mjs", ["--json"], { repoRoot, env });
   const docsDriftPayload = docsDriftRun.json;
   if (!docsDriftPayload) {
@@ -415,6 +501,7 @@ export async function runCodexDoctor({
       false,
       "Unable to parse codex docs drift output. Inspect script output manually.",
       {
+        ...buildScriptRunDetails(docsDriftRun, { includeStderr: true }),
         command: docsDriftRun.command,
         exitCode: docsDriftRun.exitCode,
         stderr: docsDriftRun.stderr,
@@ -422,6 +509,7 @@ export async function runCodexDoctor({
     );
   } else if (docsDriftPayload.summary?.errors > 0) {
     checkCollector.push("codex-docs-drift", "error", false, "Codex docs drift check reported hard errors.", {
+      ...buildScriptRunDetails(docsDriftRun),
       command: docsDriftRun.command,
       status: docsDriftPayload.status,
       summary: docsDriftPayload.summary,
@@ -429,6 +517,7 @@ export async function runCodexDoctor({
     });
   } else if (docsDriftPayload.summary?.warnings > 0) {
     checkCollector.push("codex-docs-drift", "warning", false, "Codex docs drift check reported warnings.", {
+      ...buildScriptRunDetails(docsDriftRun),
       command: docsDriftRun.command,
       status: docsDriftPayload.status,
       summary: docsDriftPayload.summary,
@@ -436,6 +525,7 @@ export async function runCodexDoctor({
     });
   } else {
     checkCollector.push("codex-docs-drift", "info", true, "Codex docs drift check passed.", {
+      ...buildScriptRunDetails(docsDriftRun),
       command: docsDriftRun.command,
       status: docsDriftPayload.status,
       artifactPath: docsDriftPayload.artifactPath,
@@ -456,11 +546,13 @@ export async function runCodexDoctor({
     const mcpAuditRun = runNodeScriptImpl("scripts/audit-codex-mcp.mjs", [], { repoRoot, env });
     if (mcpAuditRun.ok) {
       checkCollector.push("codex-mcp-audit", "info", true, "Codex MCP audit passed.", {
+        ...buildScriptRunDetails(mcpAuditRun, { includeStderr: true }),
         command: mcpAuditRun.command,
         configPath: codexConfigPath,
       });
     } else {
       checkCollector.push("codex-mcp-audit", "error", false, "Codex MCP audit failed.", {
+        ...buildScriptRunDetails(mcpAuditRun, { includeStdout: true, includeStderr: true }),
         command: mcpAuditRun.command,
         exitCode: mcpAuditRun.exitCode,
         stdout: mcpAuditRun.stdout,
@@ -491,6 +583,7 @@ export async function runCodexDoctor({
     if (openMemoryRun.ok && openMemoryPayload?.stats) {
       openMemoryHealthy = true;
       checkCollector.push("codex-open-memory", "info", true, "Open Memory stats check passed.", {
+        ...buildScriptRunDetails(openMemoryRun),
         command: openMemoryRun.command,
         total: openMemoryPayload.stats.total ?? null,
         bySource: Array.isArray(openMemoryPayload.stats.bySource) ? openMemoryPayload.stats.bySource.slice(0, 8) : [],
@@ -500,9 +593,12 @@ export async function runCodexDoctor({
         "codex-open-memory",
         "warning",
         false,
-        "Open Memory stats check failed; falling back to local memory layout check.",
+        openMemoryRun.timedOut === true
+          ? `Open Memory stats check timed out after ${openMemoryRun.timeoutMs}ms; falling back to local memory layout check.`
+          : "Open Memory stats check failed; falling back to local memory layout check.",
         {
           authHydration,
+          ...buildScriptRunDetails(openMemoryRun, { includeStdout: true, includeStderr: true }),
           command: openMemoryRun.command,
           exitCode: openMemoryRun.exitCode,
           stderr: openMemoryRun.stderr,
@@ -519,15 +615,18 @@ export async function runCodexDoctor({
   );
   const startupPreflightPayload = startupPreflightRun.json;
   if (!startupPreflightPayload) {
-    checkCollector.push(
-      "codex-startup-preflight",
-      "warning",
-      false,
-      "Unable to parse Codex startup preflight output.",
-      {
-        command: startupPreflightRun.command,
-        exitCode: startupPreflightRun.exitCode,
-        stderr: startupPreflightRun.stderr,
+      checkCollector.push(
+        "codex-startup-preflight",
+        "warning",
+        false,
+        startupPreflightRun.timedOut === true
+          ? `Codex startup preflight timed out after ${startupPreflightRun.timeoutMs}ms.`
+          : "Unable to parse Codex startup preflight output.",
+        {
+          ...buildScriptRunDetails(startupPreflightRun, { includeStderr: true }),
+          command: startupPreflightRun.command,
+          exitCode: startupPreflightRun.exitCode,
+          stderr: startupPreflightRun.stderr,
       },
     );
   } else {
@@ -551,6 +650,16 @@ export async function runCodexDoctor({
     const groundingAuthority = clean(startupContext.groundingAuthority);
     const advisory =
       startupContext.advisory && typeof startupContext.advisory === "object" ? startupContext.advisory : {};
+    const repoContext =
+      startupPreflightPayload.checks?.repoContext && typeof startupPreflightPayload.checks.repoContext === "object"
+        ? startupPreflightPayload.checks.repoContext
+        : {};
+    const repoStatus =
+      repoContext.repoStatus && typeof repoContext.repoStatus === "object" ? repoContext.repoStatus : {};
+    const startupGuidance =
+      repoContext.startupGuidance && typeof repoContext.startupGuidance === "object"
+        ? repoContext.startupGuidance
+        : {};
     const advisoryLeakDetected =
       startupContext.publishTrustedGrounding !== true &&
       Boolean(
@@ -572,6 +681,7 @@ export async function runCodexDoctor({
         ? "Codex startup preflight passed."
         : `Codex startup preflight requires attention (${startupReasonCode}, token=${tokenState}, latency=${startupLatencyState}).`,
       {
+        ...buildScriptRunDetails(startupPreflightRun, { includeStderr: true }),
         command: startupPreflightRun.command,
         checks: startupPreflightPayload.checks,
       },
@@ -619,6 +729,70 @@ export async function runCodexDoctor({
         trustMismatchDetected,
         advisoryLeakDetected,
         advisory,
+      },
+    );
+    const repoTargetingHealthy = repoContext.targetedFollowupRecommended !== true && repoContext.laneMismatchDetected !== true;
+    checkCollector.push(
+      "codex-startup-repo-targeting",
+      repoTargetingHealthy ? "info" : "warning",
+      repoTargetingHealthy,
+      repoTargetingHealthy
+        ? "Startup context is already targeted to the current repo lane."
+        : repoContext.laneMismatchDetected === true
+          ? `Startup context lane (${clean(repoContext.startupPresentationLane) || "unknown"}) does not match repo lane (${clean(repoContext.repoProjectLane) || "unknown"}); run repo-targeted memory searches before broad repo reads.`
+          : "Startup context still needs repo-targeted narrowing before broad repo reads.",
+      {
+        repoProjectLane: clean(repoContext.repoProjectLane),
+        startupPresentationLane: clean(repoContext.startupPresentationLane),
+        laneMismatchDetected: repoContext.laneMismatchDetected === true,
+        targetedFollowupRecommended: repoContext.targetedFollowupRecommended === true,
+        followupQueries: Array.isArray(repoContext.followupQueries) ? repoContext.followupQueries : [],
+      },
+    );
+    const repoBranch = clean(repoStatus.branch);
+    const repoWorktreeAdvisory =
+      repoStatus.error
+        ? false
+        : repoStatus.dirty === true && repoStatus.detached !== true && /^codex\//i.test(repoBranch);
+    const repoWorktreeHealthy = repoStatus.error ? false : repoStatus.dirty !== true || repoWorktreeAdvisory;
+    checkCollector.push(
+      "codex-repo-worktree",
+      repoWorktreeHealthy ? "info" : "warning",
+      repoWorktreeHealthy,
+      repoWorktreeHealthy
+        ? repoWorktreeAdvisory
+          ? `Repo worktree has local changes on ${repoBranch || "unknown"} (${Number(repoStatus.dirtyCount || 0)} changed path(s)); advisory only for an active Codex branch.`
+          : `Repo worktree is clean on ${repoBranch || "unknown"}.`
+        : repoStatus.error
+          ? `Unable to inspect repo worktree state (${repoStatus.error}).`
+          : `Repo worktree is dirty on ${repoBranch || "unknown"} (${Number(repoStatus.dirtyCount || 0)} changed path(s)); fresh git status should override older cleanliness memories.`,
+      {
+        branch: repoBranch,
+        detached: repoStatus.detached === true,
+        dirty: repoStatus.dirty === true,
+        dirtyCount: Number(repoStatus.dirtyCount || 0),
+        error: clean(repoStatus.error),
+        advisoryOnly: repoWorktreeAdvisory,
+      },
+    );
+    const startupGuidanceHealthy = startupGuidance.aligned === true;
+    checkCollector.push(
+      "codex-startup-guidance-alignment",
+      startupGuidanceHealthy ? "info" : "warning",
+      startupGuidanceHealthy,
+      startupGuidanceHealthy
+        ? "Repo AGENTS startup guidance is aligned with memory-first startup and repo verification."
+        : startupGuidance.mismatchDetected === true
+          ? "Repo AGENTS still describes Studio Brain memory as optional without an explicit startup-first repo clause."
+          : "Repo AGENTS startup guidance is incomplete; add explicit startup, narrowing, and git-status verification steps.",
+      {
+        agentsPath: clean(startupGuidance.agentsPath),
+        hasAgentsFile: startupGuidance.hasAgentsFile === true,
+        startupMemoryFirst: startupGuidance.startupMemoryFirst === true,
+        optionalMemoryAdapter: startupGuidance.optionalMemoryAdapter === true,
+        repoTruthGuard: startupGuidance.repoTruthGuard === true,
+        targetedSearchGuidance: startupGuidance.targetedSearchGuidance === true,
+        state: clean(startupGuidance.state),
       },
     );
   }
@@ -678,26 +852,39 @@ export async function runCodexDoctor({
       syntheticRawRows: operatorDragMetrics.syntheticRawRows,
       liveUniqueObservations: operatorDragMetrics.liveUniqueObservations,
       syntheticUniqueObservations: operatorDragMetrics.syntheticUniqueObservations,
+      liveDuplicateObservationCount: operatorDragMetrics.liveDuplicateObservationCount,
+      syntheticDuplicateObservationCount: operatorDragMetrics.syntheticDuplicateObservationCount,
       duplicateObservationCount: operatorDragMetrics.duplicateObservationCount,
       windowHours: toolcallWindow.windowHours,
       toolcallsPath: toolcallWindow.toolcallPath,
     },
   );
 
+  const duplicateObservationAdvisory =
+    operatorDragMetrics.liveDuplicateObservationCount > 0 && operatorDragMetrics.liveStartupEntries >= 5;
+  const duplicateObservationHealthy =
+    operatorDragMetrics.liveDuplicateObservationCount === 0 || duplicateObservationAdvisory;
   checkCollector.push(
     "codex-startup-duplicate-observations",
-    operatorDragMetrics.duplicateObservationCount > 0 ? "warning" : "info",
-    operatorDragMetrics.duplicateObservationCount === 0,
-    operatorDragMetrics.duplicateObservationCount > 0
-      ? `Startup telemetry contains ${operatorDragMetrics.duplicateObservationCount} duplicate observation row(s); coverage is being deduped by observation identity.`
-      : "Startup telemetry shows no duplicate observation rows in the current window.",
+    duplicateObservationHealthy ? "info" : "warning",
+    duplicateObservationHealthy,
+    operatorDragMetrics.liveDuplicateObservationCount > 0
+      ? duplicateObservationAdvisory
+        ? `Startup telemetry contains ${operatorDragMetrics.liveDuplicateObservationCount} duplicate live observation row(s), but deduped live coverage remains trustworthy.`
+        : `Startup telemetry contains ${operatorDragMetrics.liveDuplicateObservationCount} duplicate live observation row(s); coverage is being deduped by observation identity.`
+      : operatorDragMetrics.syntheticDuplicateObservationCount > 0
+        ? `Startup telemetry contains ${operatorDragMetrics.syntheticDuplicateObservationCount} duplicate synthetic observation row(s); live launcher coverage is clean.`
+        : "Startup telemetry shows no duplicate observation rows in the current window.",
     {
       duplicateObservationCount: operatorDragMetrics.duplicateObservationCount,
+      liveDuplicateObservationCount: operatorDragMetrics.liveDuplicateObservationCount,
+      syntheticDuplicateObservationCount: operatorDragMetrics.syntheticDuplicateObservationCount,
       liveRawRows: operatorDragMetrics.liveRawRows,
       liveUniqueObservations: operatorDragMetrics.liveUniqueObservations,
       syntheticRawRows: operatorDragMetrics.syntheticRawRows,
       syntheticUniqueObservations: operatorDragMetrics.syntheticUniqueObservations,
       toolcallsPath: toolcallWindow.toolcallPath,
+      advisoryOnly: duplicateObservationAdvisory,
     },
   );
 
@@ -732,6 +919,7 @@ export async function runCodexDoctor({
         ? "Local memory fallback status unavailable (Open Memory is healthy)."
         : "Unable to inspect local memory layout fallback. Run `npm run codex:memory:init` to initialize.",
       {
+        ...buildScriptRunDetails(memoryRun),
         command: memoryRun.command,
         exitCode: memoryRun.exitCode,
       },
@@ -750,6 +938,7 @@ export async function runCodexDoctor({
     );
   } else {
     checkCollector.push("codex-memory-fallback-layout", "info", true, "Local memory fallback workspace is initialized.", {
+      ...buildScriptRunDetails(memoryRun),
       memoryRoot: memoryPayload.memory.memoryRoot,
       proposedCount: memoryPayload.memory.proposedCount,
       acceptedCount: memoryPayload.memory.acceptedCount,
@@ -765,6 +954,7 @@ export async function runCodexDoctor({
       false,
       "Unable to parse ephemeral artifact guard output.",
       {
+        ...buildScriptRunDetails(ephemeralGuardRun, { includeStderr: true }),
         command: ephemeralGuardRun.command,
         exitCode: ephemeralGuardRun.exitCode,
         stderr: ephemeralGuardRun.stderr,
@@ -772,6 +962,7 @@ export async function runCodexDoctor({
     );
   } else if (ephemeralPayload.status !== "pass") {
     checkCollector.push("ephemeral-artifact-guard", "error", false, "Ephemeral artifact guard found tracked disallowed paths.", {
+      ...buildScriptRunDetails(ephemeralGuardRun),
       command: ephemeralGuardRun.command,
       summary: ephemeralPayload.summary,
       trackedPaths: ephemeralPayload.findings?.trackedPaths || [],
@@ -780,6 +971,7 @@ export async function runCodexDoctor({
     });
   } else {
     checkCollector.push("ephemeral-artifact-guard", "info", true, "Ephemeral artifact guard passed.", {
+      ...buildScriptRunDetails(ephemeralGuardRun),
       command: ephemeralGuardRun.command,
       artifactPath: ephemeralPayload.artifactPath,
     });
@@ -794,6 +986,7 @@ export async function runCodexDoctor({
       false,
       "Unable to parse cross-platform wrapper audit output.",
       {
+        ...buildScriptRunDetails(wrapperAuditRun, { includeStderr: true }),
         command: wrapperAuditRun.command,
         exitCode: wrapperAuditRun.exitCode,
         stderr: wrapperAuditRun.stderr,
@@ -806,12 +999,14 @@ export async function runCodexDoctor({
       false,
       "Cross-platform wrapper audit found unsafe spawn/path patterns in hot-path scripts.",
       {
+        ...buildScriptRunDetails(wrapperAuditRun),
         command: wrapperAuditRun.command,
         findings: wrapperAuditPayload.findings,
       },
     );
   } else {
     checkCollector.push("codex-cross-platform-wrapper-audit", "info", true, "Cross-platform wrapper audit passed.", {
+      ...buildScriptRunDetails(wrapperAuditRun),
       command: wrapperAuditRun.command,
       targetFiles: wrapperAuditPayload.targetFiles,
     });
@@ -851,6 +1046,10 @@ export async function runCodexDoctor({
             groundingAuthority: startupPreflightPayload.checks.startupContext.groundingAuthority || "",
             trustMismatchDetected: startupPreflightPayload.checks.startupContext.trustMismatchDetected === true,
             localArtifactRepair: startupPreflightPayload.checks.startupContext.localArtifactRepair || null,
+            repoContext:
+              startupPreflightPayload.checks.repoContext && typeof startupPreflightPayload.checks.repoContext === "object"
+                ? startupPreflightPayload.checks.repoContext
+                : null,
           }
         : null,
     drag: {
@@ -861,6 +1060,7 @@ export async function runCodexDoctor({
       topSources: topDragSources,
     },
     remediation: {
+      appDoctor: "npm run codex:app:doctor",
       docsDrift: "npm run codex:docs:drift",
       mcpAudit: "npm run audit:codex-mcp",
       openMemoryStats: "npm run open-memory -- stats",

@@ -2064,8 +2064,10 @@ export function startHttpServer(params: {
     if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
     return fallback;
   };
+  const maxActiveImportsBeforeBackfill = parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000);
   const memoryPressureConfig = {
-    maxActiveImportsBeforeBackfill: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000),
+    maxActiveImportsBeforeBackfill,
+    maxActiveImportRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS", maxActiveImportsBeforeBackfill, 1, 1_000),
     maxConcurrentBackfills: parseBoundedEnvInt("STUDIO_BRAIN_MAX_CONCURRENT_BACKFILLS", 1, 1, 100),
     retryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_BACKFILL_RETRY_AFTER_SECONDS", 20, 1, 3600),
     maxActiveImportsBeforeQueryDegrade: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_DEGRADE", 4, 0, 10_000),
@@ -2168,6 +2170,7 @@ export function startHttpServer(params: {
     latency: latencySnapshot(),
     thresholds: {
       maxActiveImportsBeforeBackfill: thresholds.maxActiveImportsBeforeBackfill,
+      maxActiveImportRequests: thresholds.maxActiveImportRequests,
       maxConcurrentBackfills: thresholds.maxConcurrentBackfills,
       retryAfterSeconds: thresholds.retryAfterSeconds,
       maxActiveImportsBeforeQueryDegrade: thresholds.maxActiveImportsBeforeQueryDegrade,
@@ -2353,6 +2356,23 @@ export function startHttpServer(params: {
       return { ok: false, message: auth.message ?? "Unauthorized", actorId: "unknown" };
     }
     return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+  };
+  const memoryImportPressureRejection = (route: string, requestId: string) => {
+    const thresholds = resolveDynamicMemoryThresholds();
+    if (activeImportRequests < thresholds.maxActiveImportRequests) return null;
+    const pressure = memoryPressureSnapshot(thresholds);
+    logger.warn("memory_import_shed", {
+      route,
+      reason: "active-import-pressure",
+      pressure,
+      requestId,
+    });
+    return {
+      message: "Memory import deferred due current import pressure.",
+      reason: "active-import-pressure",
+      retryAfterSeconds: thresholds.retryAfterSeconds,
+      pressure,
+    };
   };
   const assertHostHeartbeatAuth = async (
     req: http.IncomingMessage,
@@ -2683,6 +2703,22 @@ export function startHttpServer(params: {
               res.end(JSON.stringify({ ok: false, message: "clientRequestId is required for memory ingest." }));
               return;
             }
+          }
+
+          const pressureRejection = memoryImportPressureRejection("/api/memory/ingest", requestId);
+          if (pressureRejection) {
+            statusCode = 429;
+            res.writeHead(
+              statusCode,
+              withSecurityHeaders({
+                "content-type": "application/json",
+                ...corsHeaders,
+                "x-request-id": requestId,
+                "retry-after": String(pressureRejection.retryAfterSeconds),
+              })
+            );
+            res.end(JSON.stringify({ ok: false, ...pressureRejection }));
+            return;
           }
 
           let memory;
@@ -4175,6 +4211,21 @@ export function startHttpServer(params: {
           statusCode = 401;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const pressureRejection = memoryImportPressureRejection("/api/memory/import", requestId);
+        if (pressureRejection) {
+          statusCode = 429;
+          res.writeHead(
+            statusCode,
+            withSecurityHeaders({
+              "content-type": "application/json",
+              ...corsHeaders,
+              "x-request-id": requestId,
+              "retry-after": String(pressureRejection.retryAfterSeconds),
+            })
+          );
+          res.end(JSON.stringify({ ok: false, ...pressureRejection }));
           return;
         }
         try {

@@ -168,6 +168,8 @@ describe("ReservationsView ware check-in UX", () => {
     expect(
       screen.getByText(/Booking, queue, progress, cooldown, and pickup/i),
     ).toBeTruthy();
+    expect(screen.getByText(/Charges are based on shelf space or whole kiln rather than kiln volume/i)).toBeTruthy();
+    expect(screen.getByText(/We confirm shelf count with you at drop-off so the check-in charge is correct/i)).toBeTruthy();
     expect(screen.getByText("4. Size + firing option")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Flexible tiny drop-off/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Standard shelf purchase/i })).toBeTruthy();
@@ -224,7 +226,7 @@ describe("ReservationsView ware check-in UX", () => {
       expect(postJsonMock).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
-      expect(screen.getByText(/Check-in sent\. You're all set\./i)).toBeTruthy();
+      expect(screen.getByText(/Check-in sent\. We.ll confirm shelf count with you at drop-off\./i)).toBeTruthy();
     });
     expect(confirmSpy).not.toHaveBeenCalled();
 

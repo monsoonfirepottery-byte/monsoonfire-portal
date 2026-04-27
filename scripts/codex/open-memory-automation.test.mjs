@@ -736,3 +736,63 @@ test("loadAutomationStartupMemoryContext reuses a fresh startup cache entry with
     cleanupThreadRuntime(threadId);
   }
 });
+
+test("loadAutomationStartupMemoryContext falls back to the repo default tenant id", async () => {
+  const threadId = "startup-default-tenant-test";
+  cleanupThreadRuntime(threadId);
+  const originalFetch = global.fetch;
+  const requestBodies = [];
+
+  try {
+    global.fetch = async (_url, options = {}) => {
+      requestBodies.push(JSON.parse(String(options.body ?? "{}")));
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            context: {
+              summary: "1. [manual] Resume the default tenant startup test.",
+              items: [
+                {
+                  source: "manual",
+                  content: "Resume the default tenant startup test.",
+                  metadata: {
+                    threadId,
+                    cwd: "D:/monsoonfire-portal",
+                    projectLane: "monsoonfire-portal",
+                  },
+                },
+              ],
+              diagnostics: {
+                continuityState: "ready",
+                presentationProjectLane: "monsoonfire-portal",
+                threadScopedItemCount: 1,
+                startupSourceQuality: "thread-scoped-dominant",
+                laneSourceQuality: "thread-scoped-dominant",
+              },
+            },
+          }),
+      };
+    };
+
+    const result = await loadAutomationStartupMemoryContext({
+      tool: "codex-shell",
+      query: "default tenant startup test",
+      env: {
+        CODEX_THREAD_ID: threadId,
+        CODEX_CWD: "D:/monsoonfire-portal",
+        STUDIO_BRAIN_MCP_ID_TOKEN: TEST_FRESH_TOKEN,
+        STUDIO_BRAIN_BASE_URL: "http://127.0.0.1:8787",
+        STUDIO_BRAIN_DEFAULT_TENANT_ID: "monsoonfire-main",
+      },
+    });
+
+    assert.equal(requestBodies.length > 0, true);
+    assert.equal(requestBodies[0]?.tenantId, "monsoonfire-main");
+    assert.equal(result.continuityState, "ready");
+  } finally {
+    global.fetch = originalFetch;
+    cleanupThreadRuntime(threadId);
+  }
+});

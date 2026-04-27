@@ -1603,6 +1603,75 @@ test("memory consolidation surfaces unavailable association scout status in the 
   }
 });
 
+test("memory consolidation disables association scout after nonretryable auth failure", { concurrency: false }, async () => {
+  const adapter = createInMemoryMemoryStoreAdapter();
+  const service = createMemoryService({
+    store: adapter,
+    defaultTenantId: "tenant-association-auth-failure",
+    defaultAgentId: "agent:codex",
+    defaultRunId: "run-association-auth-failure",
+    associationScout: {
+      async scout() {
+        throw new Error("401 Unauthorized: refresh token reused and access token could not be refreshed");
+      },
+    },
+  });
+  const artifactPath = memoryConsolidationArtifactPath();
+  rmSync(artifactPath, { force: true });
+
+  try {
+    await service.capture({
+      content: "Operator note: summarize pending approvals before suggesting any next action in Discord.",
+      source: "manual",
+      metadata: {
+        subject: "Discord concierge approval summary",
+        threadKey: "discord-approval-summary",
+        entityHints: ["concept:approval-summary", "role:discord-concierge"],
+        patternHints: ["workflow:approval-summary", "thread:discord-approval-summary"],
+      },
+      tags: ["decision"],
+      memoryType: "episodic",
+      memoryLayer: "episodic",
+      status: "accepted",
+    });
+    await service.capture({
+      content: "Runbook fragment: when approvals pile up, post a compact approval summary before any write suggestion.",
+      source: "repo-markdown",
+      metadata: {
+        subject: "Discord concierge approval summary",
+        threadKey: "discord-approval-summary",
+        entityHints: ["concept:approval-summary", "role:discord-concierge"],
+        patternHints: ["workflow:approval-summary", "thread:discord-approval-summary"],
+      },
+      tags: ["runbook"],
+      memoryType: "semantic",
+      memoryLayer: "canonical",
+      status: "accepted",
+    });
+
+    const result = await service.consolidate({
+      mode: "idle",
+      runId: "test-association-auth-failure-run",
+      maxCandidates: 3,
+      maxWrites: 6,
+      timeBudgetMs: 30_000,
+      focusAreas: ["discord concierge approval summary"],
+    }) as { associationBundleCount?: number };
+
+    assert.equal(Number(result.associationBundleCount ?? 0), 1);
+    const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
+      associationScoutStatus?: Record<string, unknown>;
+      associationErrors?: Array<Record<string, unknown>>;
+    };
+    assert.equal(artifact.associationScoutStatus?.available, false);
+    assert.equal(artifact.associationScoutStatus?.reason, "provider-auth-failed");
+    assert.match(String(artifact.associationErrors?.[0]?.error || ""), /refresh token/i);
+    assert.equal(String(artifact.associationErrors?.[0]?.error || "").length <= 1200, true);
+  } finally {
+    rmSync(artifactPath, { force: true });
+  }
+});
+
 test("memory service importBatch reports failures when continueOnError=false", async () => {
   const service = createMemoryService({
     store: createInMemoryMemoryStoreAdapter(),

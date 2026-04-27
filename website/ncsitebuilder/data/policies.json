@@ -36,14 +36,14 @@
   },
   {
     "title": "Damage responsibility and firing credits",
-    "body": "<p><strong>Draft policy.</strong> Ceramics always carry firing risk, but credits are issued when fault is clearly studio-side.</p><ul><li>If fault is studio-side (for example loading error or wrong firing type), the impacted half-shelf bisque or glaze fee is fully credited.</li><li>If fault is maker-side (for example dryness, construction/process fault, or miscommunication on firing temperature), no firing credit is issued.</li><li>Witness cones are available on request, and a portal add-on workflow is planned.</li></ul>",
+    "body": "<p><strong>Draft policy.</strong> Ceramics always carry firing risk, but confirmed studio-side mistakes receive generous firing-service credits after review.</p><ul><li>If fault is studio-side, the default remedy is a generous credit on the affected firing service.</li><li>If fault is maker-side (for example dryness, construction/process fault, or miscommunication on firing temperature), no firing credit is automatic.</li><li>Witness cones are available on request, and a portal add-on workflow is planned.</li></ul>",
     "tags": ["policies", "kiln", "payments", "support"],
     "status": "draft",
     "effectiveDate": "2026-02-20"
   },
   {
     "title": "Payment timing and accepted methods",
-    "body": "<p><strong>Draft policy.</strong> Payment timing depends on service type.</p><ul><li>Supplies, day passes, and workshops are charged immediately.</li><li>Workshop charges are processed at attendance, not reservation.</li><li>Firing fees are charged at unloading after studio-fault review.</li><li>Tap, credit card, and Apple Pay are accepted.</li></ul>",
+    "body": "<p><strong>Draft policy.</strong> Payment timing depends on service type.</p><ul><li>Firing services are charged when work is accepted into service.</li><li>Supplies, day passes, and workshops are charged immediately.</li><li>Workshop charges are processed at attendance, not reservation.</li><li>Tap, credit card, and Apple Pay are accepted, and studio-side firing mistakes are handled with generous credit review.</li></ul>",
     "tags": ["payments", "policies", "studio", "kiln"],
     "status": "draft",
     "effectiveDate": "2026-02-20"

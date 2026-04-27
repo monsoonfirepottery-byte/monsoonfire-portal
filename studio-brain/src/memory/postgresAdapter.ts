@@ -152,6 +152,51 @@ function normalizeTenantScope(value: string | null | undefined): string {
   return String(value ?? "");
 }
 
+function normalizeSourceKey(value: unknown): string {
+  return String(value ?? "").trim().slice(0, 160) || "manual";
+}
+
+function deriveSourceFamily(source: unknown): string {
+  const normalized = normalizeSourceKey(source).toLowerCase();
+  if (/^(mail|email|gmail|outlook)(:|$)/.test(normalized)) return "mail";
+  if (/^(repo-markdown|doc|docs|document|pst|import|context-slice|chatgpt-export)(:|$)/.test(normalized)) return "doc";
+  if (/^(social|twitter|web)(:|$)/.test(normalized)) return "web";
+  if (/^(automation|digest|scheduled)(:|$)/.test(normalized)) return "automation";
+  if (/^(codex|studio-brain|open-memory|memory|replay|manual)(:|$|-)/.test(normalized)) return "ops";
+  return "ops";
+}
+
+function deriveMemoryClass(input: Pick<MemoryUpsertInput, "memoryLayer" | "memoryType" | "source" | "metadata">): string {
+  const metadata = asRecord(input.metadata);
+  const source = normalizeSourceKey(input.source).toLowerCase();
+  const category = String(metadata.memoryCategory ?? metadata.category ?? "").trim().toLowerCase();
+  if (category === "preference" || category === "fact" || category === "guardrail" || category === "procedure") return category;
+  if (source.includes("connection") || source.includes("relation")) return "relationship";
+  if (source.includes("telemetry") || source.includes("health") || source.includes("stats")) return "telemetry";
+  if (input.memoryType === "working" || input.memoryLayer === "working") return "task_working";
+  if (deriveSourceFamily(source) === "mail" || source.startsWith("replay:")) return "coordination";
+  return "artifact";
+}
+
+function deriveQualityTier(input: Pick<MemoryUpsertInput, "memoryLayer" | "status" | "source" | "importance">): string {
+  const source = normalizeSourceKey(input.source).toLowerCase();
+  if (source.includes("promoted") || input.memoryLayer === "canonical" || (input.status === "accepted" && Number(input.importance) >= 0.85)) {
+    return "promoted";
+  }
+  if (input.status === "quarantined") return "quarantined";
+  if (input.status === "archived") return "archived";
+  return "raw";
+}
+
+function deriveMemoryLayer(input: Pick<MemoryUpsertInput, "memoryLayer" | "memoryType">): MemoryLayer {
+  return normalizeMemoryLayer(input.memoryLayer, normalizeMemoryLayer(input.memoryType, "episodic"));
+}
+
+function normalizeIndexKey(value: unknown, maxLength = 160): string | null {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "-").slice(0, maxLength);
+  return normalized || null;
+}
+
 function normalizeRelationType(value: unknown): string {
   const relationType = String(value ?? "")
     .trim()
@@ -414,6 +459,19 @@ function mapCountRows<T extends string>(rows: QueryResultRow[], key: string): Ar
     .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
 }
 
+function mapLayerCountRows(rows: QueryResultRow[]): Array<{ layer: MemoryLayer; count: number }> {
+  const counts = new Map<MemoryLayer, number>();
+  for (const row of rows) {
+    const layer = normalizeMemoryLayer(row.layer, "episodic");
+    const count = Number(row.count ?? 0);
+    if (!Number.isFinite(count) || count <= 0) continue;
+    counts.set(layer, (counts.get(layer) ?? 0) + count);
+  }
+  return [...counts.entries()]
+    .map(([layer, count]) => ({ layer, count }))
+    .sort((left, right) => right.count - left.count || left.layer.localeCompare(right.layer));
+}
+
 function mapRowToRecord(row: QueryResultRow): MemoryRecord {
   const metadata = asRecord(row.metadata);
   const source = parseSource(metadata, "manual");
@@ -597,6 +655,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
   const transitionTable = "memory_transition_event";
   const reviewCaseTable = "memory_review_case";
   const verificationRunTable = "memory_verification_run";
+  const statsRollupTable = "memory_stats_rollup";
 
   const attachRecordDetails = async <TRow extends MemoryRecord | MemorySearchResult>(rows: TRow[]): Promise<TRow[]> => {
     const memoryIds = Array.from(new Set(rows.map((row) => String(row.id ?? "").trim()).filter(Boolean)));
@@ -924,6 +983,76 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
     }
   };
 
+  const updateDerivedMemoryColumns = async (input: MemoryUpsertInput): Promise<void> => {
+    const metadata = asRecord(input.metadata);
+    try {
+      await pool.query(
+        `
+          UPDATE ${tableName}
+             SET source_key = $2,
+                 source_family = $3,
+                 memory_class = $4,
+                 quality_tier = $5,
+                 subject_key = $6,
+                 workstream_key = $7,
+                 memory_layer = $8
+           WHERE memory_id = $1
+        `,
+        [
+          input.id,
+          normalizeSourceKey(input.source),
+          deriveSourceFamily(input.source),
+          deriveMemoryClass(input),
+          deriveQualityTier(input),
+          normalizeIndexKey(metadata.subjectKey ?? metadata.subject ?? metadata.scope),
+          normalizeIndexKey(metadata.workstreamKey ?? metadata.projectLane ?? metadata.lane),
+          deriveMemoryLayer(input),
+        ],
+      );
+    } catch {
+      // Older local databases may not have the derived-column migration yet.
+    }
+  };
+
+  const resolveStoredMemoryIdAfterVectorUpsert = async (
+    input: MemoryUpsertInput
+  ): Promise<{ memoryId: string; duplicateFingerprint: boolean }> => {
+    const direct = await pool.query(
+      `
+        SELECT memory_id
+          FROM ${tableName}
+         WHERE memory_id = $1
+         LIMIT 1
+      `,
+      [input.id]
+    );
+    if (direct.rowCount && direct.rows[0]?.memory_id) {
+      return { memoryId: String(direct.rows[0].memory_id), duplicateFingerprint: false };
+    }
+
+    const fingerprint = String(input.fingerprint ?? "").trim();
+    if (!fingerprint) {
+      return { memoryId: input.id, duplicateFingerprint: false };
+    }
+
+    const duplicate = await pool.query(
+      `
+        SELECT memory_id
+          FROM ${tableName}
+         WHERE tenant_id IS NOT DISTINCT FROM $1
+           AND fingerprint = $2
+         ORDER BY last_seen_at DESC, created_at DESC
+         LIMIT 1
+      `,
+      [input.tenantId ?? null, fingerprint]
+    );
+    if (duplicate.rowCount && duplicate.rows[0]?.memory_id) {
+      return { memoryId: String(duplicate.rows[0].memory_id), duplicateFingerprint: true };
+    }
+
+    return { memoryId: input.id, duplicateFingerprint: false };
+  };
+
   return {
     async upsert(input: MemoryUpsertInput): Promise<MemoryRecord> {
       const metadata = {
@@ -953,6 +1082,11 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         embeddingModel: input.embeddingModel,
         embeddingVersion: input.embeddingVersion,
       });
+      const storedIdentity = await resolveStoredMemoryIdAfterVectorUpsert(input);
+      const telemetryMemoryId = storedIdentity.memoryId;
+      if (!storedIdentity.duplicateFingerprint) {
+        await updateDerivedMemoryColumns(input);
+      }
       try {
         await pool.query(
           `
@@ -974,7 +1108,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
             input.tenantId ?? null,
             input.source,
             input.status,
-            input.id,
+            telemetryMemoryId,
             input.fingerprint,
             input.clientRequestId ?? null,
             JSON.stringify({
@@ -984,6 +1118,13 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
               importance: input.importance,
               embeddingModel: input.embeddingModel,
               embeddingVersion: input.embeddingVersion,
+              ...(storedIdentity.duplicateFingerprint
+                ? {
+                    duplicateFingerprint: true,
+                    requestedMemoryId: input.id,
+                    canonicalMemoryId: telemetryMemoryId,
+                  }
+                : {}),
             }),
           ]
         );
@@ -991,18 +1132,20 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         // best-effort telemetry
       }
 
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await persistLatticeProjection(client, input);
-        await replaceEvidence(client, input);
-        await upsertTransitionEvents(client, input);
-        await client.query("COMMIT");
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
+      if (!storedIdentity.duplicateFingerprint) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await persistLatticeProjection(client, input);
+          await replaceEvidence(client, input);
+          await upsertTransitionEvents(client, input);
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
       }
 
       const row = await pool.query(
@@ -1024,7 +1167,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
            WHERE memory_id = $1
            LIMIT 1
         `,
-        [input.id]
+        [telemetryMemoryId]
       );
       if (row.rowCount && row.rows[0]) {
         const [enriched] = await attachRecordDetails([mapRowToRecord(row.rows[0])]);
@@ -1168,12 +1311,12 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       const allow = sanitizeSourceList(input.sourceAllowlist);
       if (allow.length > 0) {
         values.push(allow);
-        predicates.push(`COALESCE(metadata->>'source', 'manual') = ANY($${values.length}::text[])`);
+        predicates.push(`COALESCE(NULLIF(source_key, ''), metadata->>'source', 'manual') = ANY($${values.length}::text[])`);
       }
       const deny = sanitizeSourceList(input.sourceDenylist);
       if (deny.length > 0) {
         values.push(deny);
-        predicates.push(`COALESCE(metadata->>'source', 'manual') <> ALL($${values.length}::text[])`);
+        predicates.push(`COALESCE(NULLIF(source_key, ''), metadata->>'source', 'manual') <> ALL($${values.length}::text[])`);
       }
       const excludedStatuses = sanitizeStatusList(input.excludeStatuses);
       if (excludedStatuses.length > 0) {
@@ -1235,12 +1378,12 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       const allow = sanitizeSourceList(input.sourceAllowlist);
       if (allow.length > 0) {
         values.push(allow);
-        predicates.push(`COALESCE(metadata->>'source', 'manual') = ANY($${values.length}::text[])`);
+        predicates.push(`COALESCE(NULLIF(source_key, ''), metadata->>'source', 'manual') = ANY($${values.length}::text[])`);
       }
       const deny = sanitizeSourceList(input.sourceDenylist);
       if (deny.length > 0) {
         values.push(deny);
-        predicates.push(`COALESCE(metadata->>'source', 'manual') <> ALL($${values.length}::text[])`);
+        predicates.push(`COALESCE(NULLIF(source_key, ''), metadata->>'source', 'manual') <> ALL($${values.length}::text[])`);
       }
       const excludedStatuses = sanitizeStatusList(input.excludeStatuses);
       if (excludedStatuses.length > 0) {
@@ -1319,6 +1462,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       const predicates: string[] = [];
       const projectionPredicates: string[] = [];
       const memoryLayerExpr = memoryLayerSql();
+      const statsMemoryLayerExpr = memoryLayerExpr.replace("metadata->>'memoryLayer'", "metadata #>> '{memoryLayer}'");
       if (input.tenantId !== undefined) {
         values.push(input.tenantId);
         predicates.push(`tenant_id IS NOT DISTINCT FROM $${values.length}`);
@@ -1337,54 +1481,188 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         projectionPredicates.push(`memory_layer <> ALL($${values.length}::text[])`);
       }
       const whereClause = predicates.length ? `WHERE ${predicates.join(" AND ")}` : "";
-
-      const totals = await pool.query(
-        `
-          SELECT COUNT(*)::int AS total,
-                 MAX(created_at) AS last_captured_at
-            FROM ${tableName}
-           ${whereClause}
-        `,
-        values
-      );
-      const bySource = await pool.query(
-        `
-          SELECT COALESCE(metadata->>'source', 'manual') AS source,
-                 COUNT(*)::int AS count
-            FROM ${tableName}
-           ${whereClause}
-        GROUP BY 1
-        ORDER BY count DESC, source ASC
-           LIMIT 20
-        `,
-        values
-      );
-      const byLayer = await pool.query(
-        `
-          SELECT ${memoryLayerExpr} AS layer,
-                 COUNT(*)::int AS count
-            FROM ${tableName}
-           ${whereClause}
-        GROUP BY 1
-        ORDER BY count DESC, layer ASC
-           LIMIT 8
-        `,
-        values
-      );
-      const byStatus = await pool.query(
-        `
-          SELECT status,
-                 COUNT(*)::int AS count
-            FROM ${tableName}
-           ${whereClause}
-        GROUP BY 1
-        ORDER BY count DESC, status ASC
-           LIMIT 8
-        `,
-        values
-      );
+      const runRawCoreStatsQuery = () =>
+        pool.query(
+          `
+            WITH base AS (
+              SELECT
+                COALESCE(NULLIF(source_key, ''), metadata #>> '{source}', 'manual') AS source,
+                ${statsMemoryLayerExpr} AS layer,
+                status,
+                created_at
+                FROM ${tableName}
+               ${whereClause}
+            )
+            SELECT
+              CASE
+                WHEN GROUPING(source) = 0 THEN 'source'
+                WHEN GROUPING(layer) = 0 THEN 'layer'
+                WHEN GROUPING(status) = 0 THEN 'status'
+                ELSE 'total'
+              END AS bucket,
+              source,
+              layer,
+              status,
+              COUNT(*)::int AS count,
+              MAX(created_at) AS last_captured_at
+              FROM base
+          GROUP BY GROUPING SETS ((source), (layer), (status), ())
+          `,
+          values
+        );
+      const mapRollupCountRows = (value: unknown, valueKey: string, bucket: string): QueryResultRow[] => {
+        const rows = Array.isArray(value) ? value : [];
+        return rows
+          .map((entry) => {
+            const record = asRecord(entry);
+            const label = String(record[valueKey] ?? record.source ?? "").trim();
+            const count = Number(record.count ?? 0);
+            if (!label || !Number.isFinite(count) || count <= 0) return null;
+            return { bucket, [valueKey]: label, count: Math.trunc(count) } as QueryResultRow;
+          })
+          .filter((row): row is QueryResultRow => row !== null);
+      };
+      const refreshStatsRollup = async (): Promise<QueryResultRow> => {
+        const result = await pool.query(
+          `
+            WITH totals AS (
+              SELECT COUNT(*)::int AS total,
+                     MAX(created_at) AS last_captured_at
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            ),
+            source_rows AS (
+              SELECT COALESCE(NULLIF(source_key, ''), metadata #>> '{source}', 'manual') AS source,
+                     COUNT(*)::int AS count
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            GROUP BY 1
+            ORDER BY count DESC, source ASC
+               LIMIT 20
+            ),
+            source_family_rows AS (
+              SELECT COALESCE(NULLIF(source_family, ''), 'ops') AS source_family,
+                     COUNT(*)::int AS count
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            GROUP BY 1
+            ORDER BY count DESC, source_family ASC
+               LIMIT 16
+            ),
+            memory_class_rows AS (
+              SELECT COALESCE(NULLIF(memory_class, ''), 'artifact') AS memory_class,
+                     COUNT(*)::int AS count
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            GROUP BY 1
+            ORDER BY count DESC, memory_class ASC
+               LIMIT 16
+            ),
+            quality_tier_rows AS (
+              SELECT COALESCE(NULLIF(quality_tier, ''), 'raw') AS quality_tier,
+                     COUNT(*)::int AS count
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            GROUP BY 1
+            ORDER BY count DESC, quality_tier ASC
+               LIMIT 12
+            ),
+            layer_rows AS (
+              SELECT COALESCE(NULLIF(memory_layer, ''), 'episodic') AS layer,
+                     COUNT(*)::int AS count
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            GROUP BY 1
+            ORDER BY count DESC, layer ASC
+               LIMIT 8
+            ),
+            status_rows AS (
+              SELECT status,
+                     COUNT(*)::int AS count
+                FROM ${tableName}
+               WHERE tenant_id IS NOT DISTINCT FROM $1
+            GROUP BY 1
+            ORDER BY count DESC, status ASC
+               LIMIT 8
+            )
+            INSERT INTO ${statsRollupTable} (
+              tenant_scope,
+              total,
+              last_captured_at,
+              by_source,
+              by_source_family,
+              by_memory_class,
+              by_quality_tier,
+              by_layer,
+              by_status,
+              updated_at
+            )
+            SELECT
+              $2,
+              totals.total,
+              totals.last_captured_at,
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('source', source, 'count', count) ORDER BY count DESC, source ASC) FROM source_rows), '[]'::jsonb),
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('sourceFamily', source_family, 'count', count) ORDER BY count DESC, source_family ASC) FROM source_family_rows), '[]'::jsonb),
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('memoryClass', memory_class, 'count', count) ORDER BY count DESC, memory_class ASC) FROM memory_class_rows), '[]'::jsonb),
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('qualityTier', quality_tier, 'count', count) ORDER BY count DESC, quality_tier ASC) FROM quality_tier_rows), '[]'::jsonb),
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('layer', layer, 'count', count) ORDER BY count DESC, layer ASC) FROM layer_rows), '[]'::jsonb),
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('status', status, 'count', count) ORDER BY count DESC, status ASC) FROM status_rows), '[]'::jsonb),
+              now()
+              FROM totals
+            ON CONFLICT (tenant_scope) DO UPDATE SET
+              total = EXCLUDED.total,
+              last_captured_at = EXCLUDED.last_captured_at,
+              by_source = EXCLUDED.by_source,
+              by_source_family = EXCLUDED.by_source_family,
+              by_memory_class = EXCLUDED.by_memory_class,
+              by_quality_tier = EXCLUDED.by_quality_tier,
+              by_layer = EXCLUDED.by_layer,
+              by_status = EXCLUDED.by_status,
+              updated_at = now()
+            RETURNING *
+          `,
+          [input.tenantId ?? null, normalizeTenantScope(input.tenantId)]
+        );
+        return result.rows[0] ?? {};
+      };
+      const readFreshStatsRollup = async (): Promise<QueryResultRow> => {
+        const result = await pool.query(
+          `
+            SELECT *
+              FROM ${statsRollupTable}
+             WHERE tenant_scope = $1
+             LIMIT 1
+          `,
+          [normalizeTenantScope(input.tenantId)]
+        );
+        const row = result.rows[0];
+        const updatedAtMs = row?.updated_at ? Date.parse(String(row.updated_at)) : 0;
+        if (!row || !Number.isFinite(updatedAtMs) || Date.now() - updatedAtMs > 5 * 60_000) {
+          return refreshStatsRollup();
+        }
+        return row;
+      };
+      const buildRollupCoreStats = async (): Promise<{ rows: QueryResultRow[] }> => {
+        const rollup = await readFreshStatsRollup();
+        return {
+          rows: [
+            {
+              bucket: "total",
+              count: Number(rollup.total ?? 0),
+              last_captured_at: rollup.last_captured_at ?? null,
+            },
+            ...mapRollupCountRows(rollup.by_source, "source", "source"),
+            ...mapRollupCountRows(rollup.by_layer, "layer", "layer"),
+            ...mapRollupCountRows(rollup.by_status, "status", "status"),
+          ],
+        };
+      };
+      const canUseStatsRollup = input.tenantId !== undefined && allowLayers.length === 0 && denyLayers.length === 0;
+      const coreStatsQuery = canUseStatsRollup
+        ? buildRollupCoreStats().catch(() => runRawCoreStatsQuery())
+        : runRawCoreStatsQuery();
       const projectionWhereClause = projectionPredicates.length ? `WHERE ${projectionPredicates.join(" AND ")}` : "";
-      const latticeCoverage = await pool.query(
+      const latticeCoverageQuery = pool.query(
         `
           SELECT
             COUNT(*) FILTER (
@@ -1404,7 +1682,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const byCategory = await pool.query(
+      const byCategoryQuery = pool.query(
         `
           SELECT category,
                  COUNT(*)::int AS count
@@ -1417,7 +1695,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const byTruthStatus = await pool.query(
+      const byTruthStatusQuery = pool.query(
         `
           SELECT truth_status AS status,
                  COUNT(*)::int AS count
@@ -1430,7 +1708,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const byFreshnessStatus = await pool.query(
+      const byFreshnessStatusQuery = pool.query(
         `
           SELECT freshness_status AS status,
                  COUNT(*)::int AS count
@@ -1443,7 +1721,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const byOperationalStatus = await pool.query(
+      const byOperationalStatusQuery = pool.query(
         `
           SELECT operational_status AS status,
                  COUNT(*)::int AS count
@@ -1456,7 +1734,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const byReviewAction = await pool.query(
+      const byReviewActionQuery = pool.query(
         `
           SELECT review_action AS action,
                  COUNT(*)::int AS count
@@ -1469,7 +1747,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const launchFindings = await pool.query(
+      const launchFindingsQuery = pool.query(
         `
           SELECT
             COUNT(*) FILTER (WHERE truth_status = 'contradicted' OR operational_status = 'quarantined')::int AS contested_rows,
@@ -1510,7 +1788,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const retrievalShadow = await pool.query(
+      const retrievalShadowQuery = pool.query(
         `
           WITH filtered AS (
             SELECT memory_id, category, conflict_severity, operational_status, conflicting_memory_ids
@@ -1531,7 +1809,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         values
       );
-      const reviewWorkflow = await pool.query(
+      const reviewWorkflowQuery = pool.query(
         `
           SELECT
             COUNT(*) FILTER (WHERE status IN ('open', 'in-progress'))::int AS open_review_cases,
@@ -1544,7 +1822,7 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         `,
         [input.tenantId ?? null]
       );
-      const verificationFailures = await pool.query(
+      const verificationFailuresQuery = pool.query(
         `
           SELECT
             COUNT(*) FILTER (
@@ -1557,8 +1835,48 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
         [input.tenantId ?? null]
       );
 
-      const total = Number(totals.rows[0]?.total ?? 0);
-      const lastRaw = totals.rows[0]?.last_captured_at;
+      const [
+        coreStats,
+        latticeCoverage,
+        byCategory,
+        byTruthStatus,
+        byFreshnessStatus,
+        byOperationalStatus,
+        byReviewAction,
+        launchFindings,
+        retrievalShadow,
+        reviewWorkflow,
+        verificationFailures,
+      ] = await Promise.all([
+        coreStatsQuery,
+        latticeCoverageQuery,
+        byCategoryQuery,
+        byTruthStatusQuery,
+        byFreshnessStatusQuery,
+        byOperationalStatusQuery,
+        byReviewActionQuery,
+        launchFindingsQuery,
+        retrievalShadowQuery,
+        reviewWorkflowQuery,
+        verificationFailuresQuery,
+      ]);
+
+      const coreRows = coreStats.rows;
+      const totalRow = coreRows.find((row) => row.bucket === "total") ?? {};
+      const bySourceRows = coreRows
+        .filter((row) => row.bucket === "source")
+        .sort((left, right) => Number(right.count ?? 0) - Number(left.count ?? 0) || String(left.source ?? "").localeCompare(String(right.source ?? "")))
+        .slice(0, 20);
+      const byLayerRows = coreRows
+        .filter((row) => row.bucket === "layer")
+        .sort((left, right) => Number(right.count ?? 0) - Number(left.count ?? 0) || String(left.layer ?? "").localeCompare(String(right.layer ?? "")))
+        .slice(0, 8);
+      const byStatusRows = coreRows
+        .filter((row) => row.bucket === "status")
+        .sort((left, right) => Number(right.count ?? 0) - Number(left.count ?? 0) || String(left.status ?? "").localeCompare(String(right.status ?? "")))
+        .slice(0, 8);
+      const total = Number(totalRow.count ?? 0);
+      const lastRaw = totalRow.last_captured_at;
       const rowsWithLattice = Number(latticeCoverage.rows[0]?.rows_with_lattice ?? 0);
       const launchRow = launchFindings.rows[0] ?? {};
       const retrievalShadowRow = retrievalShadow.rows[0] ?? {};
@@ -1574,15 +1892,12 @@ export function createPostgresMemoryStoreAdapter(params: AdapterParams): MemoryS
       return {
         total,
         lastCapturedAt: lastRaw ? new Date(String(lastRaw)).toISOString() : null,
-        bySource: bySource.rows.map((row) => ({
+        bySource: bySourceRows.map((row) => ({
           source: String(row.source ?? "manual"),
           count: Number(row.count ?? 0),
         })),
-        byLayer: byLayer.rows.map((row) => ({
-          layer: normalizeMemoryLayer(row.layer, "episodic"),
-          count: Number(row.count ?? 0),
-        })),
-        byStatus: byStatus.rows.map((row) => ({
+        byLayer: mapLayerCountRows(byLayerRows),
+        byStatus: byStatusRows.map((row) => ({
           status: parseStatus(row.status),
           count: Number(row.count ?? 0),
         })),

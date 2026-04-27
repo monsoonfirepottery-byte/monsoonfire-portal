@@ -1344,6 +1344,72 @@ test("memory endpoints capture, search, recent, stats, and import", async () => 
   });
 });
 
+test("memory import returns 429 when the import concurrency breaker is saturated", async () => {
+  const previousLimit = process.env.STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS;
+  process.env.STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS = "1";
+  let resolveImportStarted: () => void = () => {};
+  let releaseImport: () => void = () => {};
+  const importStarted = new Promise<void>((resolve) => {
+    resolveImportStarted = resolve;
+  });
+  const importRelease = new Promise<void>((resolve) => {
+    releaseImport = resolve;
+  });
+  const memoryService = createMemoryService({
+    store: createInMemoryMemoryStoreAdapter(),
+    defaultTenantId: "monsoonfire-main",
+    defaultAgentId: "test-agent",
+    defaultRunId: "test-run",
+  });
+  memoryService.importBatch = async () => {
+    resolveImportStarted();
+    await importRelease;
+    return { total: 1, imported: 1, failed: 0, results: [{ index: 0, ok: true, id: "mem-test" }] };
+  };
+
+  try {
+    await withServer(
+      {
+        memoryService,
+      },
+      async (baseUrl) => {
+        const first = fetch(`${baseUrl}/api/memory/import`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({ sourceOverride: "import", items: [{ content: "first import" }] }),
+        });
+        await Promise.race([
+          importStarted,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for import to start.")), 1_000)),
+        ]);
+
+        const second = await fetch(`${baseUrl}/api/memory/import`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+          body: JSON.stringify({ sourceOverride: "import", items: [{ content: "second import" }] }),
+        });
+        assert.equal(second.status, 429);
+        assert.equal(second.headers.get("retry-after"), "20");
+        const secondPayload = (await second.json()) as { ok: boolean; reason?: string; pressure?: { activeImportRequests?: number } };
+        assert.equal(secondPayload.ok, false);
+        assert.equal(secondPayload.reason, "active-import-pressure");
+        assert.equal(secondPayload.pressure?.activeImportRequests, 1);
+
+        releaseImport();
+        const firstResponse = await first;
+        assert.equal(firstResponse.status, 201);
+      }
+    );
+  } finally {
+    releaseImport();
+    if (previousLimit === undefined) {
+      delete process.env.STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS;
+    } else {
+      process.env.STUDIO_BRAIN_MAX_ACTIVE_IMPORT_REQUESTS = previousLimit;
+    }
+  }
+});
+
 test("memory neighborhood endpoint returns ranked rows with relationship diagnostics", async () => {
   await withServer({}, async (baseUrl) => {
     const first = await fetch(`${baseUrl}/api/memory/capture`, {

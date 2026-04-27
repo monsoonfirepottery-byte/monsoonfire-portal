@@ -62,6 +62,7 @@
 }
 
 .control-tower-stat-grid,
+.control-tower-host-strip,
 .control-tower-attention-grid,
 .control-tower-channel-grid,
 .control-tower-room-grid,
@@ -79,6 +80,7 @@
 }
 
 .control-tower-stat-card,
+.control-tower-host-card,
 .control-tower-attention-card,
 .control-tower-board-card,
 .control-tower-channel-card,
@@ -105,7 +107,12 @@
   gap: 8px;
 }
 
+.control-tower-host-strip {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .control-tower-stat-card span,
+.control-tower-host-metrics,
 .control-tower-room-meta-card span,
 .control-tower-service-impact,
 .control-tower-room-project,
@@ -126,9 +133,24 @@
   font-size: 13px;
 }
 
+.control-tower-host-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-tower-host-badges,
+.control-tower-host-metrics {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .control-tower-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1.1fr);
   gap: 18px;
 }
 
@@ -137,6 +159,38 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.control-tower-chiplet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.control-tower-chiplet-grid > .control-tower-section-card {
+  height: 100%;
+}
+
+.control-tower-partner-panel {
+  width: 100%;
+}
+
+.control-tower-partner-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.control-tower-partner-panel-grid > .control-tower-memory-card,
+.control-tower-partner-panel-grid > .control-tower-next-card {
+  height: 100%;
+}
+
+.control-tower-partner-hero-card,
+.control-tower-partner-open-loops-card {
+  grid-column: 1 / -1;
 }
 
 .control-tower-section-card {
@@ -277,11 +331,38 @@
   gap: 12px;
 }
 
+.control-tower-partner-open-loops-card .control-tower-partner-loop-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
 .control-tower-partner-command-row,
 .control-tower-partner-loop-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.control-tower-inline-details {
+  border-radius: 14px;
+  border: 1px solid rgba(136, 152, 179, 0.14);
+  background: rgba(9, 12, 18, 0.86);
+  padding: 10px 12px;
+}
+
+.control-tower-inline-details summary {
+  cursor: pointer;
+  color: rgba(223, 227, 235, 0.86);
+}
+
+.control-tower-inline-details pre {
+  margin: 10px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(223, 227, 235, 0.82);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .control-tower-partner-loop-card {
@@ -324,6 +405,13 @@
   font-size: 13px;
   line-height: 1.5;
   color: rgba(223, 227, 235, 0.78);
+}
+
+@media (max-width: 900px) {
+  .control-tower-partner-hero-card,
+  .control-tower-partner-open-loops-card {
+    grid-column: auto;
+  }
 }
 
 .control-tower-pill-danger,
@@ -380,6 +468,10 @@
 .control-tower-drawer {
   width: min(760px, calc(100vw - 40px));
   margin-left: auto;
+}
+
+.control-tower-run-drawer {
+  width: min(920px, calc(100vw - 40px));
 }
 
 .control-tower-palette-header,

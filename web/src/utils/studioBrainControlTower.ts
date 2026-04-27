@@ -13,6 +13,9 @@ export type ControlTowerTheme = {
 export type ControlTowerHealth = "healthy" | "waiting" | "error" | "neutral";
 export type ControlTowerSeverity = "info" | "warning" | "critical";
 export type ControlTowerRoomStatus = "working" | "waiting" | "idle" | "parked" | "error" | "blocked" | "quiet";
+export type ControlTowerHostEnvironment = "local" | "server";
+export type ControlTowerHostHealth = "healthy" | "degraded" | "offline" | "maintenance";
+export type ControlTowerHostConnectivity = "online" | "stale" | "offline";
 export type ControlTowerEventType =
   | "run.status"
   | "task.updated"
@@ -67,6 +70,7 @@ export type ControlTowerBoardRow = {
   blocker: string;
   next: string;
   last_update: string | null;
+  runId?: string | null;
   roomId: string | null;
   sessionName: string | null;
   contactReason?: string | null;
@@ -98,7 +102,148 @@ export type ControlTowerApprovalItem = {
   owner: string;
   approvalMode: "required" | "exempt";
   risk: "low" | "medium" | "high" | "critical";
+  previewInput?: Record<string, unknown>;
+  expectedEffects?: string[];
   target: ControlTowerActionTarget;
+};
+
+export type ControlTowerHostCard = {
+  hostId: string;
+  label: string;
+  environment: ControlTowerHostEnvironment;
+  role: string;
+  connectivity: ControlTowerHostConnectivity;
+  health: ControlTowerHostHealth;
+  lastSeenAt: string | null;
+  ageMinutes: number | null;
+  currentRunId: string | null;
+  agentCount: number;
+  version: string | null;
+  metadata?: Record<string, unknown>;
+  summary: string;
+  metrics: {
+    cpuPct: number | null;
+    memoryPct: number | null;
+    load1: number | null;
+  };
+};
+
+export type AgentRuntimeTraceStep = {
+  stepId: string;
+  runId: string;
+  title: string;
+  kind: "mission" | "verification" | "tool" | "diagnostic" | "event";
+  status: "pending" | "running" | "succeeded" | "failed" | "blocked" | "skipped" | "info";
+  startedAt: string | null;
+  finishedAt: string | null;
+  summary: string;
+  evidenceRefs: string[];
+  rawEventIds: string[];
+};
+
+export type AgentRuntimeToolCall = {
+  toolCallId: string;
+  runId: string;
+  toolName: string;
+  status: "requested" | "streaming" | "completed" | "failed";
+  requestedAt: string | null;
+  completedAt: string | null;
+  summary: string;
+  sideEffectClass: "read" | "write" | "unknown";
+};
+
+export type AgentRuntimeArtifact = {
+  artifactId: string;
+  runId: string;
+  label: string;
+  kind: "json" | "ledger" | "text" | "file";
+  path: string;
+  sizeBytes: number | null;
+  updatedAt: string | null;
+  preview: string | null;
+};
+
+export type AgentRuntimeDiagnostic = {
+  id: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  summary: string;
+  recommendedAction: string | null;
+};
+
+export type AgentRuntimeRunSummary = {
+  schema: "agent-runtime-summary.v1";
+  generatedAt?: string;
+  runId: string;
+  missionId: string;
+  hostId?: string | null;
+  agentId?: string | null;
+  environment?: "local" | "server" | null;
+  status: "queued" | "running" | "blocked" | "verified" | "completed" | "failed";
+  riskLane: "interactive" | "background" | "high_risk";
+  title: string;
+  goal: string;
+  groundingSources: string[];
+  acceptance: {
+    total: number;
+    pending: number;
+    completed: number;
+    failed: number;
+  };
+  activeBlockers: string[];
+  ratholeSignals: Array<{
+    signalId: string;
+    kind: string;
+    severity: "info" | "warning" | "critical";
+    summary: string;
+    recommendedAction: string;
+    createdAt: string;
+    blocking: boolean;
+  }>;
+  memoriesInfluencingRun: string[];
+  goalMisses: Array<{
+    category: string;
+    summary: string;
+    createdAt: string;
+  }>;
+  lastEventType: string | null;
+  updatedAt: string;
+  boardRow: {
+    id: string;
+    owner: string;
+    task: string;
+    state: string;
+    blocker: string;
+    next: string;
+    last_update: string | null;
+    runId?: string | null;
+    contactReason?: string | null;
+    verifiedContext?: string[];
+    decisionNeeded?: string | null;
+  };
+};
+
+export type AgentRuntimeLedgerEvent = {
+  schema: "agent-run-ledger-event.v1";
+  eventId: string;
+  runId: string;
+  missionId: string;
+  type: string;
+  occurredAt: string;
+  payload: Record<string, unknown>;
+};
+
+export type AgentRuntimeRunDetail = {
+  schema: "agent-runtime-run-detail.v1";
+  generatedAt: string;
+  runId: string;
+  summary: AgentRuntimeRunSummary | null;
+  events: AgentRuntimeLedgerEvent[];
+  steps: AgentRuntimeTraceStep[];
+  toolCalls: AgentRuntimeToolCall[];
+  diagnostics: AgentRuntimeDiagnostic[];
+  artifacts: AgentRuntimeArtifact[];
+  whyStuck: string | null;
 };
 
 export type ControlTowerMemoryConsolidation = {
@@ -359,6 +504,9 @@ export type ControlTowerState = {
   approvals: ControlTowerApprovalItem[];
   memoryBrief: ControlTowerMemoryBrief;
   startupScorecard: ControlTowerStartupScorecard | null;
+  memoryHealth?: Record<string, unknown> | null;
+  agentRuntime: AgentRuntimeRunSummary | null;
+  hosts: ControlTowerHostCard[];
   partner: PartnerBrief | null;
   events: ControlTowerEvent[];
   recentChanges: ControlTowerEvent[];
@@ -511,6 +659,17 @@ export async function fetchControlTowerPartnerBrief(
   });
 }
 
+export async function fetchAgentRuntimeRunDetail(runId: string, options: FetchOptions): Promise<AgentRuntimeRunDetail> {
+  const payload = await fetchControlTowerJson<{ detail: AgentRuntimeRunDetail }>(
+    `/api/agent-runtime/runs/${encodeURIComponent(runId)}`,
+    options,
+    {
+      method: "GET",
+    },
+  );
+  return payload.detail;
+}
+
 function parseSseBuffer(
   buffer: string,
   onEvent: (event: ControlTowerEvent) => void,
@@ -645,10 +804,36 @@ export async function runControlTowerServiceAction(
   });
 }
 
-export async function ackControlTowerOverseer(note: string, options: FetchOptions): Promise<{ ok: boolean; runId?: string }> {
+export async function ackControlTowerOverseer(
+  note: string,
+  options: FetchOptions,
+  payload?: { runId?: string },
+): Promise<{ ok: boolean; runId?: string }> {
   return fetchControlTowerJson("/api/control-tower/overseer/ack", options, {
     method: "POST",
-    body: JSON.stringify({ note }),
+    body: JSON.stringify({ note, runId: payload?.runId }),
+  });
+}
+
+export async function approveControlTowerProposal(
+  proposalId: string,
+  rationale: string,
+  options: FetchOptions,
+): Promise<{ ok: boolean }> {
+  return fetchControlTowerJson(`/api/capabilities/proposals/${encodeURIComponent(proposalId)}/approve`, options, {
+    method: "POST",
+    body: JSON.stringify({ rationale }),
+  });
+}
+
+export async function rejectControlTowerProposal(
+  proposalId: string,
+  reason: string,
+  options: FetchOptions,
+): Promise<{ ok: boolean }> {
+  return fetchControlTowerJson(`/api/capabilities/proposals/${encodeURIComponent(proposalId)}/reject`, options, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }
 

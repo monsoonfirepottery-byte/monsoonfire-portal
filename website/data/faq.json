@@ -57,6 +57,18 @@
     ]
   },
   {
+    "question": "Do you offer credits if there is a firing mistake?",
+    "answer": "<p>Yes. If review shows the issue was studio-side, we apply generous credits to the affected firing service. Maker-side issues like clay, construction, glaze behavior, or firing-direction problems are not automatically credited.</p>",
+    "policySlug": "damage-responsibility",
+    "policyVersion": "2026-04-15",
+    "sourceType": "operational_faq",
+    "tags": [
+      "kiln",
+      "payments",
+      "policies"
+    ]
+  },
+  {
     "question": "How do I estimate how many half shelves I need?",
     "answer": "<p>If your work fits laid flat inside a carry-on, that is about one half shelf. Tall pieces need clearance; handles and irregular shapes take extra room; stacks (like plates) are more efficient. When in doubt, ask and we will help size it.</p>",
     "tags": [
@@ -114,9 +126,9 @@
   },
   {
     "question": "How do payments work?",
-    "answer": "<p>We process online payments through Stripe. If you need to pay in person, we have a POS for tap card payments. If you need another arrangement, just reach out.</p>",
+    "answer": "<p>Firing services are charged when work is accepted into service. Supplies and other online payments still run through Stripe, and in-person payments can be handled by tap-to-pay POS. If a studio-side firing mistake is confirmed, we apply generous credits after review.</p>",
     "policySlug": "payments-refunds",
-    "policyVersion": "2026-04-02",
+    "policyVersion": "2026-04-15",
     "sourceType": "operational_faq",
     "tags": [
       "payments",

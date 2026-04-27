@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { collectCodexExecJsonTelemetry } from "./lib/codex-exec-json-events.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
@@ -86,6 +88,7 @@ export function parseArgs(argv) {
     expectedPortalHost: DEFAULT_EXPECTED_PORTAL_HOST,
     deep: false,
     execute: false,
+    mode: "prepare",
     benchmarkProbe: false,
     json: false,
     model: DEFAULT_CODEX_MODEL,
@@ -201,6 +204,19 @@ export function parseArgs(argv) {
 
     if (arg === "--execute") {
       options.execute = true;
+      options.mode = "execute";
+      continue;
+    }
+
+    if (arg === "--prepare") {
+      options.execute = false;
+      options.mode = "prepare";
+      continue;
+    }
+
+    if (arg === "--app-handoff") {
+      options.execute = false;
+      options.mode = "app-handoff";
       continue;
     }
 
@@ -234,6 +250,7 @@ function emitBenchmarkProbe(options) {
       expectedPortalHost: options.expectedPortalHost,
       deep: options.deep,
       execute: options.execute,
+      mode: options.mode,
       model: options.model,
       reasoningEffort: options.reasoningEffort,
       executionRoot: options.executionRoot,
@@ -303,13 +320,14 @@ function buildCheckProfile(options) {
 }
 
 function buildPreparationPrompt(options, profile) {
+  const runner = options.mode === "app-handoff" ? "Codex app in-app browser" : "Codex in-app browser or computer-use runner";
   if (options.surface === "portal") {
     const localityNote = isLocalBaseUrl(options.baseUrl)
       ? "Localhost Studio Brain references are allowed on this local target."
       : "Any localhost/127.0.0.1 Studio Brain reference should be treated as a regression.";
 
     return [
-      `Use the Codex in-app browser or computer-use runner to verify the Monsoon Fire portal at ${options.baseUrl}.`,
+      `Use the ${runner} to verify the Monsoon Fire portal at ${options.baseUrl}.`,
       "This is an advisory shadow lane only. Do not replace the canonical Playwright gate based on this run.",
       localityNote,
       ...profile.checks.map((check, index) => `${index + 1}. ${check}`),
@@ -318,7 +336,7 @@ function buildPreparationPrompt(options, profile) {
   }
 
   return [
-    `Use the Codex in-app browser or computer-use runner to verify the Monsoon Fire website at ${options.baseUrl}.`,
+    `Use the ${runner} to verify the Monsoon Fire website at ${options.baseUrl}.`,
     "This is an advisory shadow lane only. Do not replace the canonical Playwright gate based on this run.",
     ...profile.checks.map((check, index) => `${index + 1}. ${check}`),
     "Capture the recommended screenshots and summarize any broken navigation, missing selectors, or handoff-host mismatches.",
@@ -424,7 +442,7 @@ function buildArtifacts(options) {
     schema: "native-browser-shadow-summary.v1",
     generatedAt: new Date().toISOString(),
     tool: "native-browser-shadow-verifier",
-    status: "shadow_ready",
+    status: options.mode === "app-handoff" ? "app_handoff_ready" : "shadow_ready",
     advisoryOnly: true,
     gatingImpact: "non_blocking",
     surface: options.surface,
@@ -434,15 +452,18 @@ function buildArtifacts(options) {
     canonicalArtifactRoot: options.canonicalArtifactRoot,
     expectedPortalHost: options.surface === "website" ? options.expectedPortalHost : null,
     deep: options.deep,
+    mode: options.mode,
     executionModel: {
       available: true,
-      defaultRunner: "codex.exec",
+      defaultRunner: options.mode === "app-handoff" ? "codex-app-in-app-browser" : "codex.exec",
       defaultModel: options.model,
       defaultReasoningEffort: options.reasoningEffort,
       defaultTimeoutMs: options.timeoutMs,
     },
     nextAction: options.execute
       ? "Execution mode requested. The wrapper will run Codex exec and persist structured evidence into this directory."
+      : options.mode === "app-handoff"
+        ? "Open the base URL in the Codex app in-app browser, run the handoff prompt, and attach the resulting visual notes to the generated handoff artifact."
       : "Run the prompt in Codex with the in-app browser or computer-use surface and write evidence back into this directory.",
     recommendedScreenshots: profile.recommendedScreenshots,
     artifactFiles: {
@@ -467,7 +488,7 @@ function buildArtifacts(options) {
       preferredRunners: ["codex-app-in-app-browser", "codex-computer-use", "codex.exec"],
       gateImpact: summary.gatingImpact,
       intendedOutcome: "Collect native-browser evidence in parallel with the canonical Playwright smoke lane.",
-      defaultRunner: "codex.exec",
+      defaultRunner: options.mode === "app-handoff" ? "codex-app-in-app-browser" : "codex.exec",
       defaultModel: options.model,
       defaultReasoningEffort: options.reasoningEffort,
       defaultTimeoutMs: options.timeoutMs,
@@ -478,6 +499,7 @@ function buildArtifacts(options) {
     canonicalArtifactRoot: options.canonicalArtifactRoot,
     expectedPortalHost: options.surface === "website" ? options.expectedPortalHost : null,
     deep: options.deep,
+    mode: options.mode,
     checks: profile.checks,
     recommendedScreenshots: profile.recommendedScreenshots,
     prompt,
@@ -491,7 +513,15 @@ function buildArtifacts(options) {
     `- Shadow of: \`${options.shadowOf}\``,
     `- Canonical Playwright artifacts: \`${options.canonicalArtifactRoot}\``,
     `- Advisory only: \`true\``,
-    `- Exec runner: \`codex.exec\``,
+    `- Preferred runner: \`${options.mode === "app-handoff" ? "codex-app-in-app-browser" : "codex.exec"}\``,
+    `- Mode: \`${options.mode}\``,
+    "",
+    "## Codex App Steps",
+    "",
+    "1. Open the base URL in the Codex app in-app browser.",
+    "2. Add page comments for any visible issue that needs an agent edit.",
+    "3. Use the prompt below to produce structured evidence.",
+    "4. Keep this lane advisory; compare with the canonical Playwright artifact before release claims.",
     "",
     "## Prompt",
     "",
@@ -564,7 +594,7 @@ function runProcess({ command, args, cwd, input = "", timeoutMs = DEFAULT_TIMEOU
   });
 }
 
-function buildCodexExecArgs({
+export function buildCodexExecArgs({
   executionRoot,
   model,
   outputPath,
@@ -573,6 +603,7 @@ function buildCodexExecArgs({
 }) {
   const args = [
     "exec",
+    "--json",
     "--skip-git-repo-check",
     "--ephemeral",
     "--sandbox",
@@ -617,6 +648,7 @@ export function buildExecutionArtifacts(plan, options, execution) {
     `- Model: \`${clean(execution?.model || options.model)}\``,
     `- Reasoning effort: \`${clean(execution?.reasoningEffort || options.reasoningEffort)}\``,
     `- Browser capability: \`${browserCapability || "unknown"}\``,
+    `- Token usage: \`${execution?.usage?.totalTokens ?? "n/a"}\` total, \`${execution?.usage?.reasoningTokens ?? "n/a"}\` reasoning`,
     "",
     "## Summary",
     "",
@@ -655,6 +687,8 @@ export function buildExecutionArtifacts(plan, options, execution) {
     browserCapability,
     summary: summaryText,
     error: clean(execution?.error),
+    usage: execution?.usage || null,
+    codexExecJson: execution?.codexExecJson || null,
     rawOutput: clean(execution?.rawOutput),
     result: execution?.result || null,
   };
@@ -685,6 +719,7 @@ async function executeShadowPlan(plan, options, artifacts) {
       input: executionPrompt,
       timeoutMs: options.timeoutMs,
     });
+    const codexExecJson = collectCodexExecJsonTelemetry(result.stdout);
     const rawOutput = existsSync(artifacts.execLastMessagePath)
       ? readFileSync(artifacts.execLastMessagePath, "utf8")
       : "";
@@ -699,6 +734,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: `codex exec timed out after ${options.timeoutMs}ms`,
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(rawOutput || result.stdout || result.stderr),
       };
     }
@@ -712,6 +749,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: `codex exec failed (${result.exitCode}): ${clip(result.stderr || result.stdout || "No output captured.")}`,
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(rawOutput || result.stdout || result.stderr),
       };
     }
@@ -725,6 +764,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: "codex exec completed without a final JSON message.",
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(result.stdout || result.stderr),
       };
     }
@@ -741,6 +782,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: `codex exec output was not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(rawOutput),
       };
     }
@@ -752,6 +795,8 @@ async function executeShadowPlan(plan, options, artifacts) {
       reasoningEffort: options.reasoningEffort,
       startedAt,
       completedAt,
+      usage: codexExecJson.usage,
+      codexExecJson,
       rawOutput: clip(rawOutput),
       result: parsed,
     };
@@ -786,8 +831,11 @@ export async function runShadowVerification(rawArgs = process.argv.slice(2)) {
       process.stdout.write(`  summary: ${artifacts.summary.artifactFiles.summary}\n`);
       process.stdout.write(`  plan: ${artifacts.summary.artifactFiles.plan}\n`);
       process.stdout.write(`  handoff: ${artifacts.summary.artifactFiles.handoff}\n`);
+      if (options.mode === "app-handoff") {
+        process.stdout.write(`  browser url: ${artifacts.summary.baseUrl}\n`);
+      }
     }
-    return { mode: "prepare", options, artifacts };
+    return { mode: options.mode, options, artifacts };
   }
 
   const execution = await executeShadowPlan(artifacts.plan, options, artifacts);

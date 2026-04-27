@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
+import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { stdin as input, stdout as output } from "node:process";
 import { setTimeout as setAbortTimeout } from "node:timers";
+import { fileURLToPath } from "node:url";
+import { loadCodexAutomationEnv } from "./lib/codex-automation-env.mjs";
+import { hydrateStudioBrainAuthFromPortal } from "./lib/studio-brain-startup-auth.mjs";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 import {
   buildArtifactProvenance,
@@ -11,6 +15,10 @@ import {
   POSTURE_MODES,
   REDACTION_STATES,
 } from "./lib/studiobrain-posture-policy.mjs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REPO_ROOT = resolve(__dirname, "..");
 
 const parseArgs = () => {
   const parsed = {
@@ -201,6 +209,10 @@ function printHumanSummary(report) {
 
 const run = async () => {
   const options = parseArgs();
+  loadCodexAutomationEnv({ repoRoot: REPO_ROOT, env: process.env });
+  if (!String(options.idToken || "").trim()) {
+    await hydrateStudioBrainAuthFromPortal({ repoRoot: REPO_ROOT, env: process.env }).catch(() => null);
+  }
   const explicitOptionBaseUrl = String(options.baseUrl || options.baseURL || "").trim();
   const baseUrl =
     resolveStudioBrainBaseUrlFromEnv({
@@ -211,8 +223,19 @@ const run = async () => {
     }).replace(/\/$/, "");
   const capabilitiesPath = options.capabilitiesPath || "/api/capabilities";
   const connectorPath = options.connectorPath || "/api/connectors/health";
-  let idToken = (options.idToken || process.env.STUDIO_BRAIN_ID_TOKEN || "").trim();
-  const adminToken = (options.adminToken || process.env.STUDIO_BRAIN_ADMIN_TOKEN || "").trim();
+  let idToken = (
+    options.idToken ||
+    process.env.STUDIO_BRAIN_ID_TOKEN ||
+    process.env.STUDIO_BRAIN_AUTH_TOKEN ||
+    process.env.STUDIO_BRAIN_MCP_ID_TOKEN ||
+    ""
+  ).trim();
+  const adminToken = (
+    options.adminToken ||
+    process.env.STUDIO_BRAIN_ADMIN_TOKEN ||
+    process.env.STUDIO_BRAIN_MCP_ADMIN_TOKEN ||
+    ""
+  ).trim();
 
   if (!idToken && options.promptForToken) {
     idToken = await promptToken();
@@ -334,7 +357,7 @@ const run = async () => {
     provenance: buildArtifactProvenance({
       mode: options.mode,
       envSource: explicitOptionBaseUrl ? "explicit-base-url" : "resolved-from-env",
-      envMode: explicitOptionBaseUrl ? "explicit" : "process-env-only",
+      envMode: explicitOptionBaseUrl ? "explicit" : "repo-bootstrap",
       approvedRemoteRunner: options.approvedRemoteRunner,
       host: new URL(baseUrl).host,
       generator: "scripts/test-studio-brain-auth.mjs",

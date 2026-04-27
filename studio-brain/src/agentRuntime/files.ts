@@ -1,12 +1,35 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { extname, relative, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import type { AgentRuntimeArtifact, AgentRuntimeSummary, RunLedgerEvent } from "./contracts";
 
 const DEFAULT_RUNS_ROOT = ["output", "agent-runs"] as const;
+const SAFE_AGENT_RUNTIME_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function isSafeAgentRuntimeId(value: unknown): boolean {
+  const normalized = clean(value);
+  return SAFE_AGENT_RUNTIME_ID.test(normalized) && normalized !== "." && normalized !== "..";
+}
+
+export function normalizeAgentRuntimeRunId(value: unknown, fieldName = "runId"): string {
+  const normalized = clean(value);
+  if (!isSafeAgentRuntimeId(normalized)) {
+    throw new Error(`${fieldName} must be a safe identifier using only letters, numbers, dot, underscore, or hyphen.`);
+  }
+  return normalized;
+}
+
+function resolveContainedPath(root: string, ...segments: string[]): string {
+  const target = resolve(root, ...segments);
+  const rel = relative(root, target);
+  if (rel && (rel.startsWith("..") || isAbsolute(rel))) {
+    throw new Error("Resolved runtime path escaped the agent runs root.");
+  }
+  return target;
 }
 
 function readJsonFile<T>(path: string): T | null {
@@ -36,7 +59,8 @@ export function agentRuntimeRunsRoot(repoRoot: string): string {
 }
 
 export function agentRuntimeRunRoot(repoRoot: string, runId: string): string {
-  return resolve(agentRuntimeRunsRoot(repoRoot), clean(runId));
+  const runsRoot = agentRuntimeRunsRoot(repoRoot);
+  return resolveContainedPath(runsRoot, normalizeAgentRuntimeRunId(runId));
 }
 
 export function listAgentRuntimeSummaries(repoRoot: string, limit = 12): AgentRuntimeSummary[] {
@@ -45,6 +69,7 @@ export function listAgentRuntimeSummaries(repoRoot: string, limit = 12): AgentRu
   const summaries = [];
   for (const entry of readdirSync(runsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
+    if (!isSafeAgentRuntimeId(entry.name)) continue;
     const summary = readJsonFile<AgentRuntimeSummary>(resolve(runsRoot, entry.name, "summary.json"));
     if (!summary) continue;
     summaries.push(summary);
@@ -84,18 +109,21 @@ export function readAgentRuntimeEvents(repoRoot: string, runId: string, limit = 
 }
 
 export function appendAgentRuntimeEvent(repoRoot: string, event: RunLedgerEvent): void {
-  const runRoot = agentRuntimeRunRoot(repoRoot, event.runId);
+  const runId = normalizeAgentRuntimeRunId(event.runId);
+  const runRoot = agentRuntimeRunRoot(repoRoot, runId);
   mkdirSync(runRoot, { recursive: true });
-  appendFileSync(resolve(runRoot, "run-ledger.jsonl"), `${JSON.stringify(event)}\n`, "utf8");
+  appendFileSync(resolve(runRoot, "run-ledger.jsonl"), `${JSON.stringify({ ...event, runId })}\n`, "utf8");
 }
 
 export function writeAgentRuntimeSummary(repoRoot: string, summary: AgentRuntimeSummary): void {
-  const runRoot = agentRuntimeRunRoot(repoRoot, summary.runId);
+  const runId = normalizeAgentRuntimeRunId(summary.runId);
+  const normalized = { ...summary, runId };
+  const runRoot = agentRuntimeRunRoot(repoRoot, runId);
   mkdirSync(runRoot, { recursive: true });
-  writeFileSync(resolve(runRoot, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  writeFileSync(resolve(runRoot, "summary.json"), `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
   writeFileSync(
     resolve(agentRuntimeRunsRoot(repoRoot), "latest.json"),
-    `${JSON.stringify({ schema: "agent-runtime-pointer.v1", runId: summary.runId, updatedAt: summary.updatedAt }, null, 2)}\n`,
+    `${JSON.stringify({ schema: "agent-runtime-pointer.v1", runId, updatedAt: summary.updatedAt }, null, 2)}\n`,
     "utf8",
   );
 }

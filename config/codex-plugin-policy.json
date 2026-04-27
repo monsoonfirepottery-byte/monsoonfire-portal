@@ -1,0 +1,113 @@
+{
+  "schema": "codex-plugin-boundary-policy.v1",
+  "generatedAt": "2026-04-24T00:00:00.000Z",
+  "defaults": {
+    "memoryIngress": "redacted_only",
+    "writePolicy": "explicit_confirmation"
+  },
+  "plugins": [
+    {
+      "pluginId": "browser-use",
+      "connectorId": "openai-bundled/browser-use",
+      "category": "local-browser",
+      "allowedTasks": [
+        "local UI smoke verification",
+        "localhost and file target inspection",
+        "visual evidence capture"
+      ],
+      "forbiddenData": [
+        "raw secrets",
+        "staff bearer tokens",
+        "payment data"
+      ],
+      "writePolicy": "artifact_only",
+      "memoryIngress": "artifact_summary_only",
+      "approvalPolicy": "no_approval"
+    },
+    {
+      "pluginId": "github",
+      "connectorId": "openai-curated/github",
+      "category": "source-control",
+      "allowedTasks": [
+        "repository and PR inspection",
+        "CI log triage",
+        "draft PR creation after local verification"
+      ],
+      "forbiddenData": [
+        "raw secrets",
+        "private customer data copied from production"
+      ],
+      "writePolicy": "explicit_approval_for_mutation",
+      "memoryIngress": "redacted_only",
+      "approvalPolicy": "human_required_for_mutation"
+    },
+    {
+      "pluginId": "gmail",
+      "connectorId": "openai-curated/gmail",
+      "category": "mailbox",
+      "allowedTasks": [
+        "mailbox search requested by the user",
+        "thread summary",
+        "reply drafting without sending"
+      ],
+      "forbiddenData": [
+        "full mailbox export",
+        "password reset links",
+        "unredacted payment details"
+      ],
+      "writePolicy": "explicit_confirmation",
+      "memoryIngress": "redacted_only",
+      "approvalPolicy": "human_required_for_mutation"
+    },
+    {
+      "pluginId": "google-calendar",
+      "connectorId": "openai-curated/google-calendar",
+      "category": "calendar",
+      "allowedTasks": [
+        "availability lookup",
+        "meeting prep",
+        "draft scheduling changes"
+      ],
+      "forbiddenData": [
+        "private event notes copied verbatim without user request",
+        "attendee personal data beyond scheduling context"
+      ],
+      "writePolicy": "explicit_confirmation",
+      "memoryIngress": "redacted_only",
+      "approvalPolicy": "human_required_for_mutation"
+    },
+    {
+      "pluginId": "openai-docs",
+      "connectorId": "openai-docs",
+      "category": "documentation",
+      "allowedTasks": [
+        "official OpenAI documentation lookup",
+        "model and API capability verification"
+      ],
+      "forbiddenData": [
+        "none"
+      ],
+      "writePolicy": "read_only",
+      "memoryIngress": "allowed",
+      "approvalPolicy": "no_approval"
+    },
+    {
+      "pluginId": "studio-brain-memory",
+      "connectorId": "studio-brain-memory",
+      "category": "memory",
+      "allowedTasks": [
+        "startup context",
+        "focused memory search",
+        "durable handoff write"
+      ],
+      "forbiddenData": [
+        "speculative personal facts",
+        "raw secrets",
+        "unredacted customer PII"
+      ],
+      "writePolicy": "memory_write_guarded",
+      "memoryIngress": "redacted_only",
+      "approvalPolicy": "auto_review_ok"
+    }
+  ]
+}

@@ -10,7 +10,9 @@ import {
   createInitialRunSummary,
   mergeToolContractRegistries,
   loadToolContractRegistry,
+  resolveCodexModelPolicy,
   validateToolContractRegistry,
+  validateCodexModelPolicy,
 } from "./lib/agent-harness-control-plane.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -90,12 +92,44 @@ test("tool contract registry validator enforces required fields", () => {
           nativeAlternative: "studio-brain-memory:start-context",
           retireWhen: "Native startup and continuity primitives cover the same contract surface.",
         },
+        approvalPolicy: {
+          tier: "no_approval",
+          why: "Read-only startup check.",
+        },
       },
     ],
   });
 
   assert.equal(validation.status, "pass");
   assert.equal(validation.findings.length, 0);
+});
+
+test("tool contract registry validator rejects unknown approval tiers", () => {
+  const validation = validateToolContractRegistry({
+    schema: "agent-tool-contract-registry.v1",
+    tools: [
+      {
+        toolId: "deploy.bad",
+        kind: "runtime-primitive",
+        command: "node deploy.mjs",
+        purpose: "Deploy badly.",
+        verificationCommand: "node verify.mjs",
+        safeFailBehavior: "Stop.",
+        rollbackBehavior: "Rollback.",
+        sideEffects: "deploy_live_portal",
+        dryRunSupport: false,
+        nativeSpec: {
+          argv: ["node", "deploy.mjs"],
+        },
+        approvalPolicy: {
+          tier: "maybe",
+        },
+      },
+    ],
+  });
+
+  assert.equal(validation.status, "fail");
+  assert.match(validation.findings[0]?.message || "", /unknown approvalPolicy tier/i);
 });
 
 test("mission envelope aggregates verifier and tool budget policy", () => {
@@ -113,7 +147,48 @@ test("mission envelope aggregates verifier and tool budget policy", () => {
     envelope.mutationPolicy.preferredPrimitive,
     process.platform === "win32" ? "workspace.mutation.file-plan" : "functions.apply_patch",
   );
+  assert.equal(envelope.modelPolicy.standard, "gpt-5.5");
+  assert.equal(envelope.modelPolicy.roles.implementation_default.reasoningEffort, "medium");
   assert.equal(envelope.nonGoals.includes("Do not wander into unrelated cleanup."), true);
+});
+
+test("model policy validator and resolver preserve role-level reasoning effort", () => {
+  const policy = {
+    schema: "codex-model-policy.v1",
+    roles: {
+      implementation_default: {
+        preferred: ["gpt-5.5", "gpt-5.4"],
+        reasoningEffort: "medium",
+        fallback: "gpt-5.4",
+      },
+      cheap_hygiene: {
+        preferred: ["gpt-5.4-mini"],
+        reasoningEffort: "low",
+        fallback: "gpt-5.4-mini",
+      },
+    },
+  };
+
+  const validation = validateCodexModelPolicy(policy);
+  const resolved = resolveCodexModelPolicy(
+    process.cwd(),
+    { generatedAt: "2026-04-24T00:00:00.000Z" },
+    {
+      policyBundle: {
+        relativePath: "inline-policy.json",
+        policy,
+      },
+      env: {
+        CODEX_MODEL_IMPLEMENTATION_DEFAULT: "gpt-5.4",
+      },
+    },
+  );
+
+  assert.equal(validation.status, "pass");
+  assert.equal(resolved.source, "inline-policy.json");
+  assert.equal(resolved.standard, "gpt-5.4");
+  assert.equal(resolved.roles.implementation_default.source, "env");
+  assert.equal(resolved.roles.cheap_hygiene.reasoningEffort, "low");
 });
 
 test("mission envelope prefers the file-plan primitive on Windows", () => {
@@ -517,6 +592,44 @@ test("tool primitive families compile native-browser shadow exec contracts", () 
   assert.equal(compiled.tools[0].toolId, "verify.website.native-browser.shadow.exec");
   assert.match(compiled.tools[0].command, /--execute/);
   assert.match(compiled.tools[0].nativeSpec.probeCommand, /--execute .*--benchmark-probe --json/);
+});
+
+test("tool primitive families compile Codex app browser handoff contracts", () => {
+  const compiled = compileToolPrimitiveFamilies({
+    schema: "agent-tool-primitive-family-registry.v1",
+    families: [
+      {
+        familyId: "verify.native-browser-app-handoff",
+        builder: "native-browser-shadow-verifier",
+        defaults: {
+          kind: "runtime-primitive",
+          selectableByAgent: false,
+          sideEffects: "artifact_only",
+          dryRunSupport: true,
+          safeFailBehavior: "Keep advisory.",
+          rollbackBehavior: "None.",
+          script: "./scripts/native-browser-shadow-verifier.mjs",
+          appHandoff: true,
+        },
+        entries: [
+          {
+            toolId: "verify.portal.codex-app-browser",
+            purpose: "Prepare portal app-browser verification.",
+            surface: "portal",
+            baseUrl: "https://portal.monsoonfire.com",
+            outputDir: "output/native-browser/portal/prod",
+            canonicalArtifactRoot: "output/playwright/portal/prod",
+            shadowOf: "verify.portal.smoke",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(compiled.tools.length, 1);
+  assert.match(compiled.tools[0].command, /--app-handoff/);
+  assert.doesNotMatch(compiled.tools[0].command, /--execute/);
+  assert.match(compiled.tools[0].nativeSpec.probeCommand, /--app-handoff .*--benchmark-probe --json/);
 });
 
 test("tool contract registries merge manual and generated tools", () => {

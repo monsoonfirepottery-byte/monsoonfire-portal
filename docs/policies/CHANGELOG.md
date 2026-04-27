@@ -1,5 +1,16 @@
 # Policy Documentation Changelog
 
+## 2026-04-15
+
+- Refined `payments-refunds` so the canonical policy now states:
+  - firing services are charged when work is accepted into service
+  - no-penalty cancellations only apply before service acceptance/payment capture
+  - confirmed studio-side firing mistakes route to generous credit review
+  - non-kiln services keep their published payment timing
+- Refined `damage-responsibility` so the canonical policy now states:
+  - confirmed studio-side firing mistakes default to generous firing-service credits after review
+  - larger remedies beyond the default service credit remain human-reviewed case-by-case
+
 ## 2026-04-02
 
 - Refined `payments-refunds` so the canonical policy now states:

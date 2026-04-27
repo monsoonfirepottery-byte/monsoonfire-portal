@@ -162,6 +162,11 @@ function createStatePayload() {
           owner: "Studio Ops",
           approvalMode: "required",
           risk: "high",
+          previewInput: {
+            batchId: "batch-1",
+            rationale: "Close the kiln batch after review.",
+          },
+          expectedEffects: ["Batch will move from active to closed.", "Timeline will record the operator action."],
           target: { type: "ops", action: "approvals" },
         },
       ],
@@ -256,6 +261,73 @@ function createStatePayload() {
           "Startup quality is within the current thresholds; keep collecting history so future regressions are easier to spot.",
         ],
       },
+      agentRuntime: {
+        schema: "agent-runtime-summary.v1",
+        runId: "run-background-1",
+        missionId: "mission-background-1",
+        hostId: "studio-brain-server",
+        agentId: "agent-runtime",
+        environment: "server",
+        status: "blocked",
+        riskLane: "high_risk",
+        title: "Portal Runtime Mission",
+        goal: "Keep the portal launch lane bounded.",
+        groundingSources: ["memory brief", "startup scorecard"],
+        acceptance: {
+          total: 3,
+          pending: 1,
+          completed: 1,
+          failed: 1,
+        },
+        activeBlockers: ["Verifier checks failed."],
+        ratholeSignals: [],
+        memoriesInfluencingRun: ["Portal continuity is loaded and ready for the next safe move."],
+        goalMisses: [],
+        lastEventType: "mission.state.changed",
+        updatedAt: "2026-03-30T10:06:00.000Z",
+        boardRow: {
+          id: "agent-runtime:run-background-1",
+          owner: "agent-runtime",
+          task: "Portal Runtime Mission",
+          state: "blocked",
+          blocker: "Verifier checks failed.",
+          next: "Inspect runtime",
+          last_update: "2026-03-30T10:06:00.000Z",
+          runId: "run-background-1",
+        },
+      },
+      hosts: [
+        {
+          hostId: "studio-brain-server",
+          label: "Studio Brain Server",
+          environment: "server",
+          role: "control-plane",
+          connectivity: "online",
+          health: "healthy",
+          lastSeenAt: "2026-03-30T10:06:00.000Z",
+          ageMinutes: 0,
+          currentRunId: "run-background-1",
+          agentCount: 1,
+          version: null,
+          summary: "1 active room visible in the control plane.",
+          metrics: { cpuPct: null, memoryPct: null, load1: null },
+        },
+        {
+          hostId: "micah-laptop",
+          label: "Micah Laptop",
+          environment: "local",
+          role: "operator-laptop",
+          connectivity: "online",
+          health: "healthy",
+          lastSeenAt: "2026-03-30T10:05:00.000Z",
+          ageMinutes: 1,
+          currentRunId: "run-background-1",
+          agentCount: 1,
+          version: "dev",
+          summary: "fresh heartbeat · run run-background-1 · 1 agent",
+          metrics: { cpuPct: 24, memoryPct: 48, load1: 1 },
+        },
+      ],
       partner: {
         schema: "studio-brain.partner-brief.v1",
         generatedAt: "2026-03-30T10:03:00.000Z",
@@ -472,6 +544,69 @@ function createRoomPayload() {
   };
 }
 
+function createRunDetailPayload() {
+  return {
+    ok: true,
+    detail: {
+      schema: "agent-runtime-run-detail.v1",
+      generatedAt: "2026-03-30T10:06:00.000Z",
+      runId: "run-background-1",
+      summary: createStatePayload().state.agentRuntime,
+      whyStuck: "Verifier checks failed.",
+      diagnostics: [
+        {
+          id: "diag-1",
+          severity: "warning",
+          title: "Active blocker",
+          summary: "Verifier checks failed.",
+          recommendedAction: "Inspect runtime",
+        },
+      ],
+      steps: [
+        {
+          stepId: "verification|npm run startup:check",
+          runId: "run-background-1",
+          title: "npm run startup:check",
+          kind: "verification",
+          status: "failed",
+          startedAt: "2026-03-30T10:05:30.000Z",
+          finishedAt: "2026-03-30T10:06:00.000Z",
+          summary: "Verifier checks failed.",
+          evidenceRefs: ["npm run startup:check"],
+          rawEventIds: ["evt-1"],
+        },
+      ],
+      toolCalls: [],
+      artifacts: [
+        {
+          artifactId: "summary.json",
+          runId: "run-background-1",
+          label: "summary.json",
+          kind: "json",
+          path: "output/agent-runs/run-background-1/summary.json",
+          sizeBytes: 420,
+          updatedAt: "2026-03-30T10:06:00.000Z",
+          preview: "{\n  \"status\": \"blocked\"\n}",
+        },
+      ],
+      events: [
+        {
+          schema: "agent-run-ledger-event.v1",
+          eventId: "evt-1",
+          runId: "run-background-1",
+          missionId: "mission-background-1",
+          type: "mission.state.changed",
+          occurredAt: "2026-03-30T10:06:00.000Z",
+          payload: {
+            status: "blocked",
+            blocker: "Verifier checks failed.",
+          },
+        },
+      ],
+    },
+  };
+}
+
 afterEach(() => {
   window.localStorage.clear();
   cleanup();
@@ -496,6 +631,13 @@ describe("StudioBrainControlTowerModule", () => {
 
       if (method === "GET" && url.pathname === "/api/control-tower/rooms/portal") {
         return new Response(JSON.stringify(createRoomPayload()), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (method === "GET" && url.pathname === "/api/agent-runtime/runs/run-background-1") {
+        return new Response(JSON.stringify(createRunDetailPayload()), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -532,17 +674,23 @@ describe("StudioBrainControlTowerModule", () => {
     expect(screen.getByText("Why this contact")).toBeTruthy();
     expect(screen.getByText("Portal lane waiting on decision")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Continuity brief" })).toBeTruthy();
-    expect(screen.getByText("Next memory actions")).toBeTruthy();
-    expect(screen.getByText("Startup quality")).toBeTruthy();
-    expect(screen.getByText("No extra memory action is needed right now.")).toBeTruthy();
-    expect(screen.getByText("ready rate: 98%")).toBeTruthy();
-    expect(screen.getByText("telemetry coverage: 86%")).toBeTruthy();
+    expect(screen.getAllByText("Investigate the current portal issue.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Portal issue is the main focus and the next safe move is inspection.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Startup 98/A")).toBeTruthy();
+    expect(screen.queryByText("Next memory actions")).toBeNull();
     expect(screen.getByRole("heading", { name: "30-second operator board" })).toBeTruthy();
-    expect(screen.getByText("Offline consolidation")).toBeTruthy();
-    expect(screen.getByText("promotions: 2")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Live run" })).toBeTruthy();
+    expect(screen.getByText("Studio Brain Server")).toBeTruthy();
+    expect(screen.getByText("Micah Laptop")).toBeTruthy();
+    expect(screen.queryByText("Offline consolidation")).toBeNull();
+    expect(screen.queryByText("promotions: 2")).toBeNull();
     expect(screen.getAllByText("Needs Attention").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Active Rooms").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Service oversight" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open run inspector" }));
+
+    expect(await screen.findByRole("dialog", { name: "Portal Runtime Mission run details" })).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Inspect room" })[0]);
 
@@ -637,6 +785,57 @@ describe("StudioBrainControlTowerModule", () => {
     expect(screen.getByText("Review and split the unknown mail-thread cluster before the next dream pass.")).toBeTruthy();
     expect(screen.getByText("blocked continuity: 25%")).toBeTruthy();
     expect(screen.getByText("avg pre-start repo reads: 2")).toBeTruthy();
+  });
+
+  it("approves a proposal from the cockpit approval queue", async () => {
+    vi.spyOn(controlTowerUtils, "subscribeControlTowerEvents").mockReturnValue(() => undefined);
+    vi.spyOn(window, "prompt").mockReturnValue("Approved after reviewing the bounded operator preview.");
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = (init?.method ?? "GET").toUpperCase();
+
+      if (method === "GET" && url.pathname === "/api/control-tower/state") {
+        return new Response(JSON.stringify(createStatePayload()), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (method === "POST" && url.pathname === "/api/capabilities/proposals/approval-1/approve") {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <StudioBrainControlTowerModule
+        user={createUser()}
+        active={true}
+        disabled={false}
+        adminToken=""
+        onNavigateTarget={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Approval queue" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/capabilities/proposals/approval-1/approve"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
   });
 
   it("sends chief-of-staff commands and open-loop updates through bounded partner routes", async () => {

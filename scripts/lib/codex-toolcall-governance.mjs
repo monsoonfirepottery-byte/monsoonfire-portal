@@ -315,6 +315,8 @@ export function summarizeStartupObservationCoverage(entries = []) {
   const uniqueEntries = Array.from(deduped.values());
   const uniqueSyntheticEntries = uniqueEntries.filter((entry) => inferObservationClass(entry) === "synthetic");
   const uniqueLiveEntries = uniqueEntries.filter((entry) => inferObservationClass(entry) === "live");
+  const syntheticDuplicateObservationCount = Math.max(0, syntheticRawRows - uniqueSyntheticEntries.length);
+  const liveDuplicateObservationCount = Math.max(0, liveRawRows - uniqueLiveEntries.length);
 
   return {
     rawStartupEntries: rawStartupEntries.length,
@@ -325,6 +327,8 @@ export function summarizeStartupObservationCoverage(entries = []) {
     liveRawRows,
     syntheticUniqueObservations: uniqueSyntheticEntries.length,
     liveUniqueObservations: uniqueLiveEntries.length,
+    syntheticDuplicateObservationCount,
+    liveDuplicateObservationCount,
     duplicateObservationCount: rawStartupEntries.length - uniqueEntries.length,
   };
 }
@@ -553,6 +557,8 @@ export function buildOperatorDragMetrics(entries = []) {
     liveStartupEntries: startupCoverage.liveUniqueObservations,
     syntheticUniqueObservations: startupCoverage.syntheticUniqueObservations,
     liveUniqueObservations: startupCoverage.liveUniqueObservations,
+    syntheticDuplicateObservationCount: startupCoverage.syntheticDuplicateObservationCount,
+    liveDuplicateObservationCount: startupCoverage.liveDuplicateObservationCount,
     duplicateObservationCount: startupCoverage.duplicateObservationCount,
     syntheticVsLiveStartupRatio:
       startupCoverage.liveUniqueObservations > 0

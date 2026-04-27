@@ -215,9 +215,13 @@ function hasStartupObservation(entries, { tool, action, observationKey, threadId
   return (entries || []).some((entry) => {
     if (clean(entry?.tool) !== clean(tool) || clean(entry?.action) !== clean(action)) return false;
     const startup = entry?.context?.startup && typeof entry.context.startup === "object" ? entry.context.startup : {};
-    if (observationKey && clean(startup.observationKey) === observationKey) return true;
+    const startupPacket = startup?.startupPacket && typeof startup.startupPacket === "object" ? startup.startupPacket : {};
+    if (observationKey && clean(startup.observationKey || startupPacket.observationKey) === observationKey) return true;
     if (threadId && rolloutPath) {
-      return clean(startup.threadId) === threadId && clean(startup.rolloutPath) === rolloutPath;
+      return (
+        clean(startup.threadId || startupPacket.threadId) === threadId &&
+        clean(startup.rolloutPath || startupPacket.rolloutPath) === rolloutPath
+      );
     }
     return false;
   });
@@ -284,9 +288,10 @@ export function maybeLogStartupTelemetryToolcall({
   ...rest
 } = {}) {
   const startup = context?.startup && typeof context.startup === "object" ? context.startup : {};
-  const observationKey = clean(startup.observationKey);
-  const threadId = clean(startup.threadId);
-  const rolloutPath = clean(startup.rolloutPath);
+  const startupPacket = startup?.startupPacket && typeof startup.startupPacket === "object" ? startup.startupPacket : {};
+  const observationKey = clean(startup.observationKey || startupPacket.observationKey);
+  const threadId = clean(startup.threadId || startupPacket.threadId);
+  const rolloutPath = clean(startup.rolloutPath || startupPacket.rolloutPath);
   if (!observationKey && !(threadId && rolloutPath)) {
     return {
       ok: false,

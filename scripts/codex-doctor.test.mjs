@@ -472,6 +472,58 @@ test("runCodexDoctor treats duplicate startup observations as advisory when live
   assert.match(duplicateCheck?.message || "", /coverage remains trustworthy/i);
 });
 
+test("runCodexDoctor does not warn on synthetic-only startup observation duplicates", async () => {
+  const now = Date.now();
+  const toolcallEntries = [
+    {
+      tsIso: new Date(now).toISOString(),
+      tool: "codex-desktop",
+      action: "startup-bootstrap",
+      context: {
+        startup: {
+          observationClass: "live",
+          observationKey: "live-obs-1",
+        },
+      },
+    },
+    {
+      tsIso: new Date(now - 1000).toISOString(),
+      tool: "codex-startup-preflight",
+      action: "startup-bootstrap",
+      context: {
+        startup: {
+          observationClass: "synthetic",
+          observationKey: "synthetic-obs-1",
+        },
+      },
+    },
+    {
+      tsIso: new Date(now - 2000).toISOString(),
+      tool: "codex-startup-preflight",
+      action: "startup-bootstrap",
+      context: {
+        startup: {
+          observationClass: "synthetic",
+          observationKey: "synthetic-obs-1",
+        },
+      },
+    },
+  ];
+
+  const report = await runDoctorScenario({
+    openMemoryHealthy: true,
+    layoutReady: true,
+    toolcallEntries,
+  });
+  const duplicateCheck = report.checks.find((check) => check.id === "codex-startup-duplicate-observations");
+
+  assert.equal(duplicateCheck?.severity, "info");
+  assert.equal(duplicateCheck?.ok, true);
+  assert.equal(duplicateCheck?.details?.liveDuplicateObservationCount, 0);
+  assert.equal(duplicateCheck?.details?.syntheticDuplicateObservationCount, 1);
+  assert.match(duplicateCheck?.message || "", /duplicate synthetic observation row\(s\).*live launcher coverage is clean/i);
+});
+
 test("runCodexDoctor surfaces timed out child checks with timeout metadata", async () => {
   const report = await runDoctorScenario({
     openMemoryHealthy: true,

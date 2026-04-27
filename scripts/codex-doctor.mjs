@@ -852,6 +852,8 @@ export async function runCodexDoctor({
       syntheticRawRows: operatorDragMetrics.syntheticRawRows,
       liveUniqueObservations: operatorDragMetrics.liveUniqueObservations,
       syntheticUniqueObservations: operatorDragMetrics.syntheticUniqueObservations,
+      liveDuplicateObservationCount: operatorDragMetrics.liveDuplicateObservationCount,
+      syntheticDuplicateObservationCount: operatorDragMetrics.syntheticDuplicateObservationCount,
       duplicateObservationCount: operatorDragMetrics.duplicateObservationCount,
       windowHours: toolcallWindow.windowHours,
       toolcallsPath: toolcallWindow.toolcallPath,
@@ -859,18 +861,24 @@ export async function runCodexDoctor({
   );
 
   const duplicateObservationAdvisory =
-    operatorDragMetrics.duplicateObservationCount > 0 && operatorDragMetrics.liveStartupEntries >= 5;
+    operatorDragMetrics.liveDuplicateObservationCount > 0 && operatorDragMetrics.liveStartupEntries >= 5;
+  const duplicateObservationHealthy =
+    operatorDragMetrics.liveDuplicateObservationCount === 0 || duplicateObservationAdvisory;
   checkCollector.push(
     "codex-startup-duplicate-observations",
-    duplicateObservationAdvisory || operatorDragMetrics.duplicateObservationCount === 0 ? "info" : "warning",
-    duplicateObservationAdvisory || operatorDragMetrics.duplicateObservationCount === 0,
-    operatorDragMetrics.duplicateObservationCount > 0
+    duplicateObservationHealthy ? "info" : "warning",
+    duplicateObservationHealthy,
+    operatorDragMetrics.liveDuplicateObservationCount > 0
       ? duplicateObservationAdvisory
-        ? `Startup telemetry contains ${operatorDragMetrics.duplicateObservationCount} duplicate observation row(s), but deduped live coverage remains trustworthy.`
-        : `Startup telemetry contains ${operatorDragMetrics.duplicateObservationCount} duplicate observation row(s); coverage is being deduped by observation identity.`
-      : "Startup telemetry shows no duplicate observation rows in the current window.",
+        ? `Startup telemetry contains ${operatorDragMetrics.liveDuplicateObservationCount} duplicate live observation row(s), but deduped live coverage remains trustworthy.`
+        : `Startup telemetry contains ${operatorDragMetrics.liveDuplicateObservationCount} duplicate live observation row(s); coverage is being deduped by observation identity.`
+      : operatorDragMetrics.syntheticDuplicateObservationCount > 0
+        ? `Startup telemetry contains ${operatorDragMetrics.syntheticDuplicateObservationCount} duplicate synthetic observation row(s); live launcher coverage is clean.`
+        : "Startup telemetry shows no duplicate observation rows in the current window.",
     {
       duplicateObservationCount: operatorDragMetrics.duplicateObservationCount,
+      liveDuplicateObservationCount: operatorDragMetrics.liveDuplicateObservationCount,
+      syntheticDuplicateObservationCount: operatorDragMetrics.syntheticDuplicateObservationCount,
       liveRawRows: operatorDragMetrics.liveRawRows,
       liveUniqueObservations: operatorDragMetrics.liveUniqueObservations,
       syntheticRawRows: operatorDragMetrics.syntheticRawRows,

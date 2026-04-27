@@ -108,6 +108,46 @@ describe("functionsClient", () => {
     expect(real).toContain("x-admin-token: admin-token-456");
   });
 
+  it("keeps redacted curl aligned with headers when admin token is absent", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const client = createFunctionsClient({
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-123",
+      getAdminToken: () => "  ",
+    });
+
+    await client.postJson("createBatch", { uid: "user_1" });
+
+    const redacted = client.getLastCurl();
+    expect(redacted).toContain("Authorization: Bearer <ID_TOKEN>");
+    expect(redacted).not.toContain("x-admin-token: <ADMIN_TOKEN>");
+  });
+
+  it("tracks admin headers supplied through request options", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const client = createFunctionsClient({
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-123",
+    });
+
+    await client.postJson(
+      "createBatch",
+      { uid: "user_1" },
+      {
+        headers: {
+          "x-admin-token": "forwarded-admin-token",
+        },
+      }
+    );
+
+    expect(client.getLastRequest()?.includesAdminTokenHeader).toBe(true);
+    expect(client.getLastCurl()).toContain("x-admin-token: <ADMIN_TOKEN>");
+  });
+
   it("deduplicates identical in-flight requests", async () => {
     let resolveFetch: ((value: Response) => void) | null = null;
     const fetchMock = vi.fn(

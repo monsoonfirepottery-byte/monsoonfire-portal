@@ -99,9 +99,8 @@ export default function OpsPortalBridgeView({ user, authReady, isStaff }: Props)
   }, [authReady, isStaff, locationKey, reloadNonce, user]);
 
   const title = useMemo(() => {
-    if (typeof window === "undefined") return "Studio Ops";
-    const search = new URLSearchParams(window.location.search);
-    const surface = search.get("surface");
+    const current = typeof window === "undefined" ? new URL(locationKey, "https://portal.monsoonfire.com") : new URL(locationKey, window.location.origin);
+    const surface = current.searchParams.get("surface");
     return surface ? `Studio Ops · ${surface}` : "Studio Ops";
   }, [locationKey]);
 

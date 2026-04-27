@@ -59,8 +59,9 @@ test("codex exec args use ephemeral read-only execution with stdin prompt input"
     reasoningEffort: "low",
   });
 
-  assert.deepEqual(args.slice(0, 19), [
+  assert.deepEqual(args.slice(0, 20), [
     "exec",
+    "--json",
     "--skip-git-repo-check",
     "--ephemeral",
     "--sandbox",
@@ -80,7 +81,7 @@ test("codex exec args use ephemeral read-only execution with stdin prompt input"
     "-c",
     "mcp_servers.open_memory.enabled=false",
   ]);
-  assert.deepEqual(args.slice(19, 23), [
+  assert.deepEqual(args.slice(20, 24), [
     "-C",
     resolve("C:/Windows/Temp"),
     "-m",

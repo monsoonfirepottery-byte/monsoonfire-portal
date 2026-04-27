@@ -4,6 +4,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { collectCodexExecJsonTelemetry } from "./codex-exec-json-events.mjs";
+
 export const LIVE_SWARM_PROMPT_VERSION = "planning-council.live.v1";
 export const LIVE_SWARM_DEFAULT_MODEL = process.env.PLANNING_COUNCIL_MODEL || process.env.CODEX_MODEL || process.env.OPENAI_MODEL || "gpt-5.4";
 export const LIVE_SWARM_SECTION_NAMES = [
@@ -427,6 +429,7 @@ function runProcess({ command, args, cwd, input = "", spawnImpl = spawn }) {
 export function buildCodexExecArgs({ executionRoot, model, outputPath, reasoningEffort = "low" }) {
   const args = [
     "exec",
+    "--json",
     "--skip-git-repo-check",
     "--ephemeral",
     "--sandbox",
@@ -513,6 +516,7 @@ async function callCodexExecJson({
       input: prompt,
       spawnImpl,
     });
+    const codexExecJson = collectCodexExecJsonTelemetry(result.stdout);
     if (result.exitCode !== 0) {
       throw new Error(
         `codex exec failed (${result.exitCode}): ${clip(result.stderr || result.stdout || "No output captured.", 900)}`
@@ -531,6 +535,8 @@ async function callCodexExecJson({
       outputHash: stableHash(outputText),
       startedAt,
       completedAt: isoNow(),
+      usage: codexExecJson.usage,
+      codexExecJson,
     };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -598,6 +604,17 @@ function createAgentRun({ preparation, role, roundType, cycle, result, status, m
     abstainReason,
     promptHash: result?.promptHash || "",
     outputHash: result?.outputHash || "",
+    ...(result?.usage ? { usage: result.usage } : {}),
+    ...(result?.codexExecJson
+      ? {
+          codexExecJson: {
+            eventCount: result.codexExecJson.eventCount,
+            invalidLineCount: result.codexExecJson.invalidLineCount,
+            usageCandidateCount: result.codexExecJson.usageCandidateCount,
+            eventTypes: result.codexExecJson.eventTypes,
+          },
+        }
+      : {}),
     mergeRules: toList(role.mergeRules),
     revisionPermissions: toObject(role.revisionPermissions),
   };

@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const DEFAULT_ARTIFACT = "output/codex-app-doctor/latest.json";
-const RECOMMENDED_MIN_CLI = "0.124.0";
+const RECOMMENDED_MIN_CLI = "0.125.0";
 const RECOMMENDED_MIN_APP_PREFIX = "26.415";
 
 function clean(value) {

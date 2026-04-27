@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { collectCodexExecJsonTelemetry } from "./lib/codex-exec-json-events.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
@@ -592,7 +594,7 @@ function runProcess({ command, args, cwd, input = "", timeoutMs = DEFAULT_TIMEOU
   });
 }
 
-function buildCodexExecArgs({
+export function buildCodexExecArgs({
   executionRoot,
   model,
   outputPath,
@@ -601,6 +603,7 @@ function buildCodexExecArgs({
 }) {
   const args = [
     "exec",
+    "--json",
     "--skip-git-repo-check",
     "--ephemeral",
     "--sandbox",
@@ -645,6 +648,7 @@ export function buildExecutionArtifacts(plan, options, execution) {
     `- Model: \`${clean(execution?.model || options.model)}\``,
     `- Reasoning effort: \`${clean(execution?.reasoningEffort || options.reasoningEffort)}\``,
     `- Browser capability: \`${browserCapability || "unknown"}\``,
+    `- Token usage: \`${execution?.usage?.totalTokens ?? "n/a"}\` total, \`${execution?.usage?.reasoningTokens ?? "n/a"}\` reasoning`,
     "",
     "## Summary",
     "",
@@ -683,6 +687,8 @@ export function buildExecutionArtifacts(plan, options, execution) {
     browserCapability,
     summary: summaryText,
     error: clean(execution?.error),
+    usage: execution?.usage || null,
+    codexExecJson: execution?.codexExecJson || null,
     rawOutput: clean(execution?.rawOutput),
     result: execution?.result || null,
   };
@@ -713,6 +719,7 @@ async function executeShadowPlan(plan, options, artifacts) {
       input: executionPrompt,
       timeoutMs: options.timeoutMs,
     });
+    const codexExecJson = collectCodexExecJsonTelemetry(result.stdout);
     const rawOutput = existsSync(artifacts.execLastMessagePath)
       ? readFileSync(artifacts.execLastMessagePath, "utf8")
       : "";
@@ -727,6 +734,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: `codex exec timed out after ${options.timeoutMs}ms`,
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(rawOutput || result.stdout || result.stderr),
       };
     }
@@ -740,6 +749,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: `codex exec failed (${result.exitCode}): ${clip(result.stderr || result.stdout || "No output captured.")}`,
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(rawOutput || result.stdout || result.stderr),
       };
     }
@@ -753,6 +764,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: "codex exec completed without a final JSON message.",
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(result.stdout || result.stderr),
       };
     }
@@ -769,6 +782,8 @@ async function executeShadowPlan(plan, options, artifacts) {
         startedAt,
         completedAt,
         error: `codex exec output was not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        usage: codexExecJson.usage,
+        codexExecJson,
         rawOutput: clip(rawOutput),
       };
     }
@@ -780,6 +795,8 @@ async function executeShadowPlan(plan, options, artifacts) {
       reasoningEffort: options.reasoningEffort,
       startedAt,
       completedAt,
+      usage: codexExecJson.usage,
+      codexExecJson,
       rawOutput: clip(rawOutput),
       result: parsed,
     };

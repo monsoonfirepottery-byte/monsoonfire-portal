@@ -33,9 +33,9 @@ test("runCodexAppDoctor reports app, cli, browser, and MCP readiness", () => {
         },
       },
       codexCli: {
-        preferred: { path: "C:\\Users\\micah\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe", version: "0.124.0" },
+        preferred: { path: "C:\\Users\\micah\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe", version: "0.125.0" },
         candidates: [],
-        versionSet: ["0.124.0"],
+        versionSet: ["0.125.0"],
         hasVersionAmbiguity: false,
       },
       shellInspection: {

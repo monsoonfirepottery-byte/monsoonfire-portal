@@ -466,8 +466,22 @@ function extractUsage(entry) {
 
   const inputKeys = ["inputTokens", "promptTokens", "prompt_tokens", "tokensIn", "input_tokens"];
   const outputKeys = ["outputTokens", "completionTokens", "completion_tokens", "tokensOut", "output_tokens"];
-  const reasoningKeys = ["reasoningTokens", "reasoning_tokens", "tokensReasoning", "reasoning"];
-  const cacheReadKeys = ["cacheReadTokens", "cache_read_tokens", "cachedTokensRead", "cacheRead"];
+  const reasoningKeys = [
+    "reasoningTokens",
+    "reasoning_tokens",
+    "reasoningOutputTokens",
+    "reasoning_output_tokens",
+    "tokensReasoning",
+    "reasoning",
+  ];
+  const cacheReadKeys = [
+    "cacheReadTokens",
+    "cache_read_tokens",
+    "cachedInputTokens",
+    "cached_input_tokens",
+    "cachedTokensRead",
+    "cacheRead",
+  ];
   const cacheWriteKeys = ["cacheWriteTokens", "cache_write_tokens", "cachedTokensWrite", "cacheWrite"];
   const totalKeys = ["totalTokens", "total_tokens", "tokensTotal", "total"];
 

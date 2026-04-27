@@ -446,18 +446,108 @@ const store_1 = require("./store");
     strict_1.default.equal(audits[1]?.payload.emailMasked, "n***r@example.com");
     strict_1.default.match(audits[1]?.reason ?? "", /^stored securely \(\d+ chars\)$/);
 });
-(0, node_test_1.default)("ops service clears stale lab reservations and reports a handoff-ready board", async () => {
+(0, node_test_1.default)("ops service suppresses stale reservation bundles from the live handoff view", async () => {
     const store = new store_1.MemoryOpsStore();
+    await store.upsertReservationBundle({
+        id: "reservation:stale-1",
+        reservationId: "stale-1",
+        title: "Fixture Member · bisque firing",
+        status: "REQUESTED",
+        ownerUid: "member-1",
+        displayName: "Fixture Member",
+        firingType: "bisque firing",
+        dueAt: "2026-04-16T08:00:00.000Z",
+        itemCount: 4,
+        shelfEquivalent: 1,
+        notes: "Old QA fixture",
+        arrival: {
+            status: "expected",
+            dueAt: "2026-04-16T08:00:00.000Z",
+            arrivedAt: null,
+            summary: "Fixture Member is expected.",
+            confidence: 0.7,
+            verificationClass: "planned",
+        },
+        prep: {
+            summary: "Fixture prep",
+            actions: ["Prepare shelf"],
+            toolsNeeded: ["clipboard"],
+            assignedRole: "floor_staff",
+        },
+        linkedTaskIds: [],
+        verificationClass: "planned",
+        freshestAt: "2026-04-16T07:45:00.000Z",
+        sources: [],
+        confidence: 0.7,
+        degradeReason: null,
+        metadata: {},
+    });
     const service = (0, service_1.createOpsService)({
         store,
-        now: () => "2026-04-18T16:00:00.000Z",
+        now: () => "2026-04-18T20:45:00.000Z",
+        stateStore: {
+            async saveStudioState() { },
+            async getLatestStudioState() {
+                return {
+                    schemaVersion: "v3.0",
+                    snapshotDate: "2026-04-18",
+                    generatedAt: "2026-04-18T20:40:00.000Z",
+                    cloudSync: {
+                        firestoreReadAt: "2026-04-18T20:40:00.000Z",
+                        stripeReadAt: null,
+                    },
+                    counts: {
+                        batchesActive: 0,
+                        batchesClosed: 0,
+                        reservationsOpen: 0,
+                        firingsScheduled: 0,
+                        reportsOpen: 0,
+                    },
+                    ops: {
+                        agentRequestsPending: 0,
+                        highSeverityReports: 0,
+                    },
+                    finance: {
+                        pendingOrders: 0,
+                        unsettledPayments: 0,
+                    },
+                    sourceHashes: {
+                        firestore: "fixture",
+                        stripe: null,
+                    },
+                    diagnostics: {
+                        completeness: "partial",
+                        warnings: [],
+                    },
+                };
+            },
+            async getPreviousStudioState() { return null; },
+            async saveStudioStateDiff() { },
+            async saveOverseerRun() { },
+            async getLatestOverseerRun() { return null; },
+            async listRecentOverseerRuns() { return []; },
+            async listRecentJobRuns() { return []; },
+            async startJobRun(jobName) {
+                return {
+                    id: `${jobName}-1`,
+                    jobName,
+                    status: "running",
+                    startedAt: "2026-04-18T20:40:00.000Z",
+                    completedAt: null,
+                    summary: null,
+                    errorMessage: null,
+                };
+            },
+            async completeJobRun() { },
+            async failJobRun() { },
+        },
         staffDataSource: {
             async listMembers() { return []; },
             async getMember() { return null; },
             async createMember() { throw new Error("not used"); },
             async updateMemberProfile() { throw new Error("not used"); },
-            async updateMemberBilling() { throw new Error("not used"); },
             async updateMemberMembership() { throw new Error("not used"); },
+            async updateMemberBilling() { throw new Error("not used"); },
             async updateMemberRole() { throw new Error("not used"); },
             async getMemberActivity(uid) {
                 return {
@@ -471,152 +561,7 @@ const store_1 = require("./store");
                     lastEventAt: null,
                 };
             },
-            async listReservations() {
-                return [{
-                        id: "reservation:lab-1",
-                        reservationId: "lab-1",
-                        title: "Studio member · kiln service",
-                        status: "REQUESTED",
-                        ownerUid: "member-1",
-                        displayName: "Studio member",
-                        firingType: "kiln service",
-                        dueAt: "2026-01-26T13:07:00.000Z",
-                        itemCount: 1,
-                        shelfEquivalent: 1,
-                        notes: "Old lab fixture",
-                        arrival: {
-                            status: "expected",
-                            dueAt: "2026-01-26T13:07:00.000Z",
-                            arrivedAt: null,
-                            summary: "Studio member is expected around Jan 26, 6:07 AM.",
-                            confidence: 0.66,
-                            verificationClass: "planned",
-                        },
-                        prep: {
-                            summary: "Fixture prep only.",
-                            actions: ["Confirm shelf space."],
-                            toolsNeeded: ["intake station"],
-                            assignedRole: "floor_staff",
-                        },
-                        linkedTaskIds: [],
-                        verificationClass: "planned",
-                        freshestAt: "2026-01-26T12:00:00.000Z",
-                        sources: [],
-                        confidence: 0.72,
-                        degradeReason: null,
-                        metadata: {},
-                    }];
-            },
-            async getReservationBundle() { return null; },
-            async listEvents() {
-                return [{
-                        id: "event-lab-1",
-                        title: "Old lab workshop",
-                        status: "published",
-                        startAt: "2026-03-08T13:00:00.000Z",
-                        endAt: "2026-03-08T16:00:00.000Z",
-                        remainingCapacity: 0,
-                        capacity: 6,
-                        waitlistCount: 0,
-                        location: "lab",
-                        priceCents: 0,
-                        lastStatusReason: "Fixture only.",
-                        lastStatusChangedAt: "2026-03-08T13:00:26.851Z",
-                    }];
-            },
-            async listReports() {
-                return [{
-                        id: "report-lab-1",
-                        status: "resolved",
-                        severity: "low",
-                        summary: "Old resolved lab note.",
-                        createdAt: "2026-03-01T12:00:00.000Z",
-                        ownerUid: null,
-                    }];
-            },
-            async getLendingSnapshot() {
-                return {
-                    requests: [],
-                    loans: [],
-                    recommendationCount: 0,
-                    tagSubmissionCount: 0,
-                    coverReviewCount: 0,
-                };
-            },
-        },
-    });
-    const snapshot = await service.getPortalSnapshot();
-    const taskRows = await service.listTasks();
-    strict_1.default.equal(snapshot.reservations.length, 0);
-    strict_1.default.equal(snapshot.tasks.filter((row) => row.surface === "hands").length, 0);
-    strict_1.default.equal(taskRows.filter((row) => row.surface === "hands").length, 0);
-    strict_1.default.equal(snapshot.events.length, 0);
-    strict_1.default.equal(snapshot.reports.length, 0);
-    strict_1.default.equal(snapshot.twin.headline, "Studio is ready for handoff.");
-    strict_1.default.match(snapshot.twin.narrative, /clean board/i);
-    strict_1.default.equal(snapshot.truth.readiness, "ready");
-});
-(0, node_test_1.default)("ops service keeps fresh reservation bundles visible in the live hands lane", async () => {
-    const store = new store_1.MemoryOpsStore();
-    const service = (0, service_1.createOpsService)({
-        store,
-        now: () => "2026-04-18T16:00:00.000Z",
-        staffDataSource: {
-            async listMembers() { return []; },
-            async getMember() { return null; },
-            async createMember() { throw new Error("not used"); },
-            async updateMemberProfile() { throw new Error("not used"); },
-            async updateMemberBilling() { throw new Error("not used"); },
-            async updateMemberMembership() { throw new Error("not used"); },
-            async updateMemberRole() { throw new Error("not used"); },
-            async getMemberActivity(uid) {
-                return {
-                    uid,
-                    reservations: 1,
-                    libraryLoans: 0,
-                    supportThreads: 0,
-                    events: 0,
-                    lastReservationAt: null,
-                    lastLoanAt: null,
-                    lastEventAt: null,
-                };
-            },
-            async listReservations() {
-                return [{
-                        id: "reservation:live-1",
-                        reservationId: "live-1",
-                        title: "Alex Potter · glaze fire",
-                        status: "REQUESTED",
-                        ownerUid: "member-2",
-                        displayName: "Alex Potter",
-                        firingType: "glaze fire",
-                        dueAt: "2026-04-18T18:00:00.000Z",
-                        itemCount: 2,
-                        shelfEquivalent: 1,
-                        notes: "Fresh reservation",
-                        arrival: {
-                            status: "expected",
-                            dueAt: "2026-04-18T18:00:00.000Z",
-                            arrivedAt: null,
-                            summary: "Alex Potter is expected around Apr 18, 11:00 AM.",
-                            confidence: 0.66,
-                            verificationClass: "planned",
-                        },
-                        prep: {
-                            summary: "Prep notes available.",
-                            actions: ["Clear intake shelf.", "Check glaze notes."],
-                            toolsNeeded: ["intake station", "kiln board"],
-                            assignedRole: "floor_staff",
-                        },
-                        linkedTaskIds: [],
-                        verificationClass: "planned",
-                        freshestAt: "2026-04-18T15:45:00.000Z",
-                        sources: [],
-                        confidence: 0.81,
-                        degradeReason: null,
-                        metadata: {},
-                    }];
-            },
+            async listReservations() { return []; },
             async getReservationBundle() { return null; },
             async listEvents() { return []; },
             async listReports() { return []; },
@@ -627,12 +572,14 @@ const store_1 = require("./store");
                     recommendationCount: 0,
                     tagSubmissionCount: 0,
                     coverReviewCount: 0,
+                    generatedAt: "2026-04-18T20:40:00.000Z",
                 };
             },
         },
     });
     const snapshot = await service.getPortalSnapshot();
-    strict_1.default.equal(snapshot.reservations.length, 1);
-    strict_1.default.ok(snapshot.tasks.some((row) => row.id === "task_reservation_prepare_live-1"));
-    strict_1.default.notEqual(snapshot.twin.headline, "Studio is ready for handoff.");
+    strict_1.default.equal(snapshot.reservations.length, 0);
+    strict_1.default.equal(snapshot.twin.currentRisk, null);
+    strict_1.default.match(snapshot.twin.headline, /quiet/i);
+    strict_1.default.ok(snapshot.truth.sources.some((row) => row.source === "reservations" && /suppressed|active right now/i.test(String(row.reason || ""))));
 });

@@ -1409,53 +1409,19 @@ function createSignedOpsSessionToken(secret, ttlSeconds, principal) {
     const expiresAt = nowMs + Math.max(60, Math.min(3600, ttlSeconds)) * 1000;
     const payload = {
         aud: "studio-brain-ops",
-        sub: principal.uid,
-        principal: {
-            uid: principal.uid,
-            isStaff: principal.isStaff,
-            roles: principal.roles,
-            portalRole: principal.portalRole,
-            opsRoles: principal.opsRoles,
-            opsCapabilities: principal.opsCapabilities,
-        },
         iat: nowMs,
         exp: expiresAt,
         nonce: node_crypto_1.default.randomBytes(12).toString("base64url"),
+        uid: principal?.uid ?? "ops-session:local-portal",
+        isStaff: principal?.isStaff ?? true,
+        roles: Array.isArray(principal?.roles) && principal.roles.length > 0 ? principal.roles : ["staff"],
+        portalRole: principal?.portalRole ?? "staff",
+        opsRoles: Array.isArray(principal?.opsRoles) ? principal.opsRoles : [],
+        opsCapabilities: Array.isArray(principal?.opsCapabilities) ? principal.opsCapabilities : [],
     };
     const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
     const signature = node_crypto_1.default.createHmac("sha256", secret).update(payloadEncoded).digest("hex");
     return `sbops.${payloadEncoded}.${signature}`;
-}
-function parseSignedOpsSessionPrincipal(value) {
-    const payload = toObjectRecord(value);
-    const uid = toTrimmedString(payload.uid);
-    if (!uid)
-        return null;
-    const portalRoleRaw = toTrimmedString(payload.portalRole);
-    const portalRole = portalRoleRaw === "admin" || portalRoleRaw === "staff" || portalRoleRaw === "member" ? portalRoleRaw : "member";
-    const opsRoles = toStringList(payload.opsRoles, 32).filter((entry) => [
-        "owner",
-        "member_ops",
-        "support_ops",
-        "kiln_lead",
-        "floor_staff",
-        "events_ops",
-        "library_ops",
-        "finance_ops",
-    ].includes(entry));
-    const opsCapabilities = toStringList(payload.opsCapabilities, 96).filter(Boolean);
-    const roles = toStringList(payload.roles, 32);
-    const isStaff = payload.isStaff === true || portalRole === "admin" || portalRole === "staff" || opsRoles.length > 0;
-    if (!isStaff)
-        return null;
-    return {
-        uid,
-        isStaff,
-        roles,
-        portalRole,
-        opsRoles,
-        opsCapabilities,
-    };
 }
 function verifySignedOpsSessionToken(token, secret) {
     const trimmed = token.trim();
@@ -1480,10 +1446,26 @@ function verifySignedOpsSessionToken(token, secret) {
             return null;
         if (!Number.isFinite(iat) || iat > Date.now() + 60_000)
             return null;
-        const principal = parseSignedOpsSessionPrincipal(decoded.principal);
-        if (!principal || principal.uid !== decoded.sub)
+        const uid = toTrimmedString(decoded.uid);
+        if (!uid)
             return null;
-        return principal;
+        const portalRole = decoded.portalRole === "admin" || decoded.portalRole === "staff" || decoded.portalRole === "member"
+            ? decoded.portalRole
+            : "member";
+        return {
+            uid,
+            isStaff: decoded.isStaff !== false,
+            roles: Array.isArray(decoded.roles)
+                ? decoded.roles.filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+                : ["staff"],
+            portalRole,
+            opsRoles: Array.isArray(decoded.opsRoles)
+                ? decoded.opsRoles.filter((entry) => typeof entry === "string")
+                : [],
+            opsCapabilities: Array.isArray(decoded.opsCapabilities)
+                ? decoded.opsCapabilities.filter((entry) => typeof entry === "string")
+                : [],
+        };
     }
     catch {
         return null;
@@ -1944,11 +1926,9 @@ function startHttpServer(params) {
             return { ok: true, actorId: "ops-portal:anonymous" };
         }
         const sessionToken = firstHeader(req.headers["x-studio-brain-ops-session"]);
-        if (opsSessionSecret && sessionToken) {
-            const principal = verifySignedOpsSessionToken(sessionToken, opsSessionSecret);
-            if (principal) {
-                return { ok: true, principal, actorId: principal.uid };
-            }
+        const sessionPrincipal = opsSessionSecret && sessionToken ? verifySignedOpsSessionToken(sessionToken, opsSessionSecret) : null;
+        if (sessionPrincipal) {
+            return { ok: true, principal: sessionPrincipal, actorId: sessionPrincipal.uid };
         }
         const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
         if (!auth.ok) {
@@ -1968,7 +1948,7 @@ function startHttpServer(params) {
             requestId,
         });
         return {
-            message: "Memory import is busy; retry later.",
+            message: "Memory import deferred due current import pressure.",
             reason: "active-import-pressure",
             retryAfterSeconds: thresholds.retryAfterSeconds,
             pressure,
@@ -2273,8 +2253,8 @@ function startHttpServer(params) {
                         res.writeHead(statusCode, withSecurityHeaders({
                             "content-type": "application/json",
                             ...corsHeaders,
-                            "retry-after": String(pressureRejection.retryAfterSeconds),
                             "x-request-id": requestId,
+                            "retry-after": String(pressureRejection.retryAfterSeconds),
                         }));
                         res.end(JSON.stringify({ ok: false, ...pressureRejection }));
                         return;
@@ -3719,8 +3699,8 @@ function startHttpServer(params) {
                     res.writeHead(statusCode, withSecurityHeaders({
                         "content-type": "application/json",
                         ...corsHeaders,
-                        "retry-after": String(pressureRejection.retryAfterSeconds),
                         "x-request-id": requestId,
+                        "retry-after": String(pressureRejection.retryAfterSeconds),
                     }));
                     res.end(JSON.stringify({ ok: false, ...pressureRejection }));
                     return;
@@ -7702,9 +7682,7 @@ function startHttpServer(params) {
                     opsService.getPortalSnapshot(auth.principal ? opsActorContext(auth) : undefined),
                     opsService.getDisplayState(stationId),
                 ]);
-                const sessionToken = auth.ok && auth.principal && opsSessionSecret
-                    ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal)
-                    : null;
+                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal ?? null) : null;
                 const html = (0, renderOpsPortalPage_1.renderOpsPortalPage)({
                     snapshot,
                     displayState,
@@ -7733,9 +7711,7 @@ function startHttpServer(params) {
                     ? requestedSurface
                     : allowedSurfaces[0] ?? requestedSurface;
                 const displayState = stationId ? await opsService.getDisplayState(stationId) : null;
-                const sessionToken = auth.ok && auth.principal && opsSessionSecret
-                    ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal)
-                    : null;
+                const sessionToken = auth.ok && opsSessionSecret ? createSignedOpsSessionToken(opsSessionSecret, opsSessionTtlSeconds, auth.principal ?? null) : null;
                 const html = (0, renderOpsPortalPage_1.renderOpsPortalPage)({
                     snapshot,
                     displayState,

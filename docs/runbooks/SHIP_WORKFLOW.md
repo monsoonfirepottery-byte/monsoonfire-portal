@@ -10,6 +10,7 @@ Shorten the common close-out sequence of:
 The workflow is intentionally safe by default:
 - preview is the default mode
 - merge happens remotely through GitHub so local worktree conflicts do not block it
+- apply mode waits on required GitHub checks and fails fast if one of the long lanes turns red
 - deploy only runs from a clean default-branch worktree
 - cleanup runs last
 
@@ -56,7 +57,7 @@ When apply mode is enabled, the workflow can:
 1. verify `gh` auth
 2. mark a draft PR ready
 3. update a behind PR branch
-4. wait for checks
+4. wait for required GitHub checks to settle
 5. merge the PR remotely
 6. delete the remote branch
 7. fetch/prune local refs
@@ -66,6 +67,18 @@ When apply mode is enabled, the workflow can:
 
 ## Notes
 - The workflow writes a JSON report to `output/maintenance/ship-workflow-latest.json` by default.
+- The wait step uses `gh pr checks --required --watch --fail-fast`, so long GitHub lanes such as smoke, lighthouse, and mobile builds stay part of the ship instead of becoming a manual follow-up.
 - If no clean default-branch worktree is available, deploy is blocked on purpose rather than deploying from a dirty feature branch.
 - Direct `node ./scripts/ship-workflow.mjs ...` runs accept the full `--flag` syntax.
 - `npm run ship...` shorthands also accept positional aliases like `apply`, `portal`, `474`, `skip-cleanup`, `skip-sync`, `skip-merge`, and `pr=474`.
+
+## Studio Brain close-out
+
+For Studio Brain deploy PRs, use the ship workflow as the close-out command after the PR exists:
+
+```bash
+npm run ship:studio -- 476
+npm run ship:studio:apply -- 476
+```
+
+That sequence waits on GitHub, merges remotely, syncs a clean `main` worktree, then runs `studio:ops:reconcile` from the clean lane.

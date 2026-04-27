@@ -4,7 +4,7 @@ import { createLogger } from "./logger";
 
 test("logger redacts common ops pii keys from structured metadata", () => {
   const writes: string[] = [];
-  const originalWrite = process.stdout.write.bind(process.stdout);
+  const originalWrite = process.stdout.write;
   process.stdout.write = ((chunk: string | Uint8Array) => {
     writes.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
     return true;

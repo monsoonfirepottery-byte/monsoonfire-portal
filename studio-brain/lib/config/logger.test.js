@@ -8,7 +8,7 @@ const strict_1 = __importDefault(require("node:assert/strict"));
 const logger_1 = require("./logger");
 (0, node_test_1.default)("logger redacts common ops pii keys from structured metadata", () => {
     const writes = [];
-    const originalWrite = process.stdout.write.bind(process.stdout);
+    const originalWrite = process.stdout.write;
     process.stdout.write = ((chunk) => {
         writes.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
         return true;

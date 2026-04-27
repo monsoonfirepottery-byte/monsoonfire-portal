@@ -7,7 +7,15 @@ const listenPort = normalizePort(process.env.STUDIO_BRAIN_CONTROL_TOWER_PROXY_PO
 const upstreamBase = trimRightSlash(String(process.env.STUDIO_BRAIN_CONTROL_TOWER_PROXY_UPSTREAM || "http://127.0.0.1:8787").trim() || "http://127.0.0.1:8787");
 const adminToken = String(process.env.STUDIO_BRAIN_ADMIN_TOKEN || "").trim();
 
-const allowedHeaderNames = new Set(["authorization", "content-type", "accept", "x-request-id", "x-trace-id", "traceparent"]);
+const allowedHeaderNames = new Set([
+  "authorization",
+  "content-type",
+  "accept",
+  "x-request-id",
+  "x-trace-id",
+  "traceparent",
+  "x-studio-brain-ops-session",
+]);
 
 const server = http.createServer(async (req, res) => {
   const method = String(req.method || "GET").toUpperCase();
@@ -108,11 +116,7 @@ server.listen(listenPort, listenHost, () => {
 
 function isAllowedPath(pathname) {
   if (pathname === "/") return true;
-  return (
-    /^\/ops(?:\/.*)?$/i.test(pathname) ||
-    /^\/api\/ops(?:\/.*)?$/i.test(pathname) ||
-    /^\/api\/control-tower(?:\/.*)?$/i.test(pathname)
-  );
+  return /^\/(?:ops(?:\/.*)?|api\/ops(?:\/.*)?|api\/control-tower(?:\/.*)?)$/i.test(pathname);
 }
 
 function normalizePort(value, fallback) {

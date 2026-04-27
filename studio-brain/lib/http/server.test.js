@@ -1137,26 +1137,25 @@ function createControlTowerRunner() {
     const importRelease = new Promise((resolve) => {
         releaseImport = resolve;
     });
-    const baseMemoryService = (0, service_2.createMemoryService)({
+    const memoryService = (0, service_2.createMemoryService)({
         store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
         defaultTenantId: "monsoonfire-main",
         defaultAgentId: "test-agent",
         defaultRunId: "test-run",
     });
-    const memoryService = {
-        ...baseMemoryService,
-        async importBatch() {
-            resolveImportStarted();
-            await importRelease;
-            return { total: 1, imported: 1, failed: 0, results: [] };
-        },
+    memoryService.importBatch = async () => {
+        resolveImportStarted();
+        await importRelease;
+        return { total: 1, imported: 1, failed: 0, results: [{ index: 0, ok: true, id: "mem-test" }] };
     };
     try {
-        await withServer({ memoryService }, async (baseUrl) => {
+        await withServer({
+            memoryService,
+        }, async (baseUrl) => {
             const first = fetch(`${baseUrl}/api/memory/import`, {
                 method: "POST",
                 headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
-                body: JSON.stringify({ sourceOverride: "import", items: [{ content: "slow import" }] }),
+                body: JSON.stringify({ sourceOverride: "import", items: [{ content: "first import" }] }),
             });
             await Promise.race([
                 importStarted,
@@ -1516,7 +1515,60 @@ function createControlTowerRunner() {
     });
 });
 (0, node_test_1.default)("ops portal routes expose twin state and allow claiming tasks", async () => {
-    const opsService = (0, service_1.createOpsService)({ store: new store_1.MemoryOpsStore() });
+    const member = {
+        uid: "member-1",
+        email: "member@example.com",
+        displayName: "Studio Member",
+        membershipTier: "drop-in",
+        kilnPreferences: "Cone 6 preferred",
+        staffNotes: "Prefers pickup texts.",
+        billing: null,
+        portalRole: "member",
+        opsRoles: [],
+        opsCapabilities: [],
+        createdAt: "2026-04-17T00:00:00.000Z",
+        updatedAt: "2026-04-17T00:00:00.000Z",
+        lastSeenAt: "2026-04-16T20:00:00.000Z",
+        metadata: {},
+    };
+    const opsService = (0, service_1.createOpsService)({
+        store: new store_1.MemoryOpsStore(),
+        staffDataSource: {
+            async listMembers() { return [member]; },
+            async getMember(uid) { return uid === member.uid ? member : null; },
+            async createMember() { throw new Error("not used in this test"); },
+            async updateMemberProfile() { throw new Error("not used in this test"); },
+            async updateMemberBilling() { throw new Error("not used in this test"); },
+            async updateMemberMembership() { throw new Error("not used in this test"); },
+            async updateMemberRole() { throw new Error("not used in this test"); },
+            async getMemberActivity(uid) {
+                return {
+                    uid,
+                    reservations: 1,
+                    libraryLoans: 0,
+                    supportThreads: 1,
+                    events: 0,
+                    lastReservationAt: member.lastSeenAt,
+                    lastLoanAt: null,
+                    lastEventAt: member.lastSeenAt,
+                };
+            },
+            async listReservations() { return []; },
+            async getReservationBundle() { return null; },
+            async listEvents() { return []; },
+            async listReports() { return []; },
+            async getLendingSnapshot() {
+                return {
+                    requests: [],
+                    loans: [],
+                    recommendationCount: 0,
+                    tagSubmissionCount: 0,
+                    coverReviewCount: 0,
+                    generatedAt: "2026-04-17T00:00:00.000Z",
+                };
+            },
+        },
+    });
     const task = (0, service_1.createHumanTaskSeed)({
         id: "task_ops_portal_claim",
         title: "Unload kiln 1",
@@ -1541,6 +1593,7 @@ function createControlTowerRunner() {
             compareEnabled: true,
             legacyUrl: "https://portal.monsoonfire.com/staff",
         },
+        adminToken: "test-ops-session-secret",
     }, async (baseUrl) => {
         const twinResponse = await fetch(`${baseUrl}/api/ops/twin`, {
             headers: { authorization: "Bearer test-staff" },
@@ -1576,8 +1629,34 @@ function createControlTowerRunner() {
         });
         strict_1.default.equal(portalResponse.status, 200);
         const html = await portalResponse.text();
-        strict_1.default.ok(html.includes("Studio Manager voice"));
+        strict_1.default.ok(html.includes("Command deck"));
         strict_1.default.ok(html.includes("Hands lane"));
+        strict_1.default.ok(html.includes("Windows that move today"));
+        strict_1.default.ok(html.includes('id="ops-hands-workbench"'));
+        strict_1.default.ok(html.includes('id="ops-support-workbench"'));
+        const marker = '<script id="ops-portal-model" type="application/json">';
+        const modelStart = html.indexOf(marker);
+        strict_1.default.ok(modelStart >= 0);
+        const modelBodyStart = modelStart + marker.length;
+        const modelEnd = html.indexOf("</script>", modelBodyStart);
+        const portalModel = JSON.parse(html.slice(modelBodyStart, modelEnd));
+        strict_1.default.equal(typeof portalModel.sessionToken, "string");
+        const sessionHeaders = { "x-studio-brain-ops-session": String(portalModel.sessionToken) };
+        const sessionMeResponse = await fetch(`${baseUrl}/api/ops/session/me`, {
+            headers: sessionHeaders,
+        });
+        strict_1.default.equal(sessionMeResponse.status, 200);
+        const sessionMePayload = (await sessionMeResponse.json());
+        strict_1.default.equal(sessionMePayload.ok, true);
+        strict_1.default.equal(sessionMePayload.session.actorId, "staff-test-uid");
+        const memberDetailResponse = await fetch(`${baseUrl}/api/ops/members/member-1`, {
+            headers: sessionHeaders,
+        });
+        strict_1.default.equal(memberDetailResponse.status, 200);
+        const memberActivityResponse = await fetch(`${baseUrl}/api/ops/members/member-1/activity`, {
+            headers: sessionHeaders,
+        });
+        strict_1.default.equal(memberActivityResponse.status, 200);
         const choiceResponse = await fetch(`${baseUrl}/ops/choice`, {
             headers: { authorization: "Bearer test-staff" },
         });
@@ -1596,6 +1675,7 @@ function createControlTowerRunner() {
         membershipTier: "drop-in",
         kilnPreferences: "Cone 6 preferred",
         staffNotes: "Prefers pickup texts.",
+        billing: null,
         portalRole: "member",
         opsRoles: [],
         opsCapabilities: [],
@@ -1777,6 +1857,7 @@ function createControlTowerRunner() {
             enabled: true,
             requireStaffAuth: true,
         },
+        adminToken: "test-ops-session-secret",
     }, async (baseUrl) => {
         const sessionResponse = await fetch(`${baseUrl}/api/ops/session/me`, {
             headers: { authorization: "Bearer test-staff" },
@@ -1871,6 +1952,21 @@ function createControlTowerRunner() {
         strict_1.default.equal(activityPayload.ok, true);
         strict_1.default.equal(activityPayload.activity.reservations, 1);
         strict_1.default.equal(activityPayload.activity.supportThreads, 1);
+        const portalResponse = await fetch(`${baseUrl}/ops?surface=internet&mode=member-ops`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(portalResponse.status, 200);
+        const portalHtml = await portalResponse.text();
+        strict_1.default.ok(portalHtml.includes('id="ops-member-workbench"'));
+        strict_1.default.ok(portalHtml.includes('id="ops-member-create-trigger"'));
+        strict_1.default.ok(portalHtml.includes('data-viewport-toggle="single-screen"'));
+        strict_1.default.ok(portalHtml.includes("Never type raw card numbers here"));
+        strict_1.default.ok(portalHtml.includes("Roster and onboarding"));
+        strict_1.default.ok(portalHtml.includes("One member, one intent"));
+        strict_1.default.ok(portalHtml.includes('class="ops-shell"'));
+        strict_1.default.ok(!portalHtml.includes('window.prompt("Display name"'));
+        strict_1.default.ok(!portalHtml.includes('window.prompt("Membership tier"'));
+        strict_1.default.ok(!portalHtml.includes('window.prompt("Comma-separated ops roles"'));
     });
 });
 (0, node_test_1.default)("ops portal can be disabled independently from the rest of the server", async () => {

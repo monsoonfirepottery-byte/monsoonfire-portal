@@ -77,6 +77,8 @@
     "test:e2e:headed": "npx playwright test -c website/playwright.config.mjs --headed",
     "test:e2e:dev": "BASE_URL=${BASE_URL:?Set BASE_URL to your preview URL} npx playwright test -c website/playwright.config.mjs",
     "portal:smoke:playwright": "node ./scripts/portal-playwright-smoke.mjs --output-dir output/playwright/portal",
+    "ops:portal:bridge:smoke": "npm --prefix studio-brain run build && node ./scripts/ops-portal-bridge-smoke.mjs --json",
+    "ops:portal:public:smoke": "node ./scripts/ops-portal-public-smoke.mjs --json",
     "portal:smoke:native-browser:shadow": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod",
     "codex:browser:verify:portal": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod --app-handoff",
     "codex:browser:verify:portal:local": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url http://127.0.0.1:5173 --output-dir output/native-browser/portal/local --shadow-of verify.portal.smoke.local --canonical-artifact-root output/playwright/portal/local --app-handoff",

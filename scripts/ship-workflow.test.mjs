@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { chooseSyncTarget, parseArgs, resolveLanePreset } from "./ship-workflow.mjs";
+import { buildWaitChecksArgs, chooseSyncTarget, parseArgs, resolveLanePreset } from "./ship-workflow.mjs";
 
 test("parseArgs defaults to preview mode with merge, sync, and cleanup enabled", () => {
   const parsed = parseArgs([]);
@@ -45,6 +45,19 @@ test("resolveLanePreset maps studio lane to reconcile script", () => {
   const preset = resolveLanePreset("studio");
   assert.equal(preset.script, "studio:ops:reconcile");
   assert.match(preset.label, /Studio Brain/i);
+});
+
+test("buildWaitChecksArgs waits on required GitHub checks with fail-fast semantics", () => {
+  assert.deepEqual(buildWaitChecksArgs(476), [
+    "pr",
+    "checks",
+    "476",
+    "--required",
+    "--watch",
+    "--fail-fast",
+    "--interval",
+    "15",
+  ]);
 });
 
 test("chooseSyncTarget prefers a separate clean default-branch worktree", () => {

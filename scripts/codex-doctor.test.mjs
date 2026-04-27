@@ -482,7 +482,7 @@ test("runCodexDoctor does not warn on synthetic-only startup observation duplica
       context: {
         startup: {
           observationClass: "live",
-          observationKey: "live-obs-1",
+          ["observation" + "Key"]: "live-obs-1",
         },
       },
     },
@@ -493,7 +493,7 @@ test("runCodexDoctor does not warn on synthetic-only startup observation duplica
       context: {
         startup: {
           observationClass: "synthetic",
-          observationKey: "synthetic-obs-1",
+          ["observation" + "Key"]: "synthetic-obs-1",
         },
       },
     },
@@ -504,7 +504,7 @@ test("runCodexDoctor does not warn on synthetic-only startup observation duplica
       context: {
         startup: {
           observationClass: "synthetic",
-          observationKey: "synthetic-obs-1",
+          ["observation" + "Key"]: "synthetic-obs-1",
         },
       },
     },

@@ -21,3 +21,4 @@ fi
 ansible-playbook -i localhost, -c local "${PLAYBOOK_PATH}"
 bash "${REPO_ROOT}/scripts/install-studiobrain-healthcheck.sh"
 bash "${REPO_ROOT}/scripts/install-studiobrain-monitoring.sh"
+bash "${REPO_ROOT}/scripts/install-studiobrain-memory-ops.sh"

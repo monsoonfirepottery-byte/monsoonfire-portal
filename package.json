@@ -488,7 +488,21 @@
     "governance:remote:sync:finalize": "node ./scripts/governance/remote-workflow-sync-finalize.mjs --output output/governance/remote-workflow-sync-finalize.json",
     "governance:execute:until-blocked": "node ./scripts/governance/execute-until-blocked.mjs --output output/governance/execute-until-blocked.json",
     "open-memory:micah:bundle": "node ./scripts/open-memory-micah-bundle.mjs",
-    "open-memory:micah:import": "node ./scripts/open-memory-micah-import.mjs"
+    "open-memory:micah:import": "node ./scripts/open-memory-micah-import.mjs",
+    "wiki:validate": "node ./scripts/wiki-postgres.mjs validate --json",
+    "wiki:source:index:check": "node ./scripts/wiki-postgres.mjs source-index --json --artifact output/wiki/source-index-check.json",
+    "wiki:source:index": "node ./scripts/wiki-postgres.mjs source-index --write-markdown --json --artifact output/wiki/source-index.json",
+    "wiki:source:index:apply": "node ./scripts/wiki-postgres.mjs source-index --apply-db --write-markdown --json --artifact output/wiki/source-index-apply.json",
+    "wiki:extract": "node ./scripts/wiki-postgres.mjs extract --write-markdown --json --artifact output/wiki/extract.json",
+    "wiki:extract:apply": "node ./scripts/wiki-postgres.mjs extract --apply-db --write-markdown --json --artifact output/wiki/extract-apply.json",
+    "wiki:context:refresh": "node ./scripts/wiki-postgres.mjs context --write-markdown --json --artifact output/wiki/context-refresh.json",
+    "wiki:context:apply": "node ./scripts/wiki-postgres.mjs context --apply-db --write-markdown --json --artifact output/wiki/context-apply.json",
+    "wiki:contradictions:scan": "node ./scripts/wiki-postgres.mjs contradictions --json --artifact output/wiki/contradictions-scan.json",
+    "wiki:contradictions:export": "node ./scripts/wiki-postgres.mjs contradictions --write-markdown --json --artifact output/wiki/contradictions-export.json",
+    "wiki:contradictions:record": "node ./scripts/wiki-postgres.mjs contradictions --apply-db --write-markdown --json --artifact output/wiki/contradictions-record.json",
+    "wiki:db:probe": "node ./scripts/wiki-postgres.mjs db-probe --json --artifact output/wiki/db-probe.json",
+    "wiki:db:probe:live": "node ./scripts/wiki-postgres.mjs db-probe --apply-db --json --artifact output/wiki/db-probe-live.json",
+    "test:wiki": "node --test ./scripts/wiki-postgres.test.mjs"
   },
   "engines": {
     "node": "22"

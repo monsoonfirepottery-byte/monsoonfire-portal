@@ -33,6 +33,7 @@ import type { PilotWriteExecutor } from "../capabilities/pilotWrite";
 import type { BackendHealthReport } from "../connectivity/healthcheck";
 import type { MemoryStats } from "../memory/contracts";
 import type { MemoryService } from "../memory/service";
+import { createPostgresWikiReadStore, type WikiReadStore } from "../wiki/readStore";
 import type { KilnObservationProvider } from "../kiln/adapters/kilnaid/types";
 import { firingQueueStates } from "../kiln/domain/model";
 import type { KilnStore } from "../kiln/store";
@@ -1871,6 +1872,7 @@ export function startHttpServer(params: {
   verifyFirebaseAuth?: (authorizationHeader: string | undefined) => Promise<AuthPrincipal>;
   backendHealth?: () => Promise<BackendHealthReport>;
   memoryService?: MemoryService | null;
+  wikiReadStore?: WikiReadStore | null;
   memoryIngestConfig?: MemoryIngestConfig;
   opsService?: OpsService | null;
   opsIngestConfig?: OpsIngestConfig;
@@ -1914,6 +1916,7 @@ export function startHttpServer(params: {
     verifyFirebaseAuth = verifyFirebaseAuthHeader,
     backendHealth,
     memoryService = null,
+    wikiReadStore = createPostgresWikiReadStore(),
     memoryIngestConfig,
     opsService = null,
     opsIngestConfig,
@@ -2533,6 +2536,86 @@ export function startHttpServer(params: {
         statusCode = 200;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
         res.end(JSON.stringify({ ok: true, snapshot }));
+        return;
+      }
+
+      const wikiContextPackMatch = wikiReadStore && method === "GET"
+        ? url.pathname.match(/^\/api\/wiki\/context-packs\/([^/]+)$/)
+        : null;
+      if (wikiReadStore && wikiContextPackMatch) {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const tenantScope = toTrimmedString(url.searchParams.get("tenantScope")) || "monsoonfire-main";
+        const packKey = decodeURIComponent(wikiContextPackMatch[1] || "").trim() || "studio-brain-wiki";
+        const contextPack = await wikiReadStore.getContextPack({ tenantScope, packKey });
+        statusCode = contextPack ? 200 : 404;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify(contextPack ? { ok: true, contextPack } : { ok: false, message: "Wiki context pack not found." }));
+        return;
+      }
+
+      if (wikiReadStore && method === "GET" && url.pathname === "/api/wiki/contradictions") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const tenantScope = toTrimmedString(url.searchParams.get("tenantScope")) || "monsoonfire-main";
+        const status = toTrimmedString(url.searchParams.get("status")) || "open";
+        const limit = toBoundedInt(url.searchParams.get("limit"), 50, 1, 200);
+        const contradictions = await wikiReadStore.listContradictions({ tenantScope, status, limit });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, contradictions }));
+        return;
+      }
+
+      if (wikiReadStore && method === "GET" && url.pathname === "/api/wiki/source-freshness") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const tenantScope = toTrimmedString(url.searchParams.get("tenantScope")) || "monsoonfire-main";
+        const status = toTrimmedString(url.searchParams.get("status")) || null;
+        const limit = toBoundedInt(url.searchParams.get("limit"), 100, 1, 500);
+        const sources = await wikiReadStore.listSourceFreshness({ tenantScope, status, limit });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, sources }));
+        return;
+      }
+
+      if (wikiReadStore && method === "GET" && url.pathname === "/api/wiki/search") {
+        const auth = await assertCapabilityAuth(req, { requireAdminToken: false });
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const tenantScope = toTrimmedString(url.searchParams.get("tenantScope")) || "monsoonfire-main";
+        const query = toTrimmedString(url.searchParams.get("q")) || toTrimmedString(url.searchParams.get("query"));
+        if (!query) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Wiki search query is required." }));
+          return;
+        }
+        const limit = toBoundedInt(url.searchParams.get("limit"), 20, 1, 100);
+        const results = await wikiReadStore.search({ tenantScope, query, limit });
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, results }));
         return;
       }
 

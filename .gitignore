@@ -52,6 +52,7 @@ memory/
 !studio-brain/lib/memory/**
 exports/
 *.jsonl
+!wiki/**/*.jsonl
 /.tmp/
 /.codex/toolcalls.ndjson
 /.codex/tools/

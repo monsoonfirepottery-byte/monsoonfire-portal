@@ -354,6 +354,7 @@ function branchGuardedNpmJob({ id, label, script, scriptArgs = [], scriptArtifac
   const command = [
     "node",
     "./scripts/repo-audit-branch-guard.mjs",
+    "--json",
     "--artifact",
     guardArtifact,
     "--untracked-files",
@@ -638,6 +639,32 @@ function parseWholeJson(value) {
   }
 }
 
+function parseJsonFromText(value) {
+  const whole = parseWholeJson(value);
+  if (whole) return whole;
+  const lines = String(value || "").split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].trim().startsWith("{")) continue;
+    const parsed = parseWholeJson(lines.slice(index).join("\n"));
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function nestedCommandPayload(payload) {
+  if (payload?.schema !== "repo-audit-branch-guard-v1") return null;
+  return parseJsonFromText(payload.command?.stdoutTail || "");
+}
+
+function payloadFromJobArtifacts(job) {
+  for (const artifact of job.artifacts || []) {
+    if (!String(artifact).endsWith(".json") || String(artifact).includes(".branch-guard.")) continue;
+    const parsed = readJsonIfPresent(resolve(REPO_ROOT, artifact));
+    if (parsed && typeof parsed === "object") return parsed;
+  }
+  return null;
+}
+
 function warningsFromJsonPayload(payload) {
   if (!payload || typeof payload !== "object") return [];
   const warnings = [];
@@ -671,8 +698,11 @@ function runCommand(job, { runner = spawnSync } = {}) {
     maxBuffer: 32 * 1024 * 1024,
   });
   const exitCode = typeof result.status === "number" ? result.status : result.error ? 1 : 0;
-  const parsedJson = exitCode === 0 ? parseWholeJson(result.stdout) : null;
-  const warnings = warningsFromJsonPayload(parsedJson);
+  const parsedJson = parseJsonFromText(result.stdout);
+  const nestedJson = nestedCommandPayload(parsedJson);
+  const artifactJson = parsedJson?.schema === "repo-audit-branch-guard-v1" ? payloadFromJobArtifacts(job) : null;
+  const summaryPayload = nestedJson || artifactJson || parsedJson;
+  const warnings = warningsFromJsonPayload(summaryPayload);
   return {
     id: job.id,
     label: job.label,
@@ -685,7 +715,10 @@ function runCommand(job, { runner = spawnSync } = {}) {
     timedOut: Boolean(result.signal === "SIGTERM" && result.error?.message?.includes("ETIMEDOUT")),
     error: result.error ? result.error.message : "",
     warnings,
-    payloadSummary: summarizeJsonPayload(parsedJson),
+    payloadSummary: {
+      ...summarizeJsonPayload(summaryPayload),
+      guardStatus: parsedJson?.schema === "repo-audit-branch-guard-v1" ? clean(parsedJson.status) : undefined,
+    },
     command: commandDisplay(job.command),
     artifacts: job.artifacts,
     stdoutTail: clipOutput(result.stdout, DEFAULT_OUTPUT_TAIL_CHARS),

@@ -53,7 +53,7 @@ test("buildJobPlan creates bounded memory, quick repo, and harness jobs", () => 
     assert.match(plan[1].command.join(" "), /--untracked-files no/);
     assert.match(plan[1].command.join(" "), /--quiet-command/);
     assert.match(plan[1].command.join(" "), /audit:agentic:inventory/);
-    assert.equal(plan[1].command.includes("--json"), false);
+    assert.equal(plan[1].command.includes("--json"), true);
     assert.ok(plan[1].artifacts.some((artifact) => artifact.endsWith("repo-agentic-health-inventory.json")));
     assert.ok(plan[1].artifacts.some((artifact) => artifact.endsWith("repo-agentic-health-inventory.md")));
     assert.ok(plan[2].artifacts.some((artifact) => artifact.endsWith("ephemeral-artifact-tracking-guard.json")));
@@ -269,6 +269,66 @@ test("runIdleWorker promotes successful command payload warnings into the report
     assert.equal(report.summary.warning, 1);
     assert.equal(report.jobs[0].status, "warning");
     assert.deepEqual(report.jobs[0].warnings, ["1 association scout error(s)"]);
+  } finally {
+    rmSync(runRoot, { recursive: true, force: true });
+  }
+});
+
+test("runIdleWorker surfaces nested wiki payload warnings from guarded jobs", async () => {
+  const runRoot = tempRunRoot();
+  try {
+    const options = parseArgs([
+      "--jobs",
+      "wiki",
+      "--skip-load-check",
+      "--run-id",
+      "wiki-warning-test",
+      "--run-root",
+      runRoot,
+      "--artifact",
+      join(runRoot, "latest.json"),
+      "--lock-path",
+      join(runRoot, "lock.json"),
+    ]);
+
+    const report = await runIdleWorker(options, {
+      runner(_program, args) {
+        const command = args.join(" ");
+        const nested =
+          command.includes("wiki:contradictions:scan")
+            ? {
+                schema: "wiki-contradiction-scan.v1",
+                status: "warning",
+                summary: { contradictions: 2, hard: 2, critical: 0 },
+              }
+            : {
+                schema: "wiki-source-index.v1",
+                status: "planned",
+                summary: { indexed: 1, denied: 0, chunks: 1 },
+              };
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            schema: "repo-audit-branch-guard-v1",
+            status: "pass",
+            command: {
+              stdoutTail: `> npm header\n${JSON.stringify(nested, null, 2)}\n`,
+            },
+            violations: [],
+          }),
+          stderr: "",
+        };
+      },
+    });
+
+    const contradictionJob = report.jobs.find((job) => job.id === "wiki-contradiction-scan");
+    assert.equal(report.status, "passed_with_warnings");
+    assert.equal(report.summary.warning, 1);
+    assert.equal(contradictionJob.status, "warning");
+    assert.deepEqual(contradictionJob.warnings, ["payload status: warning"]);
+    assert.equal(contradictionJob.payloadSummary.schema, "wiki-contradiction-scan.v1");
+    assert.equal(contradictionJob.payloadSummary.guardStatus, "pass");
+    assert.match(contradictionJob.payloadSummary.summary, /"contradictions":2/);
   } finally {
     rmSync(runRoot, { recursive: true, force: true });
   }

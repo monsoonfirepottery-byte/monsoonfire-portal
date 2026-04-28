@@ -111,6 +111,61 @@ test("fresh idle-worker failures outrank generic dirty-worktree packets", () => 
   assert.ok(nextWork.topWork.some((packet) => packet.title.includes("dirty worktree")));
 });
 
+test("hard wiki contradictions become human-gated harness work", () => {
+  const nextWork = buildNextWorkFromSnapshot({
+    generatedAt: "2026-04-28T20:22:00.000Z",
+    runId: "wiki-contradiction-test",
+    gitState: {
+      branch: "codex/auto",
+      head: "abc123",
+      dirtyTrackedCount: 2,
+      untrackedCount: 0,
+      dirtyFiles: [],
+    },
+    artifacts: {
+      idleWorker: freshSource("idle-worker", "passed_with_warnings"),
+      repoInventory: freshSource("repo-agentic-health-inventory", "pass"),
+      memoryConsolidation: freshSource("memory-consolidation", "success"),
+      wikiContradictions: freshSource("wiki-contradictions", "warning"),
+      wikiContextPack: freshSource("wiki-context-pack", "pass"),
+    },
+    idleWorker: { status: "passed_with_warnings" },
+    memoryConsolidation: { status: "success", actionabilityStatus: "passed" },
+    repoInventory: { summary: { surfaces: {}, highRiskRootScripts: 0, rootPackageScripts: 0 } },
+    wikiContradictions: {
+      status: "warning",
+      summary: { contradictions: 2, hard: 2, critical: 0 },
+      contradictions: [
+        {
+          contradictionId: "contradiction_membership",
+          conflictKey: "membership-required-vs-decommission",
+          severity: "hard",
+          status: "open",
+          owner: "policy",
+          markdownPath: "wiki/50_contradictions/membership-required-vs-decommission.md",
+          sourceRefs: [{ sourcePath: "docs/epics/EPIC-MEMBERSHIP-DECOMMISSION-AND-STUDIO-FOCUS.md" }],
+        },
+        {
+          contradictionId: "contradiction_pricing",
+          conflictKey: "volume-pricing-vs-no-volume-billing",
+          severity: "hard",
+          status: "open",
+          owner: "policy",
+          markdownPath: "wiki/50_contradictions/volume-pricing-vs-no-volume-billing.md",
+          sourceRefs: [{ sourcePath: "docs/runbooks/PRICING_COMMUNITY_SHELF_QA.md" }],
+        },
+      ],
+    },
+  });
+
+  assert.equal(nextWork.topWork[0].title, "Review hard wiki contradictions before context promotion");
+  assert.equal(nextWork.topWork[0].status, "needs_human");
+  assert.match(nextWork.topWork[0].why, /membership-required-vs-decommission/);
+  assert.match(nextWork.topWork[0].humanGate, /Human approval is required/);
+  assert.ok(nextWork.topWork[0].files.includes("wiki/50_contradictions/membership-required-vs-decommission.md"));
+  assert.ok(nextWork.sourceFreshness.sources.some((source) => source.label === "wiki-contradictions"));
+});
+
 test("resolved destructive-audit artifacts do not emit stale failure packets", () => {
   const nextWork = buildNextWorkFromSnapshot({
     generatedAt: "2026-04-28T20:25:00.000Z",

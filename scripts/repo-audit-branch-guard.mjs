@@ -19,6 +19,8 @@ function parseArgs(argv) {
     allowStatusChange: false,
     allowHeadChange: false,
     allowBranchChange: false,
+    untrackedFiles: "all",
+    quietCommand: false,
     command,
   };
 
@@ -40,6 +42,23 @@ function parseArgs(argv) {
       options.allowBranchChange = true;
       continue;
     }
+    if (arg === "--ignore-untracked") {
+      options.untrackedFiles = "no";
+      continue;
+    }
+    if (arg === "--quiet-command") {
+      options.quietCommand = true;
+      continue;
+    }
+    if (arg === "--untracked-files" && ownArgs[index + 1]) {
+      options.untrackedFiles = normalizeUntrackedFiles(ownArgs[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--untracked-files=")) {
+      options.untrackedFiles = normalizeUntrackedFiles(arg.slice("--untracked-files=".length));
+      continue;
+    }
     if (arg === "--artifact" && ownArgs[index + 1]) {
       options.artifact = String(ownArgs[index + 1]);
       index += 1;
@@ -52,6 +71,11 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function normalizeUntrackedFiles(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["all", "normal", "no"].includes(normalized) ? normalized : "all";
 }
 
 function runGit(args) {
@@ -68,10 +92,10 @@ function runGit(args) {
   };
 }
 
-function captureGitState(label) {
+function captureGitState(label, options) {
   const branch = runGit(["branch", "--show-current"]);
   const head = runGit(["rev-parse", "HEAD"]);
-  const status = runGit(["status", "--short", "--branch", "--untracked-files=all"]);
+  const status = runGit(["status", "--short", "--branch", `--untracked-files=${options.untrackedFiles}`]);
   return {
     label,
     branch: branch.stdout,
@@ -82,12 +106,27 @@ function captureGitState(label) {
   };
 }
 
-function shouldUseShell(command) {
-  if (process.platform !== "win32") return false;
-  return command === "npm" || command === "npx" || /\.(cmd|bat)$/i.test(command);
+function commandDisplay(command) {
+  return command.map((part) => (/\s/.test(part) ? JSON.stringify(part) : part)).join(" ");
 }
 
-function runCommand(command) {
+function spawnTarget(command) {
+  const [program, ...args] = command;
+  if (process.platform === "win32" && (program === "npm" || program === "npx" || /\.(cmd|bat)$/i.test(program))) {
+    return {
+      program: "cmd.exe",
+      args: ["/d", "/s", "/c", commandDisplay(command)],
+    };
+  }
+  return { program, args };
+}
+
+function tailText(value, maxLength = 4000) {
+  const text = String(value || "");
+  return text.length > maxLength ? text.slice(-maxLength) : text;
+}
+
+function runCommand(command, options) {
   if (command.length === 0) {
     return {
       skipped: true,
@@ -96,16 +135,18 @@ function runCommand(command) {
     };
   }
 
-  const [program, ...args] = command;
-  const result = spawnSync(program, args, {
+  const target = spawnTarget(command);
+  const result = spawnSync(target.program, target.args, {
     cwd: repoRoot,
-    stdio: "inherit",
-    shell: shouldUseShell(program),
+    stdio: options.quietCommand ? ["ignore", "pipe", "pipe"] : "inherit",
+    encoding: options.quietCommand ? "utf8" : undefined,
   });
   return {
     skipped: false,
     status: typeof result.status === "number" ? result.status : 1,
     error: result.error ? result.error.message : "",
+    stdoutTail: options.quietCommand ? tailText(result.stdout) : "",
+    stderrTail: options.quietCommand ? tailText(result.stderr) : "",
     command,
   };
 }
@@ -126,9 +167,9 @@ function compareStates(before, after, options) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
-  const before = captureGitState("before");
-  const commandResult = runCommand(options.command);
-  const after = captureGitState("after");
+  const before = captureGitState("before", options);
+  const commandResult = runCommand(options.command, options);
+  const after = captureGitState("after", options);
   const violations = compareStates(before, after, options);
   const commandFailed = commandResult.status !== 0;
   const status = before.gitOk && after.gitOk && !commandFailed && violations.length === 0 ? "pass" : "fail";
@@ -140,6 +181,8 @@ function main() {
       allowStatusChange: options.allowStatusChange,
       allowHeadChange: options.allowHeadChange,
       allowBranchChange: options.allowBranchChange,
+      untrackedFiles: options.untrackedFiles,
+      quietCommand: options.quietCommand,
     },
     before,
     after,

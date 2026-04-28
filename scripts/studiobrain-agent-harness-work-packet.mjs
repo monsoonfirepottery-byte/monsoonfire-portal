@@ -177,6 +177,11 @@ function captureSnapshot(options, deps = {}) {
   const idleWorkerPath = resolve(idleRunRoot, "latest.json");
   const memoryPath = resolve(REPO_ROOT, "output", "studio-brain", "memory-consolidation", "latest.json");
   const ephemeralPath = resolve(idleRunRoot, "ephemeral-artifact-tracking-guard.json");
+  const wikiSourceIndexPath = resolve(idleRunRoot, "wiki-source-index.json");
+  const wikiClaimExtractionPath = resolve(idleRunRoot, "wiki-claim-extraction.json");
+  const wikiContradictionsPath = resolve(idleRunRoot, "wiki-contradictions.json");
+  const wikiContextPackPath = resolve(idleRunRoot, "wiki-context-pack.json");
+  const wikiDbProbePath = resolve(idleRunRoot, "wiki-db-probe.json");
   const currentDestructiveSurfaceAudit = resolve(idleRunRoot, "destructive-command-surfaces.json");
   const fallbackDestructiveSurfaceAudit = resolve(REPO_ROOT, "output", "qa", "destructive-command-surfaces.json");
   const destructiveSurfaceAudit = firstExistingJson([
@@ -194,12 +199,22 @@ function captureSnapshot(options, deps = {}) {
       repoInventory: artifactRef("repo-agentic-health-inventory", repoInventory.path, 24 * 60),
       memoryConsolidation: artifactRef("memory-consolidation", memoryPath, 24 * 60),
       ephemeralArtifactGuard: artifactRef("ephemeral-artifact-guard", ephemeralPath, 24 * 60),
+      wikiSourceIndex: artifactRef("wiki-source-index", wikiSourceIndexPath, 24 * 60),
+      wikiClaimExtraction: artifactRef("wiki-claim-extraction", wikiClaimExtractionPath, 24 * 60),
+      wikiContradictions: artifactRef("wiki-contradictions", wikiContradictionsPath, 24 * 60),
+      wikiContextPack: artifactRef("wiki-context-pack", wikiContextPackPath, 24 * 60),
+      wikiDbProbe: artifactRef("wiki-db-probe", wikiDbProbePath, 24 * 60),
       destructiveSurfaceAudit: artifactRef("destructive-surface-audit", destructiveSurfaceAudit.path, 24 * 60),
     },
     idleWorker: readJsonFileIfExists(idleWorkerPath),
     repoInventory: repoInventory.parsed,
     memoryConsolidation: readJsonFileIfExists(memoryPath),
     ephemeralArtifactGuard: readJsonFileIfExists(ephemeralPath),
+    wikiSourceIndex: readJsonFileIfExists(wikiSourceIndexPath),
+    wikiClaimExtraction: readJsonFileIfExists(wikiClaimExtractionPath),
+    wikiContradictions: readJsonFileIfExists(wikiContradictionsPath),
+    wikiContextPack: readJsonFileIfExists(wikiContextPackPath),
+    wikiDbProbe: readJsonFileIfExists(wikiDbProbePath),
     destructiveSurfaceAudit: destructiveSurfaceAudit.parsed,
   };
 }
@@ -325,6 +340,58 @@ function buildFreshFailurePacket(snapshot, failedIdleJobs) {
   });
 }
 
+function collectOpenWikiContradictions(scan) {
+  return (Array.isArray(scan?.contradictions) ? scan.contradictions : [])
+    .filter((entry) => ["open", "in-review"].includes(clean(entry.status).toLowerCase()))
+    .map((entry) => ({
+      contradictionId: clean(entry.contradictionId),
+      conflictKey: clean(entry.conflictKey),
+      severity: clean(entry.severity).toLowerCase() || "unknown",
+      owner: clean(entry.owner),
+      markdownPath: clean(entry.markdownPath),
+      sourceRefs: Array.isArray(entry.sourceRefs) ? entry.sourceRefs.slice(0, 6) : [],
+    }))
+    .filter((entry) => entry.contradictionId || entry.conflictKey);
+}
+
+function buildWikiContradictionPacket(snapshot) {
+  const contradictions = collectOpenWikiContradictions(snapshot.wikiContradictions);
+  const hardContradictions = contradictions.filter((entry) => ["critical", "hard"].includes(entry.severity));
+  if (contradictions.length === 0 || hardContradictions.length === 0) return null;
+
+  const conflictKeys = hardContradictions.map((entry) => entry.conflictKey || entry.contradictionId).filter(Boolean);
+  const files = [
+    "scripts/wiki-postgres.mjs",
+    "scripts/lib/wiki-postgres-utils.mjs",
+    "wiki/50_contradictions",
+    ...hardContradictions.map((entry) => entry.markdownPath).filter(Boolean),
+  ];
+
+  return makePacket(1, {
+    title: "Review hard wiki contradictions before context promotion",
+    why: `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. These must stay out of operational context until a human chooses the current source of truth.`,
+    status: "needs_human",
+    risk: "medium",
+    sourceSignals: [
+      {
+        source: "wiki-contradictions",
+        status: snapshot.wikiContradictions?.status || "",
+        summary: snapshot.wikiContradictions?.summary || {},
+        contradictions: hardContradictions,
+      },
+    ],
+    memoryQueries: ["Studio Brain wiki contradictions membership pricing operational truth"],
+    files: [...new Set(files)],
+    nextCommand: "npm run wiki:contradictions:scan -- --artifact output/wiki/contradictions-review.json",
+    verification: [
+      "Confirm every hard conflict has a reviewable markdown record under wiki/50_contradictions.",
+      "Do not promote pricing, membership, or access claims to OPERATIONAL_TRUTH until the winning source is human-approved.",
+      "After review, rerun npm run studio:ops:idle-worker:wiki:json and confirm the warning is expected or resolved.",
+    ],
+    humanGate: "Human approval is required before changing customer-facing pricing, membership, payment, refund, or access policy truth.",
+  });
+}
+
 export function buildNextWorkFromSnapshot(snapshot, options = {}) {
   const packets = [];
   const gitState = snapshot.gitState || {};
@@ -352,6 +419,9 @@ export function buildNextWorkFromSnapshot(snapshot, options = {}) {
     const freshFailurePacket = buildFreshFailurePacket(snapshot, failedIdleJobs);
     if (freshFailurePacket) addPacketUnique(packets, freshFailurePacket);
   }
+
+  const wikiContradictionPacket = buildWikiContradictionPacket(snapshot);
+  if (wikiContradictionPacket) addPacketUnique(packets, wikiContradictionPacket);
 
   if (dirtyTrackedCount > 20 || untrackedCount > 20) {
     addPacketUnique(

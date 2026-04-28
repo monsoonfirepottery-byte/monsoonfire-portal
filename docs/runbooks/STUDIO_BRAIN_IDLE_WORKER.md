@@ -89,6 +89,8 @@ The harness is intentionally tiny. It does not create a new daemon, database, da
 - `success-metrics.json`: readiness score plus real-use verdict.
 - `outcomes.jsonl`: only when a human/Codex records whether a packet helped.
 
+The harness consumes the wiki lane only through deterministic JSON artifacts. In particular, hard wiki contradictions create a human-gated next-work packet; they do not auto-edit verified pages, promote claims, or decide customer-facing truth.
+
 Record real use after a session:
 
 ```bash

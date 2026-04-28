@@ -154,6 +154,7 @@ export function parseArgs(argv) {
     json: false,
     applyDb: false,
     writeMarkdown: false,
+    freshExtract: false,
     limit: 0,
     artifact: "",
     root: REPO_ROOT,
@@ -180,6 +181,10 @@ export function parseArgs(argv) {
     }
     if (token === "--write-markdown") {
       args.writeMarkdown = true;
+      continue;
+    }
+    if (token === "--fresh-extract") {
+      args.freshExtract = true;
       continue;
     }
     if (token === "--strict") {

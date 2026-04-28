@@ -110,7 +110,7 @@ async function main() {
       report.markdownPaths = writeContradictions(report);
     }
   } else if (args.command === "context") {
-    let claims = readExtractedFacts();
+    let claims = args.freshExtract ? [] : readExtractedFacts();
     if (claims.length === 0) {
       const index = buildSourceIndex(args);
       claims = extractClaims(index, args).claims;

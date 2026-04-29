@@ -14,7 +14,7 @@ agent_allowed_use: cite_only
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 20a60cb1708ad5113d070d1cc89c6ce753417239f47dd08c026778e2b47fc42f
+export_hash: 59ea2bb27c77a70533f05c24dcad719a6fbceb49e1c4641eb5f712fd2566607f
 ---
 
 # membership-required-vs-decommission
@@ -36,26 +36,21 @@ Recommended action: Treat the service-pricing decommission decision as current o
 
 ### Side A
 
-- `.governance/customer-service-policies/policy-inventory.json`: 6
+- `.governance/customer-service-policies/policy-inventory.json`: 5
 - `.governance/customer-service-policies/policy-program.json`: 2
 - `docs/policies/customer-service-policy-program.config.json`: 2
 - `docs/SCHEMA_SUPPORT.md`: 2
-- `web/src/views/MembershipView.tsx`: 2
 - `website/data/announcements.json`: 2
 - `website/data/faq.json`: 2
 - `.governance/customer-service-policies/policy-resolution-contract.json`: 1
 - `docs/library/ARCHITECTURE.md`: 1
-- `docs/policies/payments-refunds.md`: 1
 - `docs/sprints/SPRINT_06_DEVICE_RELEASE.md`: 1
-- `scripts/lib/planning-control-plane.mjs`: 1
-- `scripts/lib/planning-live-swarm-runner.mjs`: 1
+- `web/src/views/MembershipView.tsx`: 1
 - `web/src/views/SupportView.tsx`: 1
 - `website/highlights/index.html`: 1
-- `website/memberships/index.html`: 1
 - `website/ncsitebuilder/data/faq.json`: 1
-- `website/ncsitebuilder/data/policies.json`: 1
 - `website/ncsitebuilder/highlights/index.html`: 1
-- `website/ncsitebuilder/memberships/index.html`: 1
+- `website/updates/index.html`: 1
 
 ### Side B
 

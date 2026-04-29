@@ -133,7 +133,11 @@ const NO_VOLUME_PRICING_PATTERN = /\b(do not bill by kiln volume|do not measure 
 
 const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns no|forbidden|deny|not allowed|should not|must not|without volume pricing|no billing-path matches)\b/i;
 
-const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only|active studio members|membership tiers include|memberships are tiered|membership(s)?\b.{0,80}\brequired\b|membership plan|current tier|current plan|firing credits|storage discounts|storage and discounts)\b/i;
+const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only|active studio members|membership tiers include|memberships are tiered|membership(s)?\b.{0,80}\brequired\b|membership plan|current tier|storage discounts|storage and discounts)\b/i;
+
+const MEMBERSHIP_CURRENT_PLAN_PATTERN = /\b(membership|memberships|member)\b.{0,80}\bcurrent plan\b|\bcurrent plan\b.{0,80}\b(membership|memberships|member)\b/i;
+
+const MEMBERSHIP_FIRING_CREDIT_PATTERN = /\b(membership|memberships|member|tier|tiers)\b.{0,80}\bfiring credits\b|\bfiring credits\b.{0,80}\b(membership|memberships|member|tier|tiers)\b/i;
 
 const MEMBERSHIP_DECOMMISSION_PATTERN = /\bmembership(s)?\b.{0,140}\b(decommission|phase(d)? out|phasing out|being phased out|remove|removed|sunset|straight pricing for services only)\b/i;
 
@@ -833,7 +837,13 @@ function isPositiveVolumePricingEvidence(entry) {
 }
 
 function isActiveMembershipModelEvidence(entry) {
-  if (!MEMBERSHIP_ACTIVE_MODEL_PATTERN.test(entry.text)) return false;
+  if (
+    !MEMBERSHIP_ACTIVE_MODEL_PATTERN.test(entry.text) &&
+    !MEMBERSHIP_CURRENT_PLAN_PATTERN.test(entry.text) &&
+    !MEMBERSHIP_FIRING_CREDIT_PATTERN.test(entry.text)
+  ) {
+    return false;
+  }
   if (entry.sourcePath === SERVICE_PRICING_POLICY_PATH) return false;
   if (entry.sourcePath.startsWith("wiki/40_decisions/")) return false;
   if (entry.sourcePath.startsWith("tickets/") && /membership-decommission/.test(entry.sourcePath)) return false;

@@ -179,6 +179,44 @@ test("contradiction scan emits review records instead of editing claims", () => 
   ]);
 });
 
+test("membership contradiction scan ignores generic current-plan and credit language", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "scripts/lib/planning-control-plane.mjs",
+      content: "The agent critiques the current plan and proposed concrete edits before revision.",
+    },
+    {
+      sourcePath: "docs/policies/payments-refunds.md",
+      content: "Confirmed studio-side firing mistakes may be resolved with generous firing credits after review.",
+    },
+    {
+      sourcePath: "docs/plans/current-business-plan.md",
+      content: "Memberships are being phased out and the access model will remove membership gates.",
+    },
+  ]);
+
+  const scan = detectContradictions(index, []);
+
+  assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "membership-required-vs-decommission"), false);
+});
+
+test("membership contradiction scan keeps membership-context current-plan evidence", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "docs/SCHEMA_SUPPORT.md",
+      content: "How do I change membership? Send a request with your current plan and the change you want.",
+    },
+    {
+      sourcePath: "docs/plans/current-business-plan.md",
+      content: "Memberships are being phased out and the access model will remove membership gates.",
+    },
+  ]);
+
+  const scan = detectContradictions(index, []);
+
+  assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "membership-required-vs-decommission"), true);
+});
+
 test("volume contradiction scan ignores guardrail and no-volume policy text", () => {
   const index = syntheticIndex([
     {

@@ -14,11 +14,11 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 7ca7d930ea4c3da1c3801ff303ceba2e26045442b83ad9a402a687faa7f90a31
+export_hash: 0aaf14ce6c5d36e927c320af2cc8755f46b53c6e38be919431d1e9baa2c2fdd6
 ---
 # Studio Brain Wiki Context Pack
 
-Snapshot: 666300ae0c3cc752fdf46011626b2123192dec3384c8672ac7782110806ef8d1
+Snapshot: 1b31d6cfbe8367f4ba3f419aa1e4c36c87687fd267b789e2d60f029a79c388f3
 
 ## Verified Operational Context
 - Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only. [claim_57ec680d6070e4f40169; docs/policies/service-pricing-and-membership-decommission.md#L1]

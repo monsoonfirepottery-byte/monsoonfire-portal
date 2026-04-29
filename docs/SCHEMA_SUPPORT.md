@@ -84,13 +84,13 @@ Create documents with the following IDs and fields:
   },
   {
     "id": "faq-membership",
-    "question": "How do I change, pause, or cancel my membership?",
-    "answer": "Membership changes are being streamlined. For now, send a request with your current plan and the change you want, and we will handle it for you.",
-    "category": "Membership",
+    "question": "What happens to legacy membership questions?",
+    "answer": "Membership tiers are decommissioned. Send a support request for legacy membership billing, refund, or account-record questions, and staff will review it without offering plan changes.",
+    "category": "Billing",
     "policySlug": "payments-refunds",
     "policyVersion": "2026-04-02",
     "sourceType": "operational_faq",
-    "tags": ["membership", "plan", "pause", "cancel"],
+    "tags": ["legacy membership", "billing", "refund", "account review"],
     "rank": 6,
     "isActive": true
   },

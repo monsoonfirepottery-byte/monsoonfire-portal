@@ -14,21 +14,21 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
+export_hash: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 ---
 
 # Source Map
 
-Snapshot: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
+Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
 | `.governance/audit/README.md` | indexed | policy | 1 | `9ef91e39f56a` |
 | `.governance/config/authority-map.json` | indexed | policy | 1 | `160c9afd3da8` |
 | `.governance/config/supervisor-thresholds.json` | indexed | policy | 2 | `dffebf684b95` |
-| `.governance/customer-service-policies/policy-inventory.json` | indexed | policy | 20 | `bfff1d2becb8` |
-| `.governance/customer-service-policies/policy-program.json` | indexed | policy | 24 | `7982f056c214` |
-| `.governance/customer-service-policies/policy-resolution-contract.json` | indexed | policy | 14 | `a160cf441b59` |
+| `.governance/customer-service-policies/policy-inventory.json` | indexed | policy | 20 | `27f16aab493b` |
+| `.governance/customer-service-policies/policy-program.json` | indexed | policy | 24 | `61d44c019e2c` |
+| `.governance/customer-service-policies/policy-resolution-contract.json` | indexed | policy | 13 | `e1b165789ca1` |
 | `.governance/customer-service-policies/README.md` | indexed | policy | 1 | `235e029b3c03` |
 | `.governance/intents/ops.triage.incident.intent.json` | indexed | policy | 2 | `46baf4432ec5` |
 | `.governance/intents/repo.change.small_fix.intent.json` | indexed | policy | 2 | `2b22ebcddcb3` |
@@ -168,7 +168,7 @@ Snapshot: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
 | `docs/policies/CHANGELOG.md` | indexed | policy | 4 | `eef17dc6d7b8` |
 | `docs/policies/clay-materials.md` | indexed | policy | 7 | `9592b953f2e0` |
 | `docs/policies/community-conduct.md` | indexed | policy | 7 | `111c683186ae` |
-| `docs/policies/customer-service-policy-program.config.json` | indexed | policy | 6 | `157230b30bd2` |
+| `docs/policies/customer-service-policy-program.config.json` | indexed | policy | 6 | `a13376d0a5d7` |
 | `docs/policies/damage-responsibility.md` | indexed | policy | 7 | `daf001b319ac` |
 | `docs/policies/firing-scheduling.md` | indexed | policy | 7 | `e095c0e85219` |
 | `docs/policies/media-accessibility.md` | indexed | policy | 7 | `340992a4db21` |
@@ -260,7 +260,7 @@ Snapshot: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
 | `docs/SCHEMA_ORDERS.md` | indexed | repo | 5 | `2727281c934c` |
 | `docs/SCHEMA_PROFILE.md` | indexed | repo | 4 | `5e12cc0d9a8e` |
 | `docs/SCHEMA_RESERVATIONS.md` | indexed | repo | 16 | `cc5ef6704d54` |
-| `docs/SCHEMA_SUPPORT.md` | indexed | repo | 5 | `8c7b5ccd89bb` |
+| `docs/SCHEMA_SUPPORT.md` | indexed | repo | 5 | `2a643b27063e` |
 | `docs/SECURITY_KEY_ROTATION_AUTOMATION.md` | indexed | repo | 7 | `b3dce6bc6c89` |
 | `docs/SESSION_HANDOFF_2026-02-06.md` | indexed | repo | 12 | `f03e3e7881fd` |
 | `docs/SESSION_HANDOFF_2026-02-12_REBOOT.md` | indexed | repo | 8 | `70e10a1c0e23` |
@@ -619,7 +619,7 @@ Snapshot: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `45cc17331aab` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `140c9035c2d2` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `1bf1773d3d8c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 21 | `5bb4095f7715` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 21 | `605759a255e8` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `42c0fee0f773` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `b370d2593d09` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `c310dbf956d2` |
@@ -766,8 +766,8 @@ Snapshot: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
 | `scripts/studio-cutover-gate.mjs` | indexed | repo | 5 | `51948a580c3d` |
 | `scripts/studio-network-profile.mjs` | indexed | repo | 3 | `423d610a519b` |
 | `scripts/studio-stack-profile-snapshot.mjs` | indexed | repo | 6 | `6a9428190b99` |
-| `scripts/studiobrain-agent-harness-work-packet.mjs` | indexed | repo | 12 | `a8ab7878976f` |
-| `scripts/studiobrain-agent-harness-work-packet.test.mjs` | indexed | repo | 4 | `92ebf005bc4b` |
+| `scripts/studiobrain-agent-harness-work-packet.mjs` | indexed | repo | 12 | `bec6cdae8d27` |
+| `scripts/studiobrain-agent-harness-work-packet.test.mjs` | indexed | repo | 4 | `eff485a08a99` |
 | `scripts/studiobrain-backup-drill.mjs` | indexed | repo | 10 | `ddb6952eb56e` |
 | `scripts/studiobrain-bambu-cli.sh` | indexed | repo | 4 | `626db69d5c9a` |
 | `scripts/studiobrain-chief-of-staff-audit.mjs` | indexed | repo | 2 | `2a5d3c24387d` |
@@ -802,7 +802,7 @@ Snapshot: 66ac4a54542f9a958a158591a9a38c22c3a5ab1cd86c0051167019fd01b87e1b
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `a8edd10f1247` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `fab08ee45321` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 2 | `b83909ea9b71` |
-| `scripts/wiki-postgres.test.mjs` | indexed | repo | 3 | `d304e5b7512d` |
+| `scripts/wiki-postgres.test.mjs` | indexed | repo | 4 | `d41d1234d68f` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `488d5d2812ef` |
 | `storage.rules` | indexed | repo | 1 | `f4cf8136298f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `95e732aadb95` |

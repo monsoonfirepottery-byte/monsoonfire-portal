@@ -190,6 +190,14 @@ test("membership contradiction scan ignores generic current-plan and credit lang
       content: "Confirmed studio-side firing mistakes may be resolved with generous firing credits after review.",
     },
     {
+      sourcePath: "docs/sprints/SPRINT_06_DEVICE_RELEASE.md",
+      content: "Staff-targeted notification excludes member-only users.",
+    },
+    {
+      sourcePath: "docs/SCHEMA_SUPPORT.md",
+      content: 'category: "Account" | "Membership" | "Billing" (required)',
+    },
+    {
       sourcePath: "docs/plans/current-business-plan.md",
       content: "Memberships are being phased out and the access model will remove membership gates.",
     },
@@ -198,6 +206,23 @@ test("membership contradiction scan ignores generic current-plan and credit lang
   const scan = detectContradictions(index, []);
 
   assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "membership-required-vs-decommission"), false);
+});
+
+test("membership contradiction scan keeps member-only feature evidence", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "website/data/faq.json",
+      content: "Potter of the Month is a member-only feature rather than an open nomination.",
+    },
+    {
+      sourcePath: "docs/plans/current-business-plan.md",
+      content: "Memberships are being phased out and the access model will remove membership gates.",
+    },
+  ]);
+
+  const scan = detectContradictions(index, []);
+
+  assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "membership-required-vs-decommission"), true);
 });
 
 test("membership contradiction scan keeps membership-context current-plan evidence", () => {

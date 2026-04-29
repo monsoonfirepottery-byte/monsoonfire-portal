@@ -133,7 +133,7 @@ const NO_VOLUME_PRICING_PATTERN = /\b(do not bill by kiln volume|do not measure 
 
 const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns no|forbidden|deny|not allowed|should not|must not|without volume pricing|no billing-path matches)\b/i;
 
-const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only|active studio members|membership tiers include|memberships are tiered|membership(s)?\b.{0,80}\brequired\b|membership plan|current tier|storage discounts|storage and discounts)\b/i;
+const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only\s+(benefit|benefits|feature|features|logistics|pricing|plan|plans|membership|access|page|pages|content|area|areas)|active studio members|membership tiers include|memberships are tiered|membership(s)?\s+(is|are)\s+required\b|membership(s)?\b.{0,40}\brequired\s+(before|to|for)\b|membership plan|current tier|storage discounts|storage and discounts)\b/i;
 
 const MEMBERSHIP_CURRENT_PLAN_PATTERN = /\b(membership|memberships|member)\b.{0,80}\bcurrent plan\b|\bcurrent plan\b.{0,80}\b(membership|memberships|member)\b/i;
 

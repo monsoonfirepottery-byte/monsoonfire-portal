@@ -348,6 +348,9 @@ function collectOpenWikiContradictions(scan) {
       conflictKey: clean(entry.conflictKey),
       severity: clean(entry.severity).toLowerCase() || "unknown",
       owner: clean(entry.owner),
+      claimAId: clean(entry.claimAId),
+      claimBId: clean(entry.claimBId),
+      recommendedAction: clean(entry.recommendedAction),
       markdownPath: clean(entry.markdownPath),
       sourceRefs: Array.isArray(entry.sourceRefs) ? entry.sourceRefs.slice(0, 6) : [],
     }))
@@ -368,8 +371,8 @@ function buildWikiContradictionPacket(snapshot) {
   ];
 
   return makePacket(1, {
-    title: "Review hard wiki contradictions before context promotion",
-    why: `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. These must stay out of operational context until a human chooses the current source of truth.`,
+    title: "Review hard wiki source drift before customer-facing use",
+    why: `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. Use any source-grounded OPERATIONAL_TRUTH claims for agent context, but review stale or conflicting source refs before customer-facing edits or policy automation.`,
     status: "needs_human",
     risk: "medium",
     sourceSignals: [
@@ -385,7 +388,8 @@ function buildWikiContradictionPacket(snapshot) {
     nextCommand: "npm run wiki:contradictions:scan -- --artifact output/wiki/contradictions-review.json",
     verification: [
       "Confirm every hard conflict has a reviewable markdown record under wiki/50_contradictions.",
-      "Do not promote pricing, membership, or access claims to OPERATIONAL_TRUTH until the winning source is human-approved.",
+      "If a winning OPERATIONAL_TRUTH claim exists, use it for agent context and treat losing sources as stale until updated.",
+      "Do not promote unresolved pricing, membership, or access claims to OPERATIONAL_TRUTH without human approval.",
       "After review, rerun npm run studio:ops:idle-worker:wiki:json and confirm the warning is expected or resolved.",
     ],
     humanGate: "Human approval is required before changing customer-facing pricing, membership, payment, refund, or access policy truth.",

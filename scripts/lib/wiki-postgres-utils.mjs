@@ -73,6 +73,7 @@ const APPROVED_SOURCE_ROOTS = [
   "web/src/api",
   "web/src/views",
   "website",
+  "wiki/40_decisions",
 ];
 
 const DENY_PREFIXES = [
@@ -123,6 +124,20 @@ const CONTRADICTION_SCAN_EXCLUDED_PATHS = new Set([
   "scripts/lib/wiki-postgres-utils.mjs",
   "scripts/wiki-postgres.test.mjs",
 ]);
+
+const SERVICE_PRICING_POLICY_PATH = "docs/policies/service-pricing-and-membership-decommission.md";
+
+const VOLUME_PRICING_PATTERN = /\b(by volume|per cubic inch|volume pricing|useVolumePricing|volumeIn3)\b/i;
+
+const NO_VOLUME_PRICING_PATTERN = /\b(do not bill by kiln volume|do not measure kiln volume for billing|not based on kiln volume|no-volume billing|no volume pricing|does not use volume pricing|no cubic-inch pricing)\b/i;
+
+const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns no|forbidden|deny|not allowed|should not|must not|without volume pricing|no billing-path matches)\b/i;
+
+const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only|active studio members|membership tiers include|memberships are tiered|membership(s)?\b.{0,80}\brequired\b|membership plan|current tier|current plan|firing credits|storage discounts|storage and discounts)\b/i;
+
+const MEMBERSHIP_DECOMMISSION_PATTERN = /\bmembership(s)?\b.{0,140}\b(decommission|phase(d)? out|phasing out|being phased out|remove|removed|sunset|straight pricing for services only)\b/i;
+
+const STALE_MEMBERSHIP_CONTEXT_PATTERN = /\b(stale|decommission|decommissioned|paused|redesign|do not infer|do not edit|no longer presents)\b/i;
 
 export function repoRelative(path) {
   return relative(REPO_ROOT, path).replace(/\\/g, "/");
@@ -476,11 +491,28 @@ function makeSourceRef(source, chunk, role = "supports") {
   };
 }
 
-function makeClaim({ tenantScope, claimKind, subjectKey, predicateKey, objectText, source, chunk, confidence = 0.78, status = "EXTRACTED", truthStatus = "known_truth", metadata = {} }) {
+function makeClaim({
+  tenantScope,
+  claimKind,
+  subjectKey,
+  predicateKey,
+  objectText,
+  source,
+  chunk,
+  confidence = 0.78,
+  status = "EXTRACTED",
+  truthStatus = "known_truth",
+  metadata = {},
+  agentAllowedUse,
+  requiresHumanApproval,
+  humanApprovalReason,
+  owner,
+}) {
   const normalizedSubject = normalizeKey(subjectKey);
   const normalizedPredicate = normalizeKey(predicateKey);
   const fingerprint = fullHash(`${tenantScope}|${claimKind}|${normalizedSubject}|${normalizedPredicate}|${normalizeKey(objectText, 240)}`);
   const approval = HUMAN_APPROVAL_PATTERNS.test(`${subjectKey} ${predicateKey} ${objectText}`);
+  const needsApproval = requiresHumanApproval ?? approval;
   return {
     schema: "wiki-extracted-fact.v1",
     claimId: `claim_${stableHash(fingerprint, 20)}`,
@@ -495,13 +527,13 @@ function makeClaim({ tenantScope, claimKind, subjectKey, predicateKey, objectTex
     objectKey: normalizeKey(objectText, 120),
     objectText: objectText.trim(),
     qualifiers: {},
-    owner: approval ? "policy" : "platform",
+    owner: owner || (needsApproval ? "policy" : "platform"),
     authorityClass: source?.authorityClass || "repo",
     freshnessStatus: "fresh",
     operationalStatus: "active",
-    agentAllowedUse: approval ? "cite_only" : "planning_context",
-    requiresHumanApproval: approval,
-    humanApprovalReason: approval ? "policy-or-customer-facing-claim" : null,
+    agentAllowedUse: agentAllowedUse || (needsApproval ? "cite_only" : "planning_context"),
+    requiresHumanApproval: needsApproval,
+    humanApprovalReason: humanApprovalReason ?? (needsApproval ? "policy-or-customer-facing-claim" : null),
     sourceRefs: [makeSourceRef(source, chunk)],
     metadata,
   };
@@ -603,6 +635,50 @@ export function extractClaims(index, options = {}) {
       continue;
     }
 
+    if (source.sourcePath === SERVICE_PRICING_POLICY_PATH) {
+      const chunk = sourceChunks[0];
+      const approvalMetadata = {
+        approvedBy: "human-owner",
+        approvedAt: "2026-04-28",
+        approvalScope: "agent operational context; website and portal edits remain paused during redesign",
+      };
+      add(makeClaim({
+        tenantScope,
+        claimKind: "policy",
+        subjectKey: "monsoon-fire:membership-tiers",
+        predicateKey: "operational-status",
+        objectText: "Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only.",
+        source,
+        chunk,
+        confidence: 0.96,
+        status: "OPERATIONAL_TRUTH",
+        truthStatus: "known_truth",
+        agentAllowedUse: "operational_context",
+        requiresHumanApproval: false,
+        humanApprovalReason: null,
+        owner: "policy",
+        metadata: approvalMetadata,
+      }));
+      add(makeClaim({
+        tenantScope,
+        claimKind: "policy",
+        subjectKey: "monsoon-fire:kiln-service-pricing",
+        predicateKey: "billing-model",
+        objectText: "Monsoon Fire kiln firing service pricing has three lanes: low fire, mid fire, and custom; each lane is priced by the half shelf. Volume pricing and cubic-inch pricing are not used.",
+        source,
+        chunk,
+        confidence: 0.96,
+        status: "OPERATIONAL_TRUTH",
+        truthStatus: "known_truth",
+        agentAllowedUse: "operational_context",
+        requiresHumanApproval: false,
+        humanApprovalReason: null,
+        owner: "policy",
+        metadata: approvalMetadata,
+      }));
+      continue;
+    }
+
     if (source.sourcePath.startsWith("docs/policies/") && source.sourcePath.endsWith(".md")) {
       const chunk = sourceChunks[0];
       add(makeClaim({
@@ -657,7 +733,7 @@ function parseMarkdownRows(markdown) {
 
 export function detectContradictions(index, claims = []) {
   const corpus = index.chunks
-    .filter((chunk) => !CONTRADICTION_SCAN_EXCLUDED_PATHS.has(chunk.sourcePath))
+    .filter((chunk) => !isContradictionScanExcluded(chunk.sourcePath))
     .map((chunk) => ({
       text: chunk.content,
       sourcePath: chunk.sourcePath,
@@ -689,8 +765,8 @@ export function detectContradictions(index, claims = []) {
       conflictKey: key,
       severity,
       status: "open",
-      claimAId: relatedClaimId(claims, key, 0),
-      claimBId: relatedClaimId(claims, key, 1),
+      claimAId: relatedClaimId(claims, key, aMatches),
+      claimBId: relatedClaimId(claims, key, bMatches),
       sourceRefs,
       owner: severity === "hard" || severity === "critical" ? "policy" : "platform",
       recommendedAction: action,
@@ -705,16 +781,16 @@ export function detectContradictions(index, claims = []) {
   addConflict(
     "membership-required-vs-decommission",
     "hard",
-    find(/\bmembership(s)?\b.{0,80}\b(required|must|only|needed)\b/i),
-    find(/\bmembership(s)?\b.{0,120}\b(decommission|phase(d)? out|phasing out|being phased out|remove|sunset)\b/i),
-    "Open a human review to decide which membership/access statement is current before using it in context packs.",
+    corpus.filter(isActiveMembershipModelEvidence),
+    corpus.filter(isMembershipDecommissionEvidence),
+    "Treat the service-pricing decommission decision as current operational truth and update or retire stale membership-tier/member-only sources before using them in customer-facing context.",
   );
 
   addConflict(
     "volume-pricing-vs-no-volume-billing",
     "hard",
-    find(/\b(by volume|per cubic inch|volume pricing|volumeIn3)\b/i),
-    find(/\b(do not bill by kiln volume|do not measure kiln volume for billing|no-volume billing)\b/i),
+    corpus.filter(isPositiveVolumePricingEvidence),
+    corpus.filter((entry) => NO_VOLUME_PRICING_PATTERN.test(entry.text)),
     "Treat pricing/billing claims as human-gated and update the losing source after review.",
   );
 
@@ -739,10 +815,44 @@ export function detectContradictions(index, claims = []) {
   };
 }
 
-function relatedClaimId(claims, key, offset) {
-  const tokens = key.split("-").filter((token) => token.length > 3);
-  const matches = claims.filter((claim) => tokens.some((token) => claim.objectText.toLowerCase().includes(token)));
-  return matches[offset]?.claimId || null;
+function isContradictionScanExcluded(sourcePath) {
+  if (CONTRADICTION_SCAN_EXCLUDED_PATHS.has(sourcePath)) return true;
+  return /\.(test|spec)\.[cm]?[jt]sx?$/i.test(sourcePath) || sourcePath.includes("/__tests__/");
+}
+
+function isPositiveVolumePricingEvidence(entry) {
+  if (!VOLUME_PRICING_PATTERN.test(entry.text)) return false;
+  if (NO_VOLUME_PRICING_PATTERN.test(entry.text)) return false;
+  if (GUARDRAIL_VOLUME_CONTEXT_PATTERN.test(entry.text)) return false;
+  if (/^scripts\//.test(entry.sourcePath)) return false;
+  return true;
+}
+
+function isActiveMembershipModelEvidence(entry) {
+  if (!MEMBERSHIP_ACTIVE_MODEL_PATTERN.test(entry.text)) return false;
+  if (entry.sourcePath === SERVICE_PRICING_POLICY_PATH) return false;
+  if (entry.sourcePath.startsWith("wiki/40_decisions/")) return false;
+  if (entry.sourcePath.startsWith("tickets/") && /membership-decommission/.test(entry.sourcePath)) return false;
+  if (STALE_MEMBERSHIP_CONTEXT_PATTERN.test(entry.text)) return false;
+  return true;
+}
+
+function isMembershipDecommissionEvidence(entry) {
+  return MEMBERSHIP_DECOMMISSION_PATTERN.test(entry.text);
+}
+
+function relatedClaimId(claims, key, matches) {
+  const sourcePaths = new Set(matches.map((match) => match.sourcePath));
+  const tokens = key
+    .split("-")
+    .filter((token) => token.length > 3)
+    .filter((token) => !["required", "decommission", "billing"].includes(token));
+  const related = claims.filter((claim) => {
+    const text = `${claim.subjectKey} ${claim.predicateKey} ${claim.objectText}`.toLowerCase();
+    const sourceMatch = claim.sourceRefs?.some((ref) => sourcePaths.has(ref.sourcePath));
+    return sourceMatch && tokens.some((token) => text.includes(token));
+  });
+  return related[0]?.claimId || null;
 }
 
 export function generateContextPack(claims, contradictions = [], options = {}) {

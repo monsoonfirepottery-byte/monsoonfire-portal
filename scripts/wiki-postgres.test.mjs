@@ -105,6 +105,29 @@ test("context packs include verified truth and warn on excluded claims", () => {
   assert.equal(pack.warnings.some((warning) => warning.claimId === "claim_extracted"), true);
 });
 
+test("service pricing policy becomes operational context without website edits", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "docs/policies/service-pricing-and-membership-decommission.md",
+      authorityClass: "policy",
+      content: [
+        "Monsoon Fire has decommissioned all membership tiers.",
+        "Kiln firing service pricing has three lanes: low fire, mid fire, and custom.",
+        "Each kiln service lane is priced by the half shelf. Monsoon Fire does not use volume pricing.",
+      ].join("\n"),
+    },
+  ]);
+
+  const extraction = extractClaims(index, { tenantScope: "test" });
+  const pack = generateContextPack(extraction.claims, [], { tenantScope: "test" });
+
+  assert.equal(extraction.claims.length, 2);
+  assert.equal(extraction.claims.every((claim) => claim.status === "OPERATIONAL_TRUTH"), true);
+  assert.equal(extraction.claims.every((claim) => claim.agentAllowedUse === "operational_context"), true);
+  assert.match(pack.generatedText, /decommissioned all membership tiers/);
+  assert.match(pack.generatedText, /low fire, mid fire, and custom/);
+});
+
 test("contradiction scan emits review records instead of editing claims", () => {
   const index = syntheticIndex([
     {
@@ -122,6 +145,44 @@ test("contradiction scan emits review records instead of editing claims", () => 
   assert.equal(scan.summary.hard, 1);
   assert.equal(scan.contradictions[0].conflictKey, "membership-required-vs-decommission");
   assert.match(scan.contradictions[0].markdownPath, /wiki\/50_contradictions\//);
+});
+
+test("volume contradiction scan ignores guardrail and no-volume policy text", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "docs/runbooks/PRICING_COMMUNITY_SHELF_QA.md",
+      content: "Repo grep for `by volume`, `useVolumePricing`, `volumeIn3`, `per cubic inch` returns no billing-path matches.",
+    },
+    {
+      sourcePath: "scripts/check-pricing-and-intake-policy.mjs",
+      content: "assertNoMatches('volume field usage', 'useVolumePricing|volumeIn3', sourceTargets);",
+    },
+    {
+      sourcePath: "website/data/faq.json",
+      content: "We do not bill by kiln volume and no volume pricing is used.",
+    },
+  ]);
+
+  const scan = detectContradictions(index, []);
+
+  assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "volume-pricing-vs-no-volume-billing"), false);
+});
+
+test("volume contradiction scan still catches active positive volume pricing", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "website/data/faq.json",
+      content: "Custom loads are priced by volume for larger pieces.",
+    },
+    {
+      sourcePath: "docs/policies/service-pricing-and-membership-decommission.md",
+      content: "Monsoon Fire does not use volume pricing or cubic-inch pricing.",
+    },
+  ]);
+
+  const scan = detectContradictions(index, []);
+
+  assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "volume-pricing-vs-no-volume-billing"), true);
 });
 
 test("db probe report covers hot wiki read paths", () => {

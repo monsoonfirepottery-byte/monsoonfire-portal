@@ -158,9 +158,10 @@ test("hard wiki contradictions become human-gated harness work", () => {
     },
   });
 
-  assert.equal(nextWork.topWork[0].title, "Review hard wiki contradictions before context promotion");
+  assert.equal(nextWork.topWork[0].title, "Review hard wiki source drift before customer-facing use");
   assert.equal(nextWork.topWork[0].status, "needs_human");
   assert.match(nextWork.topWork[0].why, /membership-required-vs-decommission/);
+  assert.match(nextWork.topWork[0].why, /OPERATIONAL_TRUTH/);
   assert.match(nextWork.topWork[0].humanGate, /Human approval is required/);
   assert.ok(nextWork.topWork[0].files.includes("wiki/50_contradictions/membership-required-vs-decommission.md"));
   assert.ok(nextWork.sourceFreshness.sources.some((source) => source.label === "wiki-contradictions"));

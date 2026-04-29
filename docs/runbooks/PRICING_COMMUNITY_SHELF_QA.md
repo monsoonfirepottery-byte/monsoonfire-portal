@@ -1,6 +1,14 @@
 # Pricing + Community Shelf QA Loop
 
-Last updated: 2026-02-26
+Last updated: 2026-04-28
+
+## Decision Update - 2026-04-28
+
+Membership tiers are decommissioned. Monsoon Fire uses straight pricing for services only.
+
+Kiln firing service pricing has three lanes: low fire, mid fire, and custom. Each lane is priced by the half shelf. There is no volume pricing, cubic-inch pricing, or membership-tier pricing.
+
+Website and portal edits are paused while a separate redesign is active. Treat older whole-kiln, bisque/glaze, firing-credit, discount, and membership-tier copy as stale until the redesign updates the active surfaces.
 
 ## Scope
 - Portal reservation/check-in flow (non-staff and staff-assisted)
@@ -48,8 +56,9 @@ Last updated: 2026-02-26
 - [ ] Kiln launch UI firing meter excludes `COMMUNITY_SHELF` from threshold/planning totals.
 
 ## Content Checks
-- [ ] `website/kiln-firing` and `website/ncsitebuilder/kiln-firing` show per-shelf + whole-kiln pricing only.
+- [ ] `website/kiln-firing` and `website/ncsitebuilder/kiln-firing` show low fire, mid fire, and custom service lanes priced by the half shelf after the redesign surface is ready.
 - [ ] Website copy explicitly states billing is not based on kiln volume.
+- [ ] Website copy no longer presents membership tiers, firing credits, storage discounts, or membership-tier pricing.
 - [ ] Website copy explains community shelf is free, lowest priority, and excluded from firing triggers.
 - [ ] Repo grep for `by volume`, `useVolumePricing`, `volumeIn3`, `per cubic inch` returns no billing-path matches.
 

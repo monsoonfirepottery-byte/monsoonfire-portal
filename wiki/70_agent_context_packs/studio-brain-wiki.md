@@ -14,15 +14,15 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 1dd6669cf2fa13cc2219f49ba49423741a754393602250f001fda4bd201ff311
+export_hash: 22e202c8c2982963076904ec39e1a0fba85ebdfc0838cacdc49fc9a1f037c667
 ---
 # Studio Brain Wiki Context Pack
 
-Snapshot: 61027b2567adb1ef17d6110fe244d57b8d077107d4d3e4b1496d63379980ea4d
+Snapshot: 8d63831a47f55ed6a57780019e055ef2e891272233796c8d48727bca844e6517
 
 ## Verified Operational Context
-
-No VERIFIED or OPERATIONAL_TRUTH wiki claims are currently available. Agents must use repo/source reads for operational claims.
+- Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only. [claim_57ec680d6070e4f40169]
+- Monsoon Fire kiln firing service pricing has three lanes: low fire, mid fire, and custom; each lane is priced by the half shelf. Volume pricing and cubic-inch pricing are not used. [claim_ae5fcb85bab41a024b86]
 
 ## Warnings
 - unverified-claim-excluded: package-script:studio:ops:host:heartbeat:once
@@ -36,4 +36,3 @@ No VERIFIED or OPERATIONAL_TRUTH wiki claims are currently available. Agents mus
 - unverified-claim-excluded: policy-doc:docs/policies/community-conduct.md
 - unverified-claim-excluded: package-script:wiki:validate
 - open-contradiction: membership-required-vs-decommission
-- open-contradiction: volume-pricing-vs-no-volume-billing

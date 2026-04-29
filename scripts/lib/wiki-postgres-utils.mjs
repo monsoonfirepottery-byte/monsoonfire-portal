@@ -1034,20 +1034,30 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     (claim.agentAllowedUse === "planning_context" || claim.agentAllowedUse === "operational_context")
   );
   const verifiedById = new Map(verified.map((claim) => [claim.claimId, claim]));
+  const unverifiedClaims = claims.filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status));
+  const activeContradictions = contradictions.filter((entry) => ["open", "in-review", "blocked"].includes(entry.status));
+  const sampledUnverifiedClaims = unverifiedClaims.slice(0, 10).map((claim) => ({
+    type: "unverified-claim-excluded",
+    claimId: claim.claimId,
+    status: claim.status,
+    subjectKey: claim.subjectKey,
+  }));
+  const sampledContradictions = activeContradictions.slice(0, 10).map((entry) => contradictionContextWarning(entry, verifiedById));
   const warnings = [
-    ...claims
-      .filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status))
-      .slice(0, 10)
-      .map((claim) => ({
-        type: "unverified-claim-excluded",
-        claimId: claim.claimId,
-        status: claim.status,
-        subjectKey: claim.subjectKey,
-      })),
-    ...contradictions
-      .filter((entry) => ["open", "in-review", "blocked"].includes(entry.status))
-      .slice(0, 10)
-      .map((entry) => contradictionContextWarning(entry, verifiedById)),
+    ...(unverifiedClaims.length > 0 ? [{
+      type: "unverified-claims-excluded-summary",
+      total: unverifiedClaims.length,
+      shown: sampledUnverifiedClaims.length,
+      omitted: Math.max(0, unverifiedClaims.length - sampledUnverifiedClaims.length),
+    }] : []),
+    ...sampledUnverifiedClaims,
+    ...(activeContradictions.length > 0 ? [{
+      type: "active-contradictions-summary",
+      total: activeContradictions.length,
+      shown: sampledContradictions.length,
+      omitted: Math.max(0, activeContradictions.length - sampledContradictions.length),
+    }] : []),
+    ...sampledContradictions,
   ];
 
   const snapshotHash = fullHash(JSON.stringify({
@@ -1114,6 +1124,9 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
       chars: generatedText.length,
       verifiedClaims: verified.length,
       warningCount: warnings.length,
+      totalWarningItems: unverifiedClaims.length + activeContradictions.length,
+      unverifiedClaimExcludedCount: unverifiedClaims.length,
+      activeContradictionCount: activeContradictions.length,
       usefulnessScore: outcomeUsefulness.usefulnessScore,
       outcomeTotal: outcomeUsefulness.total,
       outcomeVerdict: outcomeUsefulness.verdict,
@@ -1163,6 +1176,12 @@ function formatClaimSourceRefs(claim) {
 
 function formatContextWarning(warning) {
   const subject = warning.conflictKey || warning.subjectKey || warning.claimId || warning.contradictionId;
+  if (warning.type === "unverified-claims-excluded-summary") {
+    return `- ${warning.type}: ${warning.total} total; showing ${warning.shown}; omitted ${warning.omitted}`;
+  }
+  if (warning.type === "active-contradictions-summary") {
+    return `- ${warning.type}: ${warning.total} total; showing ${warning.shown}; omitted ${warning.omitted}`;
+  }
   if (warning.type === "source-drift-after-operational-truth" || warning.type === "blocked-source-drift-after-operational-truth") {
     const gate = warning.humanGate ? `; gate: ${warning.humanGate}` : "";
     return `- ${warning.type}: ${subject} (current truth: ${warning.winningClaimId}; update stale sources before customer-facing use${gate})`;

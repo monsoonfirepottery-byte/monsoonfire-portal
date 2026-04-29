@@ -132,6 +132,41 @@ test("context packs include verified truth and warn on excluded claims", () => {
   assert.doesNotMatch(pack.generatedText, /Unverified claim should not be included/);
   assert.equal(pack.items.length, 1);
   assert.equal(pack.warnings.some((warning) => warning.claimId === "claim_extracted"), true);
+  assert.equal(pack.warnings[0].type, "unverified-claims-excluded-summary");
+  assert.equal(pack.warnings[0].total, 1);
+  assert.equal(pack.budget.totalWarningItems, 1);
+});
+
+test("context pack warning samples report omitted uncertainty", () => {
+  const verified = {
+    claimId: "claim_verified",
+    status: "VERIFIED",
+    agentAllowedUse: "planning_context",
+    objectText: "Verified Studio Brain context is available.",
+    subjectKey: "studio-brain",
+  };
+  const extractedClaims = Array.from({ length: 12 }, (_, index) => ({
+    claimId: `claim_extracted_${index}`,
+    status: "EXTRACTED",
+    agentAllowedUse: "planning_context",
+    objectText: `Unverified claim ${index}.`,
+    subjectKey: `unverified:${index}`,
+  }));
+  const contradiction = {
+    contradictionId: "contradiction_one",
+    status: "open",
+    conflictKey: "sample-conflict",
+    severity: "medium",
+  };
+
+  const pack = generateContextPack([verified, ...extractedClaims], [contradiction], { tenantScope: "test" });
+
+  assert.match(pack.generatedText, /unverified-claims-excluded-summary: 12 total; showing 10; omitted 2/);
+  assert.match(pack.generatedText, /active-contradictions-summary: 1 total; showing 1; omitted 0/);
+  assert.equal(pack.budget.warningCount, 13);
+  assert.equal(pack.budget.totalWarningItems, 13);
+  assert.equal(pack.budget.unverifiedClaimExcludedCount, 12);
+  assert.equal(pack.budget.activeContradictionCount, 1);
 });
 
 test("service pricing policy becomes operational context without website edits", () => {
@@ -178,7 +213,8 @@ test("context pack labels resolved contradiction as source drift", () => {
 
   const pack = generateContextPack([winner], [contradiction], { tenantScope: "test" });
 
-  assert.equal(pack.warnings[0].type, "source-drift-after-operational-truth");
+  assert.equal(pack.warnings[0].type, "active-contradictions-summary");
+  assert.equal(pack.warnings.find((warning) => warning.type === "source-drift-after-operational-truth")?.conflictKey, "membership-required-vs-decommission");
   assert.match(pack.generatedText, /source-drift-after-operational-truth: membership-required-vs-decommission/);
   assert.doesNotMatch(pack.generatedText, /open-contradiction: membership-required-vs-decommission/);
 });

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   buildDbProbeReport,
@@ -83,6 +84,30 @@ test("deterministic extraction gives AGENTS guardrails source refs and stable fi
   assert.deepEqual(first.claims.map((claim) => claim.claimFingerprint), second.claims.map((claim) => claim.claimFingerprint));
   assert.equal(first.claims.every((claim) => claim.sourceRefs.length === 1), true);
   assert.equal(first.claims.every((claim) => claim.status === "EXTRACTED"), true);
+});
+
+test("package script extraction does not silently evict matching scripts", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const expectedScripts = Object.keys(pkg.scripts || {})
+    .filter((name) => /^(studio:ops|open-memory|wiki:|audit:|policy:|codex:)/.test(name));
+  const index = syntheticIndex([
+    {
+      sourcePath: "package.json",
+      content: JSON.stringify({ scripts: pkg.scripts }, null, 2),
+      lineStart: 1,
+      lineEnd: 80,
+    },
+  ]);
+
+  const extraction = extractClaims(index, { tenantScope: "test" });
+  const extractedScripts = new Set(
+    extraction.claims
+      .filter((claim) => claim.subjectKey.startsWith("package-script:"))
+      .map((claim) => claim.subjectKey.replace(/^package-script:/, "")),
+  );
+
+  assert.equal(expectedScripts.length > 160, true);
+  assert.deepEqual(expectedScripts.filter((name) => !extractedScripts.has(name)), []);
 });
 
 test("context packs include verified truth and warn on excluded claims", () => {

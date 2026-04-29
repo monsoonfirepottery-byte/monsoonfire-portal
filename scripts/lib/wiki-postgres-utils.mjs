@@ -658,8 +658,7 @@ export function extractClaims(index, options = {}) {
       try {
         const pkg = JSON.parse(readFileSync(resolve(REPO_ROOT, source.sourcePath), "utf8"));
         const scripts = Object.entries(pkg.scripts || {})
-          .filter(([name]) => /^(studio:ops|open-memory|wiki:|audit:|policy:|codex:)/.test(name))
-          .slice(0, 160);
+          .filter(([name]) => /^(studio:ops|open-memory|wiki:|audit:|policy:|codex:)/.test(name));
         const chunk = sourceChunks[0];
         for (const [name, command] of scripts) {
           add(makeClaim({

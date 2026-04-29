@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
+export_hash: 3e0b04e7fe9c6b368a57a5f66a76d252b69a3078efbf06d62d4009e35ee00d1b
 ---
 
 # Source Map
 
-Snapshot: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
+Snapshot: 3e0b04e7fe9c6b368a57a5f66a76d252b69a3078efbf06d62d4009e35ee00d1b
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -242,7 +242,7 @@ Snapshot: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
 | `docs/runbooks/STUDIO_BRAIN_HOST_ACCESS.md` | indexed | repo | 6 | `df79ff73d10b` |
 | `docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md` | indexed | repo | 8 | `e8fb22f2e085` |
 | `docs/runbooks/STUDIO_BRAIN_HOST_STACK.md` | indexed | repo | 6 | `a286192ab4e8` |
-| `docs/runbooks/STUDIO_BRAIN_IDLE_WORKER.md` | indexed | repo | 7 | `7e3322a64542` |
+| `docs/runbooks/STUDIO_BRAIN_IDLE_WORKER.md` | indexed | repo | 7 | `3e79c4c8b197` |
 | `docs/runbooks/STUDIO_BRAIN_PILOT_WRITE_VERIFICATION.md` | indexed | repo | 5 | `108e9ab61207` |
 | `docs/runbooks/STUDIO_BRAIN_ROBOROCK_CONNECTOR_SETUP.md` | indexed | repo | 11 | `d7f7f38ccd6b` |
 | `docs/runbooks/STUDIO_BRAIN_THERMAL_PRINTER_PRECHECK.md` | indexed | repo | 13 | `ee1ead2ec47d` |
@@ -374,7 +374,7 @@ Snapshot: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `d08fd411c22d` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `03c60ebe28ae` |
 | `memory/accepted/accepted.jsonl` | indexed | repo | 1 | `9821da585a7b` |
-| `package.json` | indexed | repo | 7 | `631c10ada50d` |
+| `package.json` | indexed | repo | 7 | `9288db6f6a8c` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `19a864819a3b` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -619,7 +619,7 @@ Snapshot: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `45cc17331aab` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `140c9035c2d2` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `1bf1773d3d8c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 29 | `d1fa5270ec05` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 29 | `771de0bcf38f` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `42c0fee0f773` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `b370d2593d09` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `c310dbf956d2` |
@@ -802,7 +802,7 @@ Snapshot: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `a8edd10f1247` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `fab08ee45321` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
-| `scripts/wiki-postgres.test.mjs` | indexed | repo | 6 | `830a4d5dee4d` |
+| `scripts/wiki-postgres.test.mjs` | indexed | repo | 6 | `c445a3961805` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `488d5d2812ef` |
 | `storage.rules` | indexed | repo | 1 | `f4cf8136298f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `95e732aadb95` |

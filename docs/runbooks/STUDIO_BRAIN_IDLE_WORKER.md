@@ -5,7 +5,7 @@ The idle worker turns spare Studio Brain host time into safe, bounded maintenanc
 - Memory ops: runs Studio Brain memory consolidation with idle or overnight budgets.
 - Repo health: runs read-only repo audit commands behind the branch/status guard.
 - Agent harness: writes one bounded next-work packet plus success/failure metrics for the next Codex session.
-- Wiki intelligence: loops through the Postgres-backed wiki information lanes in report-only mode by default: source indexing, deterministic extraction, contradiction scanning, context-pack generation, and query-plan probes.
+- Wiki intelligence: loops through the Postgres-backed wiki information lanes in report-only mode by default: source indexing, deterministic extraction, contradiction scanning, context-pack generation, export drift checks, idle-task queue planning, and query-plan probes.
 
 The worker is a one-shot command by default. Schedule it with a timer instead of leaving an extra permanent process around.
 
@@ -24,6 +24,7 @@ npm run studio:ops:idle-worker
 npm run studio:ops:idle-worker:overnight
 npm run studio:ops:idle-worker:wiki
 npm run studio:ops:agent-harness
+npm run wiki:gate
 ```
 
 The default npm commands print a terse operator summary and always write the full JSON report to `output/studio-brain/idle-worker/latest.json`. Use the `:json` variants when a caller needs the full report on stdout:
@@ -76,10 +77,14 @@ wiki-source-index-check
 wiki-claim-extraction-check
 wiki-contradiction-scan
 wiki-context-pack-refresh
+wiki-export-drift-check
+wiki-idle-task-queue
 wiki-db-probe-plan
 ```
 
-`wiki-contradiction-scan` can make the overall idle-worker result `passed_with_warnings`; that is expected when it finds open conflicts for human review.
+`wiki-contradiction-scan` can make the overall idle-worker result `passed_with_warnings`; that is expected when it finds open conflicts for human review. If a current `OPERATIONAL_TRUTH` claim wins but the losing evidence is isolated to a paused owner surface, the contradiction is `blocked` and remains visible without entering the ready queue.
+
+`wiki:gate` is the local/CI guard for the wiki loop. It runs the wiki-related tests, validates the scaffold, checks deterministic export drift, and runs the effectiveness audit. A passing gate means git markdown matches generated wiki state and the loop is not hiding its blocked work.
 
 ## Agent Harness Success Metric
 

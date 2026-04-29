@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
+export_hash: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
 ---
 
 # Source Map
 
-Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
+Snapshot: 3477e6044033058941ce37640b7b70cb0af68fc4a76b7bce377d663e878fe6b6
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -374,7 +374,7 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `d08fd411c22d` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `03c60ebe28ae` |
 | `memory/accepted/accepted.jsonl` | indexed | repo | 1 | `9821da585a7b` |
-| `package.json` | indexed | repo | 7 | `1a0591727aa3` |
+| `package.json` | indexed | repo | 7 | `631c10ada50d` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `19a864819a3b` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -619,7 +619,7 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `45cc17331aab` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `140c9035c2d2` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `1bf1773d3d8c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 21 | `605759a255e8` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 29 | `d1fa5270ec05` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `42c0fee0f773` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `b370d2593d09` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `c310dbf956d2` |
@@ -766,8 +766,8 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `scripts/studio-cutover-gate.mjs` | indexed | repo | 5 | `51948a580c3d` |
 | `scripts/studio-network-profile.mjs` | indexed | repo | 3 | `423d610a519b` |
 | `scripts/studio-stack-profile-snapshot.mjs` | indexed | repo | 6 | `6a9428190b99` |
-| `scripts/studiobrain-agent-harness-work-packet.mjs` | indexed | repo | 12 | `bec6cdae8d27` |
-| `scripts/studiobrain-agent-harness-work-packet.test.mjs` | indexed | repo | 4 | `eff485a08a99` |
+| `scripts/studiobrain-agent-harness-work-packet.mjs` | indexed | repo | 12 | `c47e1dad18da` |
+| `scripts/studiobrain-agent-harness-work-packet.test.mjs` | indexed | repo | 5 | `051a3d4df21c` |
 | `scripts/studiobrain-backup-drill.mjs` | indexed | repo | 10 | `ddb6952eb56e` |
 | `scripts/studiobrain-bambu-cli.sh` | indexed | repo | 4 | `626db69d5c9a` |
 | `scripts/studiobrain-chief-of-staff-audit.mjs` | indexed | repo | 2 | `2a5d3c24387d` |
@@ -777,8 +777,8 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `scripts/studiobrain-control-tower-proxy.mjs` | indexed | repo | 2 | `8dea02c90a66` |
 | `scripts/studiobrain-host-access.py` | indexed | repo | 4 | `d52f6f373767` |
 | `scripts/studiobrain-host-access.sh` | indexed | repo | 1 | `0ceef799c93e` |
-| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 13 | `528ae634847a` |
-| `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 5 | `15ff5d31d7cd` |
+| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 13 | `60b79bb7c2f3` |
+| `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 5 | `ea168f85b2a8` |
 | `scripts/studiobrain-incident-bundle.mjs` | indexed | repo | 6 | `61c2b6aa7ecb` |
 | `scripts/studiobrain-local-host-heartbeat.mjs` | indexed | repo | 5 | `4cdbce4f4b01` |
 | `scripts/studiobrain-network-check.mjs` | indexed | repo | 4 | `bac16d983f5d` |
@@ -801,8 +801,8 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `scripts/validate-well-known.mjs` | indexed | repo | 5 | `34777f02c644` |
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `a8edd10f1247` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `fab08ee45321` |
-| `scripts/wiki-postgres.mjs` | indexed | repo | 2 | `b83909ea9b71` |
-| `scripts/wiki-postgres.test.mjs` | indexed | repo | 4 | `d41d1234d68f` |
+| `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
+| `scripts/wiki-postgres.test.mjs` | indexed | repo | 6 | `830a4d5dee4d` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `488d5d2812ef` |
 | `storage.rules` | indexed | repo | 1 | `f4cf8136298f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `95e732aadb95` |
@@ -997,7 +997,7 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `studio-brain/src/swarm/trustSafety/triageAssistant.test.ts` | indexed | repo | 1 | `dba6f7417493` |
 | `studio-brain/src/swarm/trustSafety/triageAssistant.ts` | indexed | repo | 2 | `5c6feefe0e3a` |
 | `studio-brain/src/types/core.ts` | indexed | repo | 1 | `d8b2d789f561` |
-| `studio-brain/src/wiki/readStore.ts` | indexed | repo | 4 | `6a28ae726b13` |
+| `studio-brain/src/wiki/readStore.ts` | indexed | repo | 4 | `cf611e130153` |
 | `tickets/P0-alpha-drills-real-auth.md` | indexed | repo | 2 | `3bb312a03f48` |
 | `tickets/P0-alpha-release-evidence-pack.md` | indexed | repo | 2 | `895dc02023a6` |
 | `tickets/P0-email-extension-region-mismatch.md` | indexed | repo | 2 | `debc99562bbc` |
@@ -1120,7 +1120,7 @@ Snapshot: 06d5ced78761bb1d08405e5fbf4d6dd081ace81316ffe8132cb6a49819e37440
 | `tickets/P1-revealcard-adopt-key-views.md` | indexed | repo | 6 | `65dd2b040369` |
 | `tickets/P1-security-api-v1-batchdoc-editor-access.md` | indexed | repo | 5 | `e142b2313b10` |
 | `tickets/P1-security-fix-root-npm-audit-fast-xml-parser.md` | indexed | repo | 1 | `3428d0223674` |
-| `tickets/P1-service-pricing-and-membership-decommission-source-alignment.md` | indexed | repo | 4 | `d362acb74d3b` |
+| `tickets/P1-service-pricing-and-membership-decommission-source-alignment.md` | indexed | repo | 5 | `a3f1222d9409` |
 | `tickets/P1-source-of-truth-contract-audit-matrix.md` | indexed | repo | 7 | `b230f4112d09` |
 | `tickets/P1-source-of-truth-deployment-gate-matrix.md` | indexed | repo | 7 | `eb287db0a5bc` |
 | `tickets/P1-staff-console-batch-artifact-triage-and-safe-cleanup.md` | indexed | repo | 8 | `1bd425b3fb0f` |

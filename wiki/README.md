@@ -25,3 +25,10 @@ Agents may autonomously create `RAW_CAPTURED`, `EXTRACTED`, `SYNTHESIZED`, `STAL
 Agents may verify citations and move records to `VERIFIED` only when every factual claim has a resolvable source reference. Agents may not promote material to `OPERATIONAL_TRUTH`; that requires human approval.
 
 Pricing, legal, tax, medical, refund/payment, membership/access, and customer-facing policy changes require human approval before they can be used as operational truth.
+
+## Loop Guardrails
+
+- Source/chunk refreshes use tombstones and inactive versions instead of hard-deleting prior chunk anchors.
+- Contradictions can be `blocked` when current operational truth is known but the losing evidence is owned by a paused edit surface.
+- `wiki_idle_task` is the Postgres queue for bounded wiki maintenance; report-only idle runs plan tasks, and apply mode leases ready tasks with `FOR UPDATE SKIP LOCKED`.
+- Export drift checks compare deterministic markdown/JSONL renders against git files before agents trust the wiki as a review surface.

@@ -76,19 +76,25 @@ test("buildJobPlan creates report-only wiki information lane jobs", () => {
       "wiki-claim-extraction-check",
       "wiki-contradiction-scan",
       "wiki-context-pack-refresh",
+      "wiki-export-drift-check",
+      "wiki-idle-task-queue",
       "wiki-db-probe-plan",
     ]);
     assert.match(plan[0].command.join(" "), /wiki:source:index:check/);
     assert.match(plan[1].command.join(" "), /wiki:extract:check/);
     assert.match(plan[2].command.join(" "), /wiki:contradictions:scan/);
     assert.match(plan[3].command.join(" "), /wiki:context:check/);
-    assert.match(plan[4].command.join(" "), /wiki:db:probe/);
+    assert.match(plan[4].command.join(" "), /wiki:export:drift/);
+    assert.match(plan[5].command.join(" "), /wiki:idle-tasks:check/);
+    assert.match(plan[6].command.join(" "), /wiki:db:probe/);
     assert.equal(plan.every((job) => job.category === "repo"), true);
     assert.ok(plan[0].artifacts.some((artifact) => artifact.endsWith("wiki-source-index.json")));
     assert.ok(plan[1].artifacts.some((artifact) => artifact.endsWith("wiki-claim-extraction.json")));
     assert.ok(plan[2].artifacts.some((artifact) => artifact.endsWith("wiki-contradictions.json")));
     assert.ok(plan[3].artifacts.some((artifact) => artifact.endsWith("wiki-context-pack.json")));
-    assert.ok(plan[4].artifacts.some((artifact) => artifact.endsWith("wiki-db-probe.json")));
+    assert.ok(plan[4].artifacts.some((artifact) => artifact.endsWith("wiki-export-drift.json")));
+    assert.ok(plan[5].artifacts.some((artifact) => artifact.endsWith("wiki-idle-tasks.json")));
+    assert.ok(plan[6].artifacts.some((artifact) => artifact.endsWith("wiki-db-probe.json")));
   } finally {
     rmSync(runRoot, { recursive: true, force: true });
   }
@@ -104,7 +110,9 @@ test("buildJobPlan can intentionally switch wiki lanes to apply mode", () => {
     assert.match(plan[1].command.join(" "), /wiki:extract:apply/);
     assert.match(plan[2].command.join(" "), /wiki:contradictions:record/);
     assert.match(plan[3].command.join(" "), /wiki:context:apply/);
-    assert.match(plan[4].command.join(" "), /wiki:db:probe:live/);
+    assert.match(plan[4].command.join(" "), /wiki:export:drift:record/);
+    assert.match(plan[5].command.join(" "), /wiki:idle-tasks:apply/);
+    assert.match(plan[6].command.join(" "), /wiki:db:probe:live/);
   } finally {
     rmSync(runRoot, { recursive: true, force: true });
   }

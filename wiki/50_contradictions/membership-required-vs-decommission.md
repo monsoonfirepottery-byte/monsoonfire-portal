@@ -14,12 +14,14 @@ agent_allowed_use: cite_only
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 6fb470f6c1206b9ec0721af037aef4a1ce36f38651f49f8474a24ebbb5342ba2
+export_hash: afa0c7fa290da6d602e216670feeb6f27beb4e0d7134bece3c55223e395b987c
 ---
 
 # membership-required-vs-decommission
 
 Severity: hard
+
+Queue status: blocked
 
 Recommended action: Treat the service-pricing decommission decision as current operational truth and update or retire stale membership-tier/member-only sources before using them in customer-facing context.
 
@@ -48,9 +50,9 @@ Recommended action: Treat the service-pricing decommission decision as current o
 
 - `docs/epics/EPIC-MEMBERSHIP-DECOMMISSION-AND-STUDIO-FOCUS.md`: 2
 - `docs/policies/service-pricing-and-membership-decommission.md`: 2
+- `tickets/P1-service-pricing-and-membership-decommission-source-alignment.md`: 2
 - `wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md`: 2
 - `docs/runbooks/PRICING_COMMUNITY_SHELF_QA.md`: 1
-- `tickets/P1-service-pricing-and-membership-decommission-source-alignment.md`: 1
 
 ## Evidence Surface Counts
 
@@ -62,5 +64,5 @@ Recommended action: Treat the service-pricing decommission decision as current o
 ### Side B
 
 - `docs`: 5
+- `ticket`: 2
 - `wiki-decision`: 2
-- `ticket`: 1

@@ -147,6 +147,8 @@ function createPostgresWikiReadStore(poolProvider = postgres_1.getPgPool) {
               FROM wiki_source_chunk chunk
               JOIN wiki_source source ON source.source_id = chunk.source_id
              WHERE chunk.tenant_scope = $1
+               AND chunk.is_active = true
+               AND source.ingest_status IN ('indexed', 'unchanged')
                AND (
                  chunk.content_tsv @@ plainto_tsquery('english', $2)
                  OR chunk.content ILIKE $3 ESCAPE '\\'

@@ -181,6 +181,8 @@ function captureSnapshot(options, deps = {}) {
   const wikiClaimExtractionPath = resolve(idleRunRoot, "wiki-claim-extraction.json");
   const wikiContradictionsPath = resolve(idleRunRoot, "wiki-contradictions.json");
   const wikiContextPackPath = resolve(idleRunRoot, "wiki-context-pack.json");
+  const wikiExportDriftPath = resolve(idleRunRoot, "wiki-export-drift.json");
+  const wikiIdleTasksPath = resolve(idleRunRoot, "wiki-idle-tasks.json");
   const wikiDbProbePath = resolve(idleRunRoot, "wiki-db-probe.json");
   const currentDestructiveSurfaceAudit = resolve(idleRunRoot, "destructive-command-surfaces.json");
   const fallbackDestructiveSurfaceAudit = resolve(REPO_ROOT, "output", "qa", "destructive-command-surfaces.json");
@@ -203,6 +205,8 @@ function captureSnapshot(options, deps = {}) {
       wikiClaimExtraction: artifactRef("wiki-claim-extraction", wikiClaimExtractionPath, 24 * 60),
       wikiContradictions: artifactRef("wiki-contradictions", wikiContradictionsPath, 24 * 60),
       wikiContextPack: artifactRef("wiki-context-pack", wikiContextPackPath, 24 * 60),
+      wikiExportDrift: artifactRef("wiki-export-drift", wikiExportDriftPath, 24 * 60),
+      wikiIdleTasks: artifactRef("wiki-idle-tasks", wikiIdleTasksPath, 24 * 60),
       wikiDbProbe: artifactRef("wiki-db-probe", wikiDbProbePath, 24 * 60),
       destructiveSurfaceAudit: artifactRef("destructive-surface-audit", destructiveSurfaceAudit.path, 24 * 60),
     },
@@ -214,6 +218,8 @@ function captureSnapshot(options, deps = {}) {
     wikiClaimExtraction: readJsonFileIfExists(wikiClaimExtractionPath),
     wikiContradictions: readJsonFileIfExists(wikiContradictionsPath),
     wikiContextPack: readJsonFileIfExists(wikiContextPackPath),
+    wikiExportDrift: readJsonFileIfExists(wikiExportDriftPath),
+    wikiIdleTasks: readJsonFileIfExists(wikiIdleTasksPath),
     wikiDbProbe: readJsonFileIfExists(wikiDbProbePath),
     destructiveSurfaceAudit: destructiveSurfaceAudit.parsed,
   };
@@ -342,7 +348,7 @@ function buildFreshFailurePacket(snapshot, failedIdleJobs) {
 
 function collectOpenWikiContradictions(scan) {
   return (Array.isArray(scan?.contradictions) ? scan.contradictions : [])
-    .filter((entry) => ["open", "in-review"].includes(clean(entry.status).toLowerCase()))
+    .filter((entry) => ["open", "in-review", "blocked"].includes(clean(entry.status).toLowerCase()))
     .map((entry) => ({
       contradictionId: clean(entry.contradictionId),
       conflictKey: clean(entry.conflictKey),

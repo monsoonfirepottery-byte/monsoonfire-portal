@@ -3,11 +3,15 @@ import assert from "node:assert/strict";
 
 import {
   buildDbProbeReport,
+  buildExportDriftReport,
+  buildIdleTaskQueueReport,
   contentDenyReason,
   detectContradictions,
   extractClaims,
   generateContextPack,
+  summarizeWikiOutcomeUsefulness,
   sourceDenyReason,
+  validateClaimTransition,
   validateWikiScaffold,
 } from "./lib/wiki-postgres-utils.mjs";
 
@@ -154,6 +158,48 @@ test("context pack labels resolved contradiction as source drift", () => {
   assert.doesNotMatch(pack.generatedText, /open-contradiction: membership-required-vs-decommission/);
 });
 
+test("claim lifecycle guard blocks operational truth without approval metadata", () => {
+  const candidate = {
+    status: "OPERATIONAL_TRUTH",
+    metadata: {},
+  };
+
+  assert.equal(validateClaimTransition(null, candidate).allowed, false);
+  assert.equal(validateClaimTransition({ status: "OPERATIONAL_TRUTH" }, { status: "EXTRACTED", metadata: {} }).allowed, false);
+  assert.equal(
+    validateClaimTransition(null, {
+      status: "OPERATIONAL_TRUTH",
+      metadata: { approvedBy: "human-owner", approvedAt: "2026-04-28" },
+    }).allowed,
+    true,
+  );
+});
+
+test("blocked source drift is first-class when stale evidence is isolated to paused redesign surfaces", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "website/data/faq.json",
+      content: "Memberships are required before customers may access studio services.",
+    },
+    {
+      sourcePath: "docs/policies/service-pricing-and-membership-decommission.md",
+      authorityClass: "policy",
+      content: "Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only.",
+    },
+  ]);
+  const extraction = extractClaims(index, { tenantScope: "test" });
+  const scan = detectContradictions(index, extraction.claims);
+  const contradiction = scan.contradictions.find((entry) => entry.conflictKey === "membership-required-vs-decommission");
+  const pack = generateContextPack(extraction.claims, scan.contradictions, {
+    tenantScope: "test",
+    outcomeUsefulness: { total: 0, helpful: 0, staleOrMisleading: 0, blocked: 0, totalMinutesSaved: 0, usefulnessScore: 0, verdict: "insufficient_real_usage" },
+  });
+
+  assert.equal(contradiction.status, "blocked");
+  assert.equal(contradiction.metadata.blockedReason, "losing-side evidence is isolated to paused website/portal redesign surfaces");
+  assert.match(pack.generatedText, /blocked-source-drift-after-operational-truth: membership-required-vs-decommission/);
+});
+
 test("contradiction scan emits review records instead of editing claims", () => {
   const index = syntheticIndex([
     {
@@ -281,6 +327,68 @@ test("volume contradiction scan still catches active positive volume pricing", (
   const scan = detectContradictions(index, []);
 
   assert.equal(scan.contradictions.some((entry) => entry.conflictKey === "volume-pricing-vs-no-volume-billing"), true);
+});
+
+test("export drift report compares deterministic wiki exports without writing", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "docs/policies/service-pricing-and-membership-decommission.md",
+      authorityClass: "policy",
+      content: "Monsoon Fire has decommissioned all membership tiers.",
+    },
+  ]);
+  const extraction = extractClaims(index, { tenantScope: "test" });
+  const report = buildExportDriftReport({
+    tenantScope: "test",
+    index,
+    extraction,
+    scan: detectContradictions(index, extraction.claims),
+    outcomeUsefulness: { total: 0, helpful: 0, staleOrMisleading: 0, blocked: 0, totalMinutesSaved: 0, usefulnessScore: 0, verdict: "insufficient_real_usage" },
+  });
+
+  assert.equal(report.schema, "wiki-export-drift-report.v1");
+  assert.ok(report.exports.some((entry) => entry.path.endsWith("wiki/00_source_index/source-map.md")));
+  assert.equal(report.manifestRows.every((row) => row.exportHash), true);
+});
+
+test("idle task queue makes blocked contradictions visible but not ready", () => {
+  const index = syntheticIndex([
+    {
+      sourcePath: "website/data/faq.json",
+      content: "Memberships are required before customers may access studio services.",
+    },
+    {
+      sourcePath: "docs/policies/service-pricing-and-membership-decommission.md",
+      authorityClass: "policy",
+      content: "Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only.",
+    },
+  ]);
+  const extraction = extractClaims(index, { tenantScope: "test" });
+  const scan = detectContradictions(index, extraction.claims);
+  const queue = buildIdleTaskQueueReport({
+    tenantScope: "test",
+    index,
+    extraction,
+    scan,
+    outcomeUsefulness: { total: 0, helpful: 0, staleOrMisleading: 0, blocked: 0, totalMinutesSaved: 0, usefulnessScore: 0, verdict: "insufficient_real_usage" },
+  });
+
+  assert.equal(queue.schema, "wiki-idle-task-queue-report.v1");
+  assert.equal(queue.summary.blocked, 1);
+  assert.equal(queue.tasks.some((task) => task.taskKey === "wiki-contradiction:membership-required-vs-decommission" && task.status === "blocked"), true);
+  assert.match(queue.lease.strategy, /FOR UPDATE SKIP LOCKED/);
+});
+
+test("context pack usefulness scores only wiki-relevant outcomes", () => {
+  const summary = summarizeWikiOutcomeUsefulness([
+    { outcome: "helpful", minutesSaved: 12, notes: "Wiki context pack avoided a stale contradiction." },
+    { outcome: "stale", minutesSaved: 0, notes: "Wiki source drift was misleading." },
+    { outcome: "helpful", minutesSaved: 6, notes: "Unrelated runtime contract packet." },
+  ]);
+
+  assert.equal(summary.total, 2);
+  assert.equal(summary.helpful, 1);
+  assert.equal(summary.staleOrMisleading, 1);
 });
 
 test("db probe report covers hot wiki read paths", () => {

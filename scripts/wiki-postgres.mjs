@@ -4,9 +4,14 @@ import {
   applyClaimsToDb,
   applyContextPackToDb,
   applyContradictionsToDb,
+  applyExportManifestToDb,
+  applyIdleTasksToDb,
   applySourceIndexToDb,
   buildDbProbeReport,
+  buildExportDriftReport,
+  buildIdleTaskQueueReport,
   buildSourceIndex,
+  buildWikiEffectivenessAudit,
   detectContradictions,
   extractClaims,
   generateContextPack,
@@ -17,6 +22,7 @@ import {
   writeContextPack,
   writeContradictions,
   writeExtractedFacts,
+  writeIdleTasks,
   writeJsonArtifact,
   writeSourceMap,
 } from "./lib/wiki-postgres-utils.mjs";
@@ -135,6 +141,23 @@ async function main() {
     if (args.applyDb) {
       report = await runDbExplainProbe(report, args.tenantScope);
     }
+  } else if (args.command === "export-drift") {
+    report = buildExportDriftReport(args);
+    if (args.applyDb) {
+      report.db = await applyExportManifestToDb(report);
+      report.status = report.db.errors.length > 0 ? "warning" : report.status;
+    }
+  } else if (args.command === "idle-tasks") {
+    report = buildIdleTaskQueueReport(args);
+    if (args.applyDb) {
+      report.db = await applyIdleTasksToDb(report, args);
+      report.status = report.db.errors.length > 0 ? "warning" : "pass";
+    }
+    if (args.writeMarkdown) {
+      report.markdownPath = writeIdleTasks(report);
+    }
+  } else if (args.command === "effectiveness") {
+    report = buildWikiEffectivenessAudit(args);
   } else {
     throw new Error(`Unknown wiki-postgres command: ${args.command}`);
   }

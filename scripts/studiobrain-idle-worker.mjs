@@ -506,6 +506,8 @@ function wikiJobScript(mode, lane) {
       extract: "wiki:extract:apply",
       contradictions: "wiki:contradictions:record",
       context: "wiki:context:apply",
+      exportDrift: "wiki:export:drift:record",
+      idleTasks: "wiki:idle-tasks:apply",
       dbProbe: "wiki:db:probe:live",
     }[lane];
   }
@@ -515,6 +517,8 @@ function wikiJobScript(mode, lane) {
       extract: "wiki:extract",
       contradictions: "wiki:contradictions:export",
       context: "wiki:context:refresh",
+      exportDrift: "wiki:export:drift",
+      idleTasks: "wiki:idle-tasks:export",
       dbProbe: "wiki:db:probe",
     }[lane];
   }
@@ -523,6 +527,8 @@ function wikiJobScript(mode, lane) {
     extract: "wiki:extract:check",
     contradictions: "wiki:contradictions:scan",
     context: "wiki:context:check",
+    exportDrift: "wiki:export:drift",
+    idleTasks: "wiki:idle-tasks:check",
     dbProbe: "wiki:db:probe",
   }[lane];
 }
@@ -573,6 +579,22 @@ function buildWikiJobs(options) {
       label: mode === "check" ? "Wiki context pack check" : `Wiki context pack ${mode}`,
       lane: "context",
       artifactName: "wiki-context-pack.json",
+      options,
+      timeoutMs,
+    }),
+    buildWikiLaneJob({
+      id: "wiki-export-drift-check",
+      label: mode === "check" ? "Wiki export drift check" : `Wiki export drift ${mode}`,
+      lane: "exportDrift",
+      artifactName: "wiki-export-drift.json",
+      options,
+      timeoutMs,
+    }),
+    buildWikiLaneJob({
+      id: "wiki-idle-task-queue",
+      label: mode === "check" ? "Wiki idle task queue check" : `Wiki idle task queue ${mode}`,
+      lane: "idleTasks",
+      artifactName: "wiki-idle-tasks.json",
       options,
       timeoutMs,
     }),

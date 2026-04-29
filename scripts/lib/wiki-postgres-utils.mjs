@@ -28,6 +28,19 @@ export const STATUS_VALUES = new Set([
   "NEEDS_HUMAN_REVIEW",
 ]);
 
+const HUMAN_APPROVED_STATUSES = new Set(["OPERATIONAL_TRUTH"]);
+const CLAIM_STATUS_TRANSITIONS = {
+  RAW_CAPTURED: new Set(["RAW_CAPTURED", "EXTRACTED", "NEEDS_HUMAN_REVIEW", "DEPRECATED"]),
+  EXTRACTED: new Set(["EXTRACTED", "SYNTHESIZED", "VERIFIED", "STALE", "DEPRECATED", "CONTRADICTORY", "NEEDS_HUMAN_REVIEW", "OPERATIONAL_TRUTH"]),
+  SYNTHESIZED: new Set(["SYNTHESIZED", "VERIFIED", "STALE", "DEPRECATED", "CONTRADICTORY", "NEEDS_HUMAN_REVIEW", "OPERATIONAL_TRUTH"]),
+  VERIFIED: new Set(["VERIFIED", "OPERATIONAL_TRUTH", "STALE", "DEPRECATED", "CONTRADICTORY", "NEEDS_HUMAN_REVIEW"]),
+  OPERATIONAL_TRUTH: new Set(["OPERATIONAL_TRUTH", "STALE", "DEPRECATED", "CONTRADICTORY", "NEEDS_HUMAN_REVIEW"]),
+  STALE: new Set(["STALE", "SYNTHESIZED", "VERIFIED", "DEPRECATED", "NEEDS_HUMAN_REVIEW", "OPERATIONAL_TRUTH"]),
+  DEPRECATED: new Set(["DEPRECATED", "NEEDS_HUMAN_REVIEW"]),
+  CONTRADICTORY: new Set(["CONTRADICTORY", "NEEDS_HUMAN_REVIEW", "VERIFIED", "OPERATIONAL_TRUTH", "STALE", "DEPRECATED"]),
+  NEEDS_HUMAN_REVIEW: new Set(["NEEDS_HUMAN_REVIEW", "SYNTHESIZED", "VERIFIED", "STALE", "DEPRECATED", "CONTRADICTORY", "OPERATIONAL_TRUTH"]),
+};
+
 const TEXT_EXTENSIONS = new Set([
   ".css",
   ".html",
@@ -176,6 +189,8 @@ export function parseArgs(argv) {
     freshExtract: false,
     limit: 0,
     artifact: "",
+    outcomesPath: resolve(REPO_ROOT, "output", "studio-brain", "agent-harness", "outcomes.jsonl"),
+    leaseLimit: 5,
     root: REPO_ROOT,
     strict: false,
     maxFileBytes: 512 * 1024,
@@ -222,6 +237,16 @@ export function parseArgs(argv) {
     }
     if (token === "--artifact" && next) {
       args.artifact = resolve(REPO_ROOT, String(next));
+      index += 1;
+      continue;
+    }
+    if (token === "--outcomes" && next) {
+      args.outcomesPath = resolve(REPO_ROOT, String(next));
+      index += 1;
+      continue;
+    }
+    if (token === "--lease-limit" && next) {
+      args.leaseLimit = Math.max(0, Number.parseInt(String(next), 10) || 0);
       index += 1;
       continue;
     }
@@ -543,6 +568,36 @@ function makeClaim({
   };
 }
 
+function hasHumanApprovalMetadata(claim) {
+  const metadata = claim?.metadata || {};
+  return Boolean(metadata.approvedBy && metadata.approvedAt);
+}
+
+export function validateClaimTransition(existing, claim) {
+  const toStatus = claim?.status || "EXTRACTED";
+  if (!STATUS_VALUES.has(toStatus)) {
+    return { allowed: false, reason: `unknown-status:${toStatus}` };
+  }
+  if (HUMAN_APPROVED_STATUSES.has(toStatus) && !hasHumanApprovalMetadata(claim)) {
+    return { allowed: false, reason: "missing-human-approval-metadata" };
+  }
+  if (!existing) {
+    return { allowed: true, reason: "new-claim" };
+  }
+  const fromStatus = existing.status || "EXTRACTED";
+  const allowedTargets = CLAIM_STATUS_TRANSITIONS[fromStatus];
+  if (!allowedTargets?.has(toStatus)) {
+    return { allowed: false, reason: `blocked-transition:${fromStatus}->${toStatus}` };
+  }
+  if (fromStatus === "OPERATIONAL_TRUTH" && toStatus !== "OPERATIONAL_TRUTH" && !hasHumanApprovalMetadata(claim)) {
+    return { allowed: false, reason: "operational-truth-demotion-requires-human-approval-metadata" };
+  }
+  return {
+    allowed: true,
+    reason: fromStatus === toStatus ? "same-status" : `transition:${fromStatus}->${toStatus}`,
+  };
+}
+
 export function extractClaims(index, options = {}) {
   const tenantScope = options.tenantScope || index.tenantScope || "monsoonfire-main";
   const claims = [];
@@ -762,31 +817,41 @@ export function detectContradictions(index, claims = []) {
       lineEnd: entry.lineEnd,
     }));
     const conflictFingerprint = fullHash(`${key}|${sourceRefs.map((ref) => `${ref.sourceId}:${ref.chunkId}`).join("|")}`);
+    const claimAId = relatedClaimId(claims, key, aMatches);
+    const claimBId = relatedClaimId(claims, key, bMatches);
+    const metadata = {
+      aMatches: aMatches.length,
+      bMatches: bMatches.length,
+      evidencePathCounts: {
+        a: summarizeEvidencePaths(aMatches),
+        b: summarizeEvidencePaths(bMatches),
+      },
+      evidenceSurfaceCounts: {
+        a: summarizeEvidenceSurfaces(aMatches),
+        b: summarizeEvidenceSurfaces(bMatches),
+      },
+    };
+    const blocked = isBlockedSourceDrift(claims, claimAId, claimBId, metadata);
     findings.push({
       schema: "wiki-contradiction.v1",
       contradictionId: `contradiction_${stableHash(conflictFingerprint, 20)}`,
       conflictFingerprint,
       conflictKey: key,
       severity,
-      status: "open",
-      claimAId: relatedClaimId(claims, key, aMatches),
-      claimBId: relatedClaimId(claims, key, bMatches),
+      status: blocked ? "blocked" : "open",
+      claimAId,
+      claimBId,
       sourceRefs,
       owner: severity === "hard" || severity === "critical" ? "policy" : "platform",
       recommendedAction: action,
       markdownPath: `wiki/50_contradictions/${normalizeKey(key, 80)}.md`,
-      metadata: {
-        aMatches: aMatches.length,
-        bMatches: bMatches.length,
-        evidencePathCounts: {
-          a: summarizeEvidencePaths(aMatches),
-          b: summarizeEvidencePaths(bMatches),
-        },
-        evidenceSurfaceCounts: {
-          a: summarizeEvidenceSurfaces(aMatches),
-          b: summarizeEvidenceSurfaces(bMatches),
-        },
-      },
+      metadata: blocked
+        ? {
+            ...metadata,
+            blockedReason: "losing-side evidence is isolated to paused website/portal redesign surfaces",
+            humanGate: "Blocked until the website/portal redesign owner updates customer-facing surfaces or the user explicitly reopens that edit surface.",
+          }
+        : metadata,
     });
   }
 
@@ -873,6 +938,18 @@ function relatedClaimId(claims, key, matches) {
   return related[0]?.claimId || null;
 }
 
+function isBlockedSourceDrift(claims, claimAId, claimBId, metadata) {
+  const verifiedById = new Map((Array.isArray(claims) ? claims : []).map((claim) => [claim.claimId, claim]));
+  const winningClaim = [claimAId, claimBId]
+    .map((claimId) => verifiedById.get(claimId))
+    .find((claim) => claim?.status === "OPERATIONAL_TRUTH");
+  if (!winningClaim) return false;
+  const sideA = Array.isArray(metadata?.evidenceSurfaceCounts?.a) ? metadata.evidenceSurfaceCounts.a : [];
+  if (sideA.length === 0) return false;
+  const paused = new Set(["website-redesign-paused", "portal-redesign-paused"]);
+  return sideA.every((entry) => paused.has(String(entry.surface || "")));
+}
+
 function summarizeEvidencePaths(matches, limit = 20) {
   const counts = new Map();
   for (const match of matches) {
@@ -906,8 +983,53 @@ function classifyEvidenceSurface(sourcePath) {
   return "repo";
 }
 
+function readJsonlIfPresent(path) {
+  if (!path || !existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+export function summarizeWikiOutcomeUsefulness(outcomes = []) {
+  const relevant = (Array.isArray(outcomes) ? outcomes : []).filter((entry) =>
+    /\b(wiki|context pack|context-pack|contradiction|source drift)\b/i.test(
+      `${entry.packetId || ""} ${entry.title || ""} ${entry.notes || ""}`,
+    )
+  );
+  const helpful = relevant.filter((entry) => ["used", "helpful", "resolved"].includes(String(entry.outcome || "")));
+  const staleOrMisleading = relevant.filter((entry) => ["stale", "misleading"].includes(String(entry.outcome || "")));
+  const blocked = relevant.filter((entry) => entry.outcome === "blocked");
+  const totalMinutesSaved = relevant.reduce((sum, entry) => sum + (Number(entry.minutesSaved) || 0), 0);
+  const usefulnessScore = relevant.length === 0
+    ? 0
+    : Math.max(0, Math.min(1, (helpful.length + totalMinutesSaved / 30 - staleOrMisleading.length * 2) / Math.max(1, relevant.length)));
+  return {
+    total: relevant.length,
+    helpful: helpful.length,
+    staleOrMisleading: staleOrMisleading.length,
+    blocked: blocked.length,
+    totalMinutesSaved,
+    usefulnessScore: Math.round(usefulnessScore * 100) / 100,
+    verdict: relevant.length < 3
+      ? "insufficient_real_usage"
+      : usefulnessScore >= 0.5 && staleOrMisleading.length / relevant.length <= 0.25
+        ? "useful"
+        : "needs_tuning",
+  };
+}
+
 export function generateContextPack(claims, contradictions = [], options = {}) {
   const tenantScope = options.tenantScope || "monsoonfire-main";
+  const outcomeUsefulness = options.outcomeUsefulness || summarizeWikiOutcomeUsefulness(readJsonlIfPresent(options.outcomesPath));
   const verified = claims.filter((claim) =>
     (claim.status === "VERIFIED" || claim.status === "OPERATIONAL_TRUTH") &&
     (claim.agentAllowedUse === "planning_context" || claim.agentAllowedUse === "operational_context")
@@ -924,7 +1046,7 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
         subjectKey: claim.subjectKey,
       })),
     ...contradictions
-      .filter((entry) => entry.status === "open")
+      .filter((entry) => ["open", "in-review", "blocked"].includes(entry.status))
       .slice(0, 10)
       .map((entry) => contradictionContextWarning(entry, verifiedById)),
   ];
@@ -945,6 +1067,11 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
   lines.push("# Studio Brain Wiki Context Pack");
   lines.push("");
   lines.push(`Snapshot: ${snapshotHash}`);
+  lines.push("");
+  lines.push("## Usefulness Signals");
+  lines.push("");
+  lines.push(`- outcome verdict: ${outcomeUsefulness.verdict}`);
+  lines.push(`- wiki-relevant outcomes: ${outcomeUsefulness.total}; helpful: ${outcomeUsefulness.helpful}; stale_or_misleading: ${outcomeUsefulness.staleOrMisleading}; minutes_saved: ${outcomeUsefulness.totalMinutesSaved}`);
   lines.push("");
   lines.push("## Verified Operational Context");
   if (verified.length === 0) {
@@ -988,6 +1115,9 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
       chars: generatedText.length,
       verifiedClaims: verified.length,
       warningCount: warnings.length,
+      usefulnessScore: outcomeUsefulness.usefulnessScore,
+      outcomeTotal: outcomeUsefulness.total,
+      outcomeVerdict: outcomeUsefulness.verdict,
     },
     exportHash: fullHash(generatedText),
     generatedAt: new Date().toISOString(),
@@ -999,12 +1129,16 @@ function contradictionContextWarning(entry, verifiedById) {
   const winningClaim = winnerId ? verifiedById.get(winnerId) : null;
   if (winningClaim?.status === "OPERATIONAL_TRUTH") {
     return {
-      type: "source-drift-after-operational-truth",
+      type: entry.status === "blocked"
+        ? "blocked-source-drift-after-operational-truth"
+        : "source-drift-after-operational-truth",
       contradictionId: entry.contradictionId,
       conflictKey: entry.conflictKey,
       severity: entry.severity,
+      status: entry.status,
       winningClaimId: winnerId,
       recommendedAction: entry.recommendedAction || "",
+      humanGate: entry.metadata?.humanGate || "",
     };
   }
   return {
@@ -1012,6 +1146,7 @@ function contradictionContextWarning(entry, verifiedById) {
     contradictionId: entry.contradictionId,
     conflictKey: entry.conflictKey,
     severity: entry.severity,
+    status: entry.status,
   };
 }
 
@@ -1029,8 +1164,9 @@ function formatClaimSourceRefs(claim) {
 
 function formatContextWarning(warning) {
   const subject = warning.conflictKey || warning.subjectKey || warning.claimId || warning.contradictionId;
-  if (warning.type === "source-drift-after-operational-truth") {
-    return `- ${warning.type}: ${subject} (current truth: ${warning.winningClaimId}; update stale sources before customer-facing use)`;
+  if (warning.type === "source-drift-after-operational-truth" || warning.type === "blocked-source-drift-after-operational-truth") {
+    const gate = warning.humanGate ? `; gate: ${warning.humanGate}` : "";
+    return `- ${warning.type}: ${subject} (current truth: ${warning.winningClaimId}; update stale sources before customer-facing use${gate})`;
   }
   return `- ${warning.type}: ${subject}`;
 }
@@ -1058,6 +1194,7 @@ export function validateWikiScaffold() {
   const migrations = [
     "studio-brain/migrations/029_wiki_core.sql",
     "studio-brain/migrations/030_wiki_indexes.sql",
+    "studio-brain/migrations/031_wiki_loop_guardrails.sql",
   ];
   const checks = [];
   for (const entry of required) {
@@ -1112,7 +1249,7 @@ export function buildDbProbeReport() {
     },
     {
       name: "open-contradictions",
-      sql: "SELECT contradiction_id, conflict_key, severity FROM wiki_contradiction WHERE tenant_scope = $1 AND status IN ('open','in-review') ORDER BY severity DESC, updated_at DESC LIMIT 50",
+      sql: "SELECT contradiction_id, conflict_key, severity FROM wiki_contradiction WHERE tenant_scope = $1 AND status IN ('open','in-review','blocked') ORDER BY severity DESC, updated_at DESC LIMIT 50",
       targetMs: 100,
     },
     {
@@ -1138,7 +1275,7 @@ export function buildDbProbeReport() {
   };
 }
 
-export function writeSourceMap(index, artifactPath) {
+export function renderSourceMap(index) {
   const lines = [];
   lines.push("---");
   lines.push("schema: wiki-page.v1");
@@ -1166,7 +1303,7 @@ export function writeSourceMap(index, artifactPath) {
   lines.push("| Source | Status | Authority | Chunks | Hash |");
   lines.push("|---|---:|---|---:|---|");
   for (const source of index.sources) {
-    lines.push(`| \`${source.sourcePath}\` | ${source.ingestStatus} | ${source.authorityClass} | ${source.chunkCount} | \`${source.contentHash.slice(0, 12)}\` |`);
+    lines.push(`| \`${source.sourcePath}\` | ${source.ingestStatus || "indexed"} | ${source.authorityClass} | ${source.chunkCount || 0} | \`${String(source.contentHash || "").slice(0, 12)}\` |`);
   }
   if (index.denied.length > 0) {
     lines.push("");
@@ -1178,22 +1315,29 @@ export function writeSourceMap(index, artifactPath) {
       lines.push(`| \`${denied.sourcePath}\` | ${denied.reason} |`);
     }
   }
+  return `${lines.join("\n")}\n`;
+}
+
+export function writeSourceMap(index, artifactPath) {
   const path = artifactPath || resolve(WIKI_ROOT, "00_source_index", "source-map.md");
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
+  writeFileSync(path, renderSourceMap(index), "utf8");
   return path;
+}
+
+export function renderExtractedFacts(extraction) {
+  const body = extraction.claims.map((claim) => JSON.stringify(claim)).join("\n");
+  return body ? `${body}\n` : "";
 }
 
 export function writeExtractedFacts(extraction, artifactPath) {
   const path = artifactPath || resolve(WIKI_ROOT, "00_source_index", "extracted-facts.jsonl");
   mkdirSync(dirname(path), { recursive: true });
-  const body = extraction.claims.map((claim) => JSON.stringify(claim)).join("\n");
-  writeFileSync(path, body ? `${body}\n` : "", "utf8");
+  writeFileSync(path, renderExtractedFacts(extraction), "utf8");
   return path;
 }
 
-export function writeContextPack(pack, artifactPath) {
-  const path = artifactPath || resolve(WIKI_ROOT, "70_agent_context_packs", "studio-brain-wiki.md");
+export function renderContextPack(pack) {
   const frontmatter = [
     "---",
     "schema: wiki-page.v1",
@@ -1215,19 +1359,18 @@ export function writeContextPack(pack, artifactPath) {
     "---",
     "",
   ].join("\n");
+  return `${frontmatter}${pack.generatedText}\n`;
+}
+
+export function writeContextPack(pack, artifactPath) {
+  const path = artifactPath || resolve(WIKI_ROOT, "70_agent_context_packs", "studio-brain-wiki.md");
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${frontmatter}${pack.generatedText}\n`, "utf8");
+  writeFileSync(path, renderContextPack(pack), "utf8");
   return path;
 }
 
-export function writeContradictions(scan, artifactPath) {
-  const paths = [];
-  for (const contradiction of scan.contradictions) {
-    const path = artifactPath && scan.contradictions.length === 1
-      ? artifactPath
-      : resolve(REPO_ROOT, contradiction.markdownPath || `wiki/50_contradictions/${normalizeKey(contradiction.conflictKey, 80)}.md`);
-    mkdirSync(dirname(path), { recursive: true });
-    const lines = [
+export function renderContradiction(contradiction) {
+  const lines = [
       "---",
       "schema: wiki-page.v1",
       `id: wiki:contradiction:${contradiction.conflictKey}`,
@@ -1251,6 +1394,8 @@ export function writeContradictions(scan, artifactPath) {
       "",
       `Severity: ${contradiction.severity}`,
       "",
+      `Queue status: ${contradiction.status}`,
+      "",
       `Recommended action: ${contradiction.recommendedAction}`,
       "",
       "## Source References",
@@ -1259,7 +1404,17 @@ export function writeContradictions(scan, artifactPath) {
       ...formatEvidencePathCountLines(contradiction),
       ...formatEvidenceSurfaceCountLines(contradiction),
     ];
-    writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
+  return `${lines.join("\n")}\n`;
+}
+
+export function writeContradictions(scan, artifactPath) {
+  const paths = [];
+  for (const contradiction of scan.contradictions) {
+    const path = artifactPath && scan.contradictions.length === 1
+      ? artifactPath
+      : resolve(REPO_ROOT, contradiction.markdownPath || `wiki/50_contradictions/${normalizeKey(contradiction.conflictKey, 80)}.md`);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, renderContradiction(contradiction), "utf8");
     paths.push(path);
   }
   return paths;
@@ -1308,6 +1463,249 @@ export function readExtractedFacts(path = resolve(WIKI_ROOT, "00_source_index", 
     .map((line) => JSON.parse(line));
 }
 
+function compareExport(path, expectedContent, kind, metadata = {}) {
+  const exists = existsSync(path);
+  const expectedHash = fullHash(expectedContent);
+  const actualHash = exists ? fullHash(readFileSync(path, "utf8")) : null;
+  return {
+    kind,
+    path: repoRelative(path),
+    status: !exists ? "missing" : actualHash === expectedHash ? "match" : "drift",
+    expectedHash,
+    actualHash,
+    metadata,
+  };
+}
+
+export function buildExportDriftReport(options = {}) {
+  const tenantScope = options.tenantScope || "monsoonfire-main";
+  const index = options.index || buildSourceIndex(options);
+  const extraction = options.extraction || extractClaims(index, options);
+  const scan = options.scan || detectContradictions(index, extraction.claims);
+  const pack = options.contextPack || generateContextPack(extraction.claims, scan.contradictions, options);
+  const exports = [
+    compareExport(resolve(WIKI_ROOT, "00_source_index", "source-map.md"), renderSourceMap(index), "source-index", {
+      sourceRowCount: index.sources.length,
+      claimRowCount: 0,
+      pageRowCount: 1,
+      contradictionRowCount: 0,
+    }),
+    compareExport(resolve(WIKI_ROOT, "00_source_index", "extracted-facts.jsonl"), renderExtractedFacts(extraction), "jsonl", {
+      sourceRowCount: index.sources.length,
+      claimRowCount: extraction.claims.length,
+      pageRowCount: 0,
+      contradictionRowCount: 0,
+    }),
+    compareExport(resolve(WIKI_ROOT, "70_agent_context_packs", "studio-brain-wiki.md"), renderContextPack(pack), "context-pack", {
+      sourceRowCount: 0,
+      claimRowCount: pack.items.length,
+      pageRowCount: 1,
+      contradictionRowCount: 0,
+    }),
+    ...scan.contradictions.map((contradiction) =>
+      compareExport(
+        resolve(REPO_ROOT, contradiction.markdownPath || `wiki/50_contradictions/${normalizeKey(contradiction.conflictKey, 80)}.md`),
+        renderContradiction(contradiction),
+        "markdown",
+        {
+          sourceRowCount: 0,
+          claimRowCount: [contradiction.claimAId, contradiction.claimBId].filter(Boolean).length,
+          pageRowCount: 1,
+          contradictionRowCount: 1,
+        },
+      )
+    ),
+  ];
+  const drift = exports.filter((entry) => entry.status === "drift");
+  const missing = exports.filter((entry) => entry.status === "missing");
+  return {
+    schema: "wiki-export-drift-report.v1",
+    generatedAt: new Date().toISOString(),
+    tenantScope,
+    status: drift.length > 0 || missing.length > 0 ? "warning" : "pass",
+    exports,
+    manifestRows: exports.map((entry) => ({
+      manifestId: `manifest_${stableHash(`${tenantScope}:${entry.kind}:${entry.path}:${entry.expectedHash}`, 20)}`,
+      tenantScope,
+      exportKind: entry.kind,
+      exportPath: entry.path,
+      exportHash: entry.expectedHash,
+      ...entry.metadata,
+    })),
+    summary: {
+      exports: exports.length,
+      drift: drift.length,
+      missing: missing.length,
+      match: exports.filter((entry) => entry.status === "match").length,
+    },
+  };
+}
+
+function idleTask(taskKey, title, options = {}) {
+  const tenantScope = options.tenantScope || "monsoonfire-main";
+  const priority = Number(options.priority ?? 0.5);
+  const metadata = options.metadata || {};
+  return {
+    taskId: `task_${stableHash(`${tenantScope}:${taskKey}`, 20)}`,
+    tenantScope,
+    taskKey,
+    title,
+    status: options.status || "ready",
+    priority: Math.max(0, Math.min(1, priority)),
+    readOnly: options.readOnly !== false,
+    nextRunAt: options.nextRunAt || null,
+    sourceRefs: options.sourceRefs || [],
+    outputArtifactPath: options.outputArtifactPath || null,
+    idempotencyKey: options.idempotencyKey || stableHash(`${taskKey}:${JSON.stringify(metadata)}`, 24),
+    metadata,
+  };
+}
+
+export function buildIdleTaskQueueReport(options = {}) {
+  const tenantScope = options.tenantScope || "monsoonfire-main";
+  const index = options.index || buildSourceIndex(options);
+  const extraction = options.extraction || extractClaims(index, options);
+  const scan = options.scan || detectContradictions(index, extraction.claims);
+  const drift = options.drift || buildExportDriftReport({ ...options, index, extraction, scan });
+  const pack = options.contextPack || generateContextPack(extraction.claims, scan.contradictions, options);
+  const tasks = [
+    idleTask("wiki-source-index-refresh", "Refresh wiki source index and chunk inventory", {
+      tenantScope,
+      priority: 0.55,
+      outputArtifactPath: "output/wiki/source-index-check.json",
+      idempotencyKey: index.snapshotHash,
+      metadata: { lane: "source-index", indexedSources: index.sources.length, chunks: index.chunks.length },
+    }),
+    idleTask("wiki-context-pack-refresh", "Refresh Studio Brain wiki context pack", {
+      tenantScope,
+      priority: 0.65,
+      outputArtifactPath: "output/wiki/context-check.json",
+      idempotencyKey: pack.snapshotHash,
+      metadata: { lane: "context", verifiedClaims: pack.budget.verifiedClaims, warnings: pack.budget.warningCount },
+    }),
+  ];
+  for (const contradiction of scan.contradictions) {
+    tasks.push(idleTask(`wiki-contradiction:${contradiction.conflictKey}`, `Review wiki contradiction: ${contradiction.conflictKey}`, {
+      tenantScope,
+      priority: contradiction.severity === "critical" ? 1 : contradiction.severity === "hard" ? 0.9 : 0.45,
+      status: contradiction.status === "blocked" ? "blocked" : "ready",
+      outputArtifactPath: contradiction.markdownPath,
+      idempotencyKey: contradiction.conflictFingerprint,
+      sourceRefs: contradiction.sourceRefs,
+      metadata: {
+        lane: "contradictions",
+        contradictionId: contradiction.contradictionId,
+        severity: contradiction.severity,
+        status: contradiction.status,
+        humanGate: contradiction.metadata?.humanGate || "",
+      },
+    }));
+  }
+  if (drift.status !== "pass") {
+    tasks.push(idleTask("wiki-export-drift-review", "Review deterministic wiki export drift", {
+      tenantScope,
+      priority: 0.75,
+      outputArtifactPath: "output/wiki/export-drift.json",
+      idempotencyKey: stableHash(JSON.stringify(drift.exports.map((entry) => [entry.path, entry.status, entry.expectedHash])), 24),
+      metadata: { lane: "export-drift", drift: drift.summary.drift, missing: drift.summary.missing },
+    }));
+  }
+  tasks.sort((a, b) => b.priority - a.priority || a.taskKey.localeCompare(b.taskKey));
+  return {
+    schema: "wiki-idle-task-queue-report.v1",
+    generatedAt: new Date().toISOString(),
+    tenantScope,
+    status: "planned",
+    tasks,
+    lease: {
+      limit: options.leaseLimit ?? 5,
+      strategy: "SELECT ready tasks ordered by priority with FOR UPDATE SKIP LOCKED, then mark leased tasks running for the current job run.",
+    },
+    summary: {
+      tasks: tasks.length,
+      ready: tasks.filter((task) => task.status === "ready").length,
+      blocked: tasks.filter((task) => task.status === "blocked").length,
+      readOnly: tasks.filter((task) => task.readOnly).length,
+      writeCapable: tasks.filter((task) => !task.readOnly).length,
+    },
+  };
+}
+
+export function writeIdleTasks(report, artifactPath) {
+  const path = artifactPath || resolve(WIKI_ROOT, "80_idle_tasks", "wiki-idle-task-queue.md");
+  const lines = [
+    "---",
+    "schema: wiki-page.v1",
+    "id: wiki:idle-task:queue",
+    "title: Wiki Idle Task Queue",
+    "kind: idle_task",
+    "status: SYNTHESIZED",
+    "confidence: 1",
+    "owner: platform",
+    "source_refs: []",
+    "last_verified: null",
+    "valid_until: null",
+    "last_changed_by: script:wiki-postgres",
+    "agent_allowed_use: planning_context",
+    "supersedes: []",
+    "superseded_by: []",
+    "related_pages: []",
+    `export_hash: ${fullHash(JSON.stringify(report.tasks))}`,
+    "---",
+    "",
+    "# Wiki Idle Task Queue",
+    "",
+    "| Task | Status | Priority | Read Only | Output |",
+    "|---|---|---:|---:|---|",
+    ...report.tasks.map((task) => `| ${task.title} | ${task.status} | ${task.priority} | ${task.readOnly} | \`${task.outputArtifactPath || ""}\` |`),
+  ];
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
+  return path;
+}
+
+export function buildWikiEffectivenessAudit(options = {}) {
+  const index = buildSourceIndex(options);
+  const extraction = extractClaims(index, options);
+  const scan = detectContradictions(index, extraction.claims);
+  const pack = generateContextPack(extraction.claims, scan.contradictions, options);
+  const drift = buildExportDriftReport({ ...options, index, extraction, scan, contextPack: pack });
+  const queue = buildIdleTaskQueueReport({ ...options, index, extraction, scan, contextPack: pack, drift });
+  const recommendations = [];
+  if (drift.status !== "pass") recommendations.push("Refresh markdown exports or inspect drift before trusting git as the review surface.");
+  if (queue.summary.blocked > 0) recommendations.push("Keep blocked wiki tasks visible but out of the ready queue until the owning surface is reopened.");
+  if (pack.budget.outcomeTotal < 3) recommendations.push("Record at least three wiki-relevant harness outcomes before expanding context-pack scope.");
+  if (scan.summary.hard > 0 && queue.summary.ready === 0) recommendations.push("Hard contradictions are blocked rather than ready; this is good when the losing evidence is owner-gated.");
+  return {
+    schema: "wiki-effectiveness-audit.v1",
+    generatedAt: new Date().toISOString(),
+    tenantScope: options.tenantScope || "monsoonfire-main",
+    status: drift.status === "pass" && pack.budget.warningCount <= 15 ? "pass" : "warning",
+    metrics: {
+      indexedSources: index.sources.length,
+      chunks: index.chunks.length,
+      claims: extraction.claims.length,
+      operationalTruthClaims: extraction.claims.filter((claim) => claim.status === "OPERATIONAL_TRUTH").length,
+      contradictions: scan.summary.contradictions,
+      hardContradictions: scan.summary.hard,
+      blockedContradictions: scan.contradictions.filter((entry) => entry.status === "blocked").length,
+      contextPackChars: pack.budget.chars,
+      contextWarnings: pack.budget.warningCount,
+      usefulnessScore: pack.budget.usefulnessScore,
+      exportDrift: drift.summary.drift,
+      exportMissing: drift.summary.missing,
+      idleReadyTasks: queue.summary.ready,
+      idleBlockedTasks: queue.summary.blocked,
+    },
+    recommendations,
+    summaries: {
+      exportDrift: drift.summary,
+      idleTasks: queue.summary,
+      contextPack: pack.budget,
+    },
+  };
+}
+
 function makePgRequire() {
   return createRequire(resolve(STUDIO_BRAIN_ROOT, "package.json"));
 }
@@ -1337,8 +1735,9 @@ async function createDbClient() {
 
 export async function applySourceIndexToDb(index) {
   const client = await createDbClient();
-  const result = { sourcesInserted: 0, sourcesUnchanged: 0, chunksInserted: 0, errors: [] };
+  const result = { sourcesInserted: 0, sourcesUnchanged: 0, chunksInserted: 0, sourcesMissing: 0, chunksSuperseded: 0, errors: [] };
   try {
+    const currentSourceIds = new Set(index.sources.map((source) => source.sourceId));
     for (const source of index.sources) {
       await client.query("BEGIN");
       try {
@@ -1358,6 +1757,8 @@ export async function applySourceIndexToDb(index) {
             freshness_status = EXCLUDED.freshness_status,
             ingest_status = EXCLUDED.ingest_status,
             deny_reason = EXCLUDED.deny_reason,
+            missing_since_at = NULL,
+            is_active = true,
             last_indexed_at = now(),
             metadata = EXCLUDED.metadata,
             updated_at = now()
@@ -1382,16 +1783,25 @@ export async function applySourceIndexToDb(index) {
           result.sourcesUnchanged += 1;
         } else {
           result.sourcesInserted += 1;
-          await client.query("DELETE FROM wiki_source_chunk WHERE source_id = $1", [source.sourceId]);
+          const versionResult = await client.query(
+            "SELECT COALESCE(MAX(source_version), 0) + 1 AS next_version FROM wiki_source_chunk WHERE source_id = $1",
+            [source.sourceId],
+          );
+          const sourceVersion = Number(versionResult.rows[0]?.next_version || 1);
+          const superseded = await client.query(
+            "UPDATE wiki_source_chunk SET is_active = false, superseded_at = COALESCE(superseded_at, now()), updated_at = now() WHERE source_id = $1 AND is_active = true",
+            [source.sourceId],
+          );
+          result.chunksSuperseded += Number(superseded.rowCount || 0);
           const sourceChunks = index.chunks.filter((chunk) => chunk.sourceId === source.sourceId);
           for (const chunk of sourceChunks) {
             await client.query(
               `
               INSERT INTO wiki_source_chunk (
                 chunk_id, source_id, tenant_scope, chunk_index, line_start, line_end,
-                heading_path, content_hash, content, metadata, updated_at
+                heading_path, content_hash, content, source_version, is_active, superseded_at, metadata, updated_at
               ) VALUES (
-                $1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10::jsonb,now()
+                $1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,true,NULL,$11::jsonb,now()
               )
               ON CONFLICT (chunk_id) DO UPDATE SET
                 line_start = EXCLUDED.line_start,
@@ -1399,6 +1809,9 @@ export async function applySourceIndexToDb(index) {
                 heading_path = EXCLUDED.heading_path,
                 content_hash = EXCLUDED.content_hash,
                 content = EXCLUDED.content,
+                source_version = EXCLUDED.source_version,
+                is_active = true,
+                superseded_at = NULL,
                 metadata = EXCLUDED.metadata,
                 updated_at = now()
               )
@@ -1413,6 +1826,7 @@ export async function applySourceIndexToDb(index) {
                 chunk.headingPath,
                 chunk.contentHash,
                 chunk.content,
+                sourceVersion,
                 JSON.stringify(chunk.metadata || {}),
               ],
             );
@@ -1425,6 +1839,29 @@ export async function applySourceIndexToDb(index) {
         result.errors.push({ sourceId: source.sourceId, error: error instanceof Error ? error.message : String(error) });
       }
     }
+    const existing = await client.query(
+      "SELECT source_id FROM wiki_source WHERE tenant_scope = $1 AND source_kind = 'repo-file' AND ingest_status IN ('indexed', 'unchanged')",
+      [index.tenantScope],
+    );
+    const missing = existing.rows.filter((row) => !currentSourceIds.has(row.source_id));
+    for (const row of missing) {
+      await client.query("BEGIN");
+      try {
+        await client.query(
+          "UPDATE wiki_source SET ingest_status = 'missing', freshness_status = 'stale', missing_since_at = COALESCE(missing_since_at, now()), is_active = false, updated_at = now() WHERE source_id = $1",
+          [row.source_id],
+        );
+        await client.query(
+          "UPDATE wiki_source_chunk SET is_active = false, superseded_at = COALESCE(superseded_at, now()), updated_at = now() WHERE source_id = $1 AND is_active = true",
+          [row.source_id],
+        );
+        await client.query("COMMIT");
+        result.sourcesMissing += 1;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        result.errors.push({ sourceId: row.source_id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
   } finally {
     await client.end();
   }
@@ -1433,12 +1870,19 @@ export async function applySourceIndexToDb(index) {
 
 export async function applyClaimsToDb(extraction) {
   const client = await createDbClient();
-  const result = { claimsUpserted: 0, refsUpserted: 0, errors: [] };
+  const result = { claimsUpserted: 0, refsUpserted: 0, transitionBlocked: 0, errors: [] };
   try {
     for (const claim of extraction.claims) {
       await client.query("BEGIN");
       try {
         const existing = await client.query("SELECT status, truth_status FROM wiki_claim WHERE claim_id = $1", [claim.claimId]);
+        const transition = validateClaimTransition(existing.rows[0] || null, claim);
+        if (!transition.allowed) {
+          await client.query("ROLLBACK");
+          result.transitionBlocked += 1;
+          result.errors.push({ claimId: claim.claimId, error: `claim-transition-blocked:${transition.reason}` });
+          continue;
+        }
         await client.query(
           `
           INSERT INTO wiki_claim (
@@ -1653,6 +2097,143 @@ export async function applyContextPackToDb(pack) {
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
+  } finally {
+    await client.end();
+  }
+  return result;
+}
+
+export async function applyExportManifestToDb(report) {
+  const client = await createDbClient();
+  const result = { manifestsUpserted: 0, errors: [] };
+  try {
+    for (const row of report.manifestRows || []) {
+      try {
+        await client.query(
+          `
+          INSERT INTO wiki_export_manifest (
+            manifest_id, tenant_scope, export_kind, export_path, export_hash,
+            source_row_count, claim_row_count, page_row_count, contradiction_row_count,
+            generated_by, metadata
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+          ON CONFLICT (tenant_scope, export_kind, export_path, export_hash) DO UPDATE SET
+            generated_at = now(),
+            metadata = EXCLUDED.metadata
+          `,
+          [
+            row.manifestId,
+            row.tenantScope,
+            row.exportKind,
+            row.exportPath,
+            row.exportHash,
+            row.sourceRowCount || 0,
+            row.claimRowCount || 0,
+            row.pageRowCount || 0,
+            row.contradictionRowCount || 0,
+            "script:wiki-postgres",
+            JSON.stringify({ driftStatus: report.exports?.find((entry) => entry.path === row.exportPath)?.status || "unknown" }),
+          ],
+        );
+        result.manifestsUpserted += 1;
+      } catch (error) {
+        result.errors.push({ exportPath: row.exportPath, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  } finally {
+    await client.end();
+  }
+  return result;
+}
+
+export async function applyIdleTasksToDb(report, options = {}) {
+  const client = await createDbClient();
+  const tenantScope = options.tenantScope || report.tenantScope || "monsoonfire-main";
+  const jobRunId = `job_${stableHash(`${tenantScope}:wiki-idle-task-queue:${report.generatedAt}`, 20)}`;
+  const result = { tasksUpserted: 0, leasedTasks: [], jobRunId, errors: [] };
+  try {
+    await client.query("BEGIN");
+    for (const task of report.tasks || []) {
+      await client.query(
+        `
+        INSERT INTO wiki_idle_task (
+          task_id, tenant_scope, task_key, title, status, priority, read_only, next_run_at,
+          source_refs, output_artifact_path, idempotency_key, metadata, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9::jsonb,$10,$11,$12::jsonb,now())
+        ON CONFLICT (tenant_scope, task_key) DO UPDATE SET
+          title = EXCLUDED.title,
+          status = CASE WHEN wiki_idle_task.status = 'running' THEN wiki_idle_task.status ELSE EXCLUDED.status END,
+          priority = EXCLUDED.priority,
+          read_only = EXCLUDED.read_only,
+          next_run_at = EXCLUDED.next_run_at,
+          source_refs = EXCLUDED.source_refs,
+          output_artifact_path = EXCLUDED.output_artifact_path,
+          idempotency_key = EXCLUDED.idempotency_key,
+          metadata = EXCLUDED.metadata,
+          updated_at = now()
+        `,
+        [
+          task.taskId,
+          tenantScope,
+          task.taskKey,
+          task.title,
+          task.status,
+          task.priority,
+          task.readOnly,
+          task.nextRunAt,
+          JSON.stringify(task.sourceRefs || []),
+          task.outputArtifactPath,
+          task.idempotencyKey,
+          JSON.stringify(task.metadata || {}),
+        ],
+      );
+      result.tasksUpserted += 1;
+    }
+    const lease = await client.query(
+      `
+      WITH candidates AS (
+        SELECT task_id
+          FROM wiki_idle_task
+         WHERE tenant_scope = $1
+           AND status = 'ready'
+           AND (next_run_at IS NULL OR next_run_at <= now())
+         ORDER BY priority DESC, next_run_at ASC NULLS FIRST, updated_at ASC
+         FOR UPDATE SKIP LOCKED
+         LIMIT $2
+      )
+      UPDATE wiki_idle_task task
+         SET status = 'running',
+             metadata = task.metadata || $3::jsonb,
+             updated_at = now()
+        FROM candidates
+       WHERE task.task_id = candidates.task_id
+       RETURNING task.task_id, task.task_key, task.title, task.priority, task.read_only, task.output_artifact_path
+      `,
+      [
+        tenantScope,
+        Math.max(0, Number(options.leaseLimit ?? report.lease?.limit ?? 5)),
+        JSON.stringify({ leasedBy: "script:wiki-postgres", leaseJobRunId: jobRunId, leasedAt: new Date().toISOString() }),
+      ],
+    );
+    result.leasedTasks = lease.rows;
+    await client.query(
+      `
+      INSERT INTO wiki_job_run (
+        job_run_id, tenant_scope, job_name, status, completed_at, dry_run, summary, metadata
+      ) VALUES ($1,$2,$3,$4,now(),false,$5::jsonb,$6::jsonb)
+      `,
+      [
+        jobRunId,
+        tenantScope,
+        "wiki-idle-task-queue",
+        "passed",
+        JSON.stringify({ tasksUpserted: result.tasksUpserted, leasedTasks: result.leasedTasks.length }),
+        JSON.stringify({ leaseStrategy: report.lease?.strategy || "" }),
+      ],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    result.errors.push({ error: error instanceof Error ? error.message : String(error) });
   } finally {
     await client.end();
   }

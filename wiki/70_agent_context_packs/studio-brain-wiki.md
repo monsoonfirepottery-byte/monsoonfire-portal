@@ -14,11 +14,16 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 0aaf14ce6c5d36e927c320af2cc8755f46b53c6e38be919431d1e9baa2c2fdd6
+export_hash: a0bdfce19af63af0dd2c175ffccb91f47aac7c1e21597311bb62f477ec7264a1
 ---
 # Studio Brain Wiki Context Pack
 
-Snapshot: 1b31d6cfbe8367f4ba3f419aa1e4c36c87687fd267b789e2d60f029a79c388f3
+Snapshot: a496c0c881fc37182413befc3db2fed6f15af8c838568a510d7a7baf9cc076a2
+
+## Usefulness Signals
+
+- outcome verdict: insufficient_real_usage
+- wiki-relevant outcomes: 1; helpful: 1; stale_or_misleading: 0; minutes_saved: 18
 
 ## Verified Operational Context
 - Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only. [claim_57ec680d6070e4f40169; docs/policies/service-pricing-and-membership-decommission.md#L1]
@@ -35,4 +40,4 @@ Snapshot: 1b31d6cfbe8367f4ba3f419aa1e4c36c87687fd267b789e2d60f029a79c388f3
 - unverified-claim-excluded: package-script:studio:ops:cockpit:state
 - unverified-claim-excluded: policy-doc:docs/policies/community-conduct.md
 - unverified-claim-excluded: package-script:wiki:validate
-- source-drift-after-operational-truth: membership-required-vs-decommission (current truth: claim_57ec680d6070e4f40169; update stale sources before customer-facing use)
+- blocked-source-drift-after-operational-truth: membership-required-vs-decommission (current truth: claim_57ec680d6070e4f40169; update stale sources before customer-facing use; gate: Blocked until the website/portal redesign owner updates customer-facing surfaces or the user explicitly reopens that edit surface.)

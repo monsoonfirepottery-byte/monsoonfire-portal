@@ -594,12 +594,17 @@ export function buildNextWorkFromSnapshot(snapshot, options = {}) {
       readinessScore: 0,
       candidateStatus: "not_evaluated",
       successMetricsPath: options.metricsPath || "output/studio-brain/agent-harness/success-metrics.json",
-      recordOutcomeCommand:
-        topWork.length > 0
-          ? `node ./scripts/studiobrain-agent-harness-work-packet.mjs --record-outcome ${topWork[0].packetId} --outcome helpful --minutes-saved 5`
-          : "",
+      recordOutcomeCommand: buildRecordOutcomeCommand(topWork),
     },
   };
+}
+
+function buildRecordOutcomeCommand(topWork) {
+  if (!topWork.length) return "";
+  const packet = topWork.find((entry) => entry.status === "ready") || topWork[0];
+  const outcome = packet.status === "blocked" ? "blocked" : "helpful";
+  const minutesSaved = packet.status === "blocked" ? 0 : 5;
+  return `node ./scripts/studiobrain-agent-harness-work-packet.mjs --record-outcome ${packet.packetId} --outcome ${outcome} --minutes-saved ${minutesSaved}`;
 }
 
 export function summarizeOutcomeLedger(outcomes) {

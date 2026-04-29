@@ -241,6 +241,7 @@ test("redesign-paused wiki contradictions become blocked harness work", () => {
   assert.equal(nextWork.topWork[0].status, "blocked");
   assert.match(nextWork.topWork[0].humanGate, /redesign owner/);
   assert.equal(nextWork.topWork[1].title, "Classify the dirty worktree before risky agent work");
+  assert.match(nextWork.metrics.recordOutcomeCommand, /--outcome blocked --minutes-saved 0/);
 });
 
 test("resolved destructive-audit artifacts do not emit stale failure packets", () => {

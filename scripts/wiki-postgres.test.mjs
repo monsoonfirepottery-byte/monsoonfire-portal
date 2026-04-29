@@ -126,6 +126,32 @@ test("service pricing policy becomes operational context without website edits",
   assert.equal(extraction.claims.every((claim) => claim.agentAllowedUse === "operational_context"), true);
   assert.match(pack.generatedText, /decommissioned all membership tiers/);
   assert.match(pack.generatedText, /low fire, mid fire, and custom/);
+  assert.match(pack.generatedText, /docs\/policies\/service-pricing-and-membership-decommission\.md#L1/);
+});
+
+test("context pack labels resolved contradiction as source drift", () => {
+  const winner = {
+    claimId: "claim_membership_truth",
+    status: "OPERATIONAL_TRUTH",
+    agentAllowedUse: "operational_context",
+    objectText: "Membership tiers are decommissioned.",
+    subjectKey: "monsoon-fire:membership-tiers",
+  };
+  const contradiction = {
+    contradictionId: "contradiction_membership",
+    status: "open",
+    conflictKey: "membership-required-vs-decommission",
+    severity: "hard",
+    claimAId: null,
+    claimBId: winner.claimId,
+    recommendedAction: "Update stale sources.",
+  };
+
+  const pack = generateContextPack([winner], [contradiction], { tenantScope: "test" });
+
+  assert.equal(pack.warnings[0].type, "source-drift-after-operational-truth");
+  assert.match(pack.generatedText, /source-drift-after-operational-truth: membership-required-vs-decommission/);
+  assert.doesNotMatch(pack.generatedText, /open-contradiction: membership-required-vs-decommission/);
 });
 
 test("contradiction scan emits review records instead of editing claims", () => {

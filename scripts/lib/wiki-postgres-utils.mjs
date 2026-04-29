@@ -861,6 +861,7 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     (claim.status === "VERIFIED" || claim.status === "OPERATIONAL_TRUTH") &&
     (claim.agentAllowedUse === "planning_context" || claim.agentAllowedUse === "operational_context")
   );
+  const verifiedById = new Map(verified.map((claim) => [claim.claimId, claim]));
   const warnings = [
     ...claims
       .filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status))
@@ -874,12 +875,7 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     ...contradictions
       .filter((entry) => entry.status === "open")
       .slice(0, 10)
-      .map((entry) => ({
-        type: "open-contradiction",
-        contradictionId: entry.contradictionId,
-        conflictKey: entry.conflictKey,
-        severity: entry.severity,
-      })),
+      .map((entry) => contradictionContextWarning(entry, verifiedById)),
   ];
 
   const snapshotHash = fullHash(JSON.stringify({
@@ -905,7 +901,7 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     lines.push("No VERIFIED or OPERATIONAL_TRUTH wiki claims are currently available. Agents must use repo/source reads for operational claims.");
   } else {
     for (const claim of verified.slice(0, 40)) {
-      lines.push(`- ${claim.objectText} [${claim.claimId}]`);
+      lines.push(`- ${claim.objectText} [${claim.claimId}; ${formatClaimSourceRefs(claim)}]`);
     }
   }
   lines.push("");
@@ -915,7 +911,7 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     lines.push("- No warnings.");
   } else {
     for (const warning of warnings) {
-      lines.push(`- ${warning.type}: ${warning.conflictKey || warning.subjectKey || warning.claimId || warning.contradictionId}`);
+      lines.push(formatContextWarning(warning));
     }
   }
 
@@ -945,6 +941,47 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     exportHash: fullHash(generatedText),
     generatedAt: new Date().toISOString(),
   };
+}
+
+function contradictionContextWarning(entry, verifiedById) {
+  const winnerId = [entry.claimAId, entry.claimBId].find((claimId) => claimId && verifiedById.has(claimId)) || "";
+  const winningClaim = winnerId ? verifiedById.get(winnerId) : null;
+  if (winningClaim?.status === "OPERATIONAL_TRUTH") {
+    return {
+      type: "source-drift-after-operational-truth",
+      contradictionId: entry.contradictionId,
+      conflictKey: entry.conflictKey,
+      severity: entry.severity,
+      winningClaimId: winnerId,
+      recommendedAction: entry.recommendedAction || "",
+    };
+  }
+  return {
+    type: "open-contradiction",
+    contradictionId: entry.contradictionId,
+    conflictKey: entry.conflictKey,
+    severity: entry.severity,
+  };
+}
+
+function formatClaimSourceRefs(claim) {
+  const refs = Array.isArray(claim.sourceRefs) ? claim.sourceRefs : [];
+  const formatted = refs
+    .slice(0, 2)
+    .map((ref) => {
+      const path = ref.sourcePath || "unknown-source";
+      return ref.lineStart ? `${path}#L${ref.lineStart}` : path;
+    })
+    .filter(Boolean);
+  return formatted.length > 0 ? formatted.join(", ") : "source-ref-missing";
+}
+
+function formatContextWarning(warning) {
+  const subject = warning.conflictKey || warning.subjectKey || warning.claimId || warning.contradictionId;
+  if (warning.type === "source-drift-after-operational-truth") {
+    return `- ${warning.type}: ${subject} (current truth: ${warning.winningClaimId}; update stale sources before customer-facing use)`;
+  }
+  return `- ${warning.type}: ${subject}`;
 }
 
 export function validateWikiScaffold() {

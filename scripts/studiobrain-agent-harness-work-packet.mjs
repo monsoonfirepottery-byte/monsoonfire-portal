@@ -365,6 +365,7 @@ function buildWikiContradictionPacket(snapshot) {
   if (contradictions.length === 0 || hardContradictions.length === 0) return null;
 
   const conflictKeys = hardContradictions.map((entry) => entry.conflictKey || entry.contradictionId).filter(Boolean);
+  const blockedByPausedCustomerSurfaces = hardContradictions.every(isBlockedByPausedCustomerSurfaces);
   const files = [
     "scripts/wiki-postgres.mjs",
     "scripts/lib/wiki-postgres-utils.mjs",
@@ -373,9 +374,13 @@ function buildWikiContradictionPacket(snapshot) {
   ];
 
   return makePacket(0, {
-    title: "Review hard wiki source drift before customer-facing use",
-    why: `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. Use any source-grounded OPERATIONAL_TRUTH claims for agent context, but review stale or conflicting source refs before customer-facing edits or policy automation.`,
-    status: "needs_human",
+    title: blockedByPausedCustomerSurfaces
+      ? "Track redesign-blocked wiki source drift"
+      : "Review hard wiki source drift before customer-facing use",
+    why: blockedByPausedCustomerSurfaces
+      ? `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. The winning OPERATIONAL_TRUTH claim is usable for agent context, and the remaining stale evidence is isolated to paused website/portal redesign surfaces.`
+      : `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. Use any source-grounded OPERATIONAL_TRUTH claims for agent context, but review stale or conflicting source refs before customer-facing edits or policy automation.`,
+    status: blockedByPausedCustomerSurfaces ? "blocked" : "needs_human",
     risk: "medium",
     sourceSignals: [
       {
@@ -394,8 +399,17 @@ function buildWikiContradictionPacket(snapshot) {
       "Do not promote unresolved pricing, membership, or access claims to OPERATIONAL_TRUTH without human approval.",
       "After review, rerun npm run studio:ops:idle-worker:wiki:json and confirm the warning is expected or resolved.",
     ],
-    humanGate: "Human approval is required before changing customer-facing pricing, membership, payment, refund, or access policy truth.",
+    humanGate: blockedByPausedCustomerSurfaces
+      ? "Blocked until the website/portal redesign owner updates customer-facing surfaces or the user explicitly reopens that edit surface."
+      : "Human approval is required before changing customer-facing pricing, membership, payment, refund, or access policy truth.",
   });
+}
+
+function isBlockedByPausedCustomerSurfaces(entry) {
+  const surfaces = Array.isArray(entry.evidenceSurfaceCounts?.a) ? entry.evidenceSurfaceCounts.a : [];
+  if (surfaces.length === 0 || !entry.claimBId) return false;
+  const paused = new Set(["website-redesign-paused", "portal-redesign-paused"]);
+  return surfaces.every((surface) => paused.has(clean(surface.surface)));
 }
 
 export function buildNextWorkFromSnapshot(snapshot, options = {}) {

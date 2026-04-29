@@ -190,6 +190,59 @@ test("hard wiki contradictions become human-gated harness work", () => {
   assert.ok(nextWork.sourceFreshness.sources.some((source) => source.label === "wiki-contradictions"));
 });
 
+test("redesign-paused wiki contradictions become blocked harness work", () => {
+  const nextWork = buildNextWorkFromSnapshot({
+    generatedAt: "2026-04-28T20:23:00.000Z",
+    runId: "wiki-redesign-block-test",
+    gitState: {
+      branch: "codex/auto",
+      head: "abc123",
+      dirtyTrackedCount: 45,
+      untrackedCount: 0,
+      dirtyFiles: [],
+    },
+    artifacts: {
+      idleWorker: freshSource("idle-worker", "passed_with_warnings"),
+      repoInventory: freshSource("repo-agentic-health-inventory", "pass"),
+      memoryConsolidation: freshSource("memory-consolidation", "success"),
+      wikiContradictions: freshSource("wiki-contradictions", "warning"),
+      wikiContextPack: freshSource("wiki-context-pack", "pass"),
+    },
+    idleWorker: { status: "passed_with_warnings" },
+    memoryConsolidation: { status: "success", actionabilityStatus: "passed" },
+    repoInventory: { summary: { surfaces: {}, highRiskRootScripts: 0, rootPackageScripts: 0 } },
+    wikiContradictions: {
+      status: "warning",
+      summary: { contradictions: 1, hard: 1, critical: 0 },
+      contradictions: [
+        {
+          contradictionId: "contradiction_membership",
+          conflictKey: "membership-required-vs-decommission",
+          severity: "hard",
+          status: "open",
+          owner: "policy",
+          claimBId: "claim_membership_truth",
+          markdownPath: "wiki/50_contradictions/membership-required-vs-decommission.md",
+          metadata: {
+            evidenceSurfaceCounts: {
+              a: [
+                { surface: "website-redesign-paused", count: 7 },
+                { surface: "portal-redesign-paused", count: 2 },
+              ],
+              b: [{ surface: "docs", count: 5 }],
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(nextWork.topWork[0].title, "Track redesign-blocked wiki source drift");
+  assert.equal(nextWork.topWork[0].status, "blocked");
+  assert.match(nextWork.topWork[0].humanGate, /redesign owner/);
+  assert.equal(nextWork.topWork[1].title, "Classify the dirty worktree before risky agent work");
+});
+
 test("resolved destructive-audit artifacts do not emit stale failure packets", () => {
   const nextWork = buildNextWorkFromSnapshot({
     generatedAt: "2026-04-28T20:25:00.000Z",

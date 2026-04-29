@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   buildNextWorkFromSnapshot,
@@ -259,4 +264,43 @@ test("outcome ledger declares success only after useful recorded outcomes", () =
   assert.equal(summary.helpfulRate, 1);
   assert.equal(summary.totalMinutesSaved, 19);
   assert.equal(metrics.realUsageVerdict, "success");
+});
+
+test("record outcome CLI accepts note alias", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "studiobrain-harness-outcome-"));
+  try {
+    const scriptPath = fileURLToPath(new URL("./studiobrain-agent-harness-work-packet.mjs", import.meta.url));
+    const artifactPath = join(tempRoot, "next-work.json");
+    const metricsPath = join(tempRoot, "metrics.json");
+    const outcomesPath = join(tempRoot, "outcomes.jsonl");
+    writeFileSync(artifactPath, JSON.stringify({
+      topWork: [],
+      sourceFreshness: { score: 1, staleCount: 0, missingCount: 0 },
+      constraints: { readOnly: true, noNewDaemon: true, noNewDatabase: true },
+    }));
+
+    execFileSync(process.execPath, [
+      scriptPath,
+      "--record-outcome",
+      "wp-test",
+      "--outcome",
+      "helpful",
+      "--minutes-saved",
+      "3",
+      "--note",
+      "packet was useful",
+      "--artifact",
+      artifactPath,
+      "--metrics",
+      metricsPath,
+      "--outcomes",
+      outcomesPath,
+      "--json",
+    ]);
+
+    const [entry] = readFileSync(outcomesPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(entry.notes, "packet was useful");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });

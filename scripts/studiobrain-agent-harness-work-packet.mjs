@@ -699,6 +699,7 @@ function printUsage() {
       "  --minutes-saved <n>        Estimated orientation minutes saved",
       "  --used-by <name>           Optional actor label",
       "  --notes <text>             Optional short note",
+      "  --note <text>              Alias for --notes",
       "  -h, --help                 Show this help",
       "",
     ].join("\n"),
@@ -799,7 +800,7 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (arg === "--notes") {
+    if (arg === "--notes" || arg === "--note") {
       parsed.notes = next;
       index += 1;
       continue;

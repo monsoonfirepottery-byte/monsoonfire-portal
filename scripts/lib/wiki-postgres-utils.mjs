@@ -1036,11 +1036,13 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
   const verifiedById = new Map(verified.map((claim) => [claim.claimId, claim]));
   const unverifiedClaims = claims.filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status));
   const activeContradictions = contradictions.filter((entry) => ["open", "in-review", "blocked"].includes(entry.status));
-  const sampledUnverifiedClaims = unverifiedClaims.slice(0, 10).map((claim) => ({
+  const sampledUnverifiedClaims = [...unverifiedClaims].sort(compareUnverifiedWarningClaims).slice(0, 10).map((claim) => ({
     type: "unverified-claim-excluded",
     claimId: claim.claimId,
     status: claim.status,
     subjectKey: claim.subjectKey,
+    requiresHumanApproval: Boolean(claim.requiresHumanApproval),
+    owner: claim.owner || "",
   }));
   const sampledContradictions = activeContradictions.slice(0, 10).map((entry) => contradictionContextWarning(entry, verifiedById));
   const warnings = [
@@ -1186,7 +1188,26 @@ function formatContextWarning(warning) {
     const gate = warning.humanGate ? `; gate: ${warning.humanGate}` : "";
     return `- ${warning.type}: ${subject} (current truth: ${warning.winningClaimId}; update stale sources before customer-facing use${gate})`;
   }
+  if (warning.type === "unverified-claim-excluded") {
+    const approval = warning.requiresHumanApproval ? " (requires human approval)" : "";
+    return `- ${warning.type}: ${subject}${approval}`;
+  }
   return `- ${warning.type}: ${subject}`;
+}
+
+function compareUnverifiedWarningClaims(a, b) {
+  const priority = (claim) => {
+    let score = 0;
+    if (claim.requiresHumanApproval) score += 100;
+    if (claim.owner === "policy") score += 50;
+    if (claim.claimKind === "policy") score += 40;
+    if (claim.claimKind === "guardrail" || claim.subjectKey?.startsWith("agents:")) score += 35;
+    if (claim.subjectKey?.startsWith("repo-config:")) score += 25;
+    if (claim.subjectKey?.includes("wiki")) score += 20;
+    if (claim.subjectKey?.includes("studio:ops")) score += 15;
+    return score;
+  };
+  return priority(b) - priority(a) || String(a.subjectKey || a.claimId).localeCompare(String(b.subjectKey || b.claimId));
 }
 
 export function validateWikiScaffold() {

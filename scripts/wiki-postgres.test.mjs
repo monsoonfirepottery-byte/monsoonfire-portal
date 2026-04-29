@@ -150,7 +150,10 @@ test("context pack warning samples report omitted uncertainty", () => {
     status: "EXTRACTED",
     agentAllowedUse: "planning_context",
     objectText: `Unverified claim ${index}.`,
-    subjectKey: `unverified:${index}`,
+    subjectKey: index === 11 ? "policy-doc:human-gated" : `unverified:${index}`,
+    claimKind: index === 11 ? "policy" : "fact",
+    owner: index === 11 ? "policy" : "platform",
+    requiresHumanApproval: index === 11,
   }));
   const contradiction = {
     contradictionId: "contradiction_one",
@@ -162,7 +165,9 @@ test("context pack warning samples report omitted uncertainty", () => {
   const pack = generateContextPack([verified, ...extractedClaims], [contradiction], { tenantScope: "test" });
 
   assert.match(pack.generatedText, /unverified-claims-excluded-summary: 12 total; showing 10; omitted 2/);
+  assert.match(pack.generatedText, /unverified-claim-excluded: policy-doc:human-gated \(requires human approval\)/);
   assert.match(pack.generatedText, /active-contradictions-summary: 1 total; showing 1; omitted 0/);
+  assert.equal(pack.warnings[1].subjectKey, "policy-doc:human-gated");
   assert.equal(pack.budget.warningCount, 13);
   assert.equal(pack.budget.totalWarningItems, 13);
   assert.equal(pack.budget.unverifiedClaimExcludedCount, 12);

@@ -372,7 +372,7 @@ function buildWikiContradictionPacket(snapshot) {
     ...hardContradictions.map((entry) => entry.markdownPath).filter(Boolean),
   ];
 
-  return makePacket(1, {
+  return makePacket(0, {
     title: "Review hard wiki source drift before customer-facing use",
     why: `The latest wiki contradiction scan found ${hardContradictions.length} hard conflict(s): ${conflictKeys.join(", ")}. Use any source-grounded OPERATIONAL_TRUTH claims for agent context, but review stale or conflicting source refs before customer-facing edits or policy automation.`,
     status: "needs_human",

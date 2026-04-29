@@ -123,7 +123,7 @@ test("hard wiki contradictions become human-gated harness work", () => {
     gitState: {
       branch: "codex/auto",
       head: "abc123",
-      dirtyTrackedCount: 2,
+      dirtyTrackedCount: 45,
       untrackedCount: 0,
       dirtyFiles: [],
     },

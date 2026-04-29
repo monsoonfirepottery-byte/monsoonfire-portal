@@ -1599,7 +1599,14 @@ export function buildIdleTaskQueueReport(options = {}) {
       priority: 0.65,
       outputArtifactPath: "output/wiki/context-check.json",
       idempotencyKey: pack.snapshotHash,
-      metadata: { lane: "context", verifiedClaims: pack.budget.verifiedClaims, warnings: pack.budget.warningCount },
+      metadata: {
+        lane: "context",
+        verifiedClaims: pack.budget.verifiedClaims,
+        warnings: pack.budget.warningCount,
+        totalWarningItems: pack.budget.totalWarningItems,
+        unverifiedClaimExcludedCount: pack.budget.unverifiedClaimExcludedCount,
+        activeContradictionCount: pack.budget.activeContradictionCount,
+      },
     }),
   ];
   for (const contradiction of scan.contradictions) {
@@ -1673,13 +1680,36 @@ export function writeIdleTasks(report, artifactPath) {
     "",
     "# Wiki Idle Task Queue",
     "",
-    "| Task | Status | Priority | Read Only | Output |",
-    "|---|---|---:|---:|---|",
-    ...report.tasks.map((task) => `| ${task.title} | ${task.status} | ${task.priority} | ${task.readOnly} | \`${task.outputArtifactPath || ""}\` |`),
+    "| Task | Status | Priority | Read Only | Output | Signals |",
+    "|---|---|---:|---:|---|---|",
+    ...report.tasks.map((task) => `| ${task.title} | ${task.status} | ${task.priority} | ${task.readOnly} | \`${task.outputArtifactPath || ""}\` | ${formatIdleTaskSignals(task)} |`),
   ];
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
   return path;
+}
+
+function formatIdleTaskSignals(task) {
+  const metadata = task.metadata || {};
+  if (metadata.lane === "context") {
+    return [
+      `verified=${metadata.verifiedClaims ?? 0}`,
+      `warnings=${metadata.warnings ?? 0}`,
+      `total_warning_items=${metadata.totalWarningItems ?? metadata.warnings ?? 0}`,
+      `unverified=${metadata.unverifiedClaimExcludedCount ?? 0}`,
+      `active_contradictions=${metadata.activeContradictionCount ?? 0}`,
+    ].join(", ");
+  }
+  if (metadata.lane === "source-index") {
+    return `sources=${metadata.indexedSources ?? 0}, chunks=${metadata.chunks ?? 0}`;
+  }
+  if (metadata.lane === "contradictions") {
+    return `severity=${metadata.severity || "unknown"}, status=${metadata.status || task.status}`;
+  }
+  if (metadata.lane === "export-drift") {
+    return `drift=${metadata.drift ?? 0}, missing=${metadata.missing ?? 0}`;
+  }
+  return "";
 }
 
 export function buildWikiEffectivenessAudit(options = {}) {
@@ -1709,6 +1739,9 @@ export function buildWikiEffectivenessAudit(options = {}) {
       blockedContradictions: scan.contradictions.filter((entry) => entry.status === "blocked").length,
       contextPackChars: pack.budget.chars,
       contextWarnings: pack.budget.warningCount,
+      contextWarningItems: pack.budget.totalWarningItems,
+      contextUnverifiedClaims: pack.budget.unverifiedClaimExcludedCount,
+      contextActiveContradictions: pack.budget.activeContradictionCount,
       usefulnessScore: pack.budget.usefulnessScore,
       exportDrift: drift.summary.drift,
       exportMissing: drift.summary.missing,

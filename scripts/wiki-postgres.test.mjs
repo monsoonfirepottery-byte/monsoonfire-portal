@@ -437,6 +437,9 @@ test("idle task queue makes blocked contradictions visible but not ready", () =>
   assert.equal(queue.schema, "wiki-idle-task-queue-report.v1");
   assert.equal(queue.summary.blocked, 1);
   assert.equal(queue.tasks.some((task) => task.taskKey === "wiki-contradiction:membership-required-vs-decommission" && task.status === "blocked"), true);
+  const contextTask = queue.tasks.find((task) => task.taskKey === "wiki-context-pack-refresh");
+  assert.equal(contextTask.metadata.totalWarningItems, 1);
+  assert.equal(contextTask.metadata.activeContradictionCount, 1);
   assert.match(queue.lease.strategy, /FOR UPDATE SKIP LOCKED/);
 });
 

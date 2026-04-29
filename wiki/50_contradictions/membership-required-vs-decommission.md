@@ -14,7 +14,7 @@ agent_allowed_use: cite_only
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: d0398a7ca602394d44b521ce288407c1a55d9a837e5815d8e3d2087c4978c67e
+export_hash: 6fb470f6c1206b9ec0721af037aef4a1ce36f38651f49f8474a24ebbb5342ba2
 ---
 
 # membership-required-vs-decommission
@@ -51,3 +51,16 @@ Recommended action: Treat the service-pricing decommission decision as current o
 - `wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md`: 2
 - `docs/runbooks/PRICING_COMMUNITY_SHELF_QA.md`: 1
 - `tickets/P1-service-pricing-and-membership-decommission-source-alignment.md`: 1
+
+## Evidence Surface Counts
+
+### Side A
+
+- `website-redesign-paused`: 7
+- `portal-redesign-paused`: 2
+
+### Side B
+
+- `docs`: 5
+- `wiki-decision`: 2
+- `ticket`: 1

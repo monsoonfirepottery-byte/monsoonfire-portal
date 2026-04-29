@@ -177,6 +177,9 @@ test("contradiction scan emits review records instead of editing claims", () => 
   assert.deepEqual(scan.contradictions[0].metadata.evidencePathCounts.b, [
     { sourcePath: "docs/plans/current-business-plan.md", count: 1 },
   ]);
+  assert.deepEqual(scan.contradictions[0].metadata.evidenceSurfaceCounts.a, [
+    { surface: "docs", count: 1 },
+  ]);
 });
 
 test("membership contradiction scan ignores generic current-plan and credit language", () => {

@@ -354,6 +354,7 @@ function collectOpenWikiContradictions(scan) {
       markdownPath: clean(entry.markdownPath),
       sourceRefs: Array.isArray(entry.sourceRefs) ? entry.sourceRefs.slice(0, 6) : [],
       evidencePathCounts: entry.metadata?.evidencePathCounts || null,
+      evidenceSurfaceCounts: entry.metadata?.evidenceSurfaceCounts || null,
     }))
     .filter((entry) => entry.contradictionId || entry.conflictKey);
 }

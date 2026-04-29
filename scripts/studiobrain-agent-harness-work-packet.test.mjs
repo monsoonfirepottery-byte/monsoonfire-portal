@@ -149,6 +149,10 @@ test("hard wiki contradictions become human-gated harness work", () => {
               a: [{ sourcePath: "website/data/faq.json", count: 2 }],
               b: [{ sourcePath: "docs/policies/service-pricing-and-membership-decommission.md", count: 1 }],
             },
+            evidenceSurfaceCounts: {
+              a: [{ surface: "website-redesign-paused", count: 2 }],
+              b: [{ surface: "docs", count: 1 }],
+            },
           },
         },
         {
@@ -173,6 +177,10 @@ test("hard wiki contradictions become human-gated harness work", () => {
   assert.deepEqual(
     nextWork.topWork[0].sourceSignals[0].contradictions[0].evidencePathCounts.a,
     [{ sourcePath: "website/data/faq.json", count: 2 }],
+  );
+  assert.deepEqual(
+    nextWork.topWork[0].sourceSignals[0].contradictions[0].evidenceSurfaceCounts.a,
+    [{ surface: "website-redesign-paused", count: 2 }],
   );
   assert.ok(nextWork.sourceFreshness.sources.some((source) => source.label === "wiki-contradictions"));
 });

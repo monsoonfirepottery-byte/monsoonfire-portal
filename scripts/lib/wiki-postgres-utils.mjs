@@ -782,6 +782,10 @@ export function detectContradictions(index, claims = []) {
           a: summarizeEvidencePaths(aMatches),
           b: summarizeEvidencePaths(bMatches),
         },
+        evidenceSurfaceCounts: {
+          a: summarizeEvidenceSurfaces(aMatches),
+          b: summarizeEvidenceSurfaces(bMatches),
+        },
       },
     });
   }
@@ -878,6 +882,28 @@ function summarizeEvidencePaths(matches, limit = 20) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([sourcePath, count]) => ({ sourcePath, count }));
+}
+
+function summarizeEvidenceSurfaces(matches) {
+  const counts = new Map();
+  for (const match of matches) {
+    const surface = classifyEvidenceSurface(match.sourcePath);
+    counts.set(surface, (counts.get(surface) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([surface, count]) => ({ surface, count }));
+}
+
+function classifyEvidenceSurface(sourcePath) {
+  if (sourcePath.startsWith("website/")) return "website-redesign-paused";
+  if (sourcePath.startsWith("web/")) return "portal-redesign-paused";
+  if (sourcePath.startsWith(".governance/")) return "governance";
+  if (sourcePath.startsWith("wiki/40_decisions/")) return "wiki-decision";
+  if (sourcePath.startsWith("tickets/")) return "ticket";
+  if (sourcePath.startsWith("docs/")) return "docs";
+  if (sourcePath.startsWith("scripts/")) return "script";
+  return "repo";
 }
 
 export function generateContextPack(claims, contradictions = [], options = {}) {
@@ -1231,6 +1257,7 @@ export function writeContradictions(scan, artifactPath) {
       "",
       ...contradiction.sourceRefs.map((ref) => `- \`${ref.sourcePath}\` lines ${ref.lineStart || "?"}-${ref.lineEnd || "?"}`),
       ...formatEvidencePathCountLines(contradiction),
+      ...formatEvidenceSurfaceCountLines(contradiction),
     ];
     writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
     paths.push(path);
@@ -1248,6 +1275,23 @@ function formatEvidencePathCountLines(contradiction) {
     lines.push(`### ${label}`, "");
     for (const entry of entries) {
       lines.push(`- \`${entry.sourcePath}\`: ${entry.count}`);
+    }
+    lines.push("");
+  }
+  while (lines.at(-1) === "") lines.pop();
+  return lines;
+}
+
+function formatEvidenceSurfaceCountLines(contradiction) {
+  const counts = contradiction.metadata?.evidenceSurfaceCounts;
+  if (!counts || (!counts.a?.length && !counts.b?.length)) return [];
+
+  const lines = ["", "## Evidence Surface Counts", ""];
+  for (const [label, entries] of [["Side A", counts.a || []], ["Side B", counts.b || []]]) {
+    if (entries.length === 0) continue;
+    lines.push(`### ${label}`, "");
+    for (const entry of entries) {
+      lines.push(`- \`${entry.surface}\`: ${entry.count}`);
     }
     lines.push("");
   }

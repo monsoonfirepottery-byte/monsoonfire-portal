@@ -26,6 +26,8 @@ Use this runbook for the broader Studio Brain host-control stack that sits behin
   - `studio-brain-backup.timer`
   - `studio-brain-disk-alert.timer`
   - `studio-brain-healthcheck.timer`
+  - `studio-brain-idle-worker.timer`
+  - `studio-brain-idle-worker-overnight.timer`
   - `studio-brain-reboot-watch.timer`
 
 ## Commands
@@ -90,7 +92,7 @@ These live alongside the existing Studio Brain host access secrets in `secrets/s
 - `install-stack` refreshes the tracked monitoring stack, the base CUPS print stack, and the periodic backup/disk/healthcheck timers, so `studio:ops:install` is the repo-backed way to reconcile those host resources after the runtime is current.
 - `reconcile` is the normal merge/deploy sync cycle: full runtime deploy first, then stack install, then a fresh status snapshot.
 - `status` now reports the remote checkout branch, head commit, and tracked dirty-file count under `workspace` so stale host branches are visible before they become integrity noise.
-- `scripts/install-studiobrain-healthcheck.sh` now installs the backup, disk-alert, healthcheck, and reboot-watch timers as one tracked bundle. The reboot watcher checks `/var/run/reboot-required` every 15 minutes and sends at most one Discord update per UTC day, only when the reboot-required state has changed, which is safer for the encrypted Studio Brain host than unattended auto-reboots.
+- `scripts/install-studiobrain-healthcheck.sh` now installs the backup, disk-alert, healthcheck, idle-worker, overnight idle-worker, and reboot-watch timers as one tracked bundle. The reboot watcher checks `/var/run/reboot-required` every 15 minutes and sends at most one Discord update per UTC day, only when the reboot-required state has changed, which is safer for the encrypted Studio Brain host than unattended auto-reboots.
 - Monitoring runtime state stays host-local in `/home/wuff/monitoring`:
   - `.env` controls only `MONITORING_BIND_HOST`
   - Uptime Kuma sqlite data and generated admin credentials stay host-local and are not committed

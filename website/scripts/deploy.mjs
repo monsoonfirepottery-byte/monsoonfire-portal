@@ -20,6 +20,7 @@ const defaults = {
   key: env.WEBSITE_DEPLOY_KEY || env.WEBSITE_DEPLOY_IDENTITY || "",
   remotePath: env.WEBSITE_DEPLOY_REMOTE_PATH || "public_html/",
   source: resolve(repoRoot, "ncsitebuilder"),
+  dryRun: false,
 };
 if (!env.WEBSITE_DEPLOY_SERVER) {
   process.stdout.write(
@@ -55,6 +56,18 @@ if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
 if (keyPath && !existsSync(keyPath)) {
   process.stderr.write(`SSH key not found: ${keyPath}\n`);
   process.exit(1);
+}
+assertSafeRemotePath(remotePath, "remote path");
+assertSafeRemoteName(sourceName, "staged source name");
+
+if (args.dryRun) {
+  process.stdout.write("Website deploy dry run\n");
+  process.stdout.write(`  source: ${source}\n`);
+  process.stdout.write(`  server: ${args.server}\n`);
+  process.stdout.write(`  remote path: ${remotePath}\n`);
+  process.stdout.write(`  port: ${args.port}\n`);
+  process.stdout.write("  no files uploaded and no remote commands executed\n");
+  process.exit(0);
 }
 
 process.stdout.write("Syncing generated community blog pages...\n");
@@ -102,6 +115,7 @@ function parseArgs(argv) {
     key: defaults.key,
     remotePath: defaults.remotePath,
     source: defaults.source,
+    dryRun: defaults.dryRun,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -131,9 +145,13 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (current === "--dry-run") {
+      parsed.dryRun = true;
+      continue;
+    }
     if (current === "--help") {
       process.stdout.write(
-        "Usage: node website/scripts/deploy.mjs [--server user@host] [--port 21098] [--key ~/.ssh/namecheap-portal] [--remote-path public_html/] [--source <path>]\n" +
+        "Usage: node website/scripts/deploy.mjs [--server user@host] [--port 21098] [--key ~/.ssh/namecheap-portal] [--remote-path public_html/] [--source <path>] [--dry-run]\n" +
           "Server defaults: --server from WEBSITE_DEPLOY_SERVER.\n" +
           "Port defaults: --port from WEBSITE_DEPLOY_PORT.\n" +
           "SSH key defaults: --key from WEBSITE_DEPLOY_KEY or WEBSITE_DEPLOY_IDENTITY.\n" +
@@ -154,6 +172,28 @@ function expandHomePath(input) {
   if (!input || input === "~") return homedir();
   if (input.startsWith("~/")) return resolve(homedir(), input.slice(2));
   return input;
+}
+
+function assertSafeRemotePath(value, label) {
+  const raw = String(value || "").trim();
+  const normalized = raw.replace(/\\/g, "/").replace(/\/+/g, "/");
+  if (!normalized || normalized === "/" || normalized === "." || normalized === "./" || normalized === "~" || normalized === "~/") {
+    throw new Error(`Unsafe ${label}: ${raw || "(empty)"}`);
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.length === 0 || segments.includes("..")) {
+    throw new Error(`Unsafe ${label}: ${raw}`);
+  }
+  if (/[;&|`$<>]/.test(normalized)) {
+    throw new Error(`Unsafe ${label} contains shell metacharacters: ${raw}`);
+  }
+}
+
+function assertSafeRemoteName(value, label) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "." || raw === ".." || raw.includes("/") || raw.includes("\\") || /[;&|`$<>]/.test(raw)) {
+    throw new Error(`Unsafe ${label}: ${raw || "(empty)"}`);
+  }
 }
 
 function runCommand(command, commandArgs) {

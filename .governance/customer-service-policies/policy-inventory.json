@@ -71,7 +71,7 @@
       "title": "Public studio updates are now live",
       "sourcePath": "marketing/announcements/public-updates-live.json",
       "sourceType": "announcement_summary",
-      "summary": "Non-member announcements now have a public home while member-only logistics stay inside the portal.",
+      "summary": "Public announcements have a public home while operational logistics stay inside the portal.",
       "policySlugs": [],
       "policyVersion": null,
       "routingTerms": [
@@ -80,19 +80,18 @@
         "studio",
         "updates",
         "live",
-        "non-member announcements now have a public home while member-only logistics stay inside the portal.",
-        "member",
+        "public announcements have a public home while operational logistics stay inside the portal.",
         "announcements",
         "have",
         "home",
         "while",
-        "only",
+        "operational",
         "logistics",
         "stay",
         "inside",
         "portal",
         "public studio updates",
-        "member-only logistics",
+        "portal logistics",
         "pickup windows",
         "queue details"
       ],
@@ -687,18 +686,19 @@
     {
       "id": "fallback-membership",
       "kind": "derived-summary",
-      "title": "Can I change my membership plan?",
+      "title": "What should I do about a legacy membership question?",
       "sourcePath": "web/src/views/SupportView.tsx",
       "sourceType": "operational_faq",
-      "summary": "Open Membership in the portal to review your current tier and available options, then submit a change request.",
+      "summary": "Membership tiers are decommissioned. Do not route customers to tier changes; escalate legacy membership billing or account-record questions to staff review.",
       "policySlugs": [
         "payments-refunds"
       ],
       "policyVersion": null,
       "routingTerms": [
-        "membership plan",
-        "current tier",
-        "change request"
+        "legacy membership",
+        "membership decommissioned",
+        "membership billing",
+        "account review"
       ],
       "notes": null,
       "priority": null,
@@ -826,19 +826,19 @@
     {
       "id": "faq-membership",
       "kind": "derived-summary",
-      "title": "How do I change, pause, or cancel my membership?",
+      "title": "What happens to legacy membership questions?",
       "sourcePath": "docs/SCHEMA_SUPPORT.md",
       "sourceType": "operational_faq",
-      "summary": "Send a request with your current plan and the change you want, and we will handle it.",
+      "summary": "Membership tiers are decommissioned. Send legacy membership billing, refund, or account-record questions to staff review instead of offering plan changes.",
       "policySlugs": [
         "payments-refunds"
       ],
       "policyVersion": null,
       "routingTerms": [
-        "change membership",
-        "pause membership",
-        "cancel membership",
-        "current plan"
+        "legacy membership",
+        "membership decommissioned",
+        "membership billing",
+        "membership refund"
       ],
       "notes": null,
       "priority": null,
@@ -1183,8 +1183,8 @@
       "notes": null,
       "priority": null,
       "observedPractice": null,
-      "canonicalConcern": null,
-      "discrepancyStatus": null
+      "canonicalConcern": "Stale public FAQ inventory: membership tiers are decommissioned and this customer-facing source is pending the separate website redesign.",
+      "discrepancyStatus": "stale"
     },
     {
       "id": "website-faq:how-do-payments-work",
@@ -1229,8 +1229,8 @@
       "notes": null,
       "priority": null,
       "observedPractice": null,
-      "canonicalConcern": null,
-      "discrepancyStatus": null
+      "canonicalConcern": "Stale public FAQ inventory: membership-based highlight language is pending the separate website redesign.",
+      "discrepancyStatus": "stale"
     },
     {
       "id": "website-faq:how-often-are-workshops-offered",

@@ -18,6 +18,7 @@ import { MemoryEventStore, MemoryStateStore } from "../stores/memoryStores";
 import { CapabilityRuntime, defaultCapabilities } from "../capabilities/runtime";
 import { createInMemoryMemoryStoreAdapter } from "../memory/inMemoryAdapter";
 import { createMemoryService } from "../memory/service";
+import type { WikiReadStore } from "../wiki/readStore";
 import type { Runner } from "../controlTower/collect";
 
 const logger = {
@@ -844,6 +845,117 @@ test("metrics endpoint includes process payload", async () => {
       assert.ok(payload.metrics.process.uptimeSec >= 0);
     }
   );
+});
+
+test("wiki endpoints expose read-only context, contradictions, freshness, and search", async () => {
+  const wikiReadStore: WikiReadStore = {
+    async getContextPack(input) {
+      assert.equal(input.tenantScope, "monsoonfire-main");
+      assert.equal(input.packKey, "studio-brain-wiki");
+      return {
+        contextPackId: "ctx_test",
+        tenantScope: input.tenantScope,
+        packKey: input.packKey,
+        title: "Studio Brain Wiki",
+        status: "active",
+        generatedText: "Verified wiki context.",
+        budget: { chars: 22 },
+        warnings: [],
+        exportHash: "hash-context",
+        generatedAt: "2026-04-28T00:00:00.000Z",
+        validUntil: null,
+        metadata: {},
+      };
+    },
+    async listContradictions(input) {
+      assert.equal(input.status, "open");
+      assert.equal(input.limit, 5);
+      return [
+        {
+          contradictionId: "contradiction_test",
+          tenantScope: input.tenantScope,
+          conflictKey: "membership-required-vs-decommission",
+          severity: "hard",
+          status: "open",
+          claimAId: null,
+          claimBId: null,
+          sourceRefs: [],
+          owner: "policy",
+          recommendedAction: "Review membership policy.",
+          markdownPath: "wiki/50_contradictions/membership-required-vs-decommission.md",
+          openedAt: "2026-04-28T00:00:00.000Z",
+          updatedAt: "2026-04-28T00:00:00.000Z",
+          resolvedAt: null,
+          metadata: {},
+        },
+      ];
+    },
+    async listSourceFreshness(input) {
+      assert.equal(input.status, "stale");
+      return [
+        {
+          sourceId: "src_test",
+          tenantScope: input.tenantScope,
+          sourceKind: "repo-file",
+          sourcePath: "docs/policy.md",
+          sourceUri: null,
+          authorityClass: "policy",
+          contentHash: "hash-source",
+          freshnessStatus: "stale",
+          ingestStatus: "indexed",
+          denyReason: null,
+          lastIndexedAt: "2026-04-28T00:00:00.000Z",
+          lastChangedAt: null,
+          updatedAt: "2026-04-28T00:00:00.000Z",
+          metadata: {},
+        },
+      ];
+    },
+    async search(input) {
+      assert.equal(input.query, "membership");
+      return [
+        {
+          itemType: "claim",
+          itemId: "claim_test",
+          title: "membership policy",
+          snippet: "Membership policy needs review.",
+          status: "EXTRACTED",
+          sourcePath: "docs/policy.md",
+          rank: 0.9,
+          updatedAt: "2026-04-28T00:00:00.000Z",
+          metadata: {},
+        },
+      ];
+    },
+  };
+
+  await withServer({ wikiReadStore }, async (baseUrl) => {
+    const headers = { authorization: "Bearer test-staff" };
+
+    const contextResponse = await fetch(`${baseUrl}/api/wiki/context-packs/studio-brain-wiki`, { headers });
+    assert.equal(contextResponse.status, 200);
+    const contextPayload = (await contextResponse.json()) as { ok: boolean; contextPack: { contextPackId: string } };
+    assert.equal(contextPayload.ok, true);
+    assert.equal(contextPayload.contextPack.contextPackId, "ctx_test");
+
+    const contradictionResponse = await fetch(`${baseUrl}/api/wiki/contradictions?status=open&limit=5`, { headers });
+    assert.equal(contradictionResponse.status, 200);
+    const contradictionPayload = (await contradictionResponse.json()) as { contradictions: Array<{ conflictKey: string }> };
+    assert.equal(contradictionPayload.contradictions[0]?.conflictKey, "membership-required-vs-decommission");
+
+    const freshnessResponse = await fetch(`${baseUrl}/api/wiki/source-freshness?status=stale`, { headers });
+    assert.equal(freshnessResponse.status, 200);
+    const freshnessPayload = (await freshnessResponse.json()) as { sources: Array<{ freshnessStatus: string }> };
+    assert.equal(freshnessPayload.sources[0]?.freshnessStatus, "stale");
+
+    const searchResponse = await fetch(`${baseUrl}/api/wiki/search?q=membership`, { headers });
+    assert.equal(searchResponse.status, 200);
+    const searchPayload = (await searchResponse.json()) as { results: Array<{ itemId: string }> };
+    assert.equal(searchPayload.results[0]?.itemId, "claim_test");
+
+    const badSearchResponse = await fetch(`${baseUrl}/api/wiki/search`, { headers });
+    assert.equal(badSearchResponse.status, 400);
+  });
 });
 
 test("overseer endpoints return latest run payload and bounded history", async () => {

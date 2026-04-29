@@ -55,6 +55,7 @@ function parseArgs(argv) {
       DEFAULT_CREDENTIALS_PATH,
     notificationId: process.env.PORTAL_NOTIFICATION_PROBE_ID || DEFAULT_NOTIFICATION_ID,
     asJson: false,
+    liveMutation: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -97,9 +98,19 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+
+    if (arg === "--dry-run" || arg === "--no-live-mutation") {
+      options.liveMutation = false;
+      continue;
+    }
+
+    if (arg === "--live-mutation" || arg === "--live-write") {
+      options.liveMutation = true;
+      continue;
+    }
   }
 
-  if (!options.apiKey) {
+  if (options.liveMutation && !options.apiKey) {
     throw new Error("Missing PORTAL_FIREBASE_API_KEY (or pass --api-key).");
   }
 
@@ -141,11 +152,17 @@ function print(summary, asJson) {
 
   process.stdout.write(`status: ${summary.status}\n`);
   process.stdout.write(`project: ${summary.projectId}\n`);
-  process.stdout.write(`actor: ${summary.actor.email} (${summary.actor.uid})\n`);
-  process.stdout.write(`target notification: ${summary.notification.targetId || "n/a"}\n`);
-  process.stdout.write(
-    `checks: list=${summary.notification.list.status} read=${summary.notification.read.status} markRead=${summary.notification.markRead.status}\n`
-  );
+  if (summary.actor?.email || summary.actor?.uid) {
+    process.stdout.write(`actor: ${summary.actor.email || "n/a"} (${summary.actor.uid || "n/a"})\n`);
+  }
+  if (summary.notification) {
+    process.stdout.write(`target notification: ${summary.notification.targetId || "n/a"}\n`);
+    if (summary.notification.list && summary.notification.read && summary.notification.markRead) {
+      process.stdout.write(
+        `checks: list=${summary.notification.list.status} read=${summary.notification.read.status} markRead=${summary.notification.markRead.status}\n`
+      );
+    }
+  }
   if (summary.message) {
     process.stdout.write(`${summary.message}\n`);
   }
@@ -153,6 +170,32 @@ function print(summary, asJson) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (!options.liveMutation) {
+    print(
+      {
+        status: "passed",
+        mode: "dry_run",
+        liveMutations: false,
+        projectId: options.projectId,
+        notification: {
+          targetId: options.notificationId,
+        },
+        requiredProductionFlag: "--live-mutation",
+        plannedOperations: [
+          "Mint a staff ID token from the configured portal automation credential.",
+          "List notifications for the configured QA user.",
+          "Read the selected notification document.",
+          "PATCH readAt on the selected notification document.",
+          "Read the selected notification document again for verification.",
+        ],
+        message:
+          "Dry run only: no ID token was minted and no live notification was marked read. Re-run with --live-mutation for the production probe window.",
+      },
+      options.asJson
+    );
+    return;
+  }
+
   const rawCreds = await readFile(options.credentialsPath, "utf8");
   const creds = JSON.parse(rawCreds);
   const refreshToken = String(creds.refreshToken || "").trim();
@@ -252,6 +295,8 @@ async function main() {
 
   const summary = {
     status: passed ? "passed" : "failed",
+    mode: "live_mutation",
+    liveMutations: true,
     projectId: options.projectId,
     actor: { uid, email },
     notification: {

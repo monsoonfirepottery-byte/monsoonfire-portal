@@ -116,6 +116,7 @@ install_portable_java() {
 
   echo "[bootstrap] Downloading portable Temurin JRE 17..."
   mkdir -p "$portable_root"
+  assert_portable_java_cleanup_path "$portable_root"
   rm -rf "$portable_root"/*
 
   if command -v curl >/dev/null 2>&1; then
@@ -137,6 +138,15 @@ install_portable_java() {
 
   echo "[bootstrap] Portable Java downloaded but java binary was not found."
   return 1
+}
+
+assert_portable_java_cleanup_path() {
+  local target="$1"
+  local expected="$HOME/.local/jre17-portable"
+  if [[ -z "$target" || "$target" == "/" || "$target" != "$expected" ]]; then
+    echo "[bootstrap] Refusing to clean unexpected portable Java path: $target" >&2
+    return 1
+  fi
 }
 
 ensure_java() {

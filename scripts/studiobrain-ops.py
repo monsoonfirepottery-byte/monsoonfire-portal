@@ -34,27 +34,60 @@ DEFAULT_NAMECHEAP_TUNNEL_REMOTE_HOST = "127.0.0.1"
 DEFAULT_NAMECHEAP_TUNNEL_REMOTE_PORT = 18787
 DEFAULT_STUDIO_BRAIN_PROXY_HOST = "127.0.0.1"
 DEFAULT_STUDIO_BRAIN_PROXY_PORT = 18788
+DEFAULT_STUDIO_BRAIN_API_HOST = "192.168.1.226"
 SUPPORT_PATHS = (
+    REPO_ROOT / ".gitignore",
+    REPO_ROOT / "package.json",
+    REPO_ROOT / ".governance" / "planning",
+    REPO_ROOT / "contracts" / "planning.schema.json",
     REPO_ROOT / "config" / "studiobrain" / "ansible",
+    REPO_ROOT / "config" / "studiobrain" / "fail2ban" / "sshd.local",
     REPO_ROOT / "config" / "studiobrain" / "monitoring",
     REPO_ROOT / "config" / "studiobrain" / "systemd",
     REPO_ROOT / "config" / "studiobrain" / "tmux",
     REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_CONTROL_TOWER_V2.md",
     REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_HOST_ACCESS.md",
+    REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_HOST_DEPLOY.md",
     REPO_ROOT / "docs" / "runbooks" / "STUDIO_BRAIN_HOST_STACK.md",
+    REPO_ROOT / "docs" / "STUDIO_BRAIN_DISCORD_CHANNEL.md",
     REPO_ROOT / "scripts" / "install-studiobrain-bambu-cli.sh",
+    REPO_ROOT / "scripts" / "install-studiobrain-fail2ban-sshd.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-healthcheck.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-monitoring.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-ops-stack.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-portal-bridge.sh",
+    REPO_ROOT / "scripts" / "open-memory-consolidate.mjs",
+    REPO_ROOT / "scripts" / "open-memory-overnight-iterate.mjs",
+    REPO_ROOT / "scripts" / "open-memory.mjs",
+    REPO_ROOT / "scripts" / "studiobrain-ops.py",
+    REPO_ROOT / "scripts" / "studiobrain-idle-worker.mjs",
+    REPO_ROOT / "scripts" / "studiobrain-agent-harness-work-packet.mjs",
+    REPO_ROOT / "scripts" / "wiki-postgres.mjs",
+    REPO_ROOT / "scripts" / "reliability-hub.mjs",
+    REPO_ROOT / "scripts" / "studiobrain-backup-drill.mjs",
+    REPO_ROOT / "scripts" / "repo-audit-branch-guard.mjs",
+    REPO_ROOT / "scripts" / "repo-agentic-health-inventory.mjs",
+    REPO_ROOT / "scripts" / "check-ephemeral-artifact-tracking.mjs",
+    REPO_ROOT / "scripts" / "firestore-write-surface-inventory.mjs",
+    REPO_ROOT / "scripts" / "destructive-command-surface-audit.mjs",
+    REPO_ROOT / "scripts" / "security-history-scan.mjs",
+    REPO_ROOT / "scripts" / "codex" / "open-memory-automation.mjs",
+    REPO_ROOT / "scripts" / "codex" / "phone-notify.mjs",
     REPO_ROOT / "scripts" / "studiobrain-bambu-cli.sh",
     REPO_ROOT / "scripts" / "studiobrain-cockpit.mjs",
     REPO_ROOT / "scripts" / "studiobrain-control-tower-proxy.mjs",
+    REPO_ROOT / "scripts" / "studiobrain-incident-bundle.mjs",
+    REPO_ROOT / "scripts" / "studiobrain-status.mjs",
     REPO_ROOT / "scripts" / "studiobrain-host-access.py",
     REPO_ROOT / "scripts" / "studiobrain-host-access.sh",
     REPO_ROOT / "scripts" / "studiobrain-tmux-session.sh",
+    REPO_ROOT / "scripts" / "studio-brain-url-resolution.mjs",
+    REPO_ROOT / "scripts" / "studio-network-profile.mjs",
+    REPO_ROOT / "scripts" / "lib" / "command-runner.mjs",
+    REPO_ROOT / "scripts" / "lib" / "wiki-postgres-utils.mjs",
     REPO_ROOT / "scripts" / "lib" / "studiobrain_host_access.py",
     REPO_ROOT / "studio-brain" / "lib" / "controlTower",
+    REPO_ROOT / "wiki",
 )
 REMOTE_ENV_KEYS = (
     "STUDIO_BRAIN_DEPLOY_USER",
@@ -70,6 +103,30 @@ def load_env() -> dict[str, str]:
         env_path=ENV_PATH,
         home_env_path=HOME_STUDIO_MCP_ENV_PATH,
     )
+
+
+def deployment_managed_status_paths() -> tuple[list[str], list[str]]:
+    exact_paths: set[str] = set()
+    prefixes: set[str] = {
+        ".governance/planning/",
+        "config/studiobrain/",
+        "contracts/",
+        "docs/runbooks/",
+        "scripts/",
+        "studio-brain/",
+    }
+
+    for path in SUPPORT_PATHS:
+        try:
+            relative = path.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            continue
+        if path.is_dir():
+            prefixes.add(f"{relative.rstrip('/')}/")
+        else:
+            exact_paths.add(relative)
+
+    return sorted(exact_paths), sorted(prefixes)
 
 
 def resolve_control_tower_url(env: dict[str, str]) -> str:
@@ -508,15 +565,19 @@ def command_status(args: argparse.Namespace) -> dict[str, object]:
     try:
         ssh, auth = connect_studiobrain_ssh(env, timeout=args.timeout)
         user = str(env.get("STUDIO_BRAIN_DEPLOY_USER", "wuff")).strip() or "wuff"
+        managed_exact, managed_prefixes = deployment_managed_status_paths()
         status_script = f"""
 python3 - <<'PY'
 import json
 import os
 import shutil
 import subprocess
+import time
 
 repo_root = {json.dumps(REMOTE_PARENT)}
 host_user = {json.dumps(user)}
+managed_exact_paths = set({json.dumps(managed_exact)})
+managed_prefixes = tuple({json.dumps(managed_prefixes)})
 
 def run(args, shell=False):
     result = subprocess.run(args, shell=shell, capture_output=True, text=True, check=False)
@@ -526,9 +587,57 @@ def run(args, shell=False):
         "stderr": result.stderr.strip(),
     }}
 
+def parse_systemctl_show(status):
+    values = {{}}
+    for line in status.get("stdout", "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value
+    return values
+
+def parse_git_status_path(line):
+    raw = str(line or "")
+    if len(raw) > 3 and raw[2] == " ":
+        path = raw[3:]
+    elif len(raw) > 2 and raw[1] == " ":
+        path = raw[2:]
+    else:
+        path = raw[3:] if len(raw) > 3 else raw
+    path = path.strip().replace("\\\\", "/")
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1].strip()
+    return path
+
+def load_integrity_managed_paths():
+    manifest_path = os.path.join(repo_root, "studio-brain", ".env.integrity.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return set()
+    paths = set()
+    for entry in payload.get("files", []):
+        path = str(entry.get("path", "")).strip().replace("\\\\", "/")
+        if path:
+            paths.add(path)
+    return paths
+
+def is_deployment_managed(path):
+    normalized = str(path or "").strip().replace("\\\\", "/")
+    if not normalized:
+        return False
+    if normalized in managed_exact_paths:
+        return True
+    return any(normalized.startswith(prefix) for prefix in managed_prefixes)
+
+managed_exact_paths.update(load_integrity_managed_paths())
+
 payload = {{
     "tools": {{}},
     "services": {{}},
+    "timers": {{}},
+    "idleWorker": {{}},
     "workspace": {{
         "repoRoot": repo_root,
     }},
@@ -564,23 +673,180 @@ service_units = (
     "-".join(("studio", "brain", "".join(("disco", "rd")), "relay")),
     "-".join(("studio", "brain", "control", "tower", "proxy")),
     "-".join(("studio", "brain", "namecheap", "tunnel")),
+    "-".join(("studio", "brain", "idle", "worker")),
+    "-".join(("studio", "brain", "idle", "worker", "overnight")),
 )
 for unit in service_units:
-    status = run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState", "-p", "UnitFileState"])
+    status = run(["systemctl", "show", unit, "-p", "LoadState", "-p", "ActiveState", "-p", "SubState", "-p", "UnitFileState", "-p", "Result"])
     payload["services"][unit] = status
+
+timer_stems = (
+    "-".join(("studio", "brain", "backup")),
+    "-".join(("studio", "brain", "disk", "alert")),
+    "-".join(("studio", "brain", "healthcheck")),
+    "-".join(("studio", "brain", "idle", "worker")),
+    "-".join(("studio", "brain", "idle", "worker", "overnight")),
+    "-".join(("studio", "brain", "reboot", "watch")),
+)
+for stem in timer_stems:
+    unit = f"{{stem}}.timer"
+    status = run([
+        "systemctl",
+        "show",
+        unit,
+        "-p",
+        "LoadState",
+        "-p",
+        "ActiveState",
+        "-p",
+        "SubState",
+        "-p",
+        "UnitFileState",
+        "-p",
+        "NextElapseUSecRealtime",
+        "-p",
+        "NextElapseUSecMonotonic",
+        "-p",
+        "LastTriggerUSec",
+    ])
+    status["listTimers"] = run(["systemctl", "list-timers", "--all", "--no-pager", "--no-legend", unit])
+    payload["timers"][unit] = status
+
+idle_worker_files = [
+    "/usr/local/bin/studio-brain-idle-worker.sh",
+    "/etc/systemd/system/studio-brain-idle-worker.service",
+    "/etc/systemd/system/studio-brain-idle-worker.timer",
+    "/etc/systemd/system/studio-brain-idle-worker-overnight.service",
+    "/etc/systemd/system/studio-brain-idle-worker-overnight.timer",
+]
+idle_artifact_path = os.path.join(repo_root, "output", "studio-brain", "idle-worker", "latest.json")
+idle_findings = []
+idle_timer_summaries = {{}}
+missing_files = [path for path in idle_worker_files if not os.path.exists(path)]
+if missing_files:
+    idle_findings.append({{"severity": "fail", "message": "idle worker install files are missing", "paths": missing_files}})
+
+for unit in ("studio-brain-idle-worker.timer", "studio-brain-idle-worker-overnight.timer"):
+    raw_timer = payload["timers"].get(unit, {{}})
+    values = parse_systemctl_show(raw_timer)
+    list_timer = raw_timer.get("listTimers", {{}})
+    list_timer_stdout = str(list_timer.get("stdout", "")).strip() if isinstance(list_timer, dict) else ""
+    idle_timer_summaries[unit] = {{
+        "loadState": values.get("LoadState", ""),
+        "activeState": values.get("ActiveState", ""),
+        "subState": values.get("SubState", ""),
+        "unitFileState": values.get("UnitFileState", ""),
+        "nextElapseRealtime": values.get("NextElapseUSecRealtime", ""),
+        "nextElapseMonotonic": values.get("NextElapseUSecMonotonic", ""),
+        "lastTrigger": values.get("LastTriggerUSec", ""),
+        "listTimers": list_timer_stdout,
+    }}
+    if values.get("LoadState") != "loaded":
+        idle_findings.append({{"severity": "fail", "message": f"{{unit}} is not loaded", "unit": unit, "state": values}})
+        continue
+    if values.get("ActiveState") != "active":
+        idle_findings.append({{"severity": "fail", "message": f"{{unit}} is not active", "unit": unit, "state": values}})
+    if values.get("UnitFileState") not in ("enabled", "static"):
+        idle_findings.append({{"severity": "fail", "message": f"{{unit}} is not enabled", "unit": unit, "state": values}})
+    has_timer_next = bool(values.get("NextElapseUSecRealtime") or values.get("NextElapseUSecMonotonic"))
+    if not has_timer_next and (not list_timer_stdout or list_timer_stdout.lower().startswith("n/a")):
+        idle_findings.append({{"severity": "warn", "message": f"{{unit}} has no visible next run", "unit": unit, "state": values}})
+
+artifact_summary = {{"path": idle_artifact_path, "exists": os.path.exists(idle_artifact_path)}}
+if artifact_summary["exists"]:
+    stat = os.stat(idle_artifact_path)
+    artifact_summary["mtimeEpoch"] = int(stat.st_mtime)
+    artifact_summary["ageSeconds"] = max(0, int(time.time() - stat.st_mtime))
+    try:
+        with open(idle_artifact_path, "r", encoding="utf-8") as handle:
+            artifact = json.load(handle)
+        artifact_summary.update({{
+            "runId": artifact.get("runId", ""),
+            "status": artifact.get("status", ""),
+            "completedAt": artifact.get("completedAt", ""),
+            "summary": artifact.get("summary", {{}}),
+        }})
+        artifact_status = str(artifact_summary.get("status", "")).strip()
+        if artifact_status in ("degraded", "failed"):
+            idle_findings.append({{"severity": "fail", "message": "latest idle worker artifact is not passing", "status": artifact_status}})
+        elif artifact_status and artifact_status != "passed":
+            idle_findings.append({{"severity": "warn", "message": "latest idle worker artifact is not cleanly passed", "status": artifact_status}})
+        if artifact_summary["ageSeconds"] > 6 * 60 * 60:
+            idle_findings.append({{"severity": "warn", "message": "latest idle worker artifact is stale", "ageSeconds": artifact_summary["ageSeconds"]}})
+    except Exception as exc:
+        artifact_summary["parseError"] = str(exc)
+        idle_findings.append({{"severity": "fail", "message": "idle worker latest artifact could not be parsed", "error": str(exc)}})
+else:
+    idle_findings.append({{"severity": "warn", "message": "idle worker latest artifact is missing", "path": idle_artifact_path}})
+
+payload["idleWorker"] = {{
+    "status": "fail" if any(finding.get("severity") == "fail" for finding in idle_findings) else ("warn" if idle_findings else "pass"),
+    "artifact": artifact_summary,
+    "timers": idle_timer_summaries,
+    "findings": idle_findings,
+}}
 
 git_path = shutil.which("git")
 if git_path:
     branch = run(["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"])
     head = run(["git", "-C", repo_root, "rev-parse", "HEAD"])
     tracked_status = run(["git", "-C", repo_root, "status", "--short", "--untracked-files=no"])
+    untracked_status = run(["git", "-C", repo_root, "status", "--short", "--untracked-files=all"])
     status_lines = [line for line in tracked_status["stdout"].splitlines() if line.strip()]
+    untracked_lines = [
+        line
+        for line in untracked_status["stdout"].splitlines()
+        if line.strip().startswith("??")
+    ]
+    status_entries = []
+    managed_status_lines = []
+    unmanaged_status_lines = []
+    for line in status_lines:
+        path = parse_git_status_path(line)
+        deployment_managed = is_deployment_managed(path)
+        entry = {{
+            "line": line,
+            "path": path,
+            "deploymentManaged": deployment_managed,
+        }}
+        status_entries.append(entry)
+        if deployment_managed:
+            managed_status_lines.append(line)
+        else:
+            unmanaged_status_lines.append(line)
+    untracked_entries = []
+    managed_untracked_lines = []
+    unmanaged_untracked_lines = []
+    for line in untracked_lines:
+        path = parse_git_status_path(line)
+        deployment_managed = is_deployment_managed(path)
+        entry = {{
+            "line": line,
+            "path": path,
+            "deploymentManaged": deployment_managed,
+        }}
+        untracked_entries.append(entry)
+        if deployment_managed:
+            managed_untracked_lines.append(line)
+        else:
+            unmanaged_untracked_lines.append(line)
     payload["workspace"].update({{
         "gitInstalled": True,
         "branch": branch["stdout"].strip(),
         "head": head["stdout"].strip(),
         "dirtyTrackedCount": len(status_lines),
         "dirtyTrackedPreview": status_lines[:20],
+        "dirtyTrackedManagedCount": len(managed_status_lines),
+        "dirtyTrackedManagedPreview": managed_status_lines[:20],
+        "dirtyTrackedUnmanagedCount": len(unmanaged_status_lines),
+        "dirtyTrackedUnmanagedPreview": unmanaged_status_lines[:20],
+        "dirtyTrackedEntriesPreview": status_entries[:20],
+        "untrackedCount": len(untracked_lines),
+        "untrackedManagedCount": len(managed_untracked_lines),
+        "untrackedManagedPreview": managed_untracked_lines[:20],
+        "untrackedUnmanagedCount": len(unmanaged_untracked_lines),
+        "untrackedUnmanagedPreview": unmanaged_untracked_lines[:20],
+        "untrackedEntriesPreview": untracked_entries[:20],
     }})
 else:
     payload["workspace"]["gitInstalled"] = False
@@ -799,7 +1065,9 @@ def command_portal_bridge_install(args: argparse.Namespace) -> dict[str, object]
         bridge_port = int(tunnel_settings["port"])
         upstream_base = (
             str(env.get("STUDIO_BRAIN_MCP_BASE_URL", "")).strip()
-            or f"http://{str(env.get('STUDIO_BRAIN_DEPLOY_HOST', '127.0.0.1')).strip()}:8787"
+            or str(env.get("STUDIO_BRAIN_BASE_URL", "")).strip()
+            or str(env.get("STUDIO_BRAIN_URL", "")).strip()
+            or f"http://{str(env.get('STUDIO_BRAIN_DEPLOY_HOST', DEFAULT_STUDIO_BRAIN_API_HOST)).strip()}:8787"
         )
 
         bridge_install_command = (

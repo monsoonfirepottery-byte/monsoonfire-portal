@@ -277,12 +277,12 @@
     {
       "id": "fallback-membership",
       "kind": "derived-summary",
-      "title": "Can I change my membership plan?",
+      "title": "What should I do about a legacy membership question?",
       "sourcePath": "web/src/views/SupportView.tsx",
       "sourceType": "operational_faq",
       "policySlugs": ["payments-refunds"],
-      "summary": "Open Membership in the portal to review your current tier and available options, then submit a change request.",
-      "routingTerms": ["membership plan", "current tier", "change request"]
+      "summary": "Membership tiers are decommissioned. Do not route customers to tier changes; escalate legacy membership billing or account-record questions to staff review.",
+      "routingTerms": ["legacy membership", "membership decommissioned", "membership billing", "account review"]
     },
     {
       "id": "fallback-billing",
@@ -349,12 +349,12 @@
     {
       "id": "faq-membership",
       "kind": "derived-summary",
-      "title": "How do I change, pause, or cancel my membership?",
+      "title": "What happens to legacy membership questions?",
       "sourcePath": "docs/SCHEMA_SUPPORT.md",
       "sourceType": "operational_faq",
       "policySlugs": ["payments-refunds"],
-      "summary": "Send a request with your current plan and the change you want, and we will handle it.",
-      "routingTerms": ["change membership", "pause membership", "cancel membership", "current plan"]
+      "summary": "Membership tiers are decommissioned. Send legacy membership billing, refund, or account-record questions to staff review instead of offering plan changes.",
+      "routingTerms": ["legacy membership", "membership decommissioned", "membership billing", "membership refund"]
     },
     {
       "id": "faq-kiln-reservations",
@@ -385,7 +385,7 @@
       "sourcePath": "marketing/announcements/public-updates-live.json",
       "sourceType": "announcement_summary",
       "policySlugs": [],
-      "routingTerms": ["public studio updates", "member-only logistics", "pickup windows", "queue details"]
+      "routingTerms": ["public studio updates", "portal logistics", "pickup windows", "queue details"]
     },
     {
       "id": "announcement-appointment-only-reminder",

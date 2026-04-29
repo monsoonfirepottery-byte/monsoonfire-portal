@@ -6,6 +6,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_ROOT="${REPO_ROOT}/config/studiobrain/systemd"
 HOST_ROOT="${HOST_ROOT:-/}"
 HELPER_IMAGE="${STUDIOBRAIN_HOST_HELPER_IMAGE:-alpine:3.21}"
+HOST_USER="${STUDIO_BRAIN_DEPLOY_USER:-${SUDO_USER:-wuff}}"
+HOST_GROUP="${STUDIO_BRAIN_DEPLOY_GROUP:-${HOST_USER}}"
 LEGACY_SYSTEMD_UNITS=(
   "studiobrain-maintenance.service"
   "studiobrain-maintenance.timer"
@@ -28,6 +30,11 @@ for path in \
   "${CONFIG_ROOT}/studio-brain-healthcheck.sh" \
   "${CONFIG_ROOT}/studio-brain-healthcheck.service" \
   "${CONFIG_ROOT}/studio-brain-healthcheck.timer" \
+  "${CONFIG_ROOT}/studio-brain-idle-worker.sh" \
+  "${CONFIG_ROOT}/studio-brain-idle-worker.service" \
+  "${CONFIG_ROOT}/studio-brain-idle-worker.timer" \
+  "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.service" \
+  "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.timer" \
   "${CONFIG_ROOT}/studio-brain-reboot-watch.sh" \
   "${CONFIG_ROOT}/studio-brain-reboot-watch.service" \
   "${CONFIG_ROOT}/studio-brain-reboot-watch.timer"; do
@@ -47,9 +54,20 @@ if [[ "${HOST_ROOT}" == "/" ]]; then
   install -D -m 0755 "${CONFIG_ROOT}/studio-brain-healthcheck.sh" /usr/local/bin/studio-brain-healthcheck.sh
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-healthcheck.service" /etc/systemd/system/studio-brain-healthcheck.service
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-healthcheck.timer" /etc/systemd/system/studio-brain-healthcheck.timer
+  install -D -m 0755 "${CONFIG_ROOT}/studio-brain-idle-worker.sh" /usr/local/bin/studio-brain-idle-worker.sh
+  install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker.service" /etc/systemd/system/studio-brain-idle-worker.service
+  install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker.timer" /etc/systemd/system/studio-brain-idle-worker.timer
+  install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.service" /etc/systemd/system/studio-brain-idle-worker-overnight.service
+  install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.timer" /etc/systemd/system/studio-brain-idle-worker-overnight.timer
   install -D -m 0755 "${CONFIG_ROOT}/studio-brain-reboot-watch.sh" /usr/local/bin/studio-brain-reboot-watch.sh
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-reboot-watch.service" /etc/systemd/system/studio-brain-reboot-watch.service
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-reboot-watch.timer" /etc/systemd/system/studio-brain-reboot-watch.timer
+  install -d -o "${HOST_USER}" -g "${HOST_GROUP}" -m 0755 \
+    "${REPO_ROOT}/output/studio-brain/idle-worker" \
+    "${REPO_ROOT}/output/studio-brain/memory-consolidation"
+  chown -R "${HOST_USER}:${HOST_GROUP}" \
+    "${REPO_ROOT}/output/studio-brain/idle-worker" \
+    "${REPO_ROOT}/output/studio-brain/memory-consolidation" >/dev/null 2>&1 || true
   systemctl disable --now "${LEGACY_SYSTEMD_UNITS[@]}" >/dev/null 2>&1 || true
   rm -f "${LEGACY_BINARIES[@]}" /etc/systemd/system/studiobrain-maintenance.service /etc/systemd/system/studiobrain-maintenance.timer /etc/systemd/system/studiobrain-fan-guardian.service
   if [[ -w /sys/devices/platform/applesmc.768/fan1_manual ]]; then
@@ -65,6 +83,10 @@ if [[ "${HOST_ROOT}" == "/" ]]; then
   systemctl enable studio-brain-healthcheck.timer >/dev/null
   systemctl restart studio-brain-healthcheck.timer
   systemctl start studio-brain-healthcheck.service
+  systemctl enable studio-brain-idle-worker.timer >/dev/null
+  systemctl restart studio-brain-idle-worker.timer
+  systemctl enable studio-brain-idle-worker-overnight.timer >/dev/null
+  systemctl restart studio-brain-idle-worker-overnight.timer
   systemctl enable studio-brain-reboot-watch.timer >/dev/null
   systemctl restart studio-brain-reboot-watch.timer
   systemctl start studio-brain-reboot-watch.service
@@ -84,6 +106,8 @@ if [[ "${HOST_ROOT}" == "/" ]]; then
     exit 1
   fi
   systemctl show -p ActiveState -p SubState -p Result studio-brain-healthcheck.service
+  systemctl show -p ActiveState -p SubState -p UnitFileState studio-brain-idle-worker.timer
+  systemctl show -p ActiveState -p SubState -p UnitFileState studio-brain-idle-worker-overnight.timer
   systemctl show -p ActiveState -p SubState -p Result studio-brain-reboot-watch.service
   exit 0
 fi
@@ -110,6 +134,11 @@ docker run --rm \
     install -D -m 0755 /tmp/studiobrain-systemd/studio-brain-healthcheck.sh /host/usr/local/bin/studio-brain-healthcheck.sh
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-healthcheck.service /host/etc/systemd/system/studio-brain-healthcheck.service
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-healthcheck.timer /host/etc/systemd/system/studio-brain-healthcheck.timer
+    install -D -m 0755 /tmp/studiobrain-systemd/studio-brain-idle-worker.sh /host/usr/local/bin/studio-brain-idle-worker.sh
+    install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker.service /host/etc/systemd/system/studio-brain-idle-worker.service
+    install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker.timer /host/etc/systemd/system/studio-brain-idle-worker.timer
+    install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker-overnight.service /host/etc/systemd/system/studio-brain-idle-worker-overnight.service
+    install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker-overnight.timer /host/etc/systemd/system/studio-brain-idle-worker-overnight.timer
     install -D -m 0755 /tmp/studiobrain-systemd/studio-brain-reboot-watch.sh /host/usr/local/bin/studio-brain-reboot-watch.sh
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-reboot-watch.service /host/etc/systemd/system/studio-brain-reboot-watch.service
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-reboot-watch.timer /host/etc/systemd/system/studio-brain-reboot-watch.timer
@@ -135,6 +164,10 @@ docker run --rm \
     chroot /host systemctl enable studio-brain-healthcheck.timer >/dev/null
     chroot /host systemctl restart studio-brain-healthcheck.timer
     chroot /host systemctl start studio-brain-healthcheck.service
+    chroot /host systemctl enable studio-brain-idle-worker.timer >/dev/null
+    chroot /host systemctl restart studio-brain-idle-worker.timer
+    chroot /host systemctl enable studio-brain-idle-worker-overnight.timer >/dev/null
+    chroot /host systemctl restart studio-brain-idle-worker-overnight.timer
     chroot /host systemctl enable studio-brain-reboot-watch.timer >/dev/null
     chroot /host systemctl restart studio-brain-reboot-watch.timer
     chroot /host systemctl start studio-brain-reboot-watch.service
@@ -155,5 +188,7 @@ docker run --rm \
     fi
     chroot /host systemctl show -p ActiveState -p SubState -p Result studio-brain-backup.service
     chroot /host systemctl show -p ActiveState -p SubState -p Result studio-brain-healthcheck.service
+    chroot /host systemctl show -p ActiveState -p SubState -p UnitFileState studio-brain-idle-worker.timer
+    chroot /host systemctl show -p ActiveState -p SubState -p UnitFileState studio-brain-idle-worker-overnight.timer
     chroot /host systemctl show -p ActiveState -p SubState -p Result studio-brain-reboot-watch.service
   '

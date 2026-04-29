@@ -91,6 +91,9 @@ jobs:
       - name: Install root deps
         run: npm ci
 
+      - name: Studio Brain wiki gate
+        run: npm run wiki:gate
+
       - name: Policy docs lint
         run: node website/scripts/lint-policies.mjs
 

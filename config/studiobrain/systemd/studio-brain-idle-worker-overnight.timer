@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Studio Brain overnight idle worker
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=45m
+Persistent=true
+Unit=studio-brain-idle-worker-overnight.service
+
+[Install]
+WantedBy=timers.target

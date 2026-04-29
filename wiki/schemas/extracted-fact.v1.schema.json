@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "extracted-fact.v1.schema.json",
+  "title": "Studio Brain Wiki Extracted Fact",
+  "type": "object",
+  "required": [
+    "schema",
+    "claimId",
+    "claimFingerprint",
+    "status",
+    "truthStatus",
+    "subjectKey",
+    "predicateKey",
+    "objectText",
+    "sourceRefs"
+  ],
+  "properties": {
+    "schema": { "const": "wiki-extracted-fact.v1" },
+    "claimId": { "type": "string" },
+    "claimFingerprint": { "type": "string" },
+    "status": { "type": "string" },
+    "truthStatus": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "subjectKey": { "type": "string" },
+    "predicateKey": { "type": "string" },
+    "objectText": { "type": "string" },
+    "sourceRefs": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

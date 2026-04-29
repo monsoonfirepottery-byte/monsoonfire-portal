@@ -2,7 +2,7 @@
 
 Current active baseline:
 - Run id: `pst-signal-quality-run-2026-03-06-finalcandidate`
-- Baseline config: [config/pst-signal-quality-baseline.json](/home/wuff/monsoonfire-portal/config/pst-signal-quality-baseline.json)
+- Baseline config: [config/pst-signal-quality-baseline.json](../../config/pst-signal-quality-baseline.json)
 
 Why this run matters:
 - It is the first PST signal-quality run that passed the full production gate.
@@ -13,10 +13,10 @@ Why this run matters:
   - drift hygiene checks
 
 Main artifacts:
-- Production gate: [production-readiness.json](/home/wuff/monsoonfire-portal/output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/production-readiness.json)
-- Signal report: [report.json](/home/wuff/monsoonfire-portal/output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/report.json)
-- Review pack: [review-pack.md](/home/wuff/monsoonfire-portal/output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/review-pack.md)
-- Pipeline log: [pipeline.log](/home/wuff/monsoonfire-portal/output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/pipeline.log)
+- Production gate: `output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/production-readiness.json`
+- Signal report: `output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/report.json`
+- Review pack: `output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/review-pack.md`
+- Pipeline log: `output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/pipeline.log`
 
 Run the pipeline:
 ```bash

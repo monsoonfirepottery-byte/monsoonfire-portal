@@ -171,6 +171,12 @@ test("contradiction scan emits review records instead of editing claims", () => 
   assert.equal(scan.summary.hard, 1);
   assert.equal(scan.contradictions[0].conflictKey, "membership-required-vs-decommission");
   assert.match(scan.contradictions[0].markdownPath, /wiki\/50_contradictions\//);
+  assert.deepEqual(scan.contradictions[0].metadata.evidencePathCounts.a, [
+    { sourcePath: "docs/policies/membership.md", count: 1 },
+  ]);
+  assert.deepEqual(scan.contradictions[0].metadata.evidencePathCounts.b, [
+    { sourcePath: "docs/plans/current-business-plan.md", count: 1 },
+  ]);
 });
 
 test("volume contradiction scan ignores guardrail and no-volume policy text", () => {

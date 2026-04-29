@@ -144,6 +144,12 @@ test("hard wiki contradictions become human-gated harness work", () => {
           owner: "policy",
           markdownPath: "wiki/50_contradictions/membership-required-vs-decommission.md",
           sourceRefs: [{ sourcePath: "docs/epics/EPIC-MEMBERSHIP-DECOMMISSION-AND-STUDIO-FOCUS.md" }],
+          metadata: {
+            evidencePathCounts: {
+              a: [{ sourcePath: "website/data/faq.json", count: 2 }],
+              b: [{ sourcePath: "docs/policies/service-pricing-and-membership-decommission.md", count: 1 }],
+            },
+          },
         },
         {
           contradictionId: "contradiction_pricing",
@@ -164,6 +170,10 @@ test("hard wiki contradictions become human-gated harness work", () => {
   assert.match(nextWork.topWork[0].why, /OPERATIONAL_TRUTH/);
   assert.match(nextWork.topWork[0].humanGate, /Human approval is required/);
   assert.ok(nextWork.topWork[0].files.includes("wiki/50_contradictions/membership-required-vs-decommission.md"));
+  assert.deepEqual(
+    nextWork.topWork[0].sourceSignals[0].contradictions[0].evidencePathCounts.a,
+    [{ sourcePath: "website/data/faq.json", count: 2 }],
+  );
   assert.ok(nextWork.sourceFreshness.sources.some((source) => source.label === "wiki-contradictions"));
 });
 

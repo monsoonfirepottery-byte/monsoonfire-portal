@@ -774,6 +774,10 @@ export function detectContradictions(index, claims = []) {
       metadata: {
         aMatches: aMatches.length,
         bMatches: bMatches.length,
+        evidencePathCounts: {
+          a: summarizeEvidencePaths(aMatches),
+          b: summarizeEvidencePaths(bMatches),
+        },
       },
     });
   }
@@ -853,6 +857,17 @@ function relatedClaimId(claims, key, matches) {
     return sourceMatch && tokens.some((token) => text.includes(token));
   });
   return related[0]?.claimId || null;
+}
+
+function summarizeEvidencePaths(matches, limit = 20) {
+  const counts = new Map();
+  for (const match of matches) {
+    counts.set(match.sourcePath, (counts.get(match.sourcePath) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([sourcePath, count]) => ({ sourcePath, count }));
 }
 
 export function generateContextPack(claims, contradictions = [], options = {}) {
@@ -1205,11 +1220,29 @@ export function writeContradictions(scan, artifactPath) {
       "## Source References",
       "",
       ...contradiction.sourceRefs.map((ref) => `- \`${ref.sourcePath}\` lines ${ref.lineStart || "?"}-${ref.lineEnd || "?"}`),
+      ...formatEvidencePathCountLines(contradiction),
     ];
     writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
     paths.push(path);
   }
   return paths;
+}
+
+function formatEvidencePathCountLines(contradiction) {
+  const counts = contradiction.metadata?.evidencePathCounts;
+  if (!counts || (!counts.a?.length && !counts.b?.length)) return [];
+
+  const lines = ["", "## Evidence Path Counts", ""];
+  for (const [label, entries] of [["Side A", counts.a || []], ["Side B", counts.b || []]]) {
+    if (entries.length === 0) continue;
+    lines.push(`### ${label}`, "");
+    for (const entry of entries) {
+      lines.push(`- \`${entry.sourcePath}\`: ${entry.count}`);
+    }
+    lines.push("");
+  }
+  while (lines.at(-1) === "") lines.pop();
+  return lines;
 }
 
 export function readExtractedFacts(path = resolve(WIKI_ROOT, "00_source_index", "extracted-facts.jsonl")) {

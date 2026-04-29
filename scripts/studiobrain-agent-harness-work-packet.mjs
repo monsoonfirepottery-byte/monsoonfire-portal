@@ -353,6 +353,7 @@ function collectOpenWikiContradictions(scan) {
       recommendedAction: clean(entry.recommendedAction),
       markdownPath: clean(entry.markdownPath),
       sourceRefs: Array.isArray(entry.sourceRefs) ? entry.sourceRefs.slice(0, 6) : [],
+      evidencePathCounts: entry.metadata?.evidencePathCounts || null,
     }))
     .filter((entry) => entry.contradictionId || entry.conflictKey);
 }

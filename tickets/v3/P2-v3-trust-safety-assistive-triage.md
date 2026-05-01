@@ -1,5 +1,11 @@
 # P2: Trust & Safety Assistive Triage
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Add assistive triage suggestions to community reporting workflows without automatic enforcement actions.
 

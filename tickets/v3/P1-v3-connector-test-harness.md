@@ -1,5 +1,11 @@
 # P1: Connector Contract Test Harness
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Create a reusable harness that validates connector behavior against standard contracts (health, auth, retries, error shape, read-only mode).
 

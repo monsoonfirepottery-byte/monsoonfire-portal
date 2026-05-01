@@ -1,5 +1,11 @@
 # P1: Capability Registry + Proposal/Approval + Immutable Audit
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Introduce capability definitions and a proposal/approval workflow that gates all external writes.
 

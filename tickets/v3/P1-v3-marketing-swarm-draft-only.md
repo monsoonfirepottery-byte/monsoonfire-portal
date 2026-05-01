@@ -1,5 +1,11 @@
 # P1: Marketing Swarm (Draft-only)
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Use StudioState and existing content sources to generate draft marketing artifacts without auto-publish.
 

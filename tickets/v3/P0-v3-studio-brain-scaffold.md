@@ -1,5 +1,11 @@
 # P0: Studio Brain Scaffold (TypeScript + Postgres + Job Runtime)
 
+Status: done-in-code
+Priority: P0
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Create a local `studio-brain` package with config, Postgres stores, migrations, job runner, and append-only event log foundations.
 

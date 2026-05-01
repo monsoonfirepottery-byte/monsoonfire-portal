@@ -1,5 +1,11 @@
 # P0: Cloud-Truth Guardrails + Drift Detection
 
+Status: done-in-code
+Priority: P0
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Prevent local StudioState from being mistaken as authoritative by enforcing provenance labels, staleness checks, and drift alerts.
 

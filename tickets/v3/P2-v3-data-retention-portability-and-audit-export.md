@@ -1,5 +1,11 @@
 # P2: Data Retention, Portability, and Audit Export
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Define retention windows and export paths for local Studio OS artifacts while preserving immutable audit expectations.
 

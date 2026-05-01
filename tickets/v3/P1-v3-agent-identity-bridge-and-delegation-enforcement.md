@@ -1,5 +1,11 @@
 # P1: Agent Identity Bridge + Delegation Enforcement
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Bind agent actions to explicit delegated authority from humans/staff and deny execution when delegation is missing, expired, revoked, or scope-incompatible.
 

@@ -1,5 +1,11 @@
 # P0: Local Dashboard for StudioState + Diffs
 
+Status: done-in-code
+Priority: P0
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Expose a local dashboard surface for latest StudioState and recent audit events/diffs.
 

@@ -55,6 +55,8 @@ function boolEnv(name: string, fallback = false): boolean {
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
   "https://monsoonfire.com",
   "https://www.monsoonfire.com",
   "https://portal.monsoonfire.com",

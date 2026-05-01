@@ -45,6 +45,7 @@ function withPatchedEnv(patch, run) {
         PGPASSWORD: "super-secret",
         GOOGLE_APPLICATION_CREDENTIALS: "C:\\\\tmp\\\\service-account.json",
         STUDIO_BRAIN_ADMIN_TOKEN: "token",
+        STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN: "bridge-token",
         STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: "ops-pii-key",
         STUDIO_BRAIN_OPENAI_API_KEY: "sk-local",
         STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET: "ingest-secret",
@@ -58,6 +59,7 @@ function withPatchedEnv(patch, run) {
         strict_1.default.equal(safe.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY, "[set]");
         strict_1.default.equal(safe.PGPASSWORD, "[redacted]");
         strict_1.default.equal(safe.GOOGLE_APPLICATION_CREDENTIALS, "[set]");
+        strict_1.default.equal(safe.STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN, "[set]");
         strict_1.default.equal(safe.STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY, "[set]");
         strict_1.default.equal(safe.STUDIO_BRAIN_OPENAI_API_KEY, "[set]");
         strict_1.default.equal(safe.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET, "[set]");

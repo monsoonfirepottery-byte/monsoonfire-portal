@@ -80,6 +80,7 @@
     "test:e2e:dev": "BASE_URL=${BASE_URL:?Set BASE_URL to your preview URL} npx playwright test -c website/playwright.config.mjs",
     "portal:smoke:playwright": "node ./scripts/portal-playwright-smoke.mjs --output-dir output/playwright/portal",
     "ops:portal:bridge:smoke": "npm --prefix studio-brain run build && node ./scripts/ops-portal-bridge-smoke.mjs --json",
+    "ember:support:attachment:smoke": "node ./scripts/ember-support-attachment-smoke.mjs --json --strict",
     "ops:portal:public:smoke": "node ./scripts/ops-portal-public-smoke.mjs --json",
     "portal:smoke:native-browser:shadow": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod",
     "codex:browser:verify:portal": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod --app-handoff",

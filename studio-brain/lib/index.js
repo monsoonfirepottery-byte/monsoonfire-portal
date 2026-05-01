@@ -35,6 +35,7 @@ const gmailAdapter_1 = require("./supportOps/gmailAdapter");
 const namecheapPrivateEmailAdapter_1 = require("./supportOps/namecheapPrivateEmailAdapter");
 const portalIngestAuth_1 = require("./supportOps/portalIngestAuth");
 const store_1 = require("./supportOps/store");
+const attachments_1 = require("./supportOps/attachments");
 const service_2 = require("./supportOps/service");
 const store_2 = require("./ops/store");
 const service_3 = require("./ops/service");
@@ -245,6 +246,7 @@ async function main() {
     ], logger);
     const capabilityRuntime = new runtime_1.CapabilityRuntime(runtime_1.defaultCapabilities, eventStore, new postgresStores_1.PostgresProposalStore(), new postgresStores_1.PostgresQuotaStore(), new postgresStores_1.PostgresPolicyStore(), connectorRegistry);
     const supportOpsStore = new store_1.PostgresSupportOpsStore();
+    const supportAttachmentStore = new attachments_1.PostgresEmberSupportAttachmentStore();
     const opsStore = new store_2.PostgresOpsStore();
     const opsService = (0, service_3.createOpsService)({
         store: opsStore,
@@ -773,6 +775,8 @@ async function main() {
             ? (0, pilotWriteExecutor_1.createPilotWriteExecutor)({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })
             : null,
         supportOpsStore,
+        supportAttachmentStore,
+        emberSupportBridgeToken: env.STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN,
         artifactStore,
         kilnStore,
         kilnEnabled: env.STUDIO_BRAIN_KILN_ENABLED,

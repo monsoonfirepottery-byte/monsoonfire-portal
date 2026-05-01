@@ -44,6 +44,48 @@ function createMemoryArtifactStore() {
         },
     };
 }
+class MemoryEmberSupportAttachmentStore {
+    records = new Map();
+    payloads = new Map();
+    async countActiveForSession(sessionId, now = new Date()) {
+        return Array.from(this.records.values()).filter((record) => (record.sessionId === sessionId && Date.parse(record.expiresAt) > now.getTime())).length;
+    }
+    async save(input, now = new Date()) {
+        const id = `esa_test_${this.records.size + 1}`;
+        const expiresAt = new Date(now.getTime() + (input.ttlMinutes ?? 360) * 60_000).toISOString();
+        const record = {
+            id,
+            sessionId: input.sessionId,
+            supportRequestId: input.supportRequestId,
+            pagePath: input.pagePath,
+            fileName: input.fileName,
+            contentType: input.contentType,
+            sizeBytes: input.payload.byteLength,
+            sha256: node_crypto_1.default.createHash("sha256").update(input.payload).digest("hex"),
+            note: input.note,
+            source: input.source,
+            uploadedBy: input.uploadedBy,
+            requestId: input.requestId,
+            createdAt: now.toISOString(),
+            expiresAt,
+            metadata: input.metadata ?? {},
+        };
+        this.records.set(id, record);
+        this.payloads.set(id, Buffer.from(input.payload));
+        return record;
+    }
+    async pruneExpired(now = new Date()) {
+        let deletedRows = 0;
+        for (const record of Array.from(this.records.values())) {
+            if (Date.parse(record.expiresAt) <= now.getTime()) {
+                this.records.delete(record.id);
+                this.payloads.delete(record.id);
+                deletedRows += 1;
+            }
+        }
+        return { deletedRows, deletedBefore: now.toISOString() };
+    }
+}
 function readKilnFixture(name) {
     return (0, node_fs_1.readFileSync)((0, node_path_1.join)(__dirname, "..", "..", "src", "kiln", "adapters", "genesis-log", "fixtures", name));
 }
@@ -910,6 +952,114 @@ function createControlTowerRunner() {
         strict_1.default.equal(payload.persona.startup.operatingMode, "hybrid_warm_touch");
         strict_1.default.equal(payload.persona.startup.fileReferences[1], "config/studiobrain/agents/ember/system-prompt.md");
         strict_1.default.match(payload.persona.startup.profileCard.badge, /policy-governed/i);
+    });
+});
+(0, node_test_1.default)("ember support attachment endpoint stores small images with bridge token metadata", async () => {
+    const supportAttachmentStore = new MemoryEmberSupportAttachmentStore();
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0x00, 0xff, 0xd9]);
+    await withServer({ emberSupportBridgeToken: "bridge-secret", supportAttachmentStore }, async (baseUrl) => {
+        const unauthorized = await fetch(`${baseUrl}/api/support-ops/ember-attachments`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({}),
+        });
+        strict_1.default.equal(unauthorized.status, 401);
+        const response = await fetch(`${baseUrl}/api/support-ops/ember-attachments`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-ember-web-support-token": "bridge-secret",
+            },
+            body: JSON.stringify({
+                sessionId: "ember_attachment_session",
+                pagePath: "/firing-care-preview/support-pickup/",
+                fileName: "pickup photo.jpg",
+                contentType: "image/jpeg",
+                sizeBytes: jpeg.byteLength,
+                dataBase64: jpeg.toString("base64"),
+                ttlMinutes: 60,
+                metadata: {
+                    sourceIpHash: "abc123",
+                    userAgentHash: "def456",
+                },
+            }),
+        });
+        strict_1.default.equal(response.status, 200);
+        const payload = (await response.json());
+        strict_1.default.equal(payload.ok, true);
+        strict_1.default.equal(payload.attachment.sessionId, "ember_attachment_session");
+        strict_1.default.equal(payload.attachment.contentType, "image/jpeg");
+        strict_1.default.equal(payload.attachment.sizeBytes, jpeg.byteLength);
+        strict_1.default.equal(payload.controls.maxBytes, 512 * 1024);
+        strict_1.default.equal(payload.controls.maxActivePerSession, 3);
+        strict_1.default.equal(payload.controls.ttlMinutes, 60);
+        strict_1.default.equal(payload.prune.deletedRows, 0);
+        strict_1.default.equal(supportAttachmentStore.payloads.size, 1);
+    });
+});
+(0, node_test_1.default)("ember support attachment endpoint rejects spoofed images and caps active attachments", async () => {
+    const supportAttachmentStore = new MemoryEmberSupportAttachmentStore();
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0x00, 0xff, 0xd9]);
+    await withServer({ adminToken: "attachment-secret", supportAttachmentStore }, async (baseUrl) => {
+        const spoofed = await fetch(`${baseUrl}/api/support-ops/ember-attachments`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-studio-brain-admin-token": "attachment-secret",
+            },
+            body: JSON.stringify({
+                sessionId: "ember_attachment_session",
+                pagePath: "/firing-care-preview/support-pickup/",
+                fileName: "not-a-png.png",
+                contentType: "image/png",
+                sizeBytes: jpeg.byteLength,
+                dataBase64: jpeg.toString("base64"),
+            }),
+        });
+        strict_1.default.equal(spoofed.status, 400);
+        for (let index = 0; index < 3; index += 1) {
+            const ok = await fetch(`${baseUrl}/api/support-ops/ember-attachments`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    "x-studio-brain-admin-token": "attachment-secret",
+                },
+                body: JSON.stringify({
+                    sessionId: "ember_attachment_session",
+                    pagePath: "/firing-care-preview/support-pickup/",
+                    fileName: `pickup-${index}.jpg`,
+                    contentType: "image/jpeg",
+                    sizeBytes: jpeg.byteLength,
+                    dataBase64: jpeg.toString("base64"),
+                }),
+            });
+            strict_1.default.equal(ok.status, 200);
+        }
+        const capped = await fetch(`${baseUrl}/api/support-ops/ember-attachments`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-studio-brain-admin-token": "attachment-secret",
+            },
+            body: JSON.stringify({
+                sessionId: "ember_attachment_session",
+                pagePath: "/firing-care-preview/support-pickup/",
+                fileName: "pickup-capped.jpg",
+                contentType: "image/jpeg",
+                sizeBytes: jpeg.byteLength,
+                dataBase64: jpeg.toString("base64"),
+            }),
+        });
+        strict_1.default.equal(capped.status, 429);
+        for (const record of supportAttachmentStore.records.values()) {
+            record.expiresAt = new Date(Date.now() - 1_000).toISOString();
+        }
+        const prune = await fetch(`${baseUrl}/api/support-ops/ember-attachments/prune`, {
+            method: "POST",
+            headers: { "x-studio-brain-admin-token": "attachment-secret" },
+        });
+        strict_1.default.equal(prune.status, 200);
+        strict_1.default.equal(supportAttachmentStore.records.size, 0);
     });
 });
 (0, node_test_1.default)("support discord respond endpoint drafts a safe Ember reply", async () => {

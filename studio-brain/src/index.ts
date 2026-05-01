@@ -34,6 +34,7 @@ import { GmailSupportMailboxAdapter } from "./supportOps/gmailAdapter";
 import { NamecheapPrivateEmailSupportMailboxAdapter } from "./supportOps/namecheapPrivateEmailAdapter";
 import { mintSupportIngestBearerFromPortal } from "./supportOps/portalIngestAuth";
 import { PostgresSupportOpsStore } from "./supportOps/store";
+import { PostgresEmberSupportAttachmentStore } from "./supportOps/attachments";
 import {
   buildEmberMemoryScope,
   buildEmberMemberSubject,
@@ -288,6 +289,7 @@ async function main(): Promise<void> {
     connectorRegistry
   );
   const supportOpsStore = new PostgresSupportOpsStore();
+  const supportAttachmentStore = new PostgresEmberSupportAttachmentStore();
   const opsStore = new PostgresOpsStore();
   const opsService = createOpsService({
     store: opsStore,
@@ -835,6 +837,8 @@ async function main(): Promise<void> {
       ? createPilotWriteExecutor({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })
       : null,
     supportOpsStore,
+    supportAttachmentStore,
+    emberSupportBridgeToken: env.STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN,
     artifactStore,
     kilnStore,
     kilnEnabled: env.STUDIO_BRAIN_KILN_ENABLED,

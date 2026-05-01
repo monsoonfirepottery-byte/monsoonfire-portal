@@ -23,6 +23,7 @@ const STUDIO_BRAIN_ROOT = (0, node_path_1.resolve)(__dirname, "..", "..");
 const REPO_ROOT = (0, node_path_1.resolve)(STUDIO_BRAIN_ROOT, "..");
 const RUNTIME_ENFORCED_SENSITIVE_VARS = new Set([
     "STUDIO_BRAIN_ADMIN_TOKEN",
+    "STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN",
     "STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY",
     "STUDIO_BRAIN_OPENAI_API_KEY",
     "STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET",
@@ -67,6 +68,7 @@ const EnvSchema = zod_1.z.object({
     STUDIO_BRAIN_LOG_LEVEL: zod_1.z.enum(["debug", "info", "warn", "error"]).default("info"),
     STUDIO_BRAIN_ALLOWED_ORIGINS: zod_1.z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
     STUDIO_BRAIN_ADMIN_TOKEN: zod_1.z.string().optional(),
+    STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN: zod_1.z.string().optional(),
     STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: zod_1.z.string().optional(),
     STUDIO_BRAIN_JOB_INTERVAL_MS: zod_1.z.coerce.number().int().min(10_000).max(86_400_000).default(15 * 60 * 1000),
     STUDIO_BRAIN_JOB_INITIAL_DELAY_MS: zod_1.z.coerce.number().int().min(0).max(300_000).default(0),
@@ -451,6 +453,7 @@ function redactEnvForLogs(env) {
         STUDIO_BRAIN_LOG_LEVEL: env.STUDIO_BRAIN_LOG_LEVEL,
         STUDIO_BRAIN_ALLOWED_ORIGINS: env.STUDIO_BRAIN_ALLOWED_ORIGINS,
         STUDIO_BRAIN_ADMIN_TOKEN: env.STUDIO_BRAIN_ADMIN_TOKEN ? "[set]" : null,
+        STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN: env.STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN ? "[set]" : null,
         STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY: env.STUDIO_BRAIN_OPS_PII_ENCRYPTION_KEY ? "[set]" : null,
         STUDIO_BRAIN_JOB_INTERVAL_MS: env.STUDIO_BRAIN_JOB_INTERVAL_MS,
         STUDIO_BRAIN_JOB_INITIAL_DELAY_MS: env.STUDIO_BRAIN_JOB_INITIAL_DELAY_MS,

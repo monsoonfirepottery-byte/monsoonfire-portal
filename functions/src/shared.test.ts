@@ -94,6 +94,23 @@ test("applyCors accepts origin header with canonical casing", () => {
   assert.equal(captured.headers["Access-Control-Allow-Origin"], "https://monsoonfire-portal.web.app");
 });
 
+test("applyCors allows the local ncsitebuilder preview origin", () => {
+  const { response, captured } = createMockResponse();
+
+  const handled = applyCors(
+    {
+      method: "POST",
+      headers: {
+        origin: "http://127.0.0.1:4173",
+      },
+    } as never,
+    response as never
+  );
+
+  assert.equal(handled, false);
+  assert.equal(captured.headers["Access-Control-Allow-Origin"], "http://127.0.0.1:4173");
+});
+
 test("applyCors normalizes configured allowed origins and origin header values", () => {
   const previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
   process.env.ALLOWED_ORIGINS = " https://monsoonfire-portal.web.app/ , https://example-studio-brian.invalid ";

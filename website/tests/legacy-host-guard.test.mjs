@@ -4,7 +4,15 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const WEBSITE_ROOT = path.resolve("website");
-const EXCLUDED_DIRS = new Set(["tests", "MF Marketing", "node_modules", ".git"]);
+const EXCLUDED_DIRS = new Set([
+  "tests",
+  "MF Marketing",
+  "node_modules",
+  ".git",
+  // Unlinked/noindex design surfaces may intentionally test future handoff hosts.
+  "mockups",
+  "firing-care-preview",
+]);
 const SCANNED_EXTENSIONS = new Set([
   ".html",
   ".htm",

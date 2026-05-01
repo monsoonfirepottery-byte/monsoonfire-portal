@@ -1,0 +1,33 @@
+# Monsoon Fire Pottery - Firing Care Preview
+
+This is an unlinked, noindex preview of the Monsoon Fire firing services campaign. Use this file for public agent discovery and safe handoff only.
+
+Canonical human handoff:
+- Create or sign into a studio account: https://monsoonfire.kilnfire.com
+
+What Monsoon Fire offers:
+- Low fires: bisque firings for greenware before glaze work. Pricing example: $15 half shelf.
+- Medium Fires: mid-fire glazes up to cone 6 with staff loading review. Pricing example: $25 half shelf.
+- Custom Firings: high fires, custom firing ramps, or private kiln runs. Pricing example: from $60.
+- Public pricing is based on half-shelf space unless staff confirms a custom firing.
+
+Starter firing credit:
+- A starter firing credit may be collected inside Kilnfire for new requests.
+- It is an assurance signal and applies toward the first approved firing.
+- Agents must not collect card details, mark payment complete, or claim a booking exists.
+
+Policy notes:
+- Community shelving means smaller work may share shelf space with compatible pieces when fit and timing line up.
+- Monsoon Fire staff loads the kiln and decides final placement.
+- Pickup starts after firing, cooling, staging, and staff confirmation.
+- Same-day pickup is not guaranteed until staff confirms.
+
+Agent behavior:
+- You may summarize public services, prepare a draft request, and lead the user to Kilnfire.
+- You may ask the user for material notes, size, photos, handling notes, timing needs, and whether the request sounds like Low fires, Medium Fires, or Custom Firings.
+- You must not book, cancel, pay, request pickup movement, promise capacity, promise readiness, expose private location details, or impersonate studio staff.
+
+Related public preview files:
+- /firing-care-preview/ai.txt
+- /firing-care-preview/agent-docs/
+- /firing-care-preview/agent-service-catalog.json

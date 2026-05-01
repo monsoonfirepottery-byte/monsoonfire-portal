@@ -4,6 +4,7 @@ declare(strict_types=1);
 const STUDIO_BRAIN_BRIDGE_PREFIX = '/__studio-brain';
 const STUDIO_BRAIN_UPSTREAM_BASE = 'http://127.0.0.1:18787';
 const STUDIO_BRAIN_UPSTREAM_TIMEOUT_SECONDS = 25;
+const EMBER_SUPPORT_BRIDGE_MAX_BODY_BYTES = 850000;
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
@@ -27,6 +28,15 @@ if (!isAllowedBridgePath($upstreamPath)) {
         'ok' => false,
         'message' => 'path not allowed',
     ]);
+}
+if (isEmberSupportBridgePath($upstreamPath)) {
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLength > EMBER_SUPPORT_BRIDGE_MAX_BODY_BYTES) {
+        emitJson(413, [
+            'ok' => false,
+            'message' => 'request body too large',
+        ]);
+    }
 }
 
 $upstreamUrl = STUDIO_BRAIN_UPSTREAM_BASE . $upstreamPath;
@@ -161,7 +171,13 @@ function isAllowedBridgePath(string $path): bool
         return true;
     }
 
-    return (bool) preg_match('#^/(?:ops(?:/.*)?|api/ops(?:/.*)?|api/control-tower(?:/.*)?)$#i', $path);
+    return isEmberSupportBridgePath($path)
+        || (bool) preg_match('#^/(?:ops(?:/.*)?|api/ops(?:/.*)?|api/control-tower(?:/.*)?)$#i', $path);
+}
+
+function isEmberSupportBridgePath(string $path): bool
+{
+    return $path === '/api/support-ops/ember-attachments';
 }
 
 function buildForwardHeaders(): array
@@ -174,6 +190,7 @@ function buildForwardHeaders(): array
         'x-trace-id',
         'traceparent',
         'x-studio-brain-ops-session',
+        'x-ember-web-support-token',
     ];
     $allowedLookup = array_fill_keys($allowedNames, true);
 

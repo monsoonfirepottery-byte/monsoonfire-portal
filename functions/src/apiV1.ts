@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import * as logger from "firebase-functions/logger";
 import {
@@ -927,6 +927,55 @@ const supportRequestCreateSchema = z.object({
     })
     .optional()
     .nullable(),
+});
+
+const SUPPORT_CHAT_ATTACHMENT_MAX_BYTES = 512 * 1024;
+const SUPPORT_CHAT_ATTACHMENT_MAX_BASE64_CHARS = Math.ceil(SUPPORT_CHAT_ATTACHMENT_MAX_BYTES * 1.4) + 16;
+const supportChatAttachmentContentTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
+
+const supportChatMessageSchema = z.object({
+  sessionId: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional()
+    .nullable(),
+  message: z.string().min(1).max(1_000).trim(),
+  pagePath: z.string().min(1).max(240).trim(),
+  topic: z.string().min(1).max(80).trim().optional().nullable(),
+  contact: z
+    .object({
+      name: z.string().max(120).trim().optional().nullable(),
+      email: z.string().email().max(200).trim().optional().nullable(),
+      phone: z.string().max(40).trim().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  consentToContact: z.boolean().optional().nullable(),
+});
+
+const supportChatAttachmentSchema = z.object({
+  sessionId: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional()
+    .nullable(),
+  supportRequestId: z
+    .string()
+    .min(1)
+    .max(160)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional()
+    .nullable(),
+  pagePath: z.string().min(1).max(240).trim(),
+  fileName: z.string().min(1).max(140).trim(),
+  contentType: supportChatAttachmentContentTypeSchema,
+  sizeBytes: z.number().int().min(1).max(SUPPORT_CHAT_ATTACHMENT_MAX_BYTES),
+  dataBase64: z.string().min(1).max(SUPPORT_CHAT_ATTACHMENT_MAX_BASE64_CHARS).trim(),
+  note: z.string().max(300).trim().optional().nullable(),
 });
 
 const libraryReviewCreateSchema = z
@@ -2503,6 +2552,8 @@ const LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE = "/v1/library.coverReviews.reconcil
 const LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN = "/v1/library.metadata.enrichment.run";
 const RESERVATION_NOTIFICATION_POLICY_GET_ROUTE = "/v1/notifications.reservationPolicy.get";
 const RESERVATION_NOTIFICATION_POLICY_SET_ROUTE = "/v1/notifications.reservationPolicy.set";
+const SUPPORT_CHAT_MESSAGE_ROUTE = "/v1/support.chat.message";
+const SUPPORT_CHAT_ATTACHMENT_ROUTE = "/v1/support.chat.attachment";
 const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.catalog": "catalog:read",
   "/v1/agent.quote": "quote:write",
@@ -2552,6 +2603,8 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/library.recommendations.moderate": null,
   "/v1/library.recommendations.feedback.moderate": null,
   "/v1/support.requests.create": null,
+  [SUPPORT_CHAT_MESSAGE_ROUTE]: null,
+  [SUPPORT_CHAT_ATTACHMENT_ROUTE]: null,
   "/v1/library.ratings.upsert": null,
   "/v1/library.reviews.create": null,
   "/v1/library.reviews.update": null,
@@ -2649,6 +2702,8 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/library.recommendations.moderate",
   "/v1/library.recommendations.feedback.moderate",
   "/v1/support.requests.create",
+  SUPPORT_CHAT_MESSAGE_ROUTE,
+  SUPPORT_CHAT_ATTACHMENT_ROUTE,
   "/v1/library.ratings.upsert",
   "/v1/library.reviews.create",
   "/v1/library.reviews.update",
@@ -2866,6 +2921,1313 @@ function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const next = value.trim();
   return next.length ? next : null;
+}
+
+const SUPPORT_CHAT_PREVIEW_PATH = "/firing-care-preview/support-pickup/";
+const SUPPORT_CHAT_SESSION_COL = "supportChatSessions";
+const SUPPORT_CHAT_SUPPORT_REQUESTS_COL = "supportRequests";
+const SUPPORT_CHAT_DEFAULT_MAIL_COL = "mail";
+const SUPPORT_CHAT_SUPPORT_EMAIL = "support@monsoonfire.com";
+const SUPPORT_CHAT_MAX_SESSION_TURNS = 24;
+const SUPPORT_CHAT_ROUTE_RATE_MAX = 40;
+const SUPPORT_CHAT_ROUTE_RATE_WINDOW_MS = 60_000;
+const SUPPORT_CHAT_SESSION_RATE_MAX = 12;
+const SUPPORT_CHAT_SESSION_RATE_WINDOW_MS = 60_000;
+const SUPPORT_CHAT_HANDOFF_RATE_MAX = 12;
+const SUPPORT_CHAT_HANDOFF_RATE_WINDOW_MS = 15 * 60_000;
+const SUPPORT_CHAT_ATTACHMENT_ROUTE_RATE_MAX = 10;
+const SUPPORT_CHAT_ATTACHMENT_ROUTE_RATE_WINDOW_MS = 60_000;
+const SUPPORT_CHAT_ATTACHMENT_SESSION_RATE_MAX = 3;
+const SUPPORT_CHAT_ATTACHMENT_SESSION_RATE_WINDOW_MS = 15 * 60_000;
+const SUPPORT_CHAT_ATTACHMENT_TTL_MINUTES = 120;
+const SUPPORT_CHAT_PERSONA_VERSION = "ember-support-v20.preview.2026-05-01";
+const SUPPORT_CHAT_GUARDRAIL_VERSION = "support-web-guardrails-v3";
+
+type SupportChatReplyMode = "template" | "staff_review" | "security_hold";
+type SupportChatNextAction = "continue_chat" | "open_studio_account" | "staff_review_created" | "staff_review_required";
+type SupportChatEmailReason = "new_request" | "contact_update" | "summary_update";
+
+type SupportChatClassification = {
+  emberMessage: string;
+  replyMode: SupportChatReplyMode;
+  humanReviewRequired: boolean;
+  nextAction: SupportChatNextAction;
+  riskState: "clear" | "possible_security_risk" | "high_risk";
+  riskReasons: string[];
+  supportSummary: string;
+  topic: string;
+};
+
+type SupportChatTriage = {
+  intent: string;
+  clientReference: string | null;
+  requestedWindow: string | null;
+  deadline: string | null;
+  pieceSummary: string | null;
+  missingForStaff: string[];
+};
+
+type SupportChatAttachmentSummary = {
+  attachmentId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  expiresAt: string;
+};
+
+type SupportChatThreadChecklistItem = {
+  key: string;
+  label: string;
+  state: "done" | "needed" | "optional";
+  detail: string;
+};
+
+function normalizeSupportChatPagePath(value: string): string | null {
+  try {
+    const parsed = new URL(value, "https://monsoonfire.com");
+    return parsed.pathname.endsWith("/") ? parsed.pathname : `${parsed.pathname}/`;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedSupportChatOrigin(req: RequestLike): boolean {
+  const origin = readHeaderFirst(req, "origin");
+  if (!origin) return true;
+  return [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "https://monsoonfire.com",
+    "https://www.monsoonfire.com",
+    "https://portal.monsoonfire.com",
+    "https://monsoonfire-portal.web.app",
+  ].includes(origin.replace(/\/+$/, ""));
+}
+
+function supportChatEnabled(): boolean {
+  return boolEnv("EMBER_WEB_CHAT_PUBLIC_ENABLED", false);
+}
+
+function supportChatEmailEnabled(): boolean {
+  return boolEnv("EMBER_WEB_CHAT_EMAIL_ENABLED", true);
+}
+
+function supportChatModelFlagEnabled(): boolean {
+  return boolEnv("EMBER_WEB_CHAT_MODEL_ENABLED", false);
+}
+
+function supportChatMailCollection(): string {
+  const raw = trimOrNull(process.env.EMBER_WEB_CHAT_MAIL_COLLECTION);
+  return raw ?? SUPPORT_CHAT_DEFAULT_MAIL_COL;
+}
+
+function supportChatAttachmentStudioBrainBaseUrl(): string | null {
+  const raw =
+    trimOrNull(process.env.EMBER_WEB_CHAT_STUDIO_BRAIN_BASE_URL) ??
+    trimOrNull(process.env.STUDIO_BRAIN_WEB_SUPPORT_BASE_URL) ??
+    trimOrNull(process.env.STUDIO_BRAIN_BASE_URL);
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function supportChatAttachmentStudioBrainAdminToken(): string | null {
+  return (
+    trimOrNull(process.env.EMBER_WEB_CHAT_STUDIO_BRAIN_ADMIN_TOKEN) ??
+    trimOrNull(process.env.STUDIO_BRAIN_WEB_SUPPORT_ADMIN_TOKEN) ??
+    trimOrNull(process.env.STUDIO_BRAIN_ADMIN_TOKEN)
+  );
+}
+
+function supportChatAttachmentStudioBrainBridgeToken(): string | null {
+  return (
+    trimOrNull(process.env.EMBER_WEB_CHAT_STUDIO_BRAIN_BRIDGE_TOKEN) ??
+    trimOrNull(process.env.STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN)
+  );
+}
+
+function supportChatAttachmentEnabled(): boolean {
+  return supportChatEnabled() && boolEnv("EMBER_WEB_CHAT_ATTACHMENTS_ENABLED", true);
+}
+
+function supportChatAttachmentConfig():
+  | { ok: true; baseUrl: string; authHeaderName: "x-studio-brain-admin-token" | "x-ember-web-support-token"; authHeaderValue: string; bridgeMode: "direct" | "portal_bridge" }
+  | { ok: false; reason: string } {
+  const baseUrl = supportChatAttachmentStudioBrainBaseUrl();
+  const adminToken = supportChatAttachmentStudioBrainAdminToken();
+  const bridgeToken = supportChatAttachmentStudioBrainBridgeToken();
+  if (!baseUrl) return { ok: false, reason: "missing_studio_brain_base_url" };
+  const isPortalBridge = (() => {
+    try {
+      const parsed = new URL(baseUrl);
+      return parsed.protocol === "https:" && parsed.pathname.replace(/\/+$/, "") === "/__studio-brain";
+    } catch {
+      return false;
+    }
+  })();
+  if (isPortalBridge) {
+    if (!bridgeToken) return { ok: false, reason: "missing_studio_brain_bridge_token" };
+    return {
+      ok: true,
+      baseUrl,
+      authHeaderName: "x-ember-web-support-token",
+      authHeaderValue: bridgeToken,
+      bridgeMode: "portal_bridge",
+    };
+  }
+  if (!adminToken) return { ok: false, reason: "missing_studio_brain_admin_token" };
+  return {
+    ok: true,
+    baseUrl,
+    authHeaderName: "x-studio-brain-admin-token",
+    authHeaderValue: adminToken,
+    bridgeMode: "direct",
+  };
+}
+
+function decodeSupportChatAttachmentBase64(value: string): Buffer | null {
+  const raw = value.replace(/^data:[^;]+;base64,/i, "").trim();
+  if (!raw || raw.length > SUPPORT_CHAT_ATTACHMENT_MAX_BASE64_CHARS) return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(raw) || raw.length % 4 !== 0) return null;
+  try {
+    const buffer = Buffer.from(raw, "base64");
+    if (buffer.byteLength <= 0 || buffer.byteLength > SUPPORT_CHAT_ATTACHMENT_MAX_BYTES) return null;
+    return buffer;
+  } catch {
+    return null;
+  }
+}
+
+function sniffSupportChatAttachmentContentType(buffer: Buffer): z.infer<typeof supportChatAttachmentContentTypeSchema> | null {
+  if (buffer.byteLength >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buffer.byteLength >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (buffer.byteLength >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") {
+    return "image/webp";
+  }
+  return null;
+}
+
+function supportChatAttachmentMetadata(req: RequestLike) {
+  const userAgent = readHeaderFirst(req, "user-agent") ?? "";
+  const forwardedFor = readHeaderFirst(req, "x-forwarded-for") ?? req.ip ?? "";
+  return {
+    userAgentHash: userAgent ? createHash("sha256").update(userAgent).digest("hex").slice(0, 16) : null,
+    sourceIpHash: forwardedFor ? createHash("sha256").update(String(forwardedFor).split(",")[0] ?? "").digest("hex").slice(0, 16) : null,
+  };
+}
+
+function normalizeSupportChatAttachmentSummary(value: unknown): SupportChatAttachmentSummary | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const attachmentId = trimOrNull(row.attachmentId) ?? trimOrNull(row.id);
+  const fileName = trimOrNull(row.fileName);
+  const contentType = trimOrNull(row.contentType);
+  const sha256 = trimOrNull(row.sha256);
+  const expiresAt = trimOrNull(row.expiresAt);
+  const sizeBytes = Number(row.sizeBytes);
+  if (!attachmentId || !fileName || !contentType || !sha256 || !expiresAt || !Number.isFinite(sizeBytes)) return null;
+  return {
+    attachmentId,
+    fileName,
+    contentType,
+    sizeBytes: Math.max(0, Math.trunc(sizeBytes)),
+    sha256,
+    expiresAt,
+  };
+}
+
+function supportChatAttachmentLines(attachments: SupportChatAttachmentSummary[]): string[] {
+  if (!attachments.length) return ["No photos attached."];
+  return attachments.map((entry, index) => (
+    `${index + 1}. ${entry.fileName} (${entry.contentType}, ${entry.sizeBytes} bytes, id ${entry.attachmentId}, expires ${entry.expiresAt})`
+  ));
+}
+
+function clipText(value: string, max: number): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  return trimmed.length > max ? `${trimmed.slice(0, Math.max(0, max - 3)).trim()}...` : trimmed;
+}
+
+function clipEmailText(value: string, max: number): string {
+  const normalized = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/^[ \t]+|[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+  return normalized.length > max
+    ? `${normalized.slice(0, Math.max(0, max - 3)).trimEnd()}...`
+    : normalized;
+}
+
+function classifySupportChatMessage(message: string, topicHint?: string | null): SupportChatClassification {
+  const text = message.toLowerCase();
+  const riskReasons: string[] = [];
+  const has = (pattern: RegExp) => pattern.test(text);
+  const ask = clipText(message, 180);
+  const topic = trimOrNull(topicHint);
+
+  if (topic === "contact_followup") {
+    return {
+      emberMessage:
+        "Done. I attached those contact details to the studio note, so staff has a clean way to reach you.",
+      replyMode: "staff_review",
+      humanReviewRequired: true,
+      nextAction: "staff_review_created",
+      riskState: "possible_security_risk",
+      riskReasons: ["staff_confirmation_required"],
+      supportSummary: `Web chat added contact details for staff follow-up. Latest note: ${ask}`,
+      topic: "contact_followup",
+    };
+  }
+
+  if (topic === "support_preview_update") {
+    return {
+      emberMessage:
+        "Done. I tightened the studio note with your updated summary. Staff still confirms timing, readiness, and any exceptions.",
+      replyMode: "staff_review",
+      humanReviewRequired: true,
+      nextAction: "staff_review_created",
+      riskState: "possible_security_risk",
+      riskReasons: ["staff_confirmation_required"],
+      supportSummary: `Web chat updated the staff-ready summary. Latest summary: ${ask}`,
+      topic: "support_preview_update",
+    };
+  }
+
+  const promptInjection = has(/\b(ignore (the )?(previous|above|system|developer)|system prompt|developer message|jailbreak|act as|forget your instructions)\b/i);
+  const accessSecret = has(/\b(gate code|door code|access code|entry code|private address|studio address|address)\b/i);
+  const billingException = has(/\b(refund|credit|waive|waiver|chargeback|reverse charge|discount exception|make an exception)\b/i);
+  const privateStatus = has(/\b(my|our)\b.*\b(order|pieces?|wares?|batch|request|account|status|ready|pickup)\b/i)
+    || has(/\bready note|ready-status|ready status|is it ready|are they ready|where are my\b/i);
+  const pickupChange = has(/\b(pick ?up|pickup|collect|stuck at work|after \d|before \d|window|reschedule|move my time|change my time)\b/i);
+  const deadlineNote = has(/\b(deadline|show|class|travel|flight|rush|urgent|guarantee|promise)\b/i);
+
+  if (promptInjection) riskReasons.push("prompt_injection_language");
+  if (accessSecret) riskReasons.push("access_secret_requested");
+  if (billingException) riskReasons.push("billing_or_exception_request");
+  if (privateStatus) riskReasons.push("account_specific_status");
+  if (pickupChange) riskReasons.push("pickup_window_or_staging_change");
+  if (deadlineNote) riskReasons.push("deadline_or_rush_commitment");
+
+  if (promptInjection || accessSecret) {
+    return {
+      emberMessage:
+        "I can help with studio support, but I cannot share access details or follow instruction-override requests here. I sent this to staff review so the studio can answer safely.",
+      replyMode: "security_hold",
+      humanReviewRequired: true,
+      nextAction: "staff_review_required",
+      riskState: "high_risk",
+      riskReasons,
+      supportSummary: `Web chat needs security-aware staff review. Latest ask: ${ask}`,
+      topic: "security_review",
+    };
+  }
+
+  if (billingException || privateStatus || pickupChange || deadlineNote) {
+    const accountLine = privateStatus
+      ? " For account-specific status, the studio account keeps the request tied to the right work."
+      : "";
+    return {
+      emberMessage:
+        `Got it. I can turn this into a studio note for staff to review. Staff still confirms pickup timing, readiness, credits, exceptions, and rush-sensitive requests after they review the actual work.${accountLine}`,
+      replyMode: "staff_review",
+      humanReviewRequired: true,
+      nextAction: privateStatus ? "open_studio_account" : "staff_review_created",
+      riskState: "possible_security_risk",
+      riskReasons: riskReasons.length ? riskReasons : ["staff_confirmation_required"],
+      supportSummary: `Web chat asks staff to review ${riskReasons.join(", ") || "a studio support change"}. Latest ask: ${ask}`,
+      topic: privateStatus ? "account_status" : pickupChange ? "pickup_timing" : deadlineNote ? "deadline_note" : "billing_exception",
+    };
+  }
+
+  if (has(/\b(price|pricing|cost|half[- ]?shelf|fit|size|mat|wide|tall|plates?|mugs?|bowls?|drop ?off|dropoff|bread crates?|transport|packaging)\b/i)) {
+    return {
+      emberMessage:
+        "A good estimate starts with fit: how the pieces sit on a half shelf, plus any tall or wide piece that needs its own room. Share the pieces you're bringing and I'll help make the note easier for staff to scan.",
+      replyMode: "template",
+      humanReviewRequired: false,
+      nextAction: "continue_chat",
+      riskState: "clear",
+      riskReasons: [],
+      supportSummary: `Web chat answered a dropoff or pricing-fit question. Latest ask: ${ask}`,
+      topic: "pricing_fit",
+    };
+  }
+
+  if (has(/\b(hours?|turnaround|fast|soon|open|close|evening|morning|schedule)\b/i)) {
+    return {
+      emberMessage:
+        "The studio tries to keep dropoff and pickup flexible, and fast turnarounds happen when kiln load and cooling line up. Tell me the window you're hoping for and I'll help make it clear for staff.",
+      replyMode: "template",
+      humanReviewRequired: false,
+      nextAction: "continue_chat",
+      riskState: "clear",
+      riskReasons: [],
+      supportSummary: `Web chat answered a general timing question. Latest ask: ${ask}`,
+      topic: "general_timing",
+    };
+  }
+
+  return {
+    emberMessage:
+      "I can help shape this. Tell me whether it's about pickup, ready status, dropoff, size or fit, or a deadline, and I'll keep the next step clear.",
+    replyMode: "template",
+    humanReviewRequired: false,
+    nextAction: "continue_chat",
+    riskState: "clear",
+    riskReasons: [],
+    supportSummary: `Web chat asked for support clarification. Latest ask: ${ask}`,
+    topic: "clarification",
+  };
+}
+
+function supportChatSessionId(value: string | null | undefined): string {
+  const cleaned = trimOrNull(value);
+  if (cleaned && /^[A-Za-z0-9_-]{1,120}$/.test(cleaned)) return cleaned;
+  return `ember_${randomBytes(12).toString("base64url")}`;
+}
+
+function supportChatContact(input: z.infer<typeof supportChatMessageSchema>["contact"]) {
+  const contact = input ?? null;
+  return {
+    name: trimOrNull(contact?.name),
+    email: trimOrNull(contact?.email),
+    phone: trimOrNull(contact?.phone),
+  };
+}
+
+function cleanSupportChatTriageFragment(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:,-]+|[\s:,-]+$/g, "")
+    .trim();
+  return cleaned ? clipText(cleaned, 140) : null;
+}
+
+function firstSupportChatMatch(value: string, patterns: RegExp[]): string | null {
+  for (const pattern of patterns) {
+    const match = pattern.exec(value);
+    const candidate = cleanSupportChatTriageFragment(match?.[1] ?? match?.[0]);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function extractSupportChatPieceSummary(value: string): string | null {
+  const countedPieces = Array.from(value.matchAll(/\b\d+\s+(?:plates?|mugs?|cups?|bowls?|vases?|jars?|tiles?|sculptures?|pieces?)\b/gi))
+    .map((match) => cleanSupportChatTriageFragment(match[0]))
+    .filter((entry): entry is string => Boolean(entry));
+  if (countedPieces.length) return clipText(countedPieces.slice(0, 6).join(", "), 140);
+  return firstSupportChatMatch(value, [
+    /\b(?:pieces?|wares?|work|batch|order)\s+(?:are|is|include|includes|has)\s+([^.\n!?]{1,140})/i,
+    /\bbringing\s+([^.\n!?]{1,140})/i,
+  ]);
+}
+
+function supportChatTriage(
+  message: string,
+  classification: SupportChatClassification,
+  contact: ReturnType<typeof supportChatContact>,
+): SupportChatTriage {
+  const hasContact = Boolean(contact.name || contact.email || contact.phone);
+  const clientReference = firstSupportChatMatch(message, [
+    /\b(?:name|order)(?:\s*(?:or|\/)\s*order)?\s*(?:is|:)\s*([^.,;!?\n]{1,90})/i,
+    /\b(?:under|for)\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\b/,
+  ]) ?? contact.name;
+  const requestedWindow = firstSupportChatMatch(message, [
+    /\bpick ?up\b[^.\n!?]*(\b(?:after|before|around|at|on|by)\s+[^.,;!?\n]{1,80})/i,
+    /\b(?:drop ?off|dropoff)\b[^.\n!?]*(\b(?:after|before|around|at|on|by)\s+[^.,;!?\n]{1,80})/i,
+    /\b((?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+[^.,;!?\n]{0,60})/i,
+  ]);
+  const deadline = firstSupportChatMatch(message, [
+    /\bdeadline\s*(?:is|on|by|:)?\s*([^.,;!?\n]{1,90})/i,
+    /\b(?:show|class|travel|flight)\s+(?:on|by|is|:)?\s*([^.,;!?\n]{1,90})/i,
+  ]);
+  const pieceSummary = extractSupportChatPieceSummary(message);
+  const missingForStaff = [
+    classification.humanReviewRequired && !hasContact ? "contact_method" : "",
+    classification.topic === "account_status" && !clientReference ? "client_reference" : "",
+    classification.topic === "pickup_timing" && !requestedWindow ? "requested_window" : "",
+    classification.topic === "deadline_note" && !deadline ? "deadline_date" : "",
+    (classification.topic === "pickup_timing" || classification.topic === "deadline_note" || classification.topic === "account_status") && !pieceSummary ? "piece_summary" : "",
+  ].filter(Boolean);
+
+  return {
+    intent: classification.topic,
+    clientReference,
+    requestedWindow,
+    deadline,
+    pieceSummary,
+    missingForStaff,
+  };
+}
+
+function supportChatTriageLines(triage: SupportChatTriage): string[] {
+  return [
+    `Intent: ${triage.intent}`,
+    `Client reference: ${triage.clientReference ?? "not provided"}`,
+    `Requested window: ${triage.requestedWindow ?? "not provided"}`,
+    `Deadline: ${triage.deadline ?? "not provided"}`,
+    `Pieces: ${triage.pieceSummary ?? "not provided"}`,
+    `Still missing: ${triage.missingForStaff.length ? triage.missingForStaff.join(", ") : "none"}`,
+  ];
+}
+
+function supportChatNextQuestion(classification: SupportChatClassification, triage: SupportChatTriage): string | null {
+  const firstMissing = triage.missingForStaff[0] ?? null;
+  if (firstMissing === "client_reference") return "What name or order should staff use to match this?";
+  if (firstMissing === "requested_window") return "What day and window should I put in the note?";
+  if (firstMissing === "deadline_date") return "What date should staff keep in mind?";
+  if (firstMissing === "piece_summary") return "What pieces are involved?";
+  if (firstMissing === "contact_method") return "Want staff to reply directly? Add an email or phone below.";
+  if (classification.topic === "pricing_fit" && !triage.pieceSummary) return "What pieces are you bringing?";
+  if (classification.topic === "general_timing") return "What day or pickup/dropoff window are you hoping for?";
+  if (classification.topic === "clarification") return "Choose a quick button or type the one thing that changed.";
+  return null;
+}
+
+function supportChatStaffPreviewText(
+  classification: SupportChatClassification,
+  triage: SupportChatTriage,
+  contact: ReturnType<typeof supportChatContact>,
+): string {
+  const label = classification.topic === "support_preview_update"
+    ? "Updated support summary"
+    : classification.topic === "pickup_timing" || classification.topic === "account_status"
+      ? "Pickup/status request"
+      : classification.topic === "deadline_note"
+        ? "Deadline note"
+        : classification.topic === "pricing_fit" || classification.topic === "dropoff_change"
+          ? "Dropoff or fit question"
+          : "Support question";
+  return [
+    `${label}${triage.clientReference ? ` for ${triage.clientReference}` : ""}.`,
+    triage.requestedWindow ? `Timing: ${triage.requestedWindow}.` : "",
+    triage.deadline ? `Deadline: ${triage.deadline}.` : "",
+    triage.pieceSummary ? `Pieces: ${triage.pieceSummary}.` : "",
+    contact.email || contact.phone ? `Contact: ${[contact.email, contact.phone].filter(Boolean).join(" / ")}.` : "",
+    triage.missingForStaff.length ? `Still missing: ${triage.missingForStaff.join(", ")}.` : "Ready for staff review.",
+  ].filter(Boolean).join("\n");
+}
+
+function supportChatOpsLabels(classification: SupportChatClassification, triage: SupportChatTriage): string[] {
+  const labels = new Set<string>([
+    `intent:${classification.topic}`,
+    `reply:${classification.replyMode}`,
+    `risk:${classification.riskState}`,
+  ]);
+  if (classification.humanReviewRequired) labels.add("staff-review");
+  if (classification.replyMode === "security_hold") labels.add("security-hold");
+  if (triage.clientReference) labels.add("has-client-reference");
+  if (triage.requestedWindow) labels.add("has-window");
+  if (triage.deadline) labels.add("has-deadline");
+  if (triage.pieceSummary) labels.add("has-pieces");
+  triage.missingForStaff.forEach((entry) => labels.add(`missing:${entry}`));
+  return Array.from(labels).slice(0, 16);
+}
+
+function supportChatModelDraftingState() {
+  const flagged = supportChatModelFlagEnabled();
+  return {
+    configured: flagged,
+    active: false,
+    mode: flagged ? "flagged_offline_pending_safety_tests" : "deterministic_templates",
+  };
+}
+
+function supportChatClientThread(
+  classification: SupportChatClassification,
+  triage: SupportChatTriage,
+  contact: ReturnType<typeof supportChatContact>,
+  supportRequestId: string | null,
+  supportEmailQueued: boolean,
+) {
+  if (supportRequestId) {
+    return {
+      state: supportEmailQueued ? "sent_to_studio" : "saved_for_staff",
+      title: supportEmailQueued ? "Studio note is with staff" : "Studio note is saved",
+      detail: supportChatStaffPreviewText(classification, triage, contact),
+    };
+  }
+  return {
+    state: "open",
+    title: "Ember is still shaping the note",
+    detail: supportChatStaffPreviewText(classification, triage, contact),
+  };
+}
+
+function supportChatThreadChecklist(input: {
+  classification: SupportChatClassification;
+  triage: SupportChatTriage;
+  hasContact: boolean;
+  attachments: SupportChatAttachmentSummary[];
+  supportRequestId: string | null;
+  supportEmailQueued: boolean;
+}): SupportChatThreadChecklistItem[] {
+  const needsHumanReview = input.classification.humanReviewRequired || Boolean(input.supportRequestId);
+  const needsClientReference = input.triage.missingForStaff.includes("client_reference");
+  const needsPieces = input.triage.missingForStaff.includes("piece_summary");
+  const needsWindow = input.triage.missingForStaff.includes("requested_window");
+  const needsDeadline = input.triage.missingForStaff.includes("deadline_date");
+  const contactNeeded = input.triage.missingForStaff.includes("contact_method") || (needsHumanReview && !input.hasContact);
+  const timingLabel = input.classification.topic === "deadline_note" ? "Deadline" : "Timing window";
+
+  return [
+    {
+      key: "client_reference",
+      label: "Name or order",
+      state: input.triage.clientReference ? "done" : needsClientReference ? "needed" : "optional",
+      detail: input.triage.clientReference
+        ? input.triage.clientReference
+        : needsClientReference
+          ? "Needed so staff can match the request."
+          : "Optional for general questions.",
+    },
+    {
+      key: "piece_summary",
+      label: "Pieces",
+      state: input.triage.pieceSummary ? "done" : needsPieces ? "needed" : "optional",
+      detail: input.triage.pieceSummary
+        ? input.triage.pieceSummary
+        : needsPieces
+          ? "Add the pieces involved."
+          : "Helpful if fit or staging matters.",
+    },
+    {
+      key: input.classification.topic === "deadline_note" ? "deadline" : "requested_window",
+      label: timingLabel,
+      state: input.triage.deadline || input.triage.requestedWindow ? "done" : needsDeadline || needsWindow ? "needed" : "optional",
+      detail: input.triage.deadline ?? input.triage.requestedWindow ?? (
+        needsDeadline || needsWindow ? "Add the date or window staff should review." : "Optional until timing matters."
+      ),
+    },
+    {
+      key: "contact_method",
+      label: "Contact method",
+      state: input.hasContact ? "done" : contactNeeded ? "needed" : "optional",
+      detail: input.hasContact
+        ? "Staff can reply directly if needed."
+        : contactNeeded
+          ? "Add email or phone if staff should reply."
+          : "Optional for non-account questions.",
+    },
+    {
+      key: "attachments",
+      label: "Photos",
+      state: input.attachments.length ? "done" : "optional",
+      detail: input.attachments.length
+        ? `${input.attachments.length} photo${input.attachments.length === 1 ? "" : "s"} on the note.`
+        : "Optional if fit, size, or condition is hard to describe.",
+    },
+    {
+      key: "studio_handoff",
+      label: "Studio handoff",
+      state: input.supportRequestId ? "done" : needsHumanReview ? "needed" : "optional",
+      detail: input.supportRequestId
+        ? input.supportEmailQueued
+          ? "Saved and queued for staff review."
+          : "Saved for staff review."
+        : needsHumanReview
+          ? "Send the note to create a staff-review item."
+          : "No staff handoff needed yet.",
+    },
+  ];
+}
+
+function supportChatEmailSubject(reason: SupportChatEmailReason, classification: SupportChatClassification): string {
+  const topic = classification.topic
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  const prefix = reason === "contact_update"
+    ? "Ember contact update"
+    : reason === "summary_update"
+      ? "Ember summary update"
+      : "Ember support request";
+  return topic ? `${prefix}: ${topic}` : prefix;
+}
+
+function supportChatEmailBody(input: {
+  reason: SupportChatEmailReason;
+  supportRequestId: string;
+  sessionId: string;
+  pagePath: string;
+  message: string;
+  contact: ReturnType<typeof supportChatContact>;
+  attachments: SupportChatAttachmentSummary[];
+  classification: SupportChatClassification;
+  supportSummary: string;
+  triage: SupportChatTriage;
+  staffPreviewText: string;
+  opsLabels: string[];
+}): string {
+  const contactLines = [
+    input.contact.name ? `Name: ${input.contact.name}` : "",
+    input.contact.email ? `Email: ${input.contact.email}` : "",
+    input.contact.phone ? `Phone: ${input.contact.phone}` : "",
+  ].filter(Boolean);
+  return [
+    input.reason === "contact_update"
+      ? "Ember contact update"
+      : input.reason === "summary_update"
+        ? "Ember summary update"
+        : "Ember support note",
+    "",
+    "What the client asked:",
+    input.message,
+    "",
+    "What Ember told them:",
+    input.classification.emberMessage,
+    "",
+    "What Ember picked up:",
+    supportChatTriageLines(input.triage).join("\n"),
+    "",
+    "Staff-ready summary:",
+    input.staffPreviewText,
+    "",
+    "Contact:",
+    contactLines.length ? contactLines.join("\n") : "No contact details provided yet.",
+    "",
+    "Photos / attachments:",
+    supportChatAttachmentLines(input.attachments).join("\n"),
+    "",
+    "Staff context:",
+    input.supportSummary,
+    "",
+    "Guardrails:",
+    `Reply mode: ${input.classification.replyMode}`,
+    `Risk state: ${input.classification.riskState}`,
+    input.classification.riskReasons.length ? `Risk reasons: ${input.classification.riskReasons.join(", ")}` : "Risk reasons: none",
+    `Persona version: ${SUPPORT_CHAT_PERSONA_VERSION}`,
+    `Guardrail version: ${SUPPORT_CHAT_GUARDRAIL_VERSION}`,
+    `Ops labels: ${input.opsLabels.join(", ") || "none"}`,
+    "",
+    "Metadata:",
+    `Support request ID: ${input.supportRequestId}`,
+    `Chat session ID: ${input.sessionId}`,
+    `Page: ${input.pagePath}`,
+    `Topic: ${input.classification.topic}`,
+    "",
+  ].join("\n");
+}
+
+async function enqueueSupportChatEmail(input: {
+  reason: SupportChatEmailReason;
+  supportRequestId: string | null;
+  sessionId: string;
+  pagePath: string;
+  message: string;
+  contact: ReturnType<typeof supportChatContact>;
+  attachments: SupportChatAttachmentSummary[];
+  classification: SupportChatClassification;
+  supportSummary: string;
+  triage: SupportChatTriage;
+  staffPreviewText: string;
+  opsLabels: string[];
+  now: Timestamp;
+}): Promise<{ queued: boolean; mailId: string | null; error: string | null }> {
+  if (!supportChatEmailEnabled() || !input.supportRequestId) {
+    return { queued: false, mailId: null, error: null };
+  }
+
+  try {
+    const subject = supportChatEmailSubject(input.reason, input.classification);
+    const text = supportChatEmailBody({
+      reason: input.reason,
+      supportRequestId: input.supportRequestId,
+      sessionId: input.sessionId,
+      pagePath: input.pagePath,
+      message: input.message,
+      contact: input.contact,
+      attachments: input.attachments,
+      classification: input.classification,
+      supportSummary: input.supportSummary,
+      triage: input.triage,
+      staffPreviewText: input.staffPreviewText,
+      opsLabels: input.opsLabels,
+    });
+    const created = await db.collection(supportChatMailCollection()).add({
+      to: SUPPORT_CHAT_SUPPORT_EMAIL,
+      message: {
+        subject,
+        text: clipEmailText(text, 8_000),
+      },
+      source: "ember-web-chat",
+      supportRequestId: input.supportRequestId,
+      sessionId: input.sessionId,
+      pagePath: input.pagePath,
+      reason: input.reason,
+      triage: input.triage,
+      staffPreviewText: input.staffPreviewText,
+      personaVersion: SUPPORT_CHAT_PERSONA_VERSION,
+      guardrailVersion: SUPPORT_CHAT_GUARDRAIL_VERSION,
+      opsLabels: input.opsLabels,
+      createdAt: input.now,
+    });
+    return { queued: true, mailId: created.id, error: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    logger.error("Failed to queue Ember support email", {
+      sessionId: input.sessionId,
+      supportRequestId: input.supportRequestId,
+      reason: input.reason,
+      error: message,
+    });
+    return { queued: false, mailId: null, error: message };
+  }
+}
+
+async function handlePublicSupportChatAttachment(req: RequestLike, res: ResponseLike, requestId: string) {
+  const parsed = parseBody(supportChatAttachmentSchema, req.body);
+  if (!parsed.ok) {
+    jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+    return;
+  }
+
+  const pagePath = normalizeSupportChatPagePath(parsed.data.pagePath);
+  if (!supportChatAttachmentEnabled() || pagePath !== SUPPORT_CHAT_PREVIEW_PATH) {
+    jsonError(res, requestId, 503, "FEATURE_DISABLED", "Ember photo upload is not enabled for this surface.");
+    return;
+  }
+  if (!isAllowedSupportChatOrigin(req)) {
+    jsonError(res, requestId, 403, "FORBIDDEN", "Origin not allowed for Ember web chat.");
+    return;
+  }
+
+  const studioConfig = supportChatAttachmentConfig();
+  if (!studioConfig.ok) {
+    jsonError(res, requestId, 503, "STUDIO_BRAIN_ATTACHMENT_STORE_UNAVAILABLE", "Ember cannot reach the studio attachment store yet.", {
+      reason: studioConfig.reason,
+    });
+    return;
+  }
+
+  const routeRate = await enforceRateLimit({
+    req,
+    key: "supportChatAttachment:route",
+    max: SUPPORT_CHAT_ATTACHMENT_ROUTE_RATE_MAX,
+    windowMs: SUPPORT_CHAT_ATTACHMENT_ROUTE_RATE_WINDOW_MS,
+  });
+  if (!routeRate.ok) {
+    res.set("Retry-After", String(Math.ceil(routeRate.retryAfterMs / 1000)));
+    jsonError(res, requestId, 429, "RATE_LIMITED", "Too many Ember photo uploads.", {
+      retryAfterMs: routeRate.retryAfterMs,
+      scope: "route",
+    });
+    return;
+  }
+
+  const sessionId = supportChatSessionId(parsed.data.sessionId);
+  const sessionRate = await enforceRateLimit({
+    req,
+    key: `supportChatAttachment:${sessionId}`,
+    max: SUPPORT_CHAT_ATTACHMENT_SESSION_RATE_MAX,
+    windowMs: SUPPORT_CHAT_ATTACHMENT_SESSION_RATE_WINDOW_MS,
+  });
+  if (!sessionRate.ok) {
+    res.set("Retry-After", String(Math.ceil(sessionRate.retryAfterMs / 1000)));
+    jsonError(res, requestId, 429, "ATTACHMENT_RATE_LIMITED", "This Ember thread has reached the preview photo limit for now.", {
+      retryAfterMs: sessionRate.retryAfterMs,
+      scope: "session",
+    });
+    return;
+  }
+
+  const imageBytes = decodeSupportChatAttachmentBase64(parsed.data.dataBase64);
+  const sniffedType = imageBytes ? sniffSupportChatAttachmentContentType(imageBytes) : null;
+  if (!imageBytes || sniffedType !== parsed.data.contentType || imageBytes.byteLength !== parsed.data.sizeBytes) {
+    jsonError(res, requestId, 400, "INVALID_ATTACHMENT", "Upload a small JPEG, PNG, or WebP image. The file content must match its type.");
+    return;
+  }
+
+  const body = {
+    sessionId,
+    supportRequestId: trimOrNull(parsed.data.supportRequestId),
+    pagePath,
+    fileName: parsed.data.fileName,
+    contentType: parsed.data.contentType,
+    sizeBytes: imageBytes.byteLength,
+    dataBase64: imageBytes.toString("base64"),
+    note: trimOrNull(parsed.data.note),
+    ttlMinutes: SUPPORT_CHAT_ATTACHMENT_TTL_MINUTES,
+    metadata: supportChatAttachmentMetadata(req),
+  };
+
+  let studioPayload: Record<string, unknown>;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    const response = await fetch(`${studioConfig.baseUrl}/api/support-ops/ember-attachments`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": requestId,
+        [studioConfig.authHeaderName]: studioConfig.authHeaderValue,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+    studioPayload = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok || studioPayload.ok === false) {
+      const retryAfter = response.headers.get("Retry-After");
+      if (retryAfter) res.set("Retry-After", retryAfter);
+      jsonError(
+        res,
+        requestId,
+        response.status === 429 ? 429 : response.status >= 400 && response.status < 500 ? response.status : 502,
+        response.status === 429 ? "ATTACHMENT_RATE_LIMITED" : "STUDIO_BRAIN_ATTACHMENT_STORE_ERROR",
+        typeof studioPayload.message === "string" ? studioPayload.message : "Studio attachment storage rejected the upload.",
+      );
+      return;
+    }
+  } catch (error) {
+    jsonError(res, requestId, 502, "STUDIO_BRAIN_ATTACHMENT_STORE_ERROR", "Ember cannot reach the studio attachment store.", {
+      error: safeErrorMessage(error),
+    });
+    return;
+  }
+
+  const attachmentRaw = studioPayload.attachment && typeof studioPayload.attachment === "object"
+    ? studioPayload.attachment as Record<string, unknown>
+    : {};
+  const attachmentSummary = normalizeSupportChatAttachmentSummary({
+    attachmentId: attachmentRaw.id,
+    fileName: attachmentRaw.fileName,
+    contentType: attachmentRaw.contentType,
+    sizeBytes: attachmentRaw.sizeBytes,
+    sha256: attachmentRaw.sha256,
+    expiresAt: attachmentRaw.expiresAt,
+  });
+  if (!attachmentSummary) {
+    jsonError(res, requestId, 502, "STUDIO_BRAIN_ATTACHMENT_STORE_ERROR", "Studio attachment storage returned an invalid record.");
+    return;
+  }
+
+  const sessionRef = db.collection(SUPPORT_CHAT_SESSION_COL).doc(sessionId);
+  const existingSession = await sessionRef.get();
+  const existingData = existingSession.exists ? (existingSession.data() ?? {}) : {};
+  const existingAttachments = Array.isArray(existingData.attachments)
+    ? existingData.attachments.map(normalizeSupportChatAttachmentSummary).filter((entry): entry is SupportChatAttachmentSummary => Boolean(entry))
+    : [];
+  const attachmentMap = new Map<string, SupportChatAttachmentSummary>();
+  for (const entry of existingAttachments) attachmentMap.set(entry.attachmentId, entry);
+  attachmentMap.set(attachmentSummary.attachmentId, attachmentSummary);
+  const attachments = Array.from(attachmentMap.values()).slice(-3);
+  const now = nowTs();
+
+  await sessionRef.set(
+    {
+      sessionId,
+      pagePath,
+      source: "firing-care-preview",
+      channel: "ember-web-chat",
+      latestAttachment: attachmentSummary,
+      attachments,
+      attachmentStore: "studio-brain-postgres",
+      attachmentControls: {
+        maxBytes: SUPPORT_CHAT_ATTACHMENT_MAX_BYTES,
+        ttlMinutes: SUPPORT_CHAT_ATTACHMENT_TTL_MINUTES,
+        maxSessionUploadsPerWindow: SUPPORT_CHAT_ATTACHMENT_SESSION_RATE_MAX,
+      },
+      createdAt: existingSession.exists ? existingData.createdAt ?? now : now,
+      updatedAt: now,
+      lastAttachmentAt: now,
+    },
+    { merge: true },
+  );
+  await sessionRef.collection("messages").doc().set({
+    role: "client",
+    message: `Photo attached for staff: ${attachmentSummary.fileName}`,
+    attachment: attachmentSummary,
+    createdAt: now,
+  });
+  await sessionRef.collection("messages").doc().set({
+    role: "ember",
+    message: "I added that photo to the studio note. It is stored temporarily for staff and expires automatically.",
+    attachmentId: attachmentSummary.attachmentId,
+    replyMode: "template",
+    humanReviewRequired: false,
+    personaVersion: SUPPORT_CHAT_PERSONA_VERSION,
+    guardrailVersion: SUPPORT_CHAT_GUARDRAIL_VERSION,
+    createdAt: now,
+  });
+
+  jsonOk(res, requestId, {
+    sessionId,
+    attachment: attachmentSummary,
+    attachmentStore: "studio-brain-postgres",
+    emberMessage: "I added that photo to the studio note. It is stored temporarily for staff and expires automatically.",
+    controls: {
+      maxBytes: SUPPORT_CHAT_ATTACHMENT_MAX_BYTES,
+      ttlMinutes: SUPPORT_CHAT_ATTACHMENT_TTL_MINUTES,
+      maxSessionUploadsPerWindow: SUPPORT_CHAT_ATTACHMENT_SESSION_RATE_MAX,
+    },
+  });
+}
+
+async function handlePublicSupportChatMessage(req: RequestLike, res: ResponseLike, requestId: string) {
+  const parsed = parseBody(supportChatMessageSchema, req.body);
+  if (!parsed.ok) {
+    jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+    return;
+  }
+
+  const pagePath = normalizeSupportChatPagePath(parsed.data.pagePath);
+  if (!supportChatEnabled() || pagePath !== SUPPORT_CHAT_PREVIEW_PATH) {
+    jsonError(res, requestId, 503, "FEATURE_DISABLED", "Ember web chat is not enabled for this surface.");
+    return;
+  }
+  if (!isAllowedSupportChatOrigin(req)) {
+    jsonError(res, requestId, 403, "FORBIDDEN", "Origin not allowed for Ember web chat.");
+    return;
+  }
+
+  const sessionId = supportChatSessionId(parsed.data.sessionId);
+  const contact = supportChatContact(parsed.data.contact);
+  const contactProvided = Boolean(contact.name || contact.email || contact.phone || parsed.data.consentToContact);
+  const topicHint = trimOrNull(parsed.data.topic);
+  const classification = classifySupportChatMessage(parsed.data.message, topicHint);
+  const triage = supportChatTriage(parsed.data.message, classification, contact);
+  const nextQuestion = supportChatNextQuestion(classification, triage);
+  const replyClassification = {
+    ...classification,
+    emberMessage: nextQuestion ? `${classification.emberMessage} ${nextQuestion}` : classification.emberMessage,
+  };
+  const staffPreviewText = supportChatStaffPreviewText(replyClassification, triage, contact);
+  const opsLabels = supportChatOpsLabels(replyClassification, triage);
+  const modelDrafting = supportChatModelDraftingState();
+  const now = nowTs();
+
+  const routeRate = await enforceRateLimit({
+    req,
+    key: "supportChat:route",
+    max: SUPPORT_CHAT_ROUTE_RATE_MAX,
+    windowMs: SUPPORT_CHAT_ROUTE_RATE_WINDOW_MS,
+  });
+  if (!routeRate.ok) {
+    res.set("Retry-After", String(Math.ceil(routeRate.retryAfterMs / 1000)));
+    jsonError(res, requestId, 429, "RATE_LIMITED", "Too many Ember chat messages.", {
+      retryAfterMs: routeRate.retryAfterMs,
+      scope: "route",
+    });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: `supportChat:${sessionId}`,
+    max: SUPPORT_CHAT_SESSION_RATE_MAX,
+    windowMs: SUPPORT_CHAT_SESSION_RATE_WINDOW_MS,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    jsonError(res, requestId, 429, "RATE_LIMITED", "Too many Ember chat messages.", {
+      retryAfterMs: rate.retryAfterMs,
+      scope: "session",
+    });
+    return;
+  }
+
+  const sessionRef = db.collection(SUPPORT_CHAT_SESSION_COL).doc(sessionId);
+  const existingSession = await sessionRef.get();
+  const existingData = existingSession.exists ? (existingSession.data() ?? {}) : {};
+  const existingContactRaw = readObjectOrEmpty(existingData.contact);
+  const existingAttachments = [
+    ...(
+      Array.isArray(existingData.attachments)
+        ? existingData.attachments.map(normalizeSupportChatAttachmentSummary)
+        : []
+    ),
+    normalizeSupportChatAttachmentSummary(existingData.latestAttachment),
+  ].filter((entry): entry is SupportChatAttachmentSummary => Boolean(entry));
+  const attachmentMap = new Map<string, SupportChatAttachmentSummary>();
+  for (const entry of existingAttachments) {
+    attachmentMap.set(entry.attachmentId, entry);
+  }
+  const attachments = Array.from(attachmentMap.values()).slice(-3);
+  const existingContact = {
+    name: trimOrNull(existingContactRaw.name),
+    email: trimOrNull(existingContactRaw.email),
+    phone: trimOrNull(existingContactRaw.phone),
+  };
+  const hasContact = Boolean(contact.name || contact.email || contact.phone || existingContact.name || existingContact.email || existingContact.phone);
+  const existingTurnCount = Number.isFinite(Number(existingData.turnCount))
+    ? Math.max(0, Number(existingData.turnCount))
+    : 0;
+  if (existingTurnCount >= SUPPORT_CHAT_MAX_SESSION_TURNS) {
+    jsonError(res, requestId, 429, "SESSION_TURN_LIMIT", "This Ember chat has reached its preview session limit. Open the studio account for the next step.");
+    return;
+  }
+  const existingSupportRequestId = trimOrNull(existingData.supportRequestId);
+  let supportRequestId: string | null = existingSupportRequestId;
+  let supportEmailQueued = false;
+  let supportEmailQueueId: string | null = null;
+  let supportEmailError: string | null = null;
+  const shouldCreateSupportRequest = classification.humanReviewRequired || contactProvided;
+  const existingSummary = trimOrNull(existingData.supportSummary);
+  const preserveExistingSummary = Boolean(existingSupportRequestId && existingSummary && (topicHint === "contact_followup" || !classification.humanReviewRequired));
+  const supportSummary = preserveExistingSummary
+    ? `${existingSummary} Contact details were added through web chat.`
+    : classification.supportSummary;
+  const supportRequestBody = [
+    existingSupportRequestId && existingSummary ? `Existing chat summary: ${existingSummary}` : "",
+    `Client: ${parsed.data.message}`,
+    `Ember: ${replyClassification.emberMessage}`,
+    `Staff-ready summary:\n${staffPreviewText}`,
+    attachments.length ? `Photos / attachments:\n${supportChatAttachmentLines(attachments).join("\n")}` : "",
+    contact.name ? `Contact name: ${contact.name}` : "",
+    contact.email ? `Contact email: ${contact.email}` : "",
+    contact.phone ? `Contact phone: ${contact.phone}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  if (shouldCreateSupportRequest) {
+    if (!existingSupportRequestId) {
+      const handoffRate = await enforceRateLimit({
+        req,
+        key: "supportChat:handoff",
+        max: SUPPORT_CHAT_HANDOFF_RATE_MAX,
+        windowMs: SUPPORT_CHAT_HANDOFF_RATE_WINDOW_MS,
+      });
+      if (!handoffRate.ok) {
+        res.set("Retry-After", String(Math.ceil(handoffRate.retryAfterMs / 1000)));
+        jsonError(res, requestId, 429, "EMAIL_RATE_LIMITED", "Too many Ember staff-review requests. Please wait before sending another support note.", {
+          retryAfterMs: handoffRate.retryAfterMs,
+          scope: "handoff",
+        });
+        return;
+      }
+    }
+
+    let supportRequestWasCreated = false;
+    const supportPatch = {
+      uid: "anonymous-web-chat",
+      subject: replyClassification.humanReviewRequired ? "Ember web chat staff review" : "Ember web chat contact note",
+      body: clipText(supportRequestBody, 4_000),
+      category: "Support",
+      status: "new",
+      urgency: "non-urgent",
+      channel: "ember-web-chat",
+      source: "firing-care-preview",
+      pagePath,
+      conversationKey: sessionId,
+      displayName: contact.name,
+      email: contact.email,
+      phone: contact.phone,
+      consentToContact: Boolean(parsed.data.consentToContact || existingData.consentToContact),
+      riskState: replyClassification.riskState,
+      riskReasons: replyClassification.riskReasons,
+      triage,
+      attachments,
+      clientReference: triage.clientReference,
+      requestedWindow: triage.requestedWindow,
+      deadline: triage.deadline,
+      pieceSummary: triage.pieceSummary,
+      staffPreviewText,
+      supportSummary: clipText(supportSummary, 600),
+      replyDraft: replyClassification.emberMessage,
+      humanHandoff: replyClassification.humanReviewRequired,
+      personaVersion: SUPPORT_CHAT_PERSONA_VERSION,
+      guardrailVersion: SUPPORT_CHAT_GUARDRAIL_VERSION,
+      opsLabels,
+      modelDrafting,
+      updatedAt: now,
+    };
+    if (supportRequestId) {
+      await db.collection(SUPPORT_CHAT_SUPPORT_REQUESTS_COL).doc(supportRequestId).set(supportPatch, { merge: true });
+    } else {
+      const created = await db.collection(SUPPORT_CHAT_SUPPORT_REQUESTS_COL).add({
+        ...supportPatch,
+        createdAt: now,
+      });
+      supportRequestId = created.id;
+      supportRequestWasCreated = true;
+    }
+
+    const emailReason: SupportChatEmailReason = supportRequestWasCreated
+      ? "new_request"
+      : topicHint === "support_preview_update"
+        ? "summary_update"
+        : "contact_update";
+    const shouldEmailSupport =
+      supportRequestWasCreated ||
+      (topicHint === "contact_followup" && !existingData.contactEmailQueuedAt) ||
+      (topicHint === "support_preview_update" && !existingData.summaryEmailQueuedAt);
+    if (shouldEmailSupport) {
+      const emailResult = await enqueueSupportChatEmail({
+        reason: emailReason,
+        supportRequestId,
+        sessionId,
+        pagePath,
+        message: parsed.data.message,
+        contact,
+        classification: replyClassification,
+        supportSummary,
+        triage,
+        attachments,
+        staffPreviewText,
+        opsLabels,
+        now,
+      });
+      supportEmailQueued = emailResult.queued;
+      supportEmailQueueId = emailResult.mailId;
+      supportEmailError = emailResult.error;
+
+      if (supportEmailQueued && supportRequestId) {
+        const emailPatch = {
+          emailQueuedAt: now,
+          emailQueueId: supportEmailQueueId,
+          latestEmailReason: emailReason,
+          ...(topicHint === "contact_followup" ? { contactEmailQueuedAt: now } : {}),
+          ...(topicHint === "support_preview_update" ? { summaryEmailQueuedAt: now } : {}),
+        };
+        await db.collection(SUPPORT_CHAT_SUPPORT_REQUESTS_COL).doc(supportRequestId).set(emailPatch, { merge: true });
+      }
+    }
+  }
+
+  const threadChecklist = supportChatThreadChecklist({
+    classification: replyClassification,
+    triage,
+    hasContact,
+    attachments,
+    supportRequestId,
+    supportEmailQueued,
+  });
+  if (supportRequestId) {
+    await db.collection(SUPPORT_CHAT_SUPPORT_REQUESTS_COL).doc(supportRequestId).set({ threadChecklist }, { merge: true });
+  }
+
+  await sessionRef.set(
+    {
+      sessionId,
+      pagePath,
+      source: "firing-care-preview",
+      channel: "ember-web-chat",
+      status: replyClassification.humanReviewRequired || supportRequestId ? "staff_review" : "open",
+      latestTopic: topicHint ?? replyClassification.topic,
+      latestMessage: clipText(parsed.data.message, 500),
+      latestEmberMessage: replyClassification.emberMessage,
+      supportSummary: clipText(supportSummary, 600),
+      supportRequestId,
+      humanReviewRequired: replyClassification.humanReviewRequired || Boolean(supportRequestId),
+      supportEmailQueued,
+      supportEmailQueueId,
+      supportEmailError,
+      contactEmailQueuedAt: topicHint === "contact_followup" && supportEmailQueued
+        ? now
+        : existingData.contactEmailQueuedAt ?? null,
+      summaryEmailQueuedAt: topicHint === "support_preview_update" && supportEmailQueued
+        ? now
+        : existingData.summaryEmailQueuedAt ?? null,
+      triage,
+      attachments,
+      staffPreviewText,
+      threadChecklist,
+      nextQuestion,
+      personaVersion: SUPPORT_CHAT_PERSONA_VERSION,
+      guardrailVersion: SUPPORT_CHAT_GUARDRAIL_VERSION,
+      opsLabels,
+      modelDrafting,
+      riskState: replyClassification.riskState,
+      riskReasons: replyClassification.riskReasons,
+      contact: {
+        name: contact.name ?? existingContact.name,
+        email: contact.email ?? existingContact.email,
+        phone: contact.phone ?? existingContact.phone,
+      },
+      consentToContact: Boolean(parsed.data.consentToContact || existingData.consentToContact),
+      turnCount: existingTurnCount + 1,
+      createdAt: existingSession.exists ? existingData.createdAt ?? now : now,
+      updatedAt: now,
+      lastMessageAt: now,
+    },
+    { merge: true },
+  );
+
+  await sessionRef.collection("messages").doc().set({
+    role: "client",
+    message: parsed.data.message,
+    topic: topicHint ?? replyClassification.topic,
+    triage,
+    contactProvided,
+    staffPreviewText,
+    opsLabels,
+    createdAt: now,
+  });
+  await sessionRef.collection("messages").doc().set({
+    role: "ember",
+    message: replyClassification.emberMessage,
+    replyMode: replyClassification.replyMode,
+    humanReviewRequired: replyClassification.humanReviewRequired,
+    supportRequestId,
+    contactRequested: replyClassification.replyMode === "staff_review" && !hasContact,
+    supportEmailQueued,
+    nextQuestion,
+    personaVersion: SUPPORT_CHAT_PERSONA_VERSION,
+    guardrailVersion: SUPPORT_CHAT_GUARDRAIL_VERSION,
+    modelDrafting,
+    createdAt: now,
+  });
+
+  const handoffStatus = !supportRequestId
+    ? "none"
+    : contact.name || contact.email || contact.phone
+      ? "contact_attached"
+      : supportEmailQueued
+        ? "queued"
+        : "saved";
+
+  jsonOk(res, requestId, {
+    sessionId,
+    emberMessage: replyClassification.emberMessage,
+    replyMode: replyClassification.replyMode,
+    humanReviewRequired: replyClassification.humanReviewRequired,
+    supportRequestId,
+    supportRequestShortId: supportRequestId ? supportRequestId.slice(0, 8) : null,
+    contactRequested: replyClassification.replyMode === "staff_review" && !hasContact,
+    contactAttached: Boolean(contact.name || contact.email || contact.phone),
+    supportEmailQueued,
+    handoffStatus,
+    staffPreviewText,
+    attachments,
+    thread: supportChatClientThread(replyClassification, triage, contact, supportRequestId, supportEmailQueued),
+    threadChecklist,
+    nextQuestion,
+    personaVersion: SUPPORT_CHAT_PERSONA_VERSION,
+    guardrailVersion: SUPPORT_CHAT_GUARDRAIL_VERSION,
+    opsLabels,
+    modelDrafting,
+    triage,
+    nextAction: supportRequestId ? "staff_review_created" : replyClassification.nextAction,
+  });
 }
 
 function readTimestampSeconds(value: unknown): number {
@@ -4557,6 +5919,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
   const requestId = getRequestId(req);
   const flags = readAuthFeatureFlags();
   const routeFamily = getRouteFamily(req);
+  const path = typeof req.path === "string" ? req.path : "/";
+  const route = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path.startsWith("/") ? path : `/${path}`;
 
   if (req.method !== "POST") {
     jsonError(res, requestId, 405, "INVALID_ARGUMENT", "Use POST");
@@ -4582,6 +5946,16 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
     return;
   }
 
+  if (route === SUPPORT_CHAT_MESSAGE_ROUTE) {
+    await handlePublicSupportChatMessage(req, res, requestId);
+    return;
+  }
+
+  if (route === SUPPORT_CHAT_ATTACHMENT_ROUTE) {
+    await handlePublicSupportChatAttachment(req, res, requestId);
+    return;
+  }
+
   const ctxResult = await requireAuthContext(req);
   if (!ctxResult.ok) {
     await logAuditEvent({
@@ -4601,8 +5975,6 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
   const ctx = ctxResult.ctx;
   const isStaff = ctx.mode === "firebase" && isStaffFromDecoded(ctx.decoded);
 
-  const path = typeof req.path === "string" ? req.path : "/";
-  const route = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path.startsWith("/") ? path : `/${path}`;
   if (!ALLOWED_API_V1_ROUTES.has(route)) {
     await logAuditEvent({
       req,

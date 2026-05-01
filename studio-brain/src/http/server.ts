@@ -47,6 +47,13 @@ import type { OpsCapability, OpsDegradeMode, GrowthExperiment, ImprovementCase, 
 import { deriveOpsCapabilitiesFromClaims, deriveOpsRolesFromClaims, derivePortalRoleFromClaims } from "../ops/staffData";
 import { renderOpsPortalChoicePage, renderOpsPortalPage } from "../ops/ui/renderOpsPortalPage";
 import type { SupportOpsStore } from "../supportOps/store";
+import {
+  EMBER_SUPPORT_ATTACHMENT_DEFAULT_TTL_MINUTES,
+  EMBER_SUPPORT_ATTACHMENT_MAX_ACTIVE_PER_SESSION,
+  EMBER_SUPPORT_ATTACHMENT_MAX_BYTES,
+  EMBER_SUPPORT_ATTACHMENT_MAX_TTL_MINUTES,
+  type EmberSupportAttachmentStore,
+} from "../supportOps/attachments";
 import { MemoryValidationError } from "../memory/service";
 import {
   buildEmberMemoryScope,
@@ -1659,6 +1666,81 @@ async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, u
   return (await readJsonBodyWithRaw(req)).json;
 }
 
+type EmberAttachmentContentType = "image/jpeg" | "image/png" | "image/webp";
+
+function parseEmberAttachmentContentType(value: unknown): EmberAttachmentContentType | null {
+  const raw = toTrimmedString(value).toLowerCase();
+  return raw === "image/jpeg" || raw === "image/png" || raw === "image/webp" ? raw : null;
+}
+
+function sanitizeAttachmentFileName(value: unknown, fallback: string): string {
+  const cleaned = toTrimmedString(value)
+    .replace(/[^\w.\- ]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
+  return cleaned || fallback;
+}
+
+function decodeStrictBase64(value: unknown): Buffer | null {
+  const raw = toTrimmedString(value).replace(/^data:[^;]+;base64,/i, "");
+  if (!raw || raw.length > Math.ceil(EMBER_SUPPORT_ATTACHMENT_MAX_BYTES * 1.4) + 16) return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(raw) || raw.length % 4 !== 0) return null;
+  try {
+    const buffer = Buffer.from(raw, "base64");
+    if (buffer.byteLength <= 0 || buffer.byteLength > EMBER_SUPPORT_ATTACHMENT_MAX_BYTES) return null;
+    return buffer;
+  } catch {
+    return null;
+  }
+}
+
+function sniffImageContentType(buffer: Buffer): EmberAttachmentContentType | null {
+  if (buffer.byteLength >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buffer.byteLength >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (
+    buffer.byteLength >= 12 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+function parseEmberAttachmentTtlMinutes(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    const raw = Number.parseInt(String(process.env.STUDIO_BRAIN_EMBER_ATTACHMENT_TTL_MINUTES ?? ""), 10);
+    if (!Number.isFinite(raw)) return EMBER_SUPPORT_ATTACHMENT_DEFAULT_TTL_MINUTES;
+    return Math.max(15, Math.min(EMBER_SUPPORT_ATTACHMENT_MAX_TTL_MINUTES, Math.trunc(raw)));
+  }
+  return Math.max(15, Math.min(EMBER_SUPPORT_ATTACHMENT_MAX_TTL_MINUTES, Math.trunc(parsed)));
+}
+
+function tokenMatches(provided: string | undefined, expected: string | undefined | null): boolean {
+  const expectedValue = typeof expected === "string" ? expected.trim() : "";
+  const providedValue = typeof provided === "string" ? provided.trim() : "";
+  if (!expectedValue || !providedValue) return false;
+  const expectedDigest = crypto.createHash("sha256").update(expectedValue).digest();
+  const providedDigest = crypto.createHash("sha256").update(providedValue).digest();
+  return crypto.timingSafeEqual(expectedDigest, providedDigest);
+}
+
 function normalizeHmacSignature(value: string | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
@@ -1887,6 +1969,8 @@ export function startHttpServer(params: {
   abuseQuotaStore?: QuotaStore;
   pilotWriteExecutor?: PilotWriteExecutor | null;
   supportOpsStore?: SupportOpsStore | null;
+  supportAttachmentStore?: EmberSupportAttachmentStore | null;
+  emberSupportBridgeToken?: string | null;
   controlTowerRepoRoot?: string;
   controlTowerRootSession?: string;
   controlTowerHostUser?: string;
@@ -1925,6 +2009,8 @@ export function startHttpServer(params: {
     abuseQuotaStore = new InMemoryQuotaStore(),
     pilotWriteExecutor = null,
     supportOpsStore = null,
+    supportAttachmentStore = null,
+    emberSupportBridgeToken = null,
     controlTowerRepoRoot,
     controlTowerRootSession = DEFAULT_CONTROL_TOWER_ROOT_SESSION,
     controlTowerHostUser = DEFAULT_CONTROL_TOWER_HOST_USER,
@@ -1966,6 +2052,12 @@ export function startHttpServer(params: {
   };
   const opsSessionSecret = String(process.env.STUDIO_BRAIN_OPS_SESSION_SECRET ?? adminToken ?? "").trim();
   const opsSessionTtlSeconds = Math.max(60, Math.min(3600, Number(process.env.STUDIO_BRAIN_OPS_SESSION_TTL_SECONDS ?? "900") || 900));
+  const resolvedEmberSupportBridgeToken = String(
+    emberSupportBridgeToken ??
+      process.env.STUDIO_BRAIN_WEB_SUPPORT_BRIDGE_TOKEN ??
+      process.env.EMBER_WEB_CHAT_STUDIO_BRAIN_BRIDGE_TOKEN ??
+      ""
+  ).trim();
 
   const readControlTowerSnapshot = async () => {
     const [overseerRun, audits, proposals] = await Promise.all([
@@ -2309,7 +2401,7 @@ export function startHttpServer(params: {
     return {
       "access-control-allow-origin": origin,
       "access-control-allow-headers":
-        "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp, x-ops-ingest-signature, x-ops-ingest-timestamp, x-studio-brain-ops-session",
+        "content-type, authorization, x-studio-brain-admin-token, x-ember-web-support-token, x-memory-ingest-signature, x-memory-ingest-timestamp, x-ops-ingest-signature, x-ops-ingest-timestamp, x-studio-brain-ops-session",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-max-age": "600",
       vary: "Origin",
@@ -2389,6 +2481,22 @@ export function startHttpServer(params: {
       return { ok: false, message: auth.message, actorId: "unknown" };
     }
     return { ok: true, principal: auth.principal, actorId: auth.principal?.uid ?? "staff:unknown" };
+  };
+  const assertEmberSupportAttachmentAuth = (
+    req: http.IncomingMessage,
+  ): { ok: true; actorId: string } | { ok: false; message: string; actorId: string } => {
+    const adminProvided = firstHeader(req.headers["x-studio-brain-admin-token"]);
+    if (tokenMatches(adminProvided, adminToken)) {
+      return { ok: true, actorId: "machine:ember-web-chat:admin" };
+    }
+    const bridgeProvided = firstHeader(req.headers["x-ember-web-support-token"]);
+    if (tokenMatches(bridgeProvided, resolvedEmberSupportBridgeToken)) {
+      return { ok: true, actorId: "machine:ember-web-chat:bridge" };
+    }
+    if (!adminToken && !resolvedEmberSupportBridgeToken) {
+      return { ok: false, message: "Ember support attachment token is not configured.", actorId: "unknown" };
+    }
+    return { ok: false, message: "Missing or invalid Ember support attachment token.", actorId: "unknown" };
   };
   const opsActorContext = (auth: { principal?: AuthPrincipal; actorId: string }) => ({
     actorId: auth.actorId,
@@ -4658,6 +4766,167 @@ export function startHttpServer(params: {
             policy: await capabilityRuntime.getPolicyState(),
             connectors: await capabilityRuntime.listConnectorHealth(),
           })
+        );
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/support-ops/ember-attachments/prune") {
+        const auth = assertEmberSupportAttachmentAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        if (!supportAttachmentStore) {
+          statusCode = 503;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Ember attachment store is unavailable." }));
+          return;
+        }
+        const prune = await supportAttachmentStore.pruneExpired();
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify({ ok: true, prune }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/support-ops/ember-attachments") {
+        const auth = assertEmberSupportAttachmentAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        if (!supportAttachmentStore) {
+          statusCode = 503;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Ember attachment store is unavailable." }));
+          return;
+        }
+
+        const routeLimit = await enforceRateLimit("supportAttachment:route", 30, 60, auth.actorId);
+        if (!routeLimit.allowed) {
+          statusCode = 429;
+          res.writeHead(statusCode, withSecurityHeaders({
+            "content-type": "application/json",
+            ...corsHeaders,
+            "x-request-id": requestId,
+            "retry-after": String(routeLimit.retryAfterSeconds),
+          }));
+          res.end(JSON.stringify({ ok: false, message: "Too many Ember attachment requests.", retryAfterSeconds: routeLimit.retryAfterSeconds }));
+          return;
+        }
+
+        let body: Record<string, unknown>;
+        try {
+          const raw = await readRawBodyLimited(req, Math.ceil(EMBER_SUPPORT_ATTACHMENT_MAX_BYTES * 1.45) + 20_000);
+          body = parseJsonBody(raw);
+        } catch (error) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : "Invalid JSON body." }));
+          return;
+        }
+
+        const sessionId = toTrimmedString(body.sessionId);
+        if (!/^[A-Za-z0-9_-]{1,120}$/.test(sessionId)) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Valid sessionId is required." }));
+          return;
+        }
+        const sessionLimit = await enforceRateLimit(`supportAttachment:session:${sessionId}`, 4, 15 * 60, auth.actorId);
+        if (!sessionLimit.allowed) {
+          statusCode = 429;
+          res.writeHead(statusCode, withSecurityHeaders({
+            "content-type": "application/json",
+            ...corsHeaders,
+            "x-request-id": requestId,
+            "retry-after": String(sessionLimit.retryAfterSeconds),
+          }));
+          res.end(JSON.stringify({ ok: false, message: "Too many Ember attachments for this thread.", retryAfterSeconds: sessionLimit.retryAfterSeconds }));
+          return;
+        }
+
+        const contentType = parseEmberAttachmentContentType(body.contentType);
+        const payload = decodeStrictBase64(body.dataBase64);
+        const sniffed = payload ? sniffImageContentType(payload) : null;
+        const reportedSize = Number(body.sizeBytes ?? payload?.byteLength ?? 0);
+        const pagePath = toTrimmedString(body.pagePath);
+        if (pagePath !== "/firing-care-preview/support-pickup/") {
+          statusCode = 403;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Attachment surface is not allowed." }));
+          return;
+        }
+        if (!contentType || !payload || !sniffed || sniffed !== contentType || reportedSize !== payload.byteLength) {
+          statusCode = 400;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Attachment must be a small JPEG, PNG, or WebP image with matching content." }));
+          return;
+        }
+
+        const now = new Date();
+        const prune = await supportAttachmentStore.pruneExpired(now);
+        const activeCount = await supportAttachmentStore.countActiveForSession(sessionId, now);
+        if (activeCount >= EMBER_SUPPORT_ATTACHMENT_MAX_ACTIVE_PER_SESSION) {
+          statusCode = 429;
+          res.writeHead(statusCode, withSecurityHeaders({
+            "content-type": "application/json",
+            ...corsHeaders,
+            "x-request-id": requestId,
+            "retry-after": "900",
+          }));
+          res.end(JSON.stringify({
+            ok: false,
+            message: "This Ember thread already has the preview attachment limit.",
+            retryAfterSeconds: 900,
+          }));
+          return;
+        }
+
+        const rawSupportRequestId = toTrimmedString(body.supportRequestId);
+        const supportRequestId = /^[A-Za-z0-9_-]{1,160}$/.test(rawSupportRequestId) ? rawSupportRequestId : null;
+        const ttlMinutes = parseEmberAttachmentTtlMinutes(body.ttlMinutes);
+        const metadataRaw = toObjectRecord(body.metadata);
+        const record = await supportAttachmentStore.save(
+          {
+            sessionId,
+            supportRequestId,
+            pagePath,
+            fileName: sanitizeAttachmentFileName(body.fileName, "ember-support-photo.jpg"),
+            contentType,
+            payload,
+            note: toTrimmedString(body.note).slice(0, 300) || null,
+            source: "ember-web-chat",
+            uploadedBy: "firebase-apiV1",
+            requestId,
+            ttlMinutes,
+            metadata: {
+              sourceIpHash: toTrimmedString(metadataRaw.sourceIpHash) || null,
+              userAgentHash: toTrimmedString(metadataRaw.userAgentHash) || null,
+              clientImageWidth: toNullableNumber(metadataRaw.clientImageWidth),
+              clientImageHeight: toNullableNumber(metadataRaw.clientImageHeight),
+            },
+          },
+          now,
+        );
+
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            attachment: record,
+            controls: {
+              maxBytes: EMBER_SUPPORT_ATTACHMENT_MAX_BYTES,
+              maxActivePerSession: EMBER_SUPPORT_ATTACHMENT_MAX_ACTIVE_PER_SESSION,
+              ttlMinutes,
+            },
+            prune,
+          }),
         );
         return;
       }

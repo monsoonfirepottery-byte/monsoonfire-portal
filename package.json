@@ -166,6 +166,7 @@
     "studio:ops:bambu:install": "python ./scripts/studiobrain-ops.py --json bambu-install",
     "studio:ops:bambu:status": "python ./scripts/studiobrain-ops.py --json bambu-status",
     "studio:ops:bambu:smoke": "python ./scripts/studiobrain-ops.py --json bambu-smoke",
+    "studio:ops:bambu:run": "python ./scripts/studiobrain-ops.py --json bambu-run",
     "studio:ops:host:heartbeat": "node ./scripts/studiobrain-local-host-heartbeat.mjs --watch",
     "studio:ops:host:heartbeat:once": "node ./scripts/studiobrain-local-host-heartbeat.mjs",
     "studio:check": "node ./scripts/studiobrain-status.mjs --gate",

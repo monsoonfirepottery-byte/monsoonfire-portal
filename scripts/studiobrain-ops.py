@@ -206,6 +206,90 @@ def build_remote_bambu_command(env: dict[str, str], *script_args: str) -> str:
     return build_remote_host_user_command(env, inner_command)
 
 
+BAMBU_FAILURE_PRIORITY = (
+    "settings_profile_drift",
+    "filament_mapping_mismatch",
+    "display_backend_unavailable",
+    "output_path_unavailable",
+    "upstream_cli_segfault",
+    "unknown_cli_failure",
+)
+
+BAMBU_FAILURE_NEXT_ACTIONS = {
+    "settings_profile_drift": (
+        "Refresh or replace the tracked printer/process/filament profile pack, "
+        "or slice through a known-good 3MF template with embedded settings."
+    ),
+    "filament_mapping_mismatch": (
+        "Pass explicit filament/color assignments that match the imported model count, "
+        "or use a reusable 3MF template with filament metadata already assigned."
+    ),
+    "display_backend_unavailable": (
+        "Verify xvfb-run is installed and run with STUDIO_BRAIN_BAMBU_XVFB_MODE=always "
+        "before retrying the same command."
+    ),
+    "output_path_unavailable": (
+        "Create a writable output directory under the Bambu data root and retry with "
+        "the same output file name."
+    ),
+    "upstream_cli_segfault": (
+        "Run the smoke fixture to separate install health from raw-slice instability, "
+        "then keep stdout/stderr and fall back to PrusaSlicer inspection if smoke passes."
+    ),
+    "unknown_cli_failure": (
+        "Keep the command, stdout, stderr, and output directory, then compare against "
+        "a fresh smoke run from the same host."
+    ),
+}
+
+
+def classify_bambu_failure(stdout: str, stderr: str, exit_code: int) -> dict[str, object]:
+    combined = f"{stdout}\n{stderr}".lower()
+    categories: list[str] = []
+
+    def add(category: str) -> None:
+        if category not in categories:
+            categories.append(category)
+
+    if (
+        "nozzle_volume_type not found" in combined
+        or "process not compatible with printer" in combined
+        or "duplicate machine config file" in combined
+        or "config file is not compatible" in combined
+    ):
+        add("settings_profile_drift")
+    if (
+        "loaded_filament_ids size" in combined
+        or "no filament colors found" in combined
+        or "filament ids" in combined
+    ):
+        add("filament_mapping_mismatch")
+    if (
+        "wayland: failed to connect to display" in combined
+        or "failed to connect to display" in combined
+        or "cannot open display" in combined
+        or "glfwinit" in combined
+    ):
+        add("display_backend_unavailable")
+    if (
+        "unable to open the file" in combined
+        or "permission denied" in combined
+        or ("project export" in combined and "failed" in combined)
+    ):
+        add("output_path_unavailable")
+    if exit_code == 139 or "segmentation fault" in combined:
+        add("upstream_cli_segfault")
+    if exit_code != 0 and not categories:
+        add("unknown_cli_failure")
+
+    primary = next((category for category in BAMBU_FAILURE_PRIORITY if category in categories), "")
+    return {
+        "primary": primary,
+        "categories": categories,
+        "nextAction": BAMBU_FAILURE_NEXT_ACTIONS.get(primary, ""),
+    }
+
+
 def resolve_namecheap_tunnel_settings() -> dict[str, object]:
     ssh_binary = resolve_windows_openssh_binary("ssh.exe") or "ssh"
     settings = {
@@ -426,6 +510,10 @@ def run_remote_bambu(
                 payload["parsed"] = json.loads(stdout_text)
             except json.JSONDecodeError:
                 pass
+        if code != 0:
+            failure = classify_bambu_failure(str(payload["stdout"]), str(payload["stderr"]), code)
+            payload["failure"] = failure
+            payload["failureCategory"] = str(failure.get("primary", ""))
         if synced is not None:
             payload["synced"] = synced
         return payload

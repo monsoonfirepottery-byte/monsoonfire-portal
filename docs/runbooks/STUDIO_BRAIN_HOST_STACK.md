@@ -48,6 +48,7 @@ npm run studio:ops:session:list
 npm run studio:ops:bambu:install
 npm run studio:ops:bambu:status
 npm run studio:ops:bambu:smoke
+npm run studio:ops:bambu:run -- -- --help
 ```
 
 Primary daily operator surface:
@@ -67,6 +68,42 @@ bash ./studiobrain-ops.sh status --json
 bash ./studiobrain-ops.sh cockpit-state --json
 bash ./studiobrain-ops.sh session-list --json
 ```
+
+## Bambu headless slicing
+
+Use these commands as the server-primary path:
+
+```powershell
+npm run studio:ops:bambu:install
+npm run studio:ops:bambu:status
+npm run studio:ops:bambu:smoke -- --keep-output
+```
+
+`studio:ops:bambu:status` verifies the pinned install, the extracted `AppRun`, the smoke fixture, the Bambu data root, and whether the wrapper will use `xvfb-run`. `studio:ops:bambu:smoke -- --keep-output` slices Bambu's bundled 3MF fixture and persists the exported 3MF plus stdout/stderr logs under `/home/wuff/studiobrain-data/bambu/smoke/<run-id>/`.
+
+Use `studio:ops:bambu:run` for raw CLI experiments. Pass a second `--` so Bambu options are not consumed by the local wrapper:
+
+```powershell
+npm run studio:ops:bambu:run -- -- --slice 0 --debug 2 --outputdir /home/wuff/studiobrain-data/bambu/labels/variant_B_insert-YYYYMMDD-HHMM --export-3mf variant_B_insert.3mf --load-settings "/opt/studiobrain/bambu-studio/current/squashfs-root/resources/profiles/BBL/process/0.16mm Optimal @BBL X1C.json;/opt/studiobrain/bambu-studio/current/squashfs-root/resources/profiles/BBL/machine/Bambu Lab X1 Carbon 0.4 nozzle.json" --load-filaments "/opt/studiobrain/bambu-studio/current/squashfs-root/resources/profiles/BBL/filament/Bambu PLA Basic @BBL X1C.json" /home/wuff/studiobrain-data/bambu/labels/inputs/variant_B_insert.stl
+```
+
+Current raw-STL limitation, verified on 2026-05-01: the bundled smoke 3MF slices successfully, but the support-free label STL `labels/variant_B/variant_B_insert.stl` does not yet slice reliably through Bambu's raw CLI path. The raw run failed before producing `variant_B_insert.3mf`; the wrapper classifies the failure as `settings_profile_drift` with supporting categories such as `filament_mapping_mismatch` and `upstream_cli_segfault` when the CLI prints profile/filament warnings and then exits 139. This means the Bambu install is healthy enough for project smoke tests, but the label workflow still needs a known-good Bambu 3MF template or refreshed profile pack before Bambu can be the only printability gate.
+
+Until that template exists, use the PrusaSlicer inspection path for label printability checks and keep Bambu raw-slice artifacts for debugging:
+
+- Keep the exact `studio:ops:bambu:run` command, the JSON `failure` object, stdout, stderr, output directory, and any generated 3MF.
+- Keep the input STL under `/home/wuff/studiobrain-data/bambu/labels/inputs/` when reproducing on Studio Brain.
+- Compare against a fresh `studio:ops:bambu:smoke -- --keep-output` run before treating a raw-STL failure as a broken install.
+- Fall back to `labels/slice_with_prusaslicer.ps1` and `labels/slices/prusaslicer_x1c_inspect/slice_summary.json` when Bambu reports raw CLI instability.
+
+Failure categories reported by `studio:ops:bambu:run`:
+
+- `settings_profile_drift`: printer/process/filament profiles are missing keys, incompatible, duplicated, or otherwise not accepted by the CLI.
+- `filament_mapping_mismatch`: filament IDs, color metadata, or imported model count do not line up with the arguments.
+- `display_backend_unavailable`: the CLI cannot connect to a headless display backend; retry with `STUDIO_BRAIN_BAMBU_XVFB_MODE=always`.
+- `output_path_unavailable`: the export directory or file cannot be opened by the host user.
+- `upstream_cli_segfault`: the Bambu CLI crashes after argument/profile handling; verify smoke, keep logs, and fall back.
+- `unknown_cli_failure`: preserve logs and compare against smoke before deciding next action.
 
 ## Optional env knobs
 

@@ -168,6 +168,7 @@
     "studio:ops:bambu:install": "python ./scripts/studiobrain-ops.py --json bambu-install",
     "studio:ops:bambu:status": "python ./scripts/studiobrain-ops.py --json bambu-status",
     "studio:ops:bambu:smoke": "python ./scripts/studiobrain-ops.py --json bambu-smoke",
+    "studio:ops:bambu:run": "python ./scripts/studiobrain-ops.py --json bambu-run",
     "studio:ops:idle-worker:dry": "node ./scripts/studiobrain-idle-worker.mjs --dry-run",
     "studio:ops:idle-worker:dry:json": "node ./scripts/studiobrain-idle-worker.mjs --dry-run --json",
     "studio:ops:idle-worker": "node ./scripts/studiobrain-idle-worker.mjs --profile idle --jobs memory,repo,harness,wiki",

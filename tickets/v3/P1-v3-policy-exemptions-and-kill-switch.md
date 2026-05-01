@@ -1,5 +1,11 @@
 # P1: Policy Exemptions + Global Kill Switch
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Add narrowly-scoped policy exemptions and an emergency kill switch so automation can be stopped instantly without redeploy.
 

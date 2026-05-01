@@ -1,5 +1,11 @@
 # P2: Multi-Studio Boundary Readiness (Platformization Guardrails)
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Prepare Studio OS for future multi-studio/white-label expansion by defining strict tenancy boundaries and config isolation.
 

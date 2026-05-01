@@ -1,5 +1,11 @@
 # P1: Roborock Connector (Read-only First)
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Add Roborock read-only connector for device status telemetry under capability policy.
 

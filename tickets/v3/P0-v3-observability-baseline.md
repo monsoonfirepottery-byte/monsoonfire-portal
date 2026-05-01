@@ -1,5 +1,11 @@
 # P0: Studio Brain Observability Baseline
 
+Status: done-in-code
+Priority: P0
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Ship structured logs, event IDs, and health/readiness observability so v3 is operable from day one.
 

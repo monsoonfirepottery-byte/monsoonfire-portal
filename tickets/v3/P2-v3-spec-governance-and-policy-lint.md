@@ -1,5 +1,11 @@
 # P2: Spec Governance + Capability Policy Lint
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Institutionalize v3 safety by requiring structured specs and lint checks for capabilities/connectors.
 

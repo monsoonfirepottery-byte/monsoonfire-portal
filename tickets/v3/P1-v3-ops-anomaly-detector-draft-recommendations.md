@@ -1,5 +1,11 @@
 # P1: Ops Anomaly Detector (Draft Recommendations Only)
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Detect operational anomalies and produce draft recommendations/proposals for staff review.
 

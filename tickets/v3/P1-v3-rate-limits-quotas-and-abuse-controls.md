@@ -1,5 +1,11 @@
 # P1: Rate Limits, Quotas, and Abuse Controls
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Enforce per-actor and per-capability safety limits to prevent runaway automation and connector abuse.
 

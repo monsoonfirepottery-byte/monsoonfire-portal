@@ -1,5 +1,11 @@
 # P2: OS Cockpit Surface Consolidation
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Provide one staff cockpit for StudioState, connectors, proposals, approvals, and audit timelines.
 

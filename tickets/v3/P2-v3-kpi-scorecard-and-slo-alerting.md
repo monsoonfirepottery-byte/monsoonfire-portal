@@ -1,5 +1,11 @@
 # P2: KPI Scorecard + SLO Alerting for Studio OS
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Operationalize v3 with a scorecard and alert thresholds tied to safety and reliability objectives.
 

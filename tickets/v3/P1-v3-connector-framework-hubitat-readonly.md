@@ -1,5 +1,11 @@
 # P1: Connector Framework + Hubitat (Read-only First)
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Create connector interface framework and implement Hubitat read-only adapter with capability definitions.
 

@@ -1,5 +1,11 @@
 # P2: DR, Recovery, and Rebuild Playbook
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Guarantee operations continuity when local brain fails by documenting and testing rebuild/recovery from cloud truth.
 

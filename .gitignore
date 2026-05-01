@@ -55,6 +55,7 @@ exports/
 /.tmp/
 /.codex/toolcalls.ndjson
 /.codex/tools/
+/.codex-backups/
 /.codex/friction-feedback-state.json
 /.codex/interaction-run-lock.json
 /.studiobrain-host-state.json
@@ -66,6 +67,8 @@ scripts/.tmp-*
 .env
 .env.local
 .env.*.local
+/functions/.env.*
+!/functions/.env.*.example
 extensions/*.env
 extensions/*.secret.local
 secrets/

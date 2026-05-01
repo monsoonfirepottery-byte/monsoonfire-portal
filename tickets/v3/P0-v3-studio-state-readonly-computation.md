@@ -1,5 +1,11 @@
 # P0: Read-only StudioState Computation (Firestore + Stripe Reads)
 
+Status: done-in-code
+Priority: P0
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Compute daily StudioState snapshots from cloud-authoritative reads and persist locally in Postgres.
 

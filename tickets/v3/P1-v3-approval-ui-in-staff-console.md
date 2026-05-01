@@ -1,5 +1,11 @@
 # P1: Approval Queue UI in Staff Console
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Expose proposals, approval decisions, and execution traces in the existing staff console so operators can approve safely without leaving cloud surfaces.
 

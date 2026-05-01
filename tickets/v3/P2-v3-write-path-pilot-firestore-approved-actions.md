@@ -1,5 +1,11 @@
 # P2: Narrow Write-Path Pilot (Approved Firestore Actions Only)
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Pilot one narrowly-scoped write flow (low-risk Firestore update) through the full capability + proposal + approval pipeline.
 

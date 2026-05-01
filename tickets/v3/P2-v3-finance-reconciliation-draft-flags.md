@@ -1,5 +1,11 @@
 # P2: Finance Reconciliation Swarm (Read-only + Draft Flags)
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Reconcile Stripe payout/refund signals with portal order/reservation records and flag anomalies.
 

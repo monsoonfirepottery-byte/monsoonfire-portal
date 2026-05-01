@@ -149,6 +149,9 @@ Use these defaults unless the user explicitly overrides them in-session.
 - Execution style:
   - Default to high-autonomy delivery: run deep and continue until a concrete blocker appears.
   - Prefer momentum over repeated permission/checkpoint prompts for routine implementation work.
+  - Prefer lightweight milestone updates, blocker notes, and final handoffs over maintaining an in-thread text status board.
+  - Use a text status board only when the user explicitly asks for `dashboard` or `show board`, or when a long multi-agent run has no better app/control-tower surface.
+  - When `show board` is requested, map it to the current app/control-tower state when available; otherwise provide a compact current-state checkpoint instead of rebuilding a standing board by default.
 - On-demand self-improvement loops:
   - The user can request a self-improvement/interrogation loop at any time (not only on schedule).
   - Fast entry points: `npm run codex:improve:daily`, `npm run codex:interaction:daily`, `npm run codex:pr-green:daily`.

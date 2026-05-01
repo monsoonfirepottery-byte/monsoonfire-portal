@@ -59,6 +59,8 @@
 - Default execution mode: high autonomy.
   - Continue implementation until a concrete blocker appears.
   - Minimize routine checkpoint prompts; surface only blocking decisions.
+  - Treat in-thread text status boards as deprecated-by-default. Prefer milestone updates, blocker evidence, and concise handoffs.
+  - Keep `dashboard` / `show board` as explicit user commands, but answer them from the current app/control-tower surface when available or with a compact checkpoint when not.
 - Use external memory workspace for cross-session continuity:
   - `C:\Users\micah\.codex\memory`
   - Stable records: `accepted/accepted.jsonl`

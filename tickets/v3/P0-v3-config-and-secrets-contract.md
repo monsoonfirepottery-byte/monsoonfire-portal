@@ -1,5 +1,11 @@
 # P0: Studio Brain Config + Secrets Contract
 
+Status: done-in-code
+Priority: P0
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Define and enforce a strict runtime config contract so local orchestration is deterministic, secure, and environment-portable.
 

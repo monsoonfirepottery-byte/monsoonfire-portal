@@ -1,5 +1,11 @@
 # P1: Illegal / Infringing Work Intake Controls
 
+Status: done-in-code
+Priority: P1
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Prevent agent-driven workflows from progressing when requests appear illegal, unsafe, or likely to infringe IP/copyright/trademark policy.
 

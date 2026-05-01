@@ -1,5 +1,11 @@
 # P2: Security Chaos + Tabletop Exercise Program
 
+Status: Active
+Priority: P2
+Owner: Studio Brain / Platform
+Type: Ticket
+Parent Epic: tickets/v3/EPICS.md
+
 ## Goal
 Validate that Studio OS v3 fails safely under auth, connector, and policy disruptions using repeatable drills.
 

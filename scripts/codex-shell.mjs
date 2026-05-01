@@ -429,10 +429,10 @@ function buildShellPrompt({
 }
 
 async function main() {
+  const options = parseArgs(process.argv.slice(2));
   loadShellEnv();
   await hydrateStudioBrainAuthFromPortal({ repoRoot: REPO_ROOT, env: process.env }).catch(() => null);
 
-  const options = parseArgs(process.argv.slice(2));
   const statePath = resolveShellSessionStatePath();
   const reusableState = getReusableShellState(statePath);
   const runId = buildStartupRunId(options, process.env, reusableState);

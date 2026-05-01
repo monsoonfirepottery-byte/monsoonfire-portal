@@ -1,6 +1,6 @@
 # P1 — Cross-platform command runner and wrapper audit
 
-Status: Active
+Status: Completed
 Date: 2026-03-21
 Priority: P1
 Owner: Platform
@@ -24,6 +24,16 @@ Several high-use scripts still duplicate platform-specific command lookup and PA
 1. The hot-path scripts no longer spawn bare `npx`/`npm` or hard-code PATH delimiters.
 2. The wrapper audit passes locally and runs inside Codex doctor.
 3. Shared helper logic is the canonical command-resolution path for the tracked surfaces.
+
+## Completion Notes
+- Verified `scripts/lib/command-runner.mjs` is the shared command-resolution, PATH-prepend, and Firebase CLI invocation helper used by the tracked hot paths.
+- Verified `scripts/audit-cross-platform-wrappers.mjs` scans the hot-path scripts and reports no unsafe bare `npx`/`npm`, hard-coded PATH separator, or `shell: true` wrapper patterns.
+- Verified `scripts/codex-doctor.mjs` runs the cross-platform wrapper audit and reports it as `codex-cross-platform-wrapper-audit`.
+
+## Verification
+- `node scripts/audit-cross-platform-wrappers.mjs`
+- `node ./scripts/codex-doctor.mjs --json`
+- `node --test scripts/lib/command-runner.test.mjs scripts/audit-cross-platform-wrappers.test.mjs scripts/codex-doctor.test.mjs`
 
 ## Dependencies
 - `scripts/lib/command-runner.mjs`

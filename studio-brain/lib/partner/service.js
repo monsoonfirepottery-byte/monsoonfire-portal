@@ -260,6 +260,7 @@ function refreshBriefAfterMutation(repoRoot, brief) {
             maintenanceActions: [],
             outputs: [brief.artifacts.latestBriefPath, brief.artifacts.openLoopsPath],
         },
+        idleWorker: null,
     }, [], openLoops, null, brief);
     return writePartnerArtifacts(repoRoot, refreshed);
 }

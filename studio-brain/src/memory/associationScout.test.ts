@@ -89,6 +89,7 @@ test("createAssociationScoutFromEnv uses codex exec and strips direct API keys f
     childCodexHome?: string | undefined;
     childHome?: string | undefined;
     childAuthSnapshot?: string;
+    sourceAuthAfterRun?: string;
     envOpenAiKey?: string | undefined;
     envStudioBrainKey?: string | undefined;
   } = {};
@@ -116,6 +117,13 @@ test("createAssociationScoutFromEnv uses codex exec and strips direct API keys f
         captured.childCodexHome && existsSync(join(captured.childCodexHome, "auth.json"))
           ? readFileSync(join(captured.childCodexHome, "auth.json"), "utf8")
           : "";
+      if (captured.childCodexHome) {
+        writeFileSync(
+          join(captured.childCodexHome, "auth.json"),
+          JSON.stringify({ access_token: "refreshed-session" }),
+          "utf8",
+        );
+      }
       const schemaIndex = captured.args.indexOf("--output-schema");
       const outputIndex = captured.args.indexOf("-o");
       captured.schemaPath = schemaIndex >= 0 ? captured.args[schemaIndex + 1] : "";
@@ -188,6 +196,8 @@ test("createAssociationScoutFromEnv uses codex exec and strips direct API keys f
     assert.notEqual(captured.childCodexHome, sourceCodexHome);
     assert.notEqual(captured.childHome, process.env.HOME ?? process.env.USERPROFILE ?? "");
     assert.match(String(captured.childAuthSnapshot || ""), /chatgpt-session/);
+    captured.sourceAuthAfterRun = readFileSync(sourceAuthPath, "utf8");
+    assert.match(String(captured.sourceAuthAfterRun || ""), /refreshed-session/);
     assert.equal(Boolean(captured.prompt?.includes("\"bundleId\":\"bundle-1\"")), true);
     assert.equal(Boolean(captured.args?.includes("--output-schema")), true);
     assert.equal(Boolean(captured.args?.includes("-o")), true);

@@ -286,20 +286,30 @@ function resolveCodexHome(env: NodeJS.ProcessEnv = process.env): string {
 function prepareIsolatedCodexHome(
   tempRoot: string,
   env: NodeJS.ProcessEnv = process.env,
-): { codexHome: string; homeRoot: string } | null {
+): { codexHome: string; homeRoot: string; sourceAuthPath: string; isolatedAuthPath: string } | null {
   const sourceCodexHome = resolveCodexHome(env);
   if (!sourceCodexHome) return null;
   const authPath = resolve(sourceCodexHome, "auth.json");
   if (!existsSync(authPath)) return null;
   const homeRoot = join(tempRoot, "home");
   const isolatedCodexHome = join(homeRoot, ".codex");
+  const isolatedAuthPath = join(isolatedCodexHome, "auth.json");
   mkdirSync(isolatedCodexHome, { recursive: true });
-  copyFileSync(authPath, join(isolatedCodexHome, "auth.json"));
+  copyFileSync(authPath, isolatedAuthPath);
   writeFileSync(join(isolatedCodexHome, "config.toml"), "", "utf8");
   return {
     codexHome: isolatedCodexHome,
     homeRoot,
+    sourceAuthPath: authPath,
+    isolatedAuthPath,
   };
+}
+
+function persistRefreshedCodexAuth(
+  isolatedCodexHome: { sourceAuthPath: string; isolatedAuthPath: string } | null,
+): void {
+  if (!isolatedCodexHome || !existsSync(isolatedCodexHome.isolatedAuthPath)) return;
+  copyFileSync(isolatedCodexHome.isolatedAuthPath, isolatedCodexHome.sourceAuthPath);
 }
 
 function resolveAssociationScoutProvider(env: NodeJS.ProcessEnv = process.env): AssociationScoutProvider {
@@ -656,6 +666,7 @@ async function callCodexAssociationScout(input: {
           || `association scout codex exec failed (${result.exitCode}).`,
       );
     }
+    persistRefreshedCodexAuth(isolatedCodexHome);
     const outputText = existsSync(outputPath) ? readFileSync(outputPath, "utf8") : "";
     const normalized = clean(outputText);
     if (!normalized) {

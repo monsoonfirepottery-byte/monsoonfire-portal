@@ -14,7 +14,7 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: d63c724cffbccb97df8ac4ac30ab8f2c3f321ac91fe857e82d62db35a457c747
+export_hash: ead54f43ced5a9e651f807b0e587b00db92faaace1dc7ccb037e351418f8b092
 ---
 # Studio Brain Wiki Context Pack
 
@@ -23,7 +23,7 @@ Snapshot: 7319cf63c5171e42c73ee82029960f048a1ea9bb66adc97ad7406bcd04757f32
 ## Usefulness Signals
 
 - outcome verdict: insufficient_real_usage
-- wiki-relevant outcomes: 1; helpful: 1; stale_or_misleading: 0; minutes_saved: 18
+- wiki-relevant outcomes: 0; helpful: 0; stale_or_misleading: 0; minutes_saved: 0
 
 ## Verified Operational Context
 

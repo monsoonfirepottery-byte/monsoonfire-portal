@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { createSign } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,7 +16,17 @@ const defaultServiceAccountPath = resolve(
   "portal",
   "firebase-service-account-monsoonfire-portal-github-action.json"
 );
+const defaultPortalAutomationEnvPath = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+const homePortalAutomationEnvPath = resolve(homedir(), "secrets", "portal", "portal-automation.env");
 const DEFAULT_REQUIRED_PROVIDERS = ["google.com", "microsoft.com", "apple.com", "facebook.com"];
+const SERVICE_ACCOUNT_ENV_KEYS = [
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "FIREBASE_SERVICE_ACCOUNT_PATH",
+  "PORTAL_FIREBASE_SERVICE_ACCOUNT",
+  "FIREBASE_SERVICE_ACCOUNT_JSON",
+];
+
+loadPortalAutomationEnv();
 
 function normalizeProviderId(value) {
   return String(value || "")
@@ -24,21 +35,28 @@ function normalizeProviderId(value) {
 }
 
 function parseArgs(argv) {
+  const envCredentialPath =
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
+    process.env.PORTAL_FIREBASE_SERVICE_ACCOUNT ||
+    "";
   const out = {
     projectId: process.env.FIREBASE_PROJECT_ID || "monsoonfire-portal",
-    serviceAccountPath: process.env.GOOGLE_APPLICATION_CREDENTIALS
-      ? resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS)
+    serviceAccountPath: envCredentialPath
+      ? resolve(process.cwd(), envCredentialPath)
       : defaultServiceAccountPath,
     requiredProviders: null,
     skipProviders: [],
     strict: false,
     json: false,
+    credentialCheck: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--strict") out.strict = true;
     else if (arg === "--json") out.json = true;
+    else if (arg === "--credential-check") out.credentialCheck = true;
     else if ((arg === "--project" || arg === "-p") && argv[index + 1]) {
       out.projectId = String(argv[index + 1]).trim() || out.projectId;
       index += 1;
@@ -73,6 +91,55 @@ function parseArgs(argv) {
   return out;
 }
 
+function loadPortalAutomationEnv() {
+  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
+  const envPath =
+    configuredPath ||
+    (existsSync(defaultPortalAutomationEnvPath) ? defaultPortalAutomationEnvPath : homePortalAutomationEnvPath);
+  if (!envPath || !existsSync(envPath)) return;
+
+  const raw = readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) continue;
+    const key = trimmed.slice(0, separatorIndex).trim();
+    if (!SERVICE_ACCOUNT_ENV_KEYS.includes(key)) continue;
+    if (String(process.env[key] || "").trim()) continue;
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+function describeCredentialSources(options) {
+  const rows = [];
+  for (const key of SERVICE_ACCOUNT_ENV_KEYS) {
+    const value = String(process.env[key] || "").trim();
+    if (value && key !== "FIREBASE_SERVICE_ACCOUNT_JSON") {
+      rows.push({ source: key, path: resolve(process.cwd(), value), exists: existsSync(resolve(process.cwd(), value)) });
+    } else if (value && key === "FIREBASE_SERVICE_ACCOUNT_JSON") {
+      rows.push({ source: key, path: "(inline JSON redacted)", exists: true });
+    }
+  }
+  rows.push({
+    source: "default",
+    path: defaultServiceAccountPath,
+    exists: existsSync(defaultServiceAccountPath),
+  });
+  if (options.serviceAccountPath !== defaultServiceAccountPath && !rows.some((row) => row.path === options.serviceAccountPath)) {
+    rows.unshift({
+      source: "--service-account",
+      path: options.serviceAccountPath,
+      exists: existsSync(options.serviceAccountPath),
+    });
+  }
+  return rows;
+}
+
 function base64url(value) {
   return Buffer.from(value)
     .toString("base64")
@@ -82,10 +149,54 @@ function base64url(value) {
 }
 
 async function mintAccessToken(serviceAccount) {
+  const credentialType = String(serviceAccount?.type || "").trim();
+  if (credentialType === "authorized_user" || serviceAccount?.refresh_token) {
+    return mintAuthorizedUserAccessToken(serviceAccount);
+  }
+  return mintServiceAccountAccessToken(serviceAccount);
+}
+
+async function mintAuthorizedUserAccessToken(credential) {
+  const clientId = String(credential?.client_id || "").trim();
+  const clientSecret = String(credential?.client_secret || "").trim();
+  const refreshToken = String(credential?.refresh_token || "").trim();
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Authorized-user ADC credential is missing client_id, client_secret, or refresh_token.");
+  }
+
+  const resp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`OAuth refresh request failed (${resp.status}): ${text.slice(0, 400)}`);
+  }
+  const tokenPayload = await resp.json();
+  const accessToken = String(tokenPayload.access_token || "");
+  if (!accessToken) {
+    throw new Error("OAuth refresh response did not include access_token.");
+  }
+  return accessToken;
+}
+
+async function mintServiceAccountAccessToken(serviceAccount) {
+  const clientEmail = String(serviceAccount?.client_email || "").trim();
+  const privateKey = String(serviceAccount?.private_key || "").trim();
+  if (!clientEmail || !privateKey) {
+    throw new Error("Service-account credential is missing client_email or private_key.");
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
   const payload = {
-    iss: serviceAccount.client_email,
+    iss: clientEmail,
     scope: "https://www.googleapis.com/auth/cloud-platform",
     aud: serviceAccount.token_uri || "https://oauth2.googleapis.com/token",
     iat: now,
@@ -95,7 +206,7 @@ async function mintAccessToken(serviceAccount) {
   const signer = createSign("RSA-SHA256");
   signer.update(unsigned);
   signer.end();
-  const signature = signer.sign(serviceAccount.private_key, "base64url");
+  const signature = signer.sign(privateKey, "base64url");
   const assertion = `${unsigned}.${signature}`;
 
   const resp = await fetch(serviceAccount.token_uri || "https://oauth2.googleapis.com/token", {
@@ -118,13 +229,22 @@ async function mintAccessToken(serviceAccount) {
   return accessToken;
 }
 
-async function fetchProviderConfigs(projectId, accessToken) {
+function credentialQuotaProject(credential) {
+  return String(process.env.GOOGLE_CLOUD_QUOTA_PROJECT || credential?.quota_project_id || "").trim();
+}
+
+async function fetchProviderConfigs(projectId, accessToken, quotaProject = "") {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (quotaProject) {
+    headers["x-goog-user-project"] = quotaProject;
+  }
+
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/admin/v2/projects/${projectId}/defaultSupportedIdpConfigs?pageSize=200`,
     {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers,
     }
   );
   if (!response.ok) {
@@ -137,12 +257,44 @@ async function fetchProviderConfigs(projectId, accessToken) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  if (!existsSync(options.serviceAccountPath)) {
-    throw new Error(`Service account file not found: ${options.serviceAccountPath}`);
+  const credentialSources = describeCredentialSources(options);
+  if (options.credentialCheck) {
+    const report = {
+      ok: existsSync(options.serviceAccountPath) || Boolean(String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim()),
+      command: "prod-auth-provider-config-credential-check",
+      generatedAtIso: new Date().toISOString(),
+      projectId: options.projectId,
+      serviceAccountPath: options.serviceAccountPath,
+      credentialSources,
+      setupHint:
+        "Set GOOGLE_APPLICATION_CREDENTIALS, FIREBASE_SERVICE_ACCOUNT_PATH, PORTAL_FIREBASE_SERVICE_ACCOUNT, or pass --service-account. Local portal env is loaded from secrets/portal/portal-automation.env when present.",
+    };
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(`credential check: ${report.ok ? "ok" : "missing"}\n`);
+      process.stdout.write(`${report.setupHint}\n`);
+    }
+    if (options.strict && !report.ok) process.exitCode = 1;
+    return;
   }
-  const serviceAccount = JSON.parse(await readFile(options.serviceAccountPath, "utf8"));
+  const inlineServiceAccountJson = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
+  if (!existsSync(options.serviceAccountPath) && !inlineServiceAccountJson) {
+    throw new Error(
+      [
+        `Service account file not found: ${options.serviceAccountPath}`,
+        "Checked credential sources:",
+        ...credentialSources.map((row) => `- ${row.source}: ${row.path} (${row.exists ? "found" : "missing"})`),
+        "Set GOOGLE_APPLICATION_CREDENTIALS, FIREBASE_SERVICE_ACCOUNT_PATH, PORTAL_FIREBASE_SERVICE_ACCOUNT, or pass --service-account.",
+        "Local portal env is loaded from secrets/portal/portal-automation.env when present.",
+      ].join("\n")
+    );
+  }
+  const serviceAccount = inlineServiceAccountJson
+    ? JSON.parse(inlineServiceAccountJson)
+    : JSON.parse(await readFile(options.serviceAccountPath, "utf8"));
   const accessToken = await mintAccessToken(serviceAccount);
-  const providerConfigs = await fetchProviderConfigs(options.projectId, accessToken);
+  const providerConfigs = await fetchProviderConfigs(options.projectId, accessToken, credentialQuotaProject(serviceAccount));
 
   const indexByProviderId = new Map();
   for (const row of providerConfigs) {

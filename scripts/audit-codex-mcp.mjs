@@ -20,6 +20,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const docsPath = path.join(repoRoot, 'docs', 'SOURCE_OF_TRUTH_INDEX.md');
 const codexConfigPath = path.join(os.homedir(), '.codex', 'config.toml');
+const repoCodexConfigPath = path.join(repoRoot, '.codex', 'config.toml');
 
 const errors = [];
 
@@ -135,6 +136,56 @@ function hasDeprecatedModelConfig(toml) {
   return hasLegacyProviders || hasLegacyModels;
 }
 
+function isMachineSpecificLauncher(value) {
+  const raw = String(value ?? '').trim();
+  return /^\/home\//i.test(raw)
+    || /^\/Users\//i.test(raw)
+    || /^[A-Za-z]:[\\/]/.test(raw)
+    || raw.includes('\\Users\\')
+    || raw.includes('/monsoonfire-portal/');
+}
+
+export function collectRepoCodexConfigErrors(toml, canonicalSet, configLabel = '.codex/config.toml') {
+  const localErrors = [];
+  const { topServers, profileServers } = parseCodexConfigToml(toml);
+
+  for (const [serverId, serverConfig] of topServers.entries()) {
+    if (!canonicalSet.has(serverId)) {
+      localErrors.push(`Repo-local ${configLabel} references non-canonical MCP key: mcp_servers.${serverId}`);
+    }
+    if (isMachineSpecificLauncher(serverConfig.command)) {
+      localErrors.push(`Repo-local ${configLabel} has machine-specific MCP command for mcp_servers.${serverId}: ${serverConfig.command}`);
+    }
+    const args = Array.isArray(serverConfig.args) ? serverConfig.args : [serverConfig.args].filter(Boolean);
+    for (const entry of args) {
+      if (isMachineSpecificLauncher(entry)) {
+        localErrors.push(`Repo-local ${configLabel} has machine-specific MCP args for mcp_servers.${serverId}: ${entry}`);
+      }
+    }
+  }
+
+  for (const [profileName, serverMap] of profileServers.entries()) {
+    for (const [serverId] of serverMap.entries()) {
+      if (!canonicalSet.has(serverId)) {
+        localErrors.push(`Repo-local profile ${profileName} references non-canonical MCP key: mcp_servers.${serverId}`);
+      }
+    }
+  }
+
+  return localErrors;
+}
+
+function auditRepoCodexConfig(canonicalSet) {
+  if (!fs.existsSync(repoCodexConfigPath)) {
+    return;
+  }
+
+  const repoToml = fs.readFileSync(repoCodexConfigPath, 'utf8');
+  for (const message of collectRepoCodexConfigErrors(repoToml, canonicalSet)) {
+    addError(message);
+  }
+}
+
 export function main() {
   if (!fs.existsSync(docsPath)) {
     console.error('FAIL');
@@ -151,6 +202,7 @@ export function main() {
   const docsMarkdown = fs.readFileSync(docsPath, 'utf8');
   const canonicalSet = readCanonicalSetFromDocs(docsMarkdown);
   const codexToml = fs.readFileSync(codexConfigPath, 'utf8');
+  auditRepoCodexConfig(canonicalSet);
 
   if (codexToml.toLowerCase().includes('/sse')) {
     addError('Found deprecated /sse endpoint string in ~/.codex/config.toml. Use streamable HTTP /mcp endpoints only.');
@@ -254,6 +306,7 @@ export function main() {
   console.log(`- Top-level MCP servers: ${topServers.size}`);
   console.log(`- Profiles checked: ${requiredProfiles.join(', ')}`);
   console.log(`- Config path: ${codexConfigPath}`);
+  console.log(`- Repo config path: ${repoCodexConfigPath}`);
 }
 
 const isMain = process.argv[1] ? path.resolve(process.argv[1]) === __filename : false;

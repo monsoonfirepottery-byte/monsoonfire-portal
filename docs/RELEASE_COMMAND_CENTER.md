@@ -21,15 +21,15 @@ Operating mode: single release candidate consolidation
 ## Current live evidence
 
 - Fresh live portal public smoke pass on 2026-04-15:
-  - [output/playwright/portal/prod/portal-smoke-summary.json](../output/playwright/portal/prod/portal-smoke-summary.json)
+  - Historical ignored artifact: `output/playwright/portal/prod/portal-smoke-summary.json`
 - Fresh live website public smoke pass on 2026-04-15:
-  - [output/playwright/prod/smoke-summary.json](../output/playwright/prod/smoke-summary.json)
+  - Historical ignored artifact: `output/playwright/prod/smoke-summary.json`
 - Fresh live website phase-1 handoff verification on 2026-04-15:
-  - [output/playwright/prod-phase1-website/smoke-summary.json](../output/playwright/prod-phase1-website/smoke-summary.json)
+  - Historical ignored artifact: `output/playwright/prod-phase1-website/smoke-summary.json`
 - Fresh live authenticated portal canary pass on 2026-04-15:
-  - [output/qa/portal-authenticated-canary-rc1.json](../output/qa/portal-authenticated-canary-rc1.json)
+  - Historical ignored artifact: `output/qa/portal-authenticated-canary-rc1.json`
 - Fresh live Lighthouse sweep on 2026-04-15:
-  - [output/qa/lighthouse-live-2026-04-15T16-38-08Z](../output/qa/lighthouse-live-2026-04-15T16-38-08Z)
+  - Historical ignored artifact: `output/qa/lighthouse-live-2026-04-15T16-38-08Z`
 - Consolidated audit:
   - [docs/audits/live-surface-audit-2026-04-15.md](audits/live-surface-audit-2026-04-15.md)
 

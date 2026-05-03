@@ -59,6 +59,14 @@ function resolveRulesTestFiles() {
   return names;
 }
 
+function quoteShellArg(value) {
+  const raw = String(value ?? "");
+  if (process.platform === "win32") {
+    return `"${raw.replace(/"/g, '\\"')}"`;
+  }
+  return `'${raw.replace(/'/g, "'\\''")}'`;
+}
+
 function ensureJavaRuntime() {
   const result = spawnSync(process.execPath, ["./scripts/ensure-java-runtime.mjs", "--json"], {
     cwd: repoRoot,
@@ -93,7 +101,7 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const { javaHome } = ensureJavaRuntime();
   const rulesTests = resolveRulesTestFiles();
-  const testCommand = `node --test ${rulesTests.join(" ")}`;
+  const testCommand = [quoteShellArg(process.execPath), "--test", ...rulesTests.map(quoteShellArg)].join(" ");
   const javaEnv = prependPathEntries([resolve(javaHome, "bin")], {
     ...process.env,
     JAVA_HOME: javaHome,

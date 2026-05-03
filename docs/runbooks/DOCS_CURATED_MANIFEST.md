@@ -3,7 +3,7 @@
 The next docs expansion should use a curated metadata manifest as the source of truth.
 
 Current importer:
-- [document-metadata-memory-normalize.mjs](/home/wuff/monsoonfire-portal/scripts/document-metadata-memory-normalize.mjs)
+- [document-metadata-memory-normalize.mjs](../../scripts/document-metadata-memory-normalize.mjs)
 
 Accepted input shape today:
 - JSON array

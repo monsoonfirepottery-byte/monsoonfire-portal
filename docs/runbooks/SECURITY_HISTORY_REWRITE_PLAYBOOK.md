@@ -10,7 +10,7 @@ Remove leaked or risky historical secrets/config from git history (including old
 
 ## 1) Baseline scan and evidence
 ```bash
-cd /home/wuff/monsoonfire-portal
+cd <repo-root>
 npm run security:history:scan
 npm run security:history:scan:broad   # optional broader (noisier) secret marker sweep
 npm run security:gitleaks:strict
@@ -22,10 +22,10 @@ Artifacts:
 
 ## 2) Create an isolated rewrite clone
 ```bash
-cd /home/wuff
+cd <workspace-root>
 rm -rf monsoonfire-portal-rewrite
 
-git clone --mirror /home/wuff/monsoonfire-portal monsoonfire-portal-rewrite
+git clone --mirror <repo-root> monsoonfire-portal-rewrite
 cd monsoonfire-portal-rewrite
 ```
 
@@ -56,7 +56,8 @@ You can combine both styles in a single rewrite pass.
 
 ## 5) Verify rewritten mirror
 ```bash
-npm --prefix /home/wuff/monsoonfire-portal run security:history:scan
+cd <repo-root>
+npm run security:history:scan
 # Or inside mirror repo, run equivalent git pattern checks directly:
 git log --all --pickaxe-regex -G 'discord(app)?\.com/api/webhooks/' --pretty=oneline
 ```

@@ -1,13 +1,2 @@
-# [Codex] claimed 2026-02-10 12:09 for MCP timeout tuning
-[mcp_servers.context7]
-url = "https://mcp.context7.com/mcp"
-startup_timeout_ms = 120000
-search_tool = true
-
-[mcp_servers.open_memory]
-command = "/bin/bash"
-args = ["/home/wuff/monsoonfire-portal/scripts/open-memory-mcp-launch.sh"]
-enabled = true
-
 [features]
 multi_agent = true

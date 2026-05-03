@@ -26,6 +26,28 @@ for required in curl python3 install sha256sum; do
   fi
 done
 
+assert_child_path() {
+  local target="$1"
+  local root="$2"
+  local label="$3"
+  python3 - "${target}" "${root}" "${label}" <<'PY'
+import pathlib
+import sys
+
+target = pathlib.Path(sys.argv[1]).expanduser().resolve(strict=False)
+root = pathlib.Path(sys.argv[2]).expanduser().resolve(strict=False)
+label = sys.argv[3]
+
+try:
+    target.relative_to(root)
+except ValueError:
+    raise SystemExit(f"Refusing destructive cleanup outside {label}: {target} not under {root}")
+
+if target == root or str(target) == "/":
+    raise SystemExit(f"Refusing destructive cleanup at unsafe {label}: {target}")
+PY
+}
+
 export DEBIAN_FRONTEND=noninteractive
 runtime_packages=(
   libwebkit2gtk-4.1-0
@@ -105,6 +127,7 @@ if [[ -n "${ASSET_SHA256}" ]]; then
 fi
 
 if [[ ! -d "${APPDIR_PATH}" || "${FORCE_INSTALL}" == "1" ]]; then
+  assert_child_path "${VERSION_ROOT}" "${INSTALL_ROOT}" "Bambu install root"
   rm -rf "${VERSION_ROOT}"
   install -d -m 0755 "${VERSION_ROOT}"
   install -m 0755 "${APPIMAGE_PATH}" "${VERSION_APPIMAGE_PATH}"

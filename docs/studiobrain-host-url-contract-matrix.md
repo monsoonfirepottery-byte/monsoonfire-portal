@@ -5,7 +5,7 @@ Canonical host/port contract for local and LAN-aware development and cutover too
 
 | Area | Local default (profile: `local`) | LAN profile (`lan-dhcp` / `lan-static`) | Notes |
 | --- | --- | --- | --- |
-| Portal Vite dev host | `127.0.0.1` (`VITE_DEV_HOST`) | `0.0.0.0` when explicit remote/LAN access is required | Tune via `VITE_DEV_HOST` in `web/.env.local` and restart `npm run dev` (`web` package).
+| Portal Vite dev host | `127.0.0.1` (`VITE_DEV_HOST`) | `0.0.0.0` when explicit remote/LAN access is required | Tune via `VITE_DEV_HOST` in `web/.env.local` and restart `npm --prefix web run dev`. |
 | Portal Vite dev port | `5173` (`VITE_PORT`) | `5173` unless host needs port remap | `web/vite.config.js` runs with `strictPort: true`, so collisions fail fast instead of auto-incrementing. |
 | Portal Vite proxy routes | `/__functions/*`, `/__studio-brain/*` | same routes with LAN targets | Proxy targets derive from `VITE_FUNCTIONS_PROXY_TARGET` / `VITE_STUDIO_BRAIN_PROXY_TARGET`, or fallback to base URL contract values. |
 | Portal auth emulator host | `127.0.0.1` (`VITE_AUTH_EMULATOR_HOST`) | `studiobrain.local` when profile expects hostname-based access | Must match `VITE_USE_AUTH_EMULATOR=true` when using emulator path. |

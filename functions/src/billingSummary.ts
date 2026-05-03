@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 
@@ -17,6 +15,25 @@ const EVENTS_COL = "events";
 const SIGNUPS_COL = "eventSignups";
 const ORDERS_COL = "materialsOrders";
 const CHARGES_COL = "eventCharges";
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as UnknownRecord;
+}
+
+function asRecordArray(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => asRecord(entry));
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error ?? "Unknown error");
+}
 
 function normalizeCurrency(value: unknown): string {
   const raw = safeString(value).trim();
@@ -152,7 +169,7 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
 
     const signups = signupsSnap.docs
       .map((docSnap) => {
-        const data = docSnap.data() as Record<string, any>;
+        const data = docSnap.data() as UnknownRecord;
         return {
           id: docSnap.id,
           eventId: safeString(data.eventId),
@@ -172,7 +189,7 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
 
     const eventInfo = new Map<string, { title: string; priceCents: number; currency: string }>();
     eventSnaps.forEach((snap) => {
-      const data = (snap.data() as Record<string, any>) ?? {};
+      const data = asRecord(snap.data());
       eventInfo.set(snap.id, {
         title: safeString(data.title) || "Event",
         priceCents: Math.max(asInt(data.priceCents, 0), 0),
@@ -214,8 +231,8 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
 
     const materialsOrders = ordersSnap.docs
       .map((docSnap) => {
-        const data = docSnap.data() as Record<string, any>;
-        const items = Array.isArray(data.items) ? data.items : [];
+        const data = docSnap.data() as UnknownRecord;
+        const items = asRecordArray(data.items);
         const normalizedItems = items.map((item) => ({
           productId: safeString(item?.productId),
           name: safeString(item?.name),
@@ -267,9 +284,10 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
 
     const receiptsFromCharges = chargesSnap.docs
       .map((docSnap) => {
-        const data = docSnap.data() as Record<string, any>;
+        const data = docSnap.data() as UnknownRecord;
         const lineItems = Array.isArray(data.lineItems) ? data.lineItems : [];
-        const title = lineItems[0]?.title || "Event ticket";
+        const firstLineItem = asRecord(lineItems[0]);
+        const title = safeString(firstLineItem.title) || "Event ticket";
 
         return {
           paymentStatus: safeString(data.paymentStatus),
@@ -321,8 +339,15 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
       receipts,
       summary,
     });
-  } catch (err: any) {
-    logger.error("listBillingSummary failed", err);
-    res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+  } catch (error: unknown) {
+    logger.error("listBillingSummary failed", error);
+    res.status(500).json({ ok: false, message: errorMessage(error) });
   }
 });
+
+export const billingSummaryTestHooks = {
+  asRecord,
+  asRecordArray,
+  errorMessage,
+  normalizeCurrency,
+};

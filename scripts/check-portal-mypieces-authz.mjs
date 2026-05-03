@@ -55,6 +55,7 @@ function parseArgs(argv) {
       process.env.PORTAL_AGENT_STAFF_CREDENTIALS ||
       DEFAULT_CREDENTIALS_PATH,
     asJson: false,
+    liveWrite: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -97,9 +98,19 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+
+    if (arg === "--dry-run" || arg === "--no-live-write") {
+      options.liveWrite = false;
+      continue;
+    }
+
+    if (arg === "--live-write") {
+      options.liveWrite = true;
+      continue;
+    }
   }
 
-  if (!options.apiKey) {
+  if (options.liveWrite && !options.apiKey) {
     throw new Error("Missing PORTAL_FIREBASE_API_KEY (or pass --api-key).");
   }
 
@@ -135,11 +146,17 @@ function print(summary, asJson) {
 
   process.stdout.write(`status: ${summary.status}\n`);
   process.stdout.write(`project: ${summary.projectId}\n`);
-  process.stdout.write(`actor: ${summary.actor.email} (${summary.actor.uid})\n`);
-  process.stdout.write(`batchId: ${summary.batch.batchId || "n/a"}\n`);
-  process.stdout.write(
-    `piece checks: create=${summary.piece.create.status} get=${summary.piece.get.status} list=${summary.piece.list.status}\n`
-  );
+  if (summary.actor?.email || summary.actor?.uid) {
+    process.stdout.write(`actor: ${summary.actor.email || "n/a"} (${summary.actor.uid || "n/a"})\n`);
+  }
+  if (summary.batch) {
+    process.stdout.write(`batchId: ${summary.batch.batchId || "n/a"}\n`);
+  }
+  if (summary.piece) {
+    process.stdout.write(
+      `piece checks: create=${summary.piece.create.status} get=${summary.piece.get.status} list=${summary.piece.list.status}\n`
+    );
+  }
   if (summary.message) {
     process.stdout.write(`${summary.message}\n`);
   }
@@ -147,6 +164,29 @@ function print(summary, asJson) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (!options.liveWrite) {
+    print(
+      {
+        status: "passed",
+        mode: "dry_run",
+        liveWrites: false,
+        projectId: options.projectId,
+        functionsBaseUrl: options.functionsBaseUrl,
+        requiredProductionFlag: "--live-write",
+        plannedOperations: [
+          "Mint a staff ID token from the configured portal automation credential.",
+          "POST /createBatch with a QA clientRequestId.",
+          "Create a QA piece document under the created batch.",
+          "Read and list the QA piece document.",
+        ],
+        message:
+          "Dry run only: no ID token was minted and no live batch/piece documents were created. Re-run with --live-write for the production probe window.",
+      },
+      options.asJson
+    );
+    return;
+  }
+
   const rawCreds = await readFile(options.credentialsPath, "utf8");
   const creds = JSON.parse(rawCreds);
   const refreshToken = String(creds.refreshToken || "").trim();
@@ -263,6 +303,8 @@ async function main() {
   const passed = createPieceResp.ok && getPieceResp.ok && listPieceResp.ok;
   const summary = {
     status: passed ? "passed" : "failed",
+    mode: "live_write",
+    liveWrites: true,
     projectId: options.projectId,
     actor: { uid, email },
     batch: {

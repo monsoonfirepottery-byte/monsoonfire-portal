@@ -1,4 +1,5 @@
 name: Firestore Index Contract Guard
+# side-effects: Apply mode can update the rolling GitHub issue and tracked index guard log; manual dispatch defaults to read-only unless apply=true.
 
 on:
   workflow_dispatch:
@@ -7,6 +8,11 @@ on:
         description: "Fail run when required indexes are missing"
         required: false
         default: true
+        type: boolean
+      apply:
+        description: "Apply mode (update rolling GitHub issue and tracked guard log)"
+        required: false
+        default: false
         type: boolean
 
 permissions:
@@ -57,12 +63,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STRICT="--strict"
+          APPLY=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.strict }}" != "true" ]; then
             STRICT="--no-strict"
           fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" = "true" ]; then
+            APPLY="--apply"
+          fi
 
           node ./scripts/firestore-index-contract-guard.mjs \
-            --apply \
+            ${APPLY} \
             ${STRICT} \
             --json \
             --feedback output/qa/firestore-index-auto-remediation.json \

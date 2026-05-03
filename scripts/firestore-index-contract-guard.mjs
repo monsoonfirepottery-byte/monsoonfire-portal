@@ -84,6 +84,7 @@ function parseArgs(argv) {
     strict: true,
     asJson: false,
     includeGithub: true,
+    writeLog: false,
     projectId: process.env.PORTAL_PROJECT_ID || "monsoonfire-portal",
     reportPath: resolve(repoRoot, "output", "qa", "firestore-index-contract-guard.json"),
     feedbackPath: String(process.env.FIRESTORE_INDEX_GUARD_FEEDBACK || "").trim(),
@@ -111,6 +112,14 @@ function parseArgs(argv) {
     }
     if (arg === "--no-github") {
       options.includeGithub = false;
+      continue;
+    }
+    if (arg === "--write-log") {
+      options.writeLog = true;
+      continue;
+    }
+    if (arg === "--no-write-log") {
+      options.writeLog = false;
       continue;
     }
 
@@ -361,6 +370,9 @@ async function main() {
     missing,
     strict: options.strict,
     apply: options.apply,
+    writeLog: options.writeLog,
+    logPath,
+    logWritten: false,
     rollingIssueUrl: "",
     rollingCommentSignature: "",
     rollingCommentSkipped: false,
@@ -430,7 +442,11 @@ async function main() {
 
   await mkdir(dirname(options.reportPath), { recursive: true });
   await writeFile(options.reportPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-  await appendLog(summary);
+  if (options.apply || options.writeLog) {
+    await appendLog(summary);
+    summary.logWritten = true;
+    await writeFile(options.reportPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  }
 
   if (options.asJson) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

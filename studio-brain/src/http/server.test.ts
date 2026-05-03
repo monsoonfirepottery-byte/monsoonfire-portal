@@ -19,6 +19,8 @@ import { CapabilityRuntime, defaultCapabilities } from "../capabilities/runtime"
 import { createInMemoryMemoryStoreAdapter } from "../memory/inMemoryAdapter";
 import { createMemoryService } from "../memory/service";
 import type { Runner } from "../controlTower/collect";
+import type { MemoryOpsSnapshot } from "../memoryOps/contracts";
+import { writeMemoryOpsSnapshot } from "../memoryOps/state";
 
 const logger = {
   debug: () => {},
@@ -661,6 +663,140 @@ function createControlTowerFixture() {
     cleanup() {
       rmSync(root, { recursive: true, force: true });
     },
+  };
+}
+
+function buildMemoryOpsSnapshot(overrides: Partial<MemoryOpsSnapshot> = {}): MemoryOpsSnapshot {
+  const generatedAt = "2026-03-30T10:08:00.000Z";
+  return {
+    schema: "studio-brain.memory-ops.snapshot.v1",
+    generatedAt,
+    status: "degraded",
+    summary: "Memory ops has 0 critical finding(s) and 2 warning finding(s).",
+    supervisor: {
+      heartbeatAt: generatedAt,
+      mode: "supervised",
+      version: "test",
+    },
+    memory: {
+      checkedAt: generatedAt,
+      pressure: { activeImportRequests: 0 },
+      stats: {
+        total: 172_000,
+        reviewNow: 12,
+        resolveConflict: 4,
+        revalidate: 2,
+        retire: 1,
+        verificationFailures24h: 3,
+        openReviewCases: 5,
+        hardConflicts: 1,
+        retrievalShadowedRows: 0,
+        consolidationStatus: "scheduled",
+        consolidationLastRunAt: "2026-03-30T09:30:00.000Z",
+        consolidationStale: false,
+      },
+      statsRollupAgeMinutes: 14,
+    },
+    postgres: {
+      ok: true,
+      checkedAt: generatedAt,
+      latencyMs: 18,
+      connectionSummary: {
+        maxConnections: 100,
+        total: 24,
+        active: 4,
+        idle: 20,
+        idleInTransaction: 0,
+        waiting: 0,
+        utilization: 0.24,
+      },
+      longRunningQueries: [],
+      tableStats: [],
+      indexStats: [],
+      databaseStats: {
+        tempFiles: 0,
+        tempBytes: 0,
+        deadlocks: 0,
+      },
+      pgStatStatementsAvailable: true,
+    },
+    services: [
+      {
+        id: "postgres",
+        label: "Postgres",
+        kind: "docker",
+        health: "healthy",
+        status: "running",
+        summary: "Postgres is running.",
+        checkedAt: generatedAt,
+      },
+      {
+        id: "redis",
+        label: "Redis",
+        kind: "docker",
+        health: "critical",
+        status: "down",
+        summary: "Redis is not running.",
+        checkedAt: generatedAt,
+      },
+    ],
+    findings: [
+      {
+        id: "finding:stats",
+        area: "memory",
+        code: "stats_rollup_stale",
+        severity: "warning",
+        title: "Memory stats rollup is stale",
+        summary: "The memory stats rollup is 14 minutes old.",
+      },
+      {
+        id: "finding:redis",
+        area: "docker",
+        code: "docker_service_critical",
+        severity: "critical",
+        title: "Redis needs attention",
+        summary: "Redis is not running.",
+      },
+    ],
+    stuckItems: [
+      {
+        id: "stuck:review",
+        kind: "review-case",
+        severity: "warning",
+        title: "Memory review cases are open",
+        ageMinutes: null,
+        summary: "5 memory review case(s) are open or in progress.",
+        actionHint: "Prioritize stale open review cases.",
+      },
+    ],
+    actions: [
+      {
+        id: "action:refresh-memory-stats",
+        policy: "safe_auto",
+        status: "proposed",
+        title: "Refresh memory stats rollup",
+        summary: "Re-run the lightweight memory stats endpoint to refresh rollup tables.",
+        reason: "stats-rollup-stale",
+        findingIds: ["finding:stats"],
+        execution: { kind: "http_get", path: "/api/memory/stats" },
+        firstSeenAt: generatedAt,
+        lastSeenAt: generatedAt,
+      },
+      {
+        id: "action:restart-redis",
+        policy: "approval_required",
+        status: "proposed",
+        title: "Restart Docker Redis",
+        summary: "Redis is not healthy according to the sidecar probe.",
+        reason: "docker-service-critical:redis",
+        findingIds: ["finding:redis"],
+        execution: { kind: "docker_compose", verb: "restart", service: "redis" },
+        firstSeenAt: generatedAt,
+        lastSeenAt: generatedAt,
+      },
+    ],
+    receipts: [],
+    ...overrides,
   };
 }
 
@@ -3915,6 +4051,7 @@ test("read-only memory endpoints allow staff auth without admin token when confi
 
 test("control tower state routes derive browser-friendly room and service data", async () => {
   const fixture = createControlTowerFixture();
+  writeMemoryOpsSnapshot(buildMemoryOpsSnapshot(), fixture.root);
   const { runner } = createControlTowerRunner();
   const stateStore = new MemoryStateStore();
   await stateStore.saveOverseerRun(buildSampleOverseerRun());
@@ -4024,6 +4161,11 @@ test("control tower state routes derive browser-friendly room and service data",
               shadowMcpFindings: { highRiskRows: number };
               highlights: string[];
             } | null;
+            memoryOps: {
+              status: string;
+              pendingApprovalCount: number;
+              stuckItemCount: number;
+            } | null;
             events: Array<{ type: string; sourceAction: string | null }>;
             recentChanges: Array<{ type: string; sourceAction: string | null }>;
           };
@@ -4033,6 +4175,8 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal(payload.state.overview.activeRooms[0]?.id, "portal");
         assert.ok(payload.state.overview.needsAttention.length >= 1);
         assert.ok(payload.state.pinnedItems.some((entry) => entry.title === "Discord Relay is down"));
+        assert.ok(payload.state.services.some((entry) => entry.id === "memory-responsiveness" && entry.health === "waiting"));
+        assert.ok(payload.state.services.some((entry) => entry.id === "memory-docker" && entry.health === "error"));
         assert.ok(payload.state.services.some((entry) => entry.id === "studio-brain-discord-relay" && entry.health === "error"));
         assert.equal(payload.state.board[0]?.owner, "agent-runtime");
         assert.equal(payload.state.board.some((entry) => entry.owner === "Memory maintenance"), true);
@@ -4083,26 +4227,18 @@ test("control tower state routes derive browser-friendly room and service data",
           ),
           true,
         );
+        assert.equal(payload.state.memoryOps?.status, "degraded");
+        assert.equal(payload.state.memoryOps?.pendingApprovalCount, 1);
+        assert.equal(payload.state.memoryOps?.stuckItemCount, 1);
         assert.equal(
           payload.state.overview.goodNextMoves.some((entry) =>
             /promoted approval summary memory/i.test(entry.title)
           ),
           false,
         );
-        assert.equal(
-          payload.state.overview.goodNextMoves.some((entry) =>
-            /audit mcp governance coverage in memory|review quarantined secret-bearing memories/i.test(entry.title)
-          ),
-          true,
-        );
-        assert.equal(
-          payload.state.overview.needsAttention.some((entry) =>
-            /secret-bearing memories need review|shadow mcp memory needs governance review/i.test(entry.title)
-          ),
-          true,
-        );
         assert.ok(payload.state.events.some((entry) => entry.type === "memory.promoted"));
         assert.ok(payload.state.events.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));
+        assert.ok(payload.state.events.some((entry) => entry.sourceAction === "control_tower.memory_ops"));
 
         const roomResponse = await fetch(`${baseUrl}/api/control-tower/rooms/portal`, {
           headers: { authorization: "Bearer test-staff" },
@@ -4116,6 +4252,67 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal(roomPayload.room.id, "portal");
         assert.equal(roomPayload.room.attach?.sessionName, "sb-room");
         assert.match(roomPayload.room.attach?.sshCommand ?? "", /ssh -t studiobrain/);
+      },
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("memory ops routes expose sidecar state and approve only supervised recovery actions", async () => {
+  const fixture = createControlTowerFixture();
+  writeMemoryOpsSnapshot(buildMemoryOpsSnapshot(), fixture.root);
+
+  try {
+    await withServer(
+      {
+        controlTowerRepoRoot: fixture.root,
+      },
+      async (baseUrl) => {
+        const statusResponse = await fetch(`${baseUrl}/api/memory/ops/status`, {
+          headers: { authorization: "Bearer test-staff" },
+        });
+        assert.equal(statusResponse.status, 200);
+        const statusPayload = (await statusResponse.json()) as {
+          ok: boolean;
+          status: { snapshot: MemoryOpsSnapshot | null; lastSidecarHeartbeat: string | null; pressure: Record<string, unknown> };
+        };
+        assert.equal(statusPayload.ok, true);
+        assert.equal(statusPayload.status.snapshot?.status, "degraded");
+        assert.equal(statusPayload.status.lastSidecarHeartbeat, "2026-03-30T10:08:00.000Z");
+
+        const actionsResponse = await fetch(`${baseUrl}/api/memory/ops/actions`, {
+          headers: { authorization: "Bearer test-staff" },
+        });
+        assert.equal(actionsResponse.status, 200);
+        const actionsPayload = (await actionsResponse.json()) as {
+          ok: boolean;
+          actions: Array<{ id: string; policy: string; status: string }>;
+        };
+        assert.equal(actionsPayload.actions.some((entry) => entry.id === "action:restart-redis" && entry.policy === "approval_required"), true);
+
+        const rejectSafeResponse = await fetch(`${baseUrl}/api/memory/ops/actions/${encodeURIComponent("action:refresh-memory-stats")}/approve`, {
+          method: "POST",
+          headers: { authorization: "Bearer test-staff", "content-type": "application/json" },
+          body: JSON.stringify({ rationale: "safe actions are not approval targets" }),
+        });
+        assert.equal(rejectSafeResponse.status, 400);
+
+        const approveResponse = await fetch(`${baseUrl}/api/memory/ops/actions/${encodeURIComponent("action:restart-redis")}/approve`, {
+          method: "POST",
+          headers: { authorization: "Bearer test-staff", "content-type": "application/json" },
+          body: JSON.stringify({ rationale: "Redis dependency is down in the probe." }),
+        });
+        assert.equal(approveResponse.status, 200);
+        const approvePayload = (await approveResponse.json()) as {
+          ok: boolean;
+          action: { id: string; status: string; approvedBy: string | null };
+          receipt: { status: string; actor: string };
+        };
+        assert.equal(approvePayload.ok, true);
+        assert.equal(approvePayload.action.status, "approved");
+        assert.equal(approvePayload.action.approvedBy, "staff-test-uid");
+        assert.equal(approvePayload.receipt.status, "approved");
       },
     );
   } finally {

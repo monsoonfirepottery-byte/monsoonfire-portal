@@ -645,6 +645,7 @@ function deriveControlTowerState(raw, audits = [], options = {}) {
         memoryBrief,
         startupScorecard: null,
         memoryHealth: null,
+        memoryOps: null,
         agentRuntime: null,
         hosts: [],
         partner: null,

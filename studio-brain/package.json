@@ -16,6 +16,8 @@
     "compose:validate": "node scripts/validateCompose.mjs",
     "healthcheck": "npm run build && node lib/cli/healthcheck.js",
     "healthcheck:json": "npm run build && node lib/cli/healthcheck.js --output json",
+    "memory:ops:supervise": "npm run build && node lib/cli/memoryOpsSupervisor.js",
+    "memory:ops:dry-run": "npm run build && node lib/cli/memoryOpsSupervisor.js --dry-run --json",
     "soak": "node scripts/soak.mjs",
     "infra:deps": "npm run compose:validate && npm run healthcheck",
     "infra:integration": "npm run test:infra",

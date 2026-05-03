@@ -1,0 +1,23 @@
+[Unit]
+Description=Studio Brain memory ops supervisor
+Documentation=https://portal.monsoonfire.com
+After=network-online.target studio-brain.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/monsoonfire-portal/studio-brain
+Environment=STUDIO_BRAIN_MEMORY_OPS_INTERVAL_MS=60000
+EnvironmentFile=%h/monsoonfire-portal/studio-brain/.env
+EnvironmentFile=-%h/monsoonfire-portal/studio-brain/.env.local
+ExecStart=/usr/bin/env bash -lc 'npm run memory:ops:supervise -- --watch --interval-ms="${STUDIO_BRAIN_MEMORY_OPS_INTERVAL_MS:-60000}" --execute-safe=true --execute-approved=false --repo-root="%h/monsoonfire-portal"'
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+Nice=5
+
+[Install]
+WantedBy=default.target

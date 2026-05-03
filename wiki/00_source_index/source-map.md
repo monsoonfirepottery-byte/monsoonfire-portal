@@ -14,21 +14,21 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
+export_hash: 49d71e73d899219ae22e6b445393240959ea1bf925bdc308f0711aca5bed8e73
 ---
 
 # Source Map
 
-Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
+Snapshot: 49d71e73d899219ae22e6b445393240959ea1bf925bdc308f0711aca5bed8e73
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
 | `.governance/audit/README.md` | indexed | policy | 1 | `9ef91e39f56a` |
 | `.governance/config/authority-map.json` | indexed | policy | 1 | `160c9afd3da8` |
 | `.governance/config/supervisor-thresholds.json` | indexed | policy | 2 | `dffebf684b95` |
-| `.governance/customer-service-policies/policy-inventory.json` | indexed | policy | 20 | `27f16aab493b` |
-| `.governance/customer-service-policies/policy-program.json` | indexed | policy | 24 | `61d44c019e2c` |
-| `.governance/customer-service-policies/policy-resolution-contract.json` | indexed | policy | 13 | `e1b165789ca1` |
+| `.governance/customer-service-policies/policy-inventory.json` | indexed | policy | 20 | `e3c9c9ae76b3` |
+| `.governance/customer-service-policies/policy-program.json` | indexed | policy | 24 | `9abde72a10cb` |
+| `.governance/customer-service-policies/policy-resolution-contract.json` | indexed | policy | 14 | `64686e570d27` |
 | `.governance/customer-service-policies/README.md` | indexed | policy | 1 | `235e029b3c03` |
 | `.governance/intents/ops.triage.incident.intent.json` | indexed | policy | 2 | `46baf4432ec5` |
 | `.governance/intents/repo.change.small_fix.intent.json` | indexed | policy | 2 | `2b22ebcddcb3` |
@@ -49,7 +49,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `.governance/schemas/intent-contract.v1.schema.json` | indexed | policy | 4 | `565f015a8275` |
 | `.governance/schemas/plan-step.v1.schema.json` | indexed | policy | 1 | `a11565673375` |
 | `.governance/schemas/run-ledger.v1.schema.json` | indexed | policy | 2 | `0d5f80d2112e` |
-| `AGENTS.md` | indexed | policy | 23 | `0ecc59f7d060` |
+| `AGENTS.md` | indexed | policy | 21 | `583cb952e759` |
 | `config/studiobrain/ansible/studio-brain-host-stack.yml` | indexed | policy | 2 | `360cf6e7c6fc` |
 | `config/studiobrain/monitoring/docker-compose.yml` | indexed | policy | 2 | `0c8ef7004c98` |
 | `config/studiobrain/monitoring/scripts/bootstrap-kuma-monitors.js` | indexed | policy | 3 | `cec6bdb10de4` |
@@ -65,11 +65,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `config/studiobrain/systemd/studio-brain-healthcheck.service` | indexed | policy | 1 | `5a49567673a5` |
 | `config/studiobrain/systemd/studio-brain-healthcheck.sh` | indexed | policy | 1 | `7fcf42fb3645` |
 | `config/studiobrain/systemd/studio-brain-healthcheck.timer` | indexed | policy | 1 | `f1586b00cdc2` |
-| `config/studiobrain/systemd/studio-brain-idle-worker-overnight.service` | indexed | policy | 1 | `00c2c18682d9` |
-| `config/studiobrain/systemd/studio-brain-idle-worker-overnight.timer` | indexed | policy | 1 | `9c5357b72102` |
-| `config/studiobrain/systemd/studio-brain-idle-worker.service` | indexed | policy | 1 | `f0a5a6836333` |
-| `config/studiobrain/systemd/studio-brain-idle-worker.sh` | indexed | policy | 1 | `3d34de55701d` |
-| `config/studiobrain/systemd/studio-brain-idle-worker.timer` | indexed | policy | 1 | `ac7b59aea3b5` |
 | `config/studiobrain/systemd/studio-brain-reboot-watch.service` | indexed | policy | 1 | `e78227396c55` |
 | `config/studiobrain/systemd/studio-brain-reboot-watch.sh` | indexed | policy | 2 | `2b42a4191651` |
 | `config/studiobrain/systemd/studio-brain-reboot-watch.timer` | indexed | policy | 1 | `01bbc5db4518` |
@@ -91,9 +86,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/apiV1-hardening-tickets.md` | indexed | repo | 11 | `6a12bb24c75a` |
 | `docs/audits/live-surface-audit-2026-04-12.md` | indexed | repo | 34 | `5f691e012606` |
 | `docs/audits/live-surface-audit-2026-04-15.md` | indexed | repo | 9 | `ff8c2b999d17` |
-| `docs/audits/repo-wide-agentic-health-audit-2026-04-27.md` | indexed | repo | 6 | `06876002cd5a` |
 | `docs/audits/REQUESTS_SURFACE_DEPRECATION_AUDIT_2026-02-27.md` | indexed | repo | 9 | `ceb116f255da` |
-| `docs/audits/security-history-triage-2026-04-27.md` | indexed | repo | 3 | `ff1b7fe60bd1` |
 | `docs/AUTH_DOMAIN_SETUP.md` | indexed | repo | 11 | `ba5f763768bf` |
 | `docs/AUTH_V2_AGENTIC_IDENTITY_PLAN_2026-02-12.md` | indexed | repo | 17 | `6ec9820d5685` |
 | `docs/CANONICAL_MEMORY_CORPUS.md` | indexed | repo | 9 | `f670208b6acf` |
@@ -109,7 +102,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/DRILL_EXECUTION_LOG.md` | indexed | repo | 59 | `ecde78758859` |
 | `docs/EMAIL_NOTIFICATIONS.md` | indexed | repo | 8 | `dec5759b894b` |
 | `docs/EMULATOR_RUNBOOK.md` | indexed | repo | 26 | `b1565404f2cd` |
-| `docs/ENGINEERING_TODOS.md` | indexed | repo | 6 | `aa709f5ff8cb` |
+| `docs/ENGINEERING_TODOS.md` | indexed | repo | 6 | `d7ca894e19b9` |
 | `docs/epics/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.md` | indexed | repo | 13 | `97db7d7c4fc4` |
 | `docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md` | indexed | repo | 10 | `3d60b88a8c89` |
 | `docs/epics/EPIC-CODEX-PR-GREEN-DAILY.md` | indexed | repo | 6 | `4eff60292723` |
@@ -127,7 +120,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/epics/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.md` | indexed | repo | 8 | `82ffc9c2dbad` |
 | `docs/EXTERNAL_CUTOVER_EXECUTION.md` | indexed | repo | 8 | `700840b79c35` |
 | `docs/EXTERNAL_UNBLOCK_ACTIONS_CHATGPT_WEB.md` | indexed | repo | 11 | `b8c7d4548192` |
-| `docs/generated/studiobrain-runtime-contract.generated.md` | indexed | repo | 9 | `b2125ff80687` |
+| `docs/generated/studiobrain-runtime-contract.generated.md` | indexed | repo | 8 | `65ef41c6f856` |
 | `docs/GIT_ACCESS_AND_STRUCTURE.md` | indexed | repo | 5 | `dbae77c361d3` |
 | `docs/HANDOFF_EVENTS_2026-01-22.md` | indexed | repo | 7 | `49e66acbd953` |
 | `docs/HANDOFF_MATERIALS_2026-01-21.md` | indexed | repo | 8 | `0542be6ecb7c` |
@@ -168,7 +161,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/policies/CHANGELOG.md` | indexed | policy | 4 | `eef17dc6d7b8` |
 | `docs/policies/clay-materials.md` | indexed | policy | 7 | `9592b953f2e0` |
 | `docs/policies/community-conduct.md` | indexed | policy | 7 | `111c683186ae` |
-| `docs/policies/customer-service-policy-program.config.json` | indexed | policy | 6 | `a13376d0a5d7` |
+| `docs/policies/customer-service-policy-program.config.json` | indexed | policy | 6 | `157230b30bd2` |
 | `docs/policies/damage-responsibility.md` | indexed | policy | 7 | `daf001b319ac` |
 | `docs/policies/firing-scheduling.md` | indexed | policy | 7 | `e095c0e85219` |
 | `docs/policies/media-accessibility.md` | indexed | policy | 7 | `340992a4db21` |
@@ -176,7 +169,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/policies/policies-index.json` | indexed | policy | 7 | `dd75190eec86` |
 | `docs/policies/README.md` | indexed | policy | 7 | `17e9f87a4c49` |
 | `docs/policies/safety-kiln-rules.md` | indexed | policy | 7 | `015011bebfe4` |
-| `docs/policies/service-pricing-and-membership-decommission.md` | indexed | policy | 4 | `c1181c4278e4` |
 | `docs/policies/storage-abandoned-work.md` | indexed | policy | 9 | `e484f3dce6ee` |
 | `docs/policies/STUDIO_OS_V3_RETENTION.md` | indexed | policy | 5 | `0b8b0c94369d` |
 | `docs/policies/studio-access.md` | indexed | policy | 7 | `0052af8c6a97` |
@@ -199,17 +191,16 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/real-estate/studio-needed-wanted-list.json` | indexed | repo | 2 | `5fd90b9b919c` |
 | `docs/real-estate/studio-needs-profile.json` | indexed | repo | 2 | `e2957c5cc137` |
 | `docs/RELEASE_CANDIDATE_EVIDENCE.md` | indexed | repo | 13 | `5b595b99fbd5` |
-| `docs/RELEASE_COMMAND_CENTER.md` | indexed | repo | 9 | `14be19a67bd3` |
+| `docs/RELEASE_COMMAND_CENTER.md` | indexed | repo | 9 | `fbeca21f3192` |
 | `docs/RELEASE_DIFF_SUMMARY_2026-02-12.md` | indexed | repo | 4 | `6bfcf3553450` |
 | `docs/RELEASE_NOTES.md` | indexed | repo | 10 | `2a17543ea482` |
 | `docs/runbooks/AGENT_GOVERNANCE_TRIANGLE.md` | indexed | repo | 14 | `369179a34e77` |
 | `docs/runbooks/AGENT_SURFACES.md` | indexed | repo | 8 | `447dd37275b1` |
-| `docs/runbooks/AGENTIC_AUDIT_RUNBOOK.md` | indexed | repo | 7 | `a001500cbe25` |
 | `docs/runbooks/CODEX_AGENTIC_RUBRIC_AND_AUTOPILOT.md` | indexed | repo | 14 | `dc550930f3f7` |
 | `docs/runbooks/codex-improvement/2026-03-03-AM.md` | indexed | repo | 9 | `cbbfe645bb2c` |
 | `docs/runbooks/codex-improvement/2026-03-04-AM.md` | indexed | repo | 9 | `e3462db56cc4` |
 | `docs/runbooks/COMMUNITY_CONTENT_ROTATION_RUNBOOK.md` | indexed | repo | 10 | `147795f16128` |
-| `docs/runbooks/DOCS_CURATED_MANIFEST.md` | indexed | repo | 1 | `6a7399f8e95d` |
+| `docs/runbooks/DOCS_CURATED_MANIFEST.md` | indexed | repo | 1 | `ff523dc94b28` |
 | `docs/runbooks/DOCS_HYGIENE.md` | indexed | repo | 5 | `f66f5624aae9` |
 | `docs/runbooks/FIRESTORE_INDEX_TROUBLESHOOTING.md` | indexed | repo | 5 | `128bc5b6f0f1` |
 | `docs/runbooks/HARDENING_FAILURE_MODE_RELEASE.md` | indexed | repo | 6 | `4f1203daf922` |
@@ -229,20 +220,19 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/runbooks/PORTAL_BUG_HUNT_2026-02-25.md` | indexed | repo | 14 | `8519c1f0a548` |
 | `docs/runbooks/PORTAL_CHUNK_BUDGET_REMEDIATION.md` | indexed | repo | 6 | `8f9aea0f0877` |
 | `docs/runbooks/PORTAL_PERFORMANCE_QA_LANES.md` | indexed | repo | 15 | `554d9ae04f3f` |
-| `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md` | indexed | repo | 11 | `13bda96b2490` |
+| `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md` | indexed | repo | 11 | `2a23f900e289` |
 | `docs/runbooks/PORTAL_QA_LOOP_NON_STAFF.md` | indexed | repo | 10 | `e03fd488af11` |
 | `docs/runbooks/PR_GATE.md` | indexed | repo | 14 | `ea416b7e8d29` |
-| `docs/runbooks/PRICING_COMMUNITY_SHELF_QA.md` | indexed | repo | 9 | `379a0ebd31aa` |
-| `docs/runbooks/PRODUCTION_WAVE_REVIEW.md` | indexed | repo | 1 | `b288e8df9c14` |
-| `docs/runbooks/PST_SIGNAL_QUALITY_BASELINE.md` | indexed | repo | 1 | `59436209457f` |
-| `docs/runbooks/SECURITY_HISTORY_REWRITE_PLAYBOOK.md` | indexed | repo | 16 | `5059e7899160` |
-| `docs/runbooks/SHIP_WORKFLOW.md` | indexed | repo | 6 | `187f0594d27c` |
+| `docs/runbooks/PRICING_COMMUNITY_SHELF_QA.md` | indexed | repo | 8 | `b382d4e21063` |
+| `docs/runbooks/PRODUCTION_WAVE_REVIEW.md` | indexed | repo | 1 | `5953442a63d4` |
+| `docs/runbooks/PST_SIGNAL_QUALITY_BASELINE.md` | indexed | repo | 1 | `74b1e4d3d2e6` |
+| `docs/runbooks/SECURITY_HISTORY_REWRITE_PLAYBOOK.md` | indexed | repo | 16 | `fd675b6f1b61` |
+| `docs/runbooks/SHIP_WORKFLOW.md` | indexed | repo | 6 | `98b8cd658fad` |
 | `docs/runbooks/STUDIO_BRAIN_CONTROL_TOWER_V2.md` | indexed | repo | 10 | `80180d00085c` |
 | `docs/runbooks/STUDIO_BRAIN_FABRICATION_CELL_RUNBOOK.md` | indexed | repo | 9 | `461293ffc4cb` |
 | `docs/runbooks/STUDIO_BRAIN_HOST_ACCESS.md` | indexed | repo | 6 | `df79ff73d10b` |
 | `docs/runbooks/STUDIO_BRAIN_HOST_DEPLOY.md` | indexed | repo | 8 | `e8fb22f2e085` |
-| `docs/runbooks/STUDIO_BRAIN_HOST_STACK.md` | indexed | repo | 6 | `a286192ab4e8` |
-| `docs/runbooks/STUDIO_BRAIN_IDLE_WORKER.md` | indexed | repo | 7 | `3e79c4c8b197` |
+| `docs/runbooks/STUDIO_BRAIN_HOST_STACK.md` | indexed | repo | 7 | `2ec1c92a0e54` |
 | `docs/runbooks/STUDIO_BRAIN_PILOT_WRITE_VERIFICATION.md` | indexed | repo | 5 | `108e9ab61207` |
 | `docs/runbooks/STUDIO_BRAIN_ROBOROCK_CONNECTOR_SETUP.md` | indexed | repo | 11 | `d7f7f38ccd6b` |
 | `docs/runbooks/STUDIO_BRAIN_THERMAL_PRINTER_PRECHECK.md` | indexed | repo | 13 | `ee1ead2ec47d` |
@@ -260,7 +250,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/SCHEMA_ORDERS.md` | indexed | repo | 5 | `2727281c934c` |
 | `docs/SCHEMA_PROFILE.md` | indexed | repo | 4 | `5e12cc0d9a8e` |
 | `docs/SCHEMA_RESERVATIONS.md` | indexed | repo | 16 | `cc5ef6704d54` |
-| `docs/SCHEMA_SUPPORT.md` | indexed | repo | 5 | `2a643b27063e` |
+| `docs/SCHEMA_SUPPORT.md` | indexed | repo | 5 | `8c7b5ccd89bb` |
 | `docs/SECURITY_KEY_ROTATION_AUTOMATION.md` | indexed | repo | 7 | `b3dce6bc6c89` |
 | `docs/SESSION_HANDOFF_2026-02-06.md` | indexed | repo | 12 | `f03e3e7881fd` |
 | `docs/SESSION_HANDOFF_2026-02-12_REBOOT.md` | indexed | repo | 8 | `70e10a1c0e23` |
@@ -301,11 +291,11 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `docs/STUDIO_OS_V3_ARCHITECTURE.md` | indexed | repo | 19 | `39f454169677` |
 | `docs/STUDIO_OS_V3_EVIDENCE_PACK.md` | indexed | repo | 6 | `8347d5823df6` |
 | `docs/STUDIO_OS_V3_STRATEGY.md` | indexed | repo | 14 | `f4544b3bb751` |
-| `docs/studiobrain-host-url-contract-matrix.md` | indexed | repo | 3 | `71ee77cc4d88` |
+| `docs/studiobrain-host-url-contract-matrix.md` | indexed | repo | 3 | `80f2e5ce7438` |
 | `docs/WEBSITE_A11Y_REGRESSION_GUARDRAILS.md` | indexed | repo | 6 | `11ff99c3ea32` |
 | `docs/WEBSITE_ACCESSIBILITY_BASELINE.md` | indexed | repo | 8 | `00f3462667be` |
 | `docs/WEBSITE_MEDIA_ACCESSIBILITY_CHECKLIST.md` | indexed | repo | 8 | `e94c8e873634` |
-| `firebase.json` | indexed | repo | 1 | `747ca22f1ec4` |
+| `firebase.json` | indexed | repo | 1 | `8a0aae67ff37` |
 | `firestore.indexes.json` | indexed | repo | 3 | `d4a95ce40f1e` |
 | `firestore.rules` | indexed | repo | 12 | `9cdeef686fc4` |
 | `functions/src/addTimelineEvent.ts` | indexed | repo | 1 | `58e1699b8f0a` |
@@ -314,13 +304,12 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `functions/src/agentCommerce.ts` | indexed | repo | 8 | `cc5f45f3c224` |
 | `functions/src/announcements.test.ts` | indexed | repo | 1 | `6ab2e65137b9` |
 | `functions/src/announcements.ts` | indexed | repo | 2 | `4d7414b7688a` |
-| `functions/src/apiV1.test.ts` | indexed | repo | 103 | `0ea2422666ae` |
-| `functions/src/apiV1.ts` | indexed | repo | 176 | `733937b07b7c` |
+| `functions/src/apiV1.test.ts` | indexed | repo | 103 | `6591b7e814e8` |
+| `functions/src/apiV1.ts` | indexed | repo | 176 | `0ca42cf646b1` |
 | `functions/src/assignReservationStation.ts` | indexed | repo | 5 | `df392c752030` |
 | `functions/src/authz.test.ts` | indexed | repo | 5 | `07113d947671` |
 | `functions/src/authz.ts` | indexed | repo | 6 | `6015e682aafa` |
-| `functions/src/billingSummary.test.ts` | indexed | repo | 1 | `4c481229c3f4` |
-| `functions/src/billingSummary.ts` | indexed | repo | 5 | `d2fdf0619545` |
+| `functions/src/billingSummary.ts` | indexed | repo | 5 | `86ee7e8e56f0` |
 | `functions/src/communityBlogs.test.ts` | indexed | repo | 2 | `b9291a780495` |
 | `functions/src/communityBlogs.ts` | indexed | repo | 31 | `68012dcfbb7c` |
 | `functions/src/communitySafety.test.ts` | indexed | repo | 2 | `2a331e30c43d` |
@@ -374,7 +363,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `d08fd411c22d` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `03c60ebe28ae` |
 | `memory/accepted/accepted.jsonl` | indexed | repo | 1 | `9821da585a7b` |
-| `package.json` | indexed | repo | 7 | `9288db6f6a8c` |
+| `package.json` | indexed | repo | 7 | `fbdf795ca0f8` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `19a864819a3b` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -385,8 +374,8 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/agent-tool-lifecycle-audit.mjs` | indexed | repo | 1 | `a06d28cbb726` |
 | `scripts/agent-tool-registry-build.mjs` | indexed | repo | 1 | `4bf6b4364225` |
 | `scripts/assess-key-rotation-plan.mjs` | indexed | repo | 2 | `0bcef0e2f5d9` |
-| `scripts/audit-codex-mcp.mjs` | indexed | repo | 4 | `71806893bf40` |
-| `scripts/audit-codex-mcp.test.mjs` | indexed | repo | 2 | `f8666eedcc67` |
+| `scripts/audit-codex-mcp.mjs` | indexed | repo | 4 | `3d0f19e31b38` |
+| `scripts/audit-codex-mcp.test.mjs` | indexed | repo | 1 | `77410535faed` |
 | `scripts/audit-cross-platform-wrappers.mjs` | indexed | repo | 2 | `3c39eecb47a8` |
 | `scripts/audit-cross-platform-wrappers.test.mjs` | indexed | repo | 1 | `9112d60f7763` |
 | `scripts/audit-website-ga-campaign-links.mjs` | indexed | repo | 4 | `ee35d8344388` |
@@ -413,10 +402,10 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/check-industry-events-canary.mjs` | indexed | repo | 3 | `b866681483b5` |
 | `scripts/check-journey-fixtures.mjs` | indexed | repo | 2 | `a824501146a1` |
 | `scripts/check-marketing-announcement-pipeline.mjs` | indexed | repo | 2 | `f7428c2e018d` |
-| `scripts/check-portal-mypieces-authz.mjs` | indexed | repo | 5 | `f5dd585eae37` |
-| `scripts/check-portal-notifications-authz.mjs` | indexed | repo | 5 | `54a26475cd4d` |
+| `scripts/check-portal-mypieces-authz.mjs` | indexed | repo | 4 | `18641c824521` |
+| `scripts/check-portal-notifications-authz.mjs` | indexed | repo | 4 | `c30086e14ff0` |
 | `scripts/check-pricing-and-intake-policy.mjs` | indexed | repo | 2 | `e82240318188` |
-| `scripts/check-prod-auth-provider-config.mjs` | indexed | repo | 5 | `a74f8462f981` |
+| `scripts/check-prod-auth-provider-config.mjs` | indexed | repo | 3 | `e5dec7a212fb` |
 | `scripts/check-reservation-doc-sync.mjs` | indexed | repo | 1 | `188d316b2478` |
 | `scripts/check-secret-scanning-baseline.mjs` | indexed | repo | 2 | `fd53bca3cb48` |
 | `scripts/check-studio-brain-bundle.mjs` | indexed | repo | 2 | `357c4f803597` |
@@ -433,8 +422,8 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/codex-capture-startup-handoff.mjs` | indexed | repo | 3 | `3328b6577d57` |
 | `scripts/codex-docs-drift-check.mjs` | indexed | repo | 4 | `54c7ad97bd0a` |
 | `scripts/codex-docs-drift-check.test.mjs` | indexed | repo | 1 | `0a21960d280b` |
-| `scripts/codex-doctor.mjs` | indexed | repo | 14 | `c73351b3b44b` |
-| `scripts/codex-doctor.test.mjs` | indexed | repo | 7 | `dd9f459b6760` |
+| `scripts/codex-doctor.mjs` | indexed | repo | 14 | `c4f3ee95383d` |
+| `scripts/codex-doctor.test.mjs` | indexed | repo | 7 | `65298f9d10e8` |
 | `scripts/codex-handoff-pack.mjs` | indexed | repo | 5 | `6b9b501377ee` |
 | `scripts/codex-handoff-pack.test.mjs` | indexed | repo | 2 | `8f21c18ed90b` |
 | `scripts/codex-history-corpus-export.mjs` | indexed | repo | 5 | `730b8a69e5ac` |
@@ -447,7 +436,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/codex-plugin-policy-audit.test.mjs` | indexed | repo | 1 | `335f5d20a003` |
 | `scripts/codex-session-corpus-export.mjs` | indexed | repo | 5 | `1d3906655069` |
 | `scripts/codex-session-memory-utils.test.mjs` | indexed | repo | 3 | `b7e4b76bdb84` |
-| `scripts/codex-shell.mjs` | indexed | repo | 10 | `85e4ef874b1c` |
+| `scripts/codex-shell.mjs` | indexed | repo | 10 | `6dab79d3a07f` |
 | `scripts/codex-startup-preflight.mjs` | indexed | repo | 9 | `9d9d32f52795` |
 | `scripts/codex-startup-scorecard.mjs` | indexed | repo | 16 | `1279cef04c3e` |
 | `scripts/codex-startup-scorecard.test.mjs` | indexed | repo | 5 | `791dbc8c5869` |
@@ -462,7 +451,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/codex/open-memory-automation.mjs` | indexed | repo | 36 | `f0ebae21e011` |
 | `scripts/codex/open-memory-automation.test.mjs` | indexed | repo | 10 | `75aea1e78cd0` |
 | `scripts/codex/phone-notify.mjs` | indexed | repo | 6 | `d7d1a1ce0b6d` |
-| `scripts/codex/rubric-scorecard.mjs` | indexed | repo | 17 | `94676addee84` |
+| `scripts/codex/rubric-scorecard.mjs` | indexed | repo | 17 | `667ccf9c848d` |
 | `scripts/codex/rubric-scorecard.test.mjs` | indexed | repo | 1 | `ca8391006d80` |
 | `scripts/codex/session-memory-companion.mjs` | indexed | repo | 7 | `188029c050ea` |
 | `scripts/codex/telemetry-random-audit.mjs` | indexed | repo | 6 | `69060bc931f9` |
@@ -478,7 +467,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/deploy-namecheap-preview.mjs` | indexed | repo | 4 | `be557e527ecc` |
 | `scripts/deploy-namecheap-website.mjs` | indexed | repo | 3 | `9d02153eb98a` |
 | `scripts/deploy-preflight.mjs` | indexed | repo | 7 | `8b7e564113dd` |
-| `scripts/deploy-studio-brain-host.py` | indexed | repo | 14 | `46a6c7857b31` |
+| `scripts/deploy-studio-brain-host.py` | indexed | repo | 13 | `51884d751a94` |
 | `scripts/destructive-command-surface-audit.mjs` | indexed | repo | 3 | `b73c4f0fb2a8` |
 | `scripts/docs-hygiene-audit.mjs` | indexed | repo | 4 | `04e64f69631b` |
 | `scripts/document-metadata-analyze.mjs` | indexed | repo | 7 | `d1bba59fff5a` |
@@ -495,7 +484,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/extract-codex-compaction-window.mjs` | indexed | repo | 2 | `5a6b33964261` |
 | `scripts/extract-codex-resumable-memory.mjs` | indexed | repo | 4 | `9badcd9a7cdf` |
 | `scripts/firestore-index-auto-remediation-loop.mjs` | indexed | repo | 5 | `24f5d93377e8` |
-| `scripts/firestore-index-contract-guard.mjs` | indexed | repo | 6 | `b8043977ebe7` |
+| `scripts/firestore-index-contract-guard.mjs` | indexed | repo | 6 | `7a430bdc4034` |
 | `scripts/firestore-indexes-deploy.mjs` | indexed | repo | 4 | `6dbdf615a7bd` |
 | `scripts/firestore-query-shape-inspector.mjs` | indexed | repo | 9 | `85056511cf9e` |
 | `scripts/firestore-query-shape-inspector.test.mjs` | indexed | repo | 2 | `2ee6ad0e428b` |
@@ -525,7 +514,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/hybrid-import-repair-utils.test.mjs` | indexed | repo | 1 | `8d58116c73d7` |
 | `scripts/install-studiobrain-bambu-cli.sh` | indexed | repo | 3 | `f9eba14711c3` |
 | `scripts/install-studiobrain-fail2ban-sshd.sh` | indexed | repo | 1 | `ed7b75e063bd` |
-| `scripts/install-studiobrain-healthcheck.sh` | indexed | repo | 3 | `e54044d7f8d6` |
+| `scripts/install-studiobrain-healthcheck.sh` | indexed | repo | 2 | `05a0694a8544` |
 | `scripts/install-studiobrain-monitoring.sh` | indexed | repo | 2 | `a794ecac4896` |
 | `scripts/install-studiobrain-ops-stack.sh` | indexed | repo | 1 | `95d604c089fa` |
 | `scripts/install-studiobrain-portal-bridge.sh` | indexed | repo | 1 | `6015473f5225` |
@@ -578,6 +567,8 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/lib/codex-command-shape-guardrails.mjs` | indexed | repo | 2 | `6de376a29ca4` |
 | `scripts/lib/codex-exec-json-events.mjs` | indexed | repo | 3 | `7498d8b1125f` |
 | `scripts/lib/codex-exec-json-events.test.mjs` | indexed | repo | 1 | `258358cc31f6` |
+| `scripts/lib/codex-lifecycle-memory.mjs` | indexed | repo | 3 | `4fe62692b511` |
+| `scripts/lib/codex-lifecycle-memory.test.mjs` | indexed | repo | 1 | `87110c08a51f` |
 | `scripts/lib/codex-machine-tool-profile.mjs` | indexed | repo | 6 | `1f5bac3b4b49` |
 | `scripts/lib/codex-session-memory-utils.mjs` | indexed | repo | 27 | `456e6ebd574f` |
 | `scripts/lib/codex-startup-reliability.mjs` | indexed | repo | 6 | `4f26750b2890` |
@@ -619,7 +610,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `45cc17331aab` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `140c9035c2d2` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `1bf1773d3d8c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 30 | `dee1ca8dc795` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 30 | `7bd2b8cb05cb` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `42c0fee0f773` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `b370d2593d09` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `c310dbf956d2` |
@@ -730,9 +721,9 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/qa-performance-preflight.mjs` | indexed | repo | 3 | `cd3b327251c0` |
 | `scripts/ralph-platform-reference-audit.mjs` | indexed | repo | 6 | `bf55bb72e0bc` |
 | `scripts/ralph-platform-reference-exemptions.json` | indexed | repo | 2 | `ec94cb22f93e` |
-| `scripts/reliability-hub.mjs` | indexed | repo | 17 | `df7ae5438781` |
+| `scripts/reliability-hub.mjs` | indexed | repo | 17 | `cf0fdfc1d432` |
 | `scripts/repo-agentic-health-inventory.mjs` | indexed | repo | 5 | `c91e9bb1bfb2` |
-| `scripts/repo-audit-branch-guard.mjs` | indexed | repo | 3 | `c46ac263514e` |
+| `scripts/repo-audit-branch-guard.mjs` | indexed | repo | 3 | `d4a012401a58` |
 | `scripts/repo-markdown-corpus-export.mjs` | indexed | repo | 5 | `dafd530093b6` |
 | `scripts/resolve-firebase-api-key.mjs` | indexed | repo | 2 | `e2a9f9698162` |
 | `scripts/rotate-firebase-web-api-key.mjs` | indexed | repo | 4 | `fda5d99d7b73` |
@@ -753,7 +744,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/ship-workflow.mjs` | indexed | repo | 10 | `cf0d69eb83f0` |
 | `scripts/ship-workflow.test.mjs` | indexed | repo | 2 | `44023bd17a8c` |
 | `scripts/sim-runner.mjs` | indexed | repo | 4 | `7c2587dd183c` |
-| `scripts/source-of-truth-contract-matrix.mjs` | indexed | repo | 9 | `33f4e83600c4` |
+| `scripts/source-of-truth-contract-matrix.mjs` | indexed | repo | 9 | `44c74ff61a30` |
 | `scripts/source-of-truth-deployment-gate-matrix.json` | indexed | repo | 6 | `3ec6e20246a0` |
 | `scripts/source-of-truth-deployment-gates.mjs` | indexed | repo | 9 | `fbdd18330cac` |
 | `scripts/source-of-truth-index-audit.mjs` | indexed | repo | 6 | `1336fa6f1820` |
@@ -766,31 +757,30 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/studio-cutover-gate.mjs` | indexed | repo | 5 | `51948a580c3d` |
 | `scripts/studio-network-profile.mjs` | indexed | repo | 3 | `423d610a519b` |
 | `scripts/studio-stack-profile-snapshot.mjs` | indexed | repo | 6 | `6a9428190b99` |
-| `scripts/studiobrain-agent-harness-work-packet.mjs` | indexed | repo | 12 | `c47e1dad18da` |
-| `scripts/studiobrain-agent-harness-work-packet.test.mjs` | indexed | repo | 5 | `051a3d4df21c` |
+| `scripts/studiobrain-agent-harness-work-packet.mjs` | indexed | repo | 12 | `f3c07d469367` |
+| `scripts/studiobrain-agent-harness-work-packet.test.mjs` | indexed | repo | 3 | `2e9c77de0422` |
 | `scripts/studiobrain-backup-drill.mjs` | indexed | repo | 10 | `ddb6952eb56e` |
 | `scripts/studiobrain-bambu-cli.sh` | indexed | repo | 4 | `626db69d5c9a` |
 | `scripts/studiobrain-chief-of-staff-audit.mjs` | indexed | repo | 2 | `2a5d3c24387d` |
 | `scripts/studiobrain-chief-of-staff-audit.test.mjs` | indexed | repo | 1 | `2aa6b2293657` |
 | `scripts/studiobrain-cockpit.mjs` | indexed | repo | 5 | `8cdee4ce07e6` |
 | `scripts/studiobrain-cockpit.test.mjs` | indexed | repo | 3 | `2dab41d4ed2c` |
-| `scripts/studiobrain-control-tower-proxy.mjs` | indexed | repo | 2 | `8dea02c90a66` |
+| `scripts/studiobrain-control-tower-proxy.mjs` | indexed | repo | 2 | `dffb408e879f` |
 | `scripts/studiobrain-host-access.py` | indexed | repo | 4 | `d52f6f373767` |
 | `scripts/studiobrain-host-access.sh` | indexed | repo | 1 | `0ceef799c93e` |
-| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 13 | `60b79bb7c2f3` |
-| `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 5 | `ea168f85b2a8` |
+| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 13 | `11ed53a98898` |
 | `scripts/studiobrain-incident-bundle.mjs` | indexed | repo | 6 | `61c2b6aa7ecb` |
 | `scripts/studiobrain-local-host-heartbeat.mjs` | indexed | repo | 5 | `4cdbce4f4b01` |
 | `scripts/studiobrain-network-check.mjs` | indexed | repo | 4 | `bac16d983f5d` |
 | `scripts/studiobrain-observability-bundle.mjs` | indexed | repo | 5 | `307d419d0bca` |
-| `scripts/studiobrain-ops.py` | indexed | repo | 17 | `3d3c10bc086a` |
+| `scripts/studiobrain-ops.py` | indexed | repo | 15 | `63ea1450488e` |
 | `scripts/studiobrain-proxy-bundle.mjs` | indexed | repo | 3 | `ddf371eb1a1e` |
-| `scripts/studiobrain-status.mjs` | indexed | repo | 18 | `d1fc80d4fa25` |
+| `scripts/studiobrain-status.mjs` | indexed | repo | 18 | `7ac59fd1b6cb` |
 | `scripts/studiobrain-tmux-session.sh` | indexed | repo | 2 | `b9c5f62a046e` |
 | `scripts/sync-codex-home-runtime.mjs` | indexed | repo | 2 | `ab2ce0ccb6be` |
 | `scripts/sync-firestore-rules-releases.mjs` | indexed | repo | 6 | `931b1619126c` |
 | `scripts/sync-portal-secrets-from-1password.mjs` | indexed | repo | 4 | `cac285181395` |
-| `scripts/test-rules.mjs` | indexed | repo | 2 | `36d4367e70f2` |
+| `scripts/test-rules.mjs` | indexed | repo | 2 | `7ba3d851a3b9` |
 | `scripts/test-studio-brain-auth.mjs` | indexed | repo | 5 | `59b8e2e36744` |
 | `scripts/twitter-export-memory-normalize.mjs` | indexed | repo | 8 | `57813089870d` |
 | `scripts/twitter-memory-analyze.mjs` | indexed | repo | 6 | `ff4b408b8060` |
@@ -801,8 +791,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `scripts/validate-well-known.mjs` | indexed | repo | 5 | `34777f02c644` |
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `a8edd10f1247` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `fab08ee45321` |
-| `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
-| `scripts/wiki-postgres.test.mjs` | indexed | repo | 6 | `76519324db38` |
+| `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `6114e151ab38` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `488d5d2812ef` |
 | `storage.rules` | indexed | repo | 1 | `f4cf8136298f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `95e732aadb95` |
@@ -861,9 +850,9 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `studio-brain/src/connectors/types.ts` | indexed | repo | 1 | `4bd5b3325b7f` |
 | `studio-brain/src/controlTower/actions.ts` | indexed | repo | 4 | `408a2062e405` |
 | `studio-brain/src/controlTower/collect.ts` | indexed | repo | 9 | `b34b7b315bf4` |
-| `studio-brain/src/controlTower/derive.ts` | indexed | repo | 10 | `9184fc519e01` |
+| `studio-brain/src/controlTower/derive.ts` | indexed | repo | 10 | `eb1c6a6a7875` |
 | `studio-brain/src/controlTower/hosts.ts` | indexed | repo | 3 | `0bf42a4dfc12` |
-| `studio-brain/src/controlTower/types.ts` | indexed | repo | 7 | `e8aac85b9d47` |
+| `studio-brain/src/controlTower/types.ts` | indexed | repo | 7 | `cc01f3ec4533` |
 | `studio-brain/src/db/maintenance.ts` | indexed | repo | 1 | `2e7cdba15aaa` |
 | `studio-brain/src/db/migrate.ts` | indexed | repo | 1 | `12e96cee3e2a` |
 | `studio-brain/src/db/postgres.ts` | indexed | repo | 2 | `36c6ef1c6ccf` |
@@ -874,8 +863,8 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `studio-brain/src/fabrication/workflows.ts` | indexed | repo | 4 | `3de6c544fd33` |
 | `studio-brain/src/http/dashboard.test.ts` | indexed | repo | 1 | `036d4a194819` |
 | `studio-brain/src/http/dashboard.ts` | indexed | repo | 2 | `5be8bd3bf332` |
-| `studio-brain/src/http/server.ts` | indexed | repo | 109 | `d5bfbf1cc409` |
-| `studio-brain/src/index.ts` | indexed | repo | 13 | `ab0ca05f67d3` |
+| `studio-brain/src/http/server.ts` | indexed | repo | 109 | `3c0c4beda1dc` |
+| `studio-brain/src/index.ts` | indexed | repo | 13 | `3f90ea1b717a` |
 | `studio-brain/src/infra/backend.integration.test.ts` | indexed | repo | 5 | `c55283b851bf` |
 | `studio-brain/src/infra/dockerComposeConfig.test.ts` | indexed | repo | 1 | `a017d7d7fdb1` |
 | `studio-brain/src/jobs/retentionJob.test.ts` | indexed | repo | 1 | `263afc8faf29` |
@@ -914,7 +903,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `studio-brain/src/kiln/ui/renderKilnCommandPage.test.ts` | indexed | repo | 2 | `c08aba4a75ed` |
 | `studio-brain/src/kiln/ui/renderKilnCommandPage.ts` | indexed | repo | 8 | `de9dc625a4dd` |
 | `studio-brain/src/memory/adapters.ts` | indexed | repo | 5 | `83025e681909` |
-| `studio-brain/src/memory/associationScout.ts` | indexed | repo | 12 | `4d8b6175b72a` |
+| `studio-brain/src/memory/associationScout.ts` | indexed | repo | 11 | `eb504569f141` |
 | `studio-brain/src/memory/contracts.ts` | indexed | repo | 15 | `903a9f7e83cc` |
 | `studio-brain/src/memory/embedding.test.ts` | indexed | repo | 2 | `b04ab2f29cad` |
 | `studio-brain/src/memory/embedding.ts` | indexed | repo | 3 | `706d8f74ef19` |
@@ -923,7 +912,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `studio-brain/src/memory/layers.ts` | indexed | repo | 2 | `afd85386a45e` |
 | `studio-brain/src/memory/nanny.ts` | indexed | repo | 4 | `c599fb4c7285` |
 | `studio-brain/src/memory/postgresAdapter.ts` | indexed | repo | 41 | `086e61100e1a` |
-| `studio-brain/src/memory/service.test.ts` | indexed | repo | 30 | `b51f2d601b52` |
+| `studio-brain/src/memory/service.test.ts` | indexed | repo | 29 | `6dce36ace796` |
 | `studio-brain/src/observability/auditExport.test.ts` | indexed | repo | 1 | `08f8d3f93bdb` |
 | `studio-brain/src/observability/auditExport.ts` | indexed | repo | 1 | `bd409c146b29` |
 | `studio-brain/src/observability/policyLint.test.ts` | indexed | repo | 1 | `1026025e3119` |
@@ -945,7 +934,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `studio-brain/src/partner/contracts.ts` | indexed | repo | 2 | `26dfd95f5cf2` |
 | `studio-brain/src/partner/files.ts` | indexed | repo | 2 | `03cfa3ef365d` |
 | `studio-brain/src/partner/persona.ts` | indexed | repo | 2 | `eed487770e9b` |
-| `studio-brain/src/partner/service.ts` | indexed | repo | 6 | `b3ad685268d9` |
+| `studio-brain/src/partner/service.ts` | indexed | repo | 6 | `ec8191b90905` |
 | `studio-brain/src/planning/contracts.ts` | indexed | repo | 3 | `0f9f8d942223` |
 | `studio-brain/src/planning/governance.ts` | indexed | repo | 1 | `74ebc45d785d` |
 | `studio-brain/src/planning/service.test.ts` | indexed | repo | 7 | `1aee1b8f4f58` |
@@ -997,7 +986,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `studio-brain/src/swarm/trustSafety/triageAssistant.test.ts` | indexed | repo | 1 | `dba6f7417493` |
 | `studio-brain/src/swarm/trustSafety/triageAssistant.ts` | indexed | repo | 2 | `5c6feefe0e3a` |
 | `studio-brain/src/types/core.ts` | indexed | repo | 1 | `d8b2d789f561` |
-| `studio-brain/src/wiki/readStore.ts` | indexed | repo | 4 | `cf611e130153` |
 | `tickets/P0-alpha-drills-real-auth.md` | indexed | repo | 2 | `3bb312a03f48` |
 | `tickets/P0-alpha-release-evidence-pack.md` | indexed | repo | 2 | `895dc02023a6` |
 | `tickets/P0-email-extension-region-mismatch.md` | indexed | repo | 2 | `debc99562bbc` |
@@ -1022,13 +1010,13 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `tickets/P1-agent-surfaces-robots-and-sitemap-regression.md` | indexed | repo | 7 | `784e1fef1144` |
 | `tickets/P1-agent-surfaces-website-llms-and-ai-txt.md` | indexed | repo | 7 | `f033d22d8985` |
 | `tickets/P1-automated-key-rotation-on-secret-alerts.md` | indexed | repo | 5 | `eca6d6b9a8b4` |
-| `tickets/P1-bambu-headless-slice-template-and-cli-reliability.md` | indexed | repo | 5 | `87c89f59dd22` |
+| `tickets/P1-bambu-headless-slice-template-and-cli-reliability.md` | indexed | repo | 6 | `4b6d188a5b31` |
 | `tickets/P1-ci-gates-remediation.md` | indexed | repo | 2 | `dabe603bb983` |
 | `tickets/P1-ci-smoke-failure-firebase-emulator-host-flag-compat.md` | indexed | repo | 6 | `cdd2d4ca7a80` |
 | `tickets/P1-code-split-views.md` | indexed | repo | 2 | `1e688ab6e49e` |
-| `tickets/P1-codex-clean-worktree-session-launcher.md` | indexed | repo | 5 | `eea40b82913a` |
+| `tickets/P1-codex-clean-worktree-session-launcher.md` | indexed | repo | 6 | `8f0b42c83a95` |
 | `tickets/P1-codex-expose-studio-brain-remember-write-path.md` | indexed | repo | 7 | `6220e5ec9823` |
-| `tickets/P1-codex-startup-memory-reliability-and-auth-contract.md` | indexed | repo | 5 | `6549f81ffcbd` |
+| `tickets/P1-codex-startup-memory-reliability-and-auth-contract.md` | indexed | repo | 7 | `2b104ded2805` |
 | `tickets/P1-commission-checkout-path-replacement-before-requests-removal.md` | indexed | repo | 6 | `e14f130d69d4` |
 | `tickets/P1-community-copy-and-flow-humanization-pass.md` | indexed | repo | 6 | `25d10b54f6fd` |
 | `tickets/P1-community-layout-intermittent-regression-canary-and-workflow.md` | indexed | repo | 6 | `a578a2133c8c` |
@@ -1040,7 +1028,7 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `tickets/P1-community-reporting-staff-triage-dashboard.md` | indexed | repo | 9 | `fa206a131049` |
 | `tickets/P1-community-right-rail-layout-stability-and-chiplet-overflow-guard.md` | indexed | repo | 6 | `6533e9965c9a` |
 | `tickets/P1-cors-allowlist-env.md` | indexed | repo | 2 | `9385cef57b1e` |
-| `tickets/P1-cross-platform-command-runner-and-wrapper-audit.md` | indexed | repo | 5 | `58ea707f7c8c` |
+| `tickets/P1-cross-platform-command-runner-and-wrapper-audit.md` | indexed | repo | 7 | `193ca469111e` |
 | `tickets/P1-daily-repo-security-scan-epic.md` | indexed | repo | 6 | `d54520c456a4` |
 | `tickets/P1-dependency-audit-triage.md` | indexed | repo | 2 | `06bd07c33a89` |
 | `tickets/P1-dev-admin-tools-prod-guard.md` | indexed | repo | 2 | `6b59d3560f78` |
@@ -1120,7 +1108,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `tickets/P1-revealcard-adopt-key-views.md` | indexed | repo | 6 | `65dd2b040369` |
 | `tickets/P1-security-api-v1-batchdoc-editor-access.md` | indexed | repo | 5 | `e142b2313b10` |
 | `tickets/P1-security-fix-root-npm-audit-fast-xml-parser.md` | indexed | repo | 1 | `3428d0223674` |
-| `tickets/P1-service-pricing-and-membership-decommission-source-alignment.md` | indexed | repo | 5 | `a3f1222d9409` |
 | `tickets/P1-source-of-truth-contract-audit-matrix.md` | indexed | repo | 7 | `b230f4112d09` |
 | `tickets/P1-source-of-truth-deployment-gate-matrix.md` | indexed | repo | 7 | `eb287db0a5bc` |
 | `tickets/P1-staff-console-batch-artifact-triage-and-safe-cleanup.md` | indexed | repo | 8 | `1bd425b3fb0f` |
@@ -1142,7 +1129,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `tickets/P1-studio-v1-legacy-parity-and-observability.md` | indexed | repo | 6 | `f69c83e35b4c` |
 | `tickets/P1-studiobrain-cross-platform-toolchain-hardening.md` | indexed | repo | 9 | `d57ed3990b9d` |
 | `tickets/P1-studiobrain-discord-cli-portal-coordinator-contracts.md` | indexed | repo | 8 | `ed20cebcabb4` |
-| `tickets/P1-studiobrain-local-deploy-integrity-drift.md` | indexed | repo | 6 | `1f039ee47808` |
 | `tickets/P1-studiobrain-observability-baseline-tooling-for-home-host.md` | indexed | repo | 9 | `23f84faada1c` |
 | `tickets/P1-studiobrain-static-network-resilience-hardening.md` | indexed | repo | 9 | `7bb62fc4e453` |
 | `tickets/P1-support-free-label-clip-geometry-and-slicer-gates.md` | indexed | repo | 5 | `d0244fa74b06` |
@@ -1354,7 +1340,8 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `tickets/P2-workshops-frontend-interaction-and-storytelling-pass.md` | indexed | repo | 8 | `704872b7587e` |
 | `tickets/P2-workshops-staff-programming-intelligence-dashboard.md` | indexed | repo | 9 | `05449a602141` |
 | `tickets/P3-analytics-instrumentation-key-events.md` | indexed | repo | 7 | `b0a7c5837464` |
-| `tickets/P3-codex-session-friction-catchall.md` | indexed | repo | 4 | `9500998f68b5` |
+| `tickets/P3-codex-session-friction-catchall.md` | indexed | repo | 4 | `3ddafe3ebf66` |
+| `tickets/P3-deprecate-codex-status-board-harness.md` | indexed | repo | 5 | `7348759cad8e` |
 | `tickets/P3-firestore-rules-log-noise-normalization.md` | indexed | repo | 4 | `5f1f418dca11` |
 | `tickets/P3-portal-polish-engagement-clarity.md` | indexed | repo | 7 | `b4e6bb9d928c` |
 | `tickets/P3-studio-analytics-ga-funnel-event-schema-ticket.md` | indexed | repo | 8 | `ec6b2ba36720` |
@@ -1373,33 +1360,33 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `tickets/v3/DEPENDENCY_GRAPH.md` | indexed | repo | 5 | `50f87faba867` |
 | `tickets/v3/EPIC_SCORECARD.md` | indexed | repo | 12 | `5ff9e495db35` |
 | `tickets/v3/EPICS.md` | indexed | repo | 16 | `154ef3f1eb5c` |
-| `tickets/v3/P0-v3-cloud-truth-guardrails-and-drift-detection.md` | indexed | repo | 11 | `f6680f0e2ba7` |
-| `tickets/v3/P0-v3-config-and-secrets-contract.md` | indexed | repo | 11 | `2e8bff3be3af` |
-| `tickets/v3/P0-v3-dashboard-studio-state-diffs.md` | indexed | repo | 11 | `9f52d96e7bcc` |
-| `tickets/v3/P0-v3-observability-baseline.md` | indexed | repo | 11 | `f5aaa5ccec48` |
-| `tickets/v3/P0-v3-studio-brain-scaffold.md` | indexed | repo | 11 | `d488648bd5fd` |
-| `tickets/v3/P0-v3-studio-state-readonly-computation.md` | indexed | repo | 11 | `17c100b1df86` |
-| `tickets/v3/P1-v3-agent-identity-bridge-and-delegation-enforcement.md` | indexed | repo | 11 | `7470968f6438` |
-| `tickets/v3/P1-v3-approval-ui-in-staff-console.md` | indexed | repo | 11 | `7a99cd35f947` |
-| `tickets/v3/P1-v3-capability-registry-proposal-approval-audit.md` | indexed | repo | 11 | `b225218c7df2` |
-| `tickets/v3/P1-v3-connector-framework-hubitat-readonly.md` | indexed | repo | 11 | `583af25f7f09` |
-| `tickets/v3/P1-v3-connector-framework-roborock-readonly.md` | indexed | repo | 11 | `048ad6c2489d` |
-| `tickets/v3/P1-v3-connector-test-harness.md` | indexed | repo | 11 | `dcec9ce1e693` |
-| `tickets/v3/P1-v3-illegal-or-infringing-work-intake-controls.md` | indexed | repo | 11 | `500e75b979cc` |
-| `tickets/v3/P1-v3-marketing-swarm-draft-only.md` | indexed | repo | 11 | `c835e4d2cf89` |
-| `tickets/v3/P1-v3-ops-anomaly-detector-draft-recommendations.md` | indexed | repo | 11 | `4e933e9e7980` |
-| `tickets/v3/P1-v3-policy-exemptions-and-kill-switch.md` | indexed | repo | 11 | `ef20f99a9e4e` |
-| `tickets/v3/P1-v3-rate-limits-quotas-and-abuse-controls.md` | indexed | repo | 11 | `fc9942bb993a` |
-| `tickets/v3/P2-v3-data-retention-portability-and-audit-export.md` | indexed | repo | 11 | `bf9d08c0f660` |
-| `tickets/v3/P2-v3-dr-recovery-and-rebuild-playbook.md` | indexed | repo | 11 | `025098ac5c47` |
-| `tickets/v3/P2-v3-finance-reconciliation-draft-flags.md` | indexed | repo | 11 | `e903a33d8f6a` |
-| `tickets/v3/P2-v3-kpi-scorecard-and-slo-alerting.md` | indexed | repo | 11 | `3258d9075374` |
-| `tickets/v3/P2-v3-multi-studio-boundaries-readiness.md` | indexed | repo | 11 | `1441f2041773` |
-| `tickets/v3/P2-v3-os-cockpit-consolidation.md` | indexed | repo | 12 | `ffff761fe1b2` |
-| `tickets/v3/P2-v3-security-chaos-and-tabletop-exercises.md` | indexed | repo | 12 | `fc80ad5854c7` |
-| `tickets/v3/P2-v3-spec-governance-and-policy-lint.md` | indexed | repo | 11 | `faa14186c4af` |
-| `tickets/v3/P2-v3-trust-safety-assistive-triage.md` | indexed | repo | 11 | `9c7a9f51f73e` |
-| `tickets/v3/P2-v3-write-path-pilot-firestore-approved-actions.md` | indexed | repo | 11 | `3f2c9b4c5915` |
+| `tickets/v3/P0-v3-cloud-truth-guardrails-and-drift-detection.md` | indexed | repo | 11 | `7b5121ce9878` |
+| `tickets/v3/P0-v3-config-and-secrets-contract.md` | indexed | repo | 11 | `46f52e221863` |
+| `tickets/v3/P0-v3-dashboard-studio-state-diffs.md` | indexed | repo | 11 | `19e408980d7b` |
+| `tickets/v3/P0-v3-observability-baseline.md` | indexed | repo | 11 | `59b3405395ba` |
+| `tickets/v3/P0-v3-studio-brain-scaffold.md` | indexed | repo | 11 | `14e20ab51542` |
+| `tickets/v3/P0-v3-studio-state-readonly-computation.md` | indexed | repo | 11 | `daed0ecffa51` |
+| `tickets/v3/P1-v3-agent-identity-bridge-and-delegation-enforcement.md` | indexed | repo | 11 | `fc40270df6b5` |
+| `tickets/v3/P1-v3-approval-ui-in-staff-console.md` | indexed | repo | 11 | `25bb9de4fb59` |
+| `tickets/v3/P1-v3-capability-registry-proposal-approval-audit.md` | indexed | repo | 11 | `cbaff365de09` |
+| `tickets/v3/P1-v3-connector-framework-hubitat-readonly.md` | indexed | repo | 11 | `3468a6fb6b7a` |
+| `tickets/v3/P1-v3-connector-framework-roborock-readonly.md` | indexed | repo | 11 | `3ec044e0378e` |
+| `tickets/v3/P1-v3-connector-test-harness.md` | indexed | repo | 11 | `5ee98468627b` |
+| `tickets/v3/P1-v3-illegal-or-infringing-work-intake-controls.md` | indexed | repo | 11 | `57e4c322f919` |
+| `tickets/v3/P1-v3-marketing-swarm-draft-only.md` | indexed | repo | 11 | `c83b0a812c30` |
+| `tickets/v3/P1-v3-ops-anomaly-detector-draft-recommendations.md` | indexed | repo | 11 | `67259568eb87` |
+| `tickets/v3/P1-v3-policy-exemptions-and-kill-switch.md` | indexed | repo | 11 | `b20bda552540` |
+| `tickets/v3/P1-v3-rate-limits-quotas-and-abuse-controls.md` | indexed | repo | 11 | `4bd6eed8aeb3` |
+| `tickets/v3/P2-v3-data-retention-portability-and-audit-export.md` | indexed | repo | 11 | `1bd7e5683591` |
+| `tickets/v3/P2-v3-dr-recovery-and-rebuild-playbook.md` | indexed | repo | 11 | `d6034268db56` |
+| `tickets/v3/P2-v3-finance-reconciliation-draft-flags.md` | indexed | repo | 11 | `2650a8dfb766` |
+| `tickets/v3/P2-v3-kpi-scorecard-and-slo-alerting.md` | indexed | repo | 11 | `24c6ec2acb13` |
+| `tickets/v3/P2-v3-multi-studio-boundaries-readiness.md` | indexed | repo | 11 | `52f76b19a440` |
+| `tickets/v3/P2-v3-os-cockpit-consolidation.md` | indexed | repo | 12 | `02dfcf21f117` |
+| `tickets/v3/P2-v3-security-chaos-and-tabletop-exercises.md` | indexed | repo | 12 | `deed58e608c3` |
+| `tickets/v3/P2-v3-spec-governance-and-policy-lint.md` | indexed | repo | 11 | `19260d39dcf2` |
+| `tickets/v3/P2-v3-trust-safety-assistive-triage.md` | indexed | repo | 11 | `516362d59cd2` |
+| `tickets/v3/P2-v3-write-path-pilot-firestore-approved-actions.md` | indexed | repo | 11 | `30d4d8c77e17` |
 | `tickets/v3/P3-v3-physical-connector-write-pilot.md` | indexed | repo | 9 | `426d06947624` |
 | `tickets/v3/README.md` | indexed | repo | 9 | `0d5c3bf945ed` |
 | `tickets/v3/RELEASE_READINESS_CHECKLIST.md` | indexed | repo | 6 | `0fb3965a7ba0` |
@@ -1560,16 +1547,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `website/data/kiln-status.json` | indexed | repo | 1 | `21dc351f2399` |
 | `website/data/policies.json` | indexed | repo | 2 | `39ffe6e3f9af` |
 | `website/faq/index.html` | indexed | repo | 3 | `0f56b028ee38` |
-| `website/firing-care-preview/agent-docs/index.html` | indexed | repo | 1 | `0df95d160761` |
-| `website/firing-care-preview/agent-service-catalog.json` | indexed | repo | 1 | `f1ad62814437` |
-| `website/firing-care-preview/ai.txt` | indexed | repo | 1 | `33fa0a48a669` |
-| `website/firing-care-preview/firing-services/index.html` | indexed | repo | 3 | `fb117f99bde7` |
-| `website/firing-care-preview/get-started/index.html` | indexed | repo | 2 | `02a1eb92c64a` |
-| `website/firing-care-preview/index.html` | indexed | repo | 3 | `608698e4cc29` |
-| `website/firing-care-preview/llms.txt` | indexed | repo | 1 | `11f0b0a98514` |
-| `website/firing-care-preview/preview.css` | indexed | repo | 14 | `d4508c5f8f91` |
-| `website/firing-care-preview/preview.js` | indexed | repo | 2 | `bed53354b0fd` |
-| `website/firing-care-preview/support-pickup/index.html` | indexed | repo | 2 | `f1071e51a326` |
 | `website/gallery/index.html` | indexed | repo | 2 | `63e842a738c0` |
 | `website/highlights/index.html` | indexed | repo | 4 | `aae77f1fd450` |
 | `website/index.html` | indexed | repo | 6 | `3f2a2ea4ca38` |
@@ -1577,10 +1554,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `website/lighthouserc.json` | indexed | repo | 1 | `4a63e4a11218` |
 | `website/llms.txt` | indexed | repo | 1 | `bdd9f5a17c82` |
 | `website/memberships/index.html` | indexed | repo | 3 | `7d05a56fdb64` |
-| `website/mockups/monsoonfire-redesign/index.html` | indexed | repo | 3 | `454736ba56ad` |
-| `website/mockups/monsoonfire-redesign/README.md` | indexed | repo | 4 | `02d5594b0e2d` |
-| `website/mockups/monsoonfire-redesign/render.mjs` | indexed | repo | 1 | `495c0da9bcdd` |
-| `website/mockups/monsoonfire-redesign/styles.css` | indexed | repo | 9 | `98c53eee401c` |
 | `website/ncsitebuilder/.well-known/assetlinks.json` | indexed | repo | 1 | `2f1671c1fbd2` |
 | `website/ncsitebuilder/ab/a/index.html` | indexed | repo | 4 | `084587729289` |
 | `website/ncsitebuilder/ab/b/index.html` | indexed | repo | 4 | `2174a4b593af` |
@@ -1605,16 +1578,6 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `website/ncsitebuilder/data/kiln-status.json` | indexed | repo | 1 | `21dc351f2399` |
 | `website/ncsitebuilder/data/policies.json` | indexed | repo | 1 | `e5e2596ec50b` |
 | `website/ncsitebuilder/faq/index.html` | indexed | repo | 3 | `1ca560cd7f9e` |
-| `website/ncsitebuilder/firing-care-preview/agent-docs/index.html` | indexed | repo | 1 | `0df95d160761` |
-| `website/ncsitebuilder/firing-care-preview/agent-service-catalog.json` | indexed | repo | 1 | `f1ad62814437` |
-| `website/ncsitebuilder/firing-care-preview/ai.txt` | indexed | repo | 1 | `33fa0a48a669` |
-| `website/ncsitebuilder/firing-care-preview/firing-services/index.html` | indexed | repo | 3 | `fb117f99bde7` |
-| `website/ncsitebuilder/firing-care-preview/get-started/index.html` | indexed | repo | 2 | `02a1eb92c64a` |
-| `website/ncsitebuilder/firing-care-preview/index.html` | indexed | repo | 3 | `608698e4cc29` |
-| `website/ncsitebuilder/firing-care-preview/llms.txt` | indexed | repo | 1 | `11f0b0a98514` |
-| `website/ncsitebuilder/firing-care-preview/preview.css` | indexed | repo | 14 | `d4508c5f8f91` |
-| `website/ncsitebuilder/firing-care-preview/preview.js` | indexed | repo | 2 | `bed53354b0fd` |
-| `website/ncsitebuilder/firing-care-preview/support-pickup/index.html` | indexed | repo | 2 | `f1071e51a326` |
 | `website/ncsitebuilder/gallery/index.html` | indexed | repo | 2 | `63e842a738c0` |
 | `website/ncsitebuilder/highlights/index.html` | indexed | repo | 4 | `aae77f1fd450` |
 | `website/ncsitebuilder/index.html` | indexed | repo | 6 | `43ddac0004aa` |
@@ -1663,11 +1626,10 @@ Snapshot: ca61b07b8b3e6209e88d78e50ca3c2dc080bf0043c0f86af3cc20f2f8ae9d005
 | `website/services/index.html` | indexed | repo | 4 | `5361058d468c` |
 | `website/supplies/index.html` | indexed | repo | 2 | `bea0ead6e174` |
 | `website/support/index.html` | indexed | repo | 3 | `fa8812711d8a` |
-| `website/tests/firing-care-preview.spec.mjs` | indexed | repo | 3 | `659c310ad4b0` |
-| `website/tests/legacy-host-guard.test.mjs` | indexed | repo | 1 | `e9f7288852a3` |
+| `website/tests/legacy-host-guard.test.mjs` | indexed | repo | 1 | `33b2af9ab22b` |
 | `website/tests/marketing-site.spec.mjs` | indexed | repo | 4 | `8cc2a2e7c78c` |
 | `website/updates/index.html` | indexed | repo | 2 | `c77d76c9c789` |
-| `wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md` | indexed | repo | 2 | `0ccb18a61fcf` |
+| `wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md` | indexed | repo | 2 | `3109752b8853` |
 | `WORKLOG.md` | indexed | repo | 18 | `35f25bea2740` |
 
 ## Denied Sources

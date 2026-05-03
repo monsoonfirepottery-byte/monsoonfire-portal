@@ -145,6 +145,10 @@ const NO_VOLUME_PRICING_PATTERN = /\b(do not bill by kiln volume|do not measure 
 
 const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns no|forbidden|deny|not allowed|should not|must not|without volume pricing|no billing-path matches)\b/i;
 
+const DEFAULT_WIKI_OUTCOMES_PATH = process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH
+  ? resolve(REPO_ROOT, process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH)
+  : "";
+
 const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only\s+(benefit|benefits|feature|features|logistics|pricing|plan|plans|membership|access|page|pages|content|area|areas)|active studio members|membership tiers include|memberships are tiered|membership(s)?\s+(is|are)\s+required\b|membership(s)?\b.{0,40}\brequired\s+(before|to|for)\b|membership plan|current tier|storage discounts|storage and discounts)\b/i;
 
 const MEMBERSHIP_CURRENT_PLAN_PATTERN = /\b(membership|memberships|member)\b.{0,80}\bcurrent plan\b|\bcurrent plan\b.{0,80}\b(membership|memberships|member)\b/i;
@@ -192,7 +196,7 @@ export function parseArgs(argv) {
     freshExtract: false,
     limit: 0,
     artifact: "",
-    outcomesPath: resolve(REPO_ROOT, "output", "studio-brain", "agent-harness", "outcomes.jsonl"),
+    outcomesPath: DEFAULT_WIKI_OUTCOMES_PATH,
     leaseLimit: 5,
     root: REPO_ROOT,
     strict: false,

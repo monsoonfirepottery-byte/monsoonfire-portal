@@ -167,6 +167,10 @@ export function fullHash(value) {
   return createHash("sha256").update(String(value)).digest("hex");
 }
 
+function normalizeTextContent(content) {
+  return String(content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 export function normalizeKey(value, maxLength = 160) {
   return String(value ?? "")
     .trim()
@@ -417,7 +421,7 @@ export function buildSourceIndex(options = {}) {
     }
     let content = "";
     try {
-      content = readFileSync(absolutePath, "utf8");
+      content = normalizeTextContent(readFileSync(absolutePath, "utf8"));
     } catch (error) {
       denied.push({ sourcePath: relativePath, reason: `read-error:${error instanceof Error ? error.message : String(error)}` });
       continue;
@@ -1504,7 +1508,7 @@ export function readExtractedFacts(path = resolve(WIKI_ROOT, "00_source_index", 
 function compareExport(path, expectedContent, kind, metadata = {}) {
   const exists = existsSync(path);
   const expectedHash = fullHash(expectedContent);
-  const actualHash = exists ? fullHash(readFileSync(path, "utf8")) : null;
+  const actualHash = exists ? fullHash(normalizeTextContent(readFileSync(path, "utf8"))) : null;
   return {
     kind,
     path: repoRelative(path),

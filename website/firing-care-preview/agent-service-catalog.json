@@ -1,8 +1,8 @@
 {
-  "name": "Monsoon Fire A2C Firing Care Preview",
+  "name": "Monsoon Fire Firing Care Preview",
   "preview": true,
   "visibility": "unlinked-noindex-preview",
-  "lastReviewed": "2026-04-28",
+  "lastReviewed": "2026-05-02",
   "provider": {
     "name": "Monsoon Fire Pottery",
     "publicWebsite": "https://monsoonfire.com",
@@ -13,7 +13,7 @@
     "doNotBookWithoutUser": true,
     "doNotCollectPaymentDetails": true,
     "authenticatedActions": "Use Kilnfire only when the user is authenticated and explicitly asks to continue.",
-    "publicPageLimit": "This preview explains firing services, expectations, pricing examples, and safe handoff language. It is not a live booking API."
+    "publicPageLimit": "This preview explains services, pricing examples, and handoff language. It is not a booking API."
   },
   "agentOnlySurfaces": [
     "/firing-care-preview/llms.txt",
@@ -24,8 +24,8 @@
   "serviceLanguage": {
     "publicNavLabel": "Firing Services",
     "humanExperienceLabel": "Firing Care",
-    "internalStrategyLabel": "heat as a service",
-    "campaignPhrase": "firing as a service"
+    "internalStrategyLabel": "kiln firing care",
+    "campaignPhrase": "kiln firing help for ceramic artists"
   },
   "primaryJourney": [
     "Dropoff request",
@@ -38,26 +38,26 @@
     {
       "id": "low-fire",
       "label": "Low fires",
-      "description": "Bisque firings for greenware before glaze work.",
+      "description": "Bisque firings for greenware.",
       "priceExample": "$15 half shelf",
       "artistInputs": ["material notes", "piece size", "handling notes", "timing need if any"]
     },
     {
       "id": "medium-fire",
       "label": "Medium Fires",
-      "description": "Mid-fire glazes up to cone 6 with staff loading review.",
+      "description": "Mid-fire glazes up to cone 6.",
       "priceExample": "$25 half shelf",
       "artistInputs": ["material notes", "surface notes", "piece size", "photos for unusual forms"]
     },
     {
       "id": "custom-firing",
       "label": "Custom Firings",
-      "description": "High fires, custom firing ramps, or private kiln runs.",
+      "description": "High fires, ramps, or private kiln runs.",
       "priceExample": "From $60",
       "artistInputs": ["batch size", "shelf or height needs", "deadline", "special handling notes"]
     }
   ],
-  "pricingModel": "Public pricing is based on half-shelf space unless staff confirms a custom firing.",
+  "pricingModel": "Pricing starts with half-shelf space unless staff confirms a custom firing.",
   "starterFiringCredit": {
     "label": "Starter firing credit",
     "purpose": "Intent signal for new or unauthenticated inquiries before staff spends time on routing.",
@@ -68,7 +68,7 @@
   "policies": [
     "Community shelving means smaller work may share shelf space with compatible pieces when fit and timing line up.",
     "The studio loads the kiln and decides final placement for fit and safety.",
-    "Pickup starts after firing, cooling, staging, and staff confirmation.",
+    "Pickup starts after firing, cooling, staging, and confirmation.",
     "Same-day pickup is not guaranteed until staff confirms.",
     "Public pages explain the service path; request-specific updates belong in Kilnfire.",
     "Agent surfaces are discovery and handoff only unless an authenticated portal flow explicitly supports more."

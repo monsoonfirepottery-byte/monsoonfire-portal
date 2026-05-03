@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Support and Pickup Preview | Monsoon Fire Pottery</title>
-  <meta name="description" content="Preview of conversational support and pickup flow for Monsoon Fire." />
+  <meta name="description" content="Preview of pickup, readiness, timing, and support help for Monsoon Fire firing requests." />
   <meta name="robots" content="noindex,nofollow,noarchive" />
   <link rel="icon" href="/assets/images/logo-mark-black.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/firing-care-preview/preview.css?v=ember-v20" />
+  <link rel="stylesheet" href="/firing-care-preview/preview.css?v=ember-v23" />
   <link rel="alternate" type="application/json" title="Monsoon Fire preview service catalog" href="/firing-care-preview/agent-service-catalog.json" />
   <link rel="alternate" type="text/plain" title="Monsoon Fire agent guide" href="/firing-care-preview/llms.txt" />
   <link rel="alternate" type="text/plain" title="Monsoon Fire AI contact policy" href="/firing-care-preview/ai.txt" />
@@ -47,10 +47,10 @@
       <div class="container support-hero-grid">
         <div>
           <p class="eyebrow">Support + Pickup</p>
-          <h1 class="page-title">Pickup help, fewer extra messages.</h1>
-          <p class="page-lead">Life is flexible, and when the details are handled clearly, the studio can usually meet the pickup, timing, and support needs around your work.</p>
+          <h1 class="page-title">Need pickup help?</h1>
+          <p class="page-lead">Checking readiness, timing, or a fuzzy detail? Tell Ember once. It turns the note into something staff can use.</p>
           <div class="cta-row">
-            <a class="button button-primary" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer" data-portal-target="support">Open studio account</a>
+            <a class="button button-primary" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer" data-portal-target="support">Open my studio account</a>
             <a class="button button-ghost" href="/firing-care-preview/firing-services/">Review dropoff</a>
           </div>
         </div>
@@ -63,8 +63,8 @@
             <div class="ember-heading-main">
               <span class="ember-avatar" aria-hidden="true"></span>
               <div>
-                <h2>Tell Ember what changed.</h2>
-                <p>Ember stays with this thread in your browser. Staff confirms studio changes.</p>
+                <h2>Tell Ember what would help.</h2>
+                <p>Ember keeps the thread gentle and organized. Staff confirms anything studio-side.</p>
               </div>
             </div>
           </div>
@@ -73,7 +73,7 @@
             <span data-ember-action-text></span>
           </div>
           <div class="ember-chat-log" role="log" aria-live="polite" aria-label="Ember chat messages" data-ember-chat-log>
-            <div class="bubble ember"><span class="ember-bubble-avatar" aria-hidden="true"></span><span>Ember: Hi, I'm Ember. Tell me what changed: pickup window, ready status, deadline, or dropoff details. I'll help turn it into a clear studio note.</span></div>
+            <div class="bubble ember"><span class="ember-bubble-avatar" aria-hidden="true"></span><span>Ember: Hi, I'm Ember. Tell me what would help: pickup timing, a ready check, a deadline, dropoff details, or reassurance. I'll make it clear for the studio.</span></div>
           </div>
           <div class="ember-thread-card" data-ember-thread-card hidden>
             <span data-ember-thread-state>Thread saved</span>
@@ -93,11 +93,11 @@
             <textarea id="ember-preview-summary" rows="4" maxlength="1000" data-ember-preview-input></textarea>
             <button class="button button-ghost" type="button" data-ember-preview-send>Send summary update</button>
           </div>
-          <div class="ember-prompt-row" aria-label="Common support prompts">
-            <button type="button" data-ember-prompt="Pickup: " data-topic="pickup_timing" data-status="Pickup selected. Add day, time, and name/order." data-placeholder="Pickup: Friday after 3, Sam Potter order">Pickup</button>
-            <button type="button" data-ember-prompt="Ready status: " data-topic="ready_status" data-status="Ready check selected. Add name/order and pieces." data-placeholder="Ready status: Sam Potter, 3 plates and 2 mugs">Ready?</button>
-            <button type="button" data-ember-prompt="Deadline: " data-topic="deadline_note" data-status="Deadline selected. Add the date and what it is for." data-placeholder="Deadline: May 12 show, 2 bowls and a vase">Deadline</button>
-            <button type="button" data-ember-prompt="Dropoff update: " data-topic="dropoff_change" data-status="Dropoff selected. Add piece count, sizes, or material notes." data-placeholder="Dropoff update: 3 plates, 2 mugs, cone 6 glaze">Dropoff</button>
+          <div class="ember-prompt-row" aria-label="Quick support starters">
+            <button type="button" data-ember-prompt="I'm ready for pickup: " data-topic="pickup_timing" data-status="Add your name/order and best pickup window." data-placeholder="I'm ready for pickup: Friday after 3, Sam Potter order">I'm ready for my stuff!</button>
+            <button type="button" data-ember-prompt="Can you check if my work is ready? " data-topic="ready_status" data-status="Add your name/order and pieces." data-placeholder="Can you check if my work is ready? Sam Potter, 3 plates and 2 mugs">Is my work ready?</button>
+            <button type="button" data-ember-prompt="I have a date coming up: " data-topic="deadline_note" data-status="Add the date and why it matters." data-placeholder="I have a date coming up: May 12 show, 2 bowls and a vase">I have a date coming up</button>
+            <button type="button" data-ember-prompt="I have dropoff details: " data-topic="dropoff_change" data-status="Add count, size, materials, or a photo." data-placeholder="I have dropoff details: 3 plates, 2 mugs, cone 6 glaze">I have dropoff details</button>
           </div>
           <div class="ember-contact-panel" data-ember-contact-panel hidden>
             <p><strong>Want staff to reply?</strong> Add a contact method and Ember will attach it to the studio note.</p>
@@ -110,7 +110,7 @@
           </div>
           <form class="ember-chat-form" data-ember-chat-form>
             <label for="ember-chat-message">Message Ember</label>
-            <textarea id="ember-chat-message" name="message" rows="3" maxlength="1000" placeholder="Type one thing Ember should help route." data-ember-chat-input required></textarea>
+            <textarea id="ember-chat-message" name="message" rows="3" maxlength="1000" placeholder="Tell Ember what would help." data-ember-chat-input required></textarea>
             <div class="ember-attachment-panel" data-ember-attachment-panel>
               <input id="ember-chat-photo" type="file" accept="image/jpeg,image/png,image/webp" data-ember-attachment-input />
               <label class="button button-ghost" for="ember-chat-photo">Add photo</label>
@@ -122,7 +122,7 @@
               <p>Photos are stored temporarily for staff and expire automatically.</p>
             </div>
             <div class="ember-chat-actions">
-              <span data-ember-chat-status aria-live="polite">Thread stays on this browser.</span>
+              <span data-ember-chat-status aria-live="polite">This thread stays in this browser.</span>
               <button class="button button-primary" type="submit">Send</button>
             </div>
           </form>
@@ -130,27 +130,29 @@
       </div>
     </section>
 
-    <section class="section section-band">
-      <div class="container split-grid">
-        <article class="request-panel">
-          <p class="eyebrow">What support can move</p>
-          <h2>Keep the request current.</h2>
-          <ul>
-            <li>Pickup window requests after the ready notice.</li>
-            <li>Deadline, class, show, or travel notes.</li>
-            <li>Photos, sizes, material notes, and dropoff changes before arrival.</li>
-          </ul>
-        </article>
-        <article class="request-panel route-note">
-          <p class="eyebrow">What staff confirms</p>
-          <h2>Pickup starts after staging.</h2>
-          <p>Ember can gather the details. Staff confirms timing after the work is fired, cooled, checked, and staged.</p>
-          <div class="cta-row">
-            <a class="button button-primary" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer" data-portal-target="support">Open studio account</a>
-          </div>
-        </article>
+    <section class="section section-tight support-faq-section" aria-labelledby="support-faq-title">
+      <div class="container">
+        <div class="section-kicker">
+          <p class="eyebrow">Quick answers</p>
+          <h2 id="support-faq-title" class="section-title">Three quick answers.</h2>
+        </div>
+        <div class="support-faq-grid">
+          <article class="support-faq-item">
+            <h3>Can I change my pickup time?</h3>
+            <p>Usually, yes. Send your name or order and the window you need. Staff will confirm.</p>
+          </article>
+          <article class="support-faq-item">
+            <h3>Is my work ready?</h3>
+            <p>Tap Is my work ready? Include your name or order. Staff confirms after firing, cooling, checking, and staging.</p>
+          </article>
+          <article class="support-faq-item">
+            <h3>Can I update a dropoff or deadline?</h3>
+            <p>Yes. Share the date, count, sizes, or photo as soon as you can.</p>
+          </article>
+        </div>
       </div>
     </section>
+
   </main>
 
   <button class="ember-dock" type="button" aria-controls="ember-chat" data-ember-dock hidden>
@@ -160,10 +162,10 @@
 
   <footer class="footer">
     <div class="container footer-grid">
-      <div><strong>Support/Pickup preview</strong><p>Pickup, timing, and request changes stay tied to one studio thread.</p></div>
+      <div><strong>Support/Pickup preview</strong><p>Pickup timing, ready checks, and reassurance in one thread.</p></div>
       <a href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Open support</a>
     </div>
   </footer>
-  <script src="/firing-care-preview/preview.js?v=ember-v20" defer></script>
+  <script src="/firing-care-preview/preview.js?v=ember-v23" defer></script>
 </body>
 </html>

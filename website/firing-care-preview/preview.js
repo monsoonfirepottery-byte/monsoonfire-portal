@@ -175,7 +175,7 @@
 
     const endpoint = chat.getAttribute("data-chat-endpoint") || "https://us-central1-monsoonfire-portal.cloudfunctions.net/apiV1/v1/support.chat.message";
     const attachmentEndpoint = chat.getAttribute("data-attachment-endpoint") || endpoint.replace("support.chat.message", "support.chat.attachment");
-    const initialEmberMessage = "Hi, I'm Ember. Tell me what changed: pickup window, ready status, deadline, or dropoff details. I'll help turn it into a clear studio note.";
+    const initialEmberMessage = "Hi, I'm Ember. Tell me what would help: pickup timing, a ready check, a deadline, dropoff details, or reassurance. I'll make it clear for the studio.";
     const defaultPlaceholder = input.getAttribute("placeholder") || "";
     const promptButtons = Array.from(chat.querySelectorAll("[data-ember-prompt]"));
     const maxAttachmentBytes = 512 * 1024;
@@ -301,19 +301,19 @@
           key: "studio_handoff",
           label: "Studio handoff",
           state: savedState.supportRequestId ? "done" : "optional",
-          detail: savedState.supportRequestId ? "Saved for staff review." : "Send a note if staff should review.",
+          detail: savedState.supportRequestId ? "Your note is saved." : "Send a note for staff.",
         },
         {
           key: "contact_method",
           label: "Contact method",
           state: savedState.contactAttached ? "done" : savedState.supportRequestId ? "needed" : "optional",
-          detail: savedState.contactAttached ? "Staff can reply directly if needed." : "Add email or phone if staff should reply.",
+          detail: savedState.contactAttached ? "Staff can reply if needed." : "Add email or phone for a reply.",
         },
         {
           key: "attachments",
           label: "Photos",
           state: attachments.length ? "done" : "optional",
-          detail: attachments.length ? `${attachments.length} photo${attachments.length === 1 ? "" : "s"} on the note.` : "Optional when fit or size matters.",
+          detail: attachments.length ? `${attachments.length} photo${attachments.length === 1 ? "" : "s"} on the note.` : "Helpful for size, glaze, or fit.",
         },
       ];
     };
@@ -352,45 +352,45 @@
 
     const promptPresets = {
       default: [
-        { label: "Pickup", prompt: "Pickup: ", topic: "pickup_timing", status: "Pickup selected. Add day, time, and name/order.", placeholder: "Pickup: Friday after 3, Sam Potter order" },
-        { label: "Ready?", prompt: "Ready status: ", topic: "ready_status", status: "Ready check selected. Add name/order and pieces.", placeholder: "Ready status: Sam Potter, 3 plates and 2 mugs" },
-        { label: "Deadline", prompt: "Deadline: ", topic: "deadline_note", status: "Deadline selected. Add the date and what it is for.", placeholder: "Deadline: May 12 show, 2 bowls and a vase" },
-        { label: "Dropoff", prompt: "Dropoff update: ", topic: "dropoff_change", status: "Dropoff selected. Add piece count, sizes, or material notes.", placeholder: "Dropoff update: 3 plates, 2 mugs, cone 6 glaze" },
+        { label: "I'm ready for my stuff!", prompt: "I'm ready for pickup: ", topic: "pickup_timing", status: "Add your name/order and best pickup window.", placeholder: "I'm ready for pickup: Friday after 3, Sam Potter order" },
+        { label: "Is my work ready?", prompt: "Can you check if my work is ready? ", topic: "ready_status", status: "Add your name/order and pieces.", placeholder: "Can you check if my work is ready? Sam Potter, 3 plates and 2 mugs" },
+        { label: "I have a date coming up", prompt: "I have a date coming up: ", topic: "deadline_note", status: "Add the date and why it matters.", placeholder: "I have a date coming up: May 12 show, 2 bowls and a vase" },
+        { label: "I have dropoff details", prompt: "I have dropoff details: ", topic: "dropoff_change", status: "Add count, size, materials, or a photo.", placeholder: "I have dropoff details: 3 plates, 2 mugs, cone 6 glaze" },
       ],
       pickup_timing: [
-        { label: "Window", prompt: "Pickup window: ", topic: "pickup_timing", status: "Add the day and window staff should review.", placeholder: "Pickup window: Friday after 3" },
-        { label: "Name/order", prompt: "Name/order: ", topic: "pickup_timing", status: "Add the name or order staff should match.", placeholder: "Name/order: Sam Potter" },
-        { label: "Pieces", prompt: "Pieces: ", topic: "pickup_timing", status: "Add the pieces tied to this pickup note.", placeholder: "Pieces: 2 mugs and 3 plates" },
-        { label: "Contact", action: "contact", status: "Add contact if staff should reply directly." },
+        { label: "My pickup window", prompt: "Pickup window: ", topic: "pickup_timing", status: "Add the day and window that would feel easiest.", placeholder: "Pickup window: Friday after 3" },
+        { label: "My name/order", prompt: "Name/order: ", topic: "pickup_timing", status: "Add the name or order staff should match.", placeholder: "Name/order: Sam Potter" },
+        { label: "My pieces", prompt: "Pieces: ", topic: "pickup_timing", status: "Add the pieces tied to this pickup note.", placeholder: "Pieces: 2 mugs and 3 plates" },
+        { label: "Contact", action: "contact", status: "Add contact for a staff reply." },
       ],
       account_status: [
-        { label: "Name/order", prompt: "Name/order: ", topic: "ready_status", status: "Add the name or order staff should match.", placeholder: "Name/order: Sam Potter" },
-        { label: "Pieces", prompt: "Pieces: ", topic: "ready_status", status: "Add the pieces involved in the ready-status check.", placeholder: "Pieces: 3 plates and 2 mugs" },
-        { label: "Pickup window", prompt: "Pickup window: ", topic: "pickup_timing", status: "Add the pickup window if one matters.", placeholder: "Pickup window: Saturday morning" },
-        { label: "Contact", action: "contact", status: "Add contact if staff should reply directly." },
+        { label: "My name/order", prompt: "Name/order: ", topic: "ready_status", status: "Add the name or order staff should match.", placeholder: "Name/order: Sam Potter" },
+        { label: "My pieces", prompt: "Pieces: ", topic: "ready_status", status: "Add the pieces for the ready check.", placeholder: "Pieces: 3 plates and 2 mugs" },
+        { label: "A pickup window", prompt: "Pickup window: ", topic: "pickup_timing", status: "Add a pickup window if it matters.", placeholder: "Pickup window: Saturday morning" },
+        { label: "Contact", action: "contact", status: "Add contact for a staff reply." },
       ],
       deadline_note: [
-        { label: "Date", prompt: "Deadline date: ", topic: "deadline_note", status: "Add the date staff should keep in mind.", placeholder: "Deadline date: May 12" },
-        { label: "Reason", prompt: "Deadline reason: ", topic: "deadline_note", status: "Add the show, class, travel, or gift note.", placeholder: "Deadline reason: class critique" },
-        { label: "Pieces", prompt: "Pieces: ", topic: "deadline_note", status: "Add the pieces tied to this deadline.", placeholder: "Pieces: 2 bowls and 1 vase" },
-        { label: "Contact", action: "contact", status: "Add contact if staff should reply directly." },
+        { label: "The date", prompt: "Deadline date: ", topic: "deadline_note", status: "Add the date staff should know.", placeholder: "Deadline date: May 12" },
+        { label: "Why it matters", prompt: "Deadline reason: ", topic: "deadline_note", status: "Add the show, class, travel, or gift note.", placeholder: "Deadline reason: class critique" },
+        { label: "The pieces", prompt: "Pieces: ", topic: "deadline_note", status: "Add the pieces tied to this date.", placeholder: "Pieces: 2 bowls and 1 vase" },
+        { label: "Contact", action: "contact", status: "Add contact for a staff reply." },
       ],
       dropoff_change: [
-        { label: "Piece count", prompt: "Piece count: ", topic: "dropoff_change", status: "Add the piece count for dropoff.", placeholder: "Piece count: 3 plates, 2 mugs" },
+        { label: "Piece count", prompt: "Piece count: ", topic: "dropoff_change", status: "Add what staff should expect.", placeholder: "Piece count: 3 plates, 2 mugs" },
         { label: "Size note", prompt: "Size note: ", topic: "dropoff_change", status: "Add wide, tall, or unusual fit notes.", placeholder: "Size note: one platter is wide and one vase is tall" },
-        { label: "Photo note", prompt: "Photo note: ", topic: "dropoff_change", status: "Describe what the photo should show for staff.", placeholder: "Photo note: top view on the size mat, side view for height" },
-        { label: "Contact", action: "contact", status: "Add contact if staff should reply directly." },
+        { label: "Photo note", prompt: "Photo note: ", topic: "dropoff_change", status: "Describe the photo or angle.", placeholder: "Photo note: top view on the size mat, side view for height" },
+        { label: "Contact", action: "contact", status: "Add contact for a staff reply." },
       ],
       pricing_fit: [
-        { label: "Normal batch", prompt: "Fit estimate: ", topic: "dropoff_change", status: "List the regular pieces in the batch.", placeholder: "Fit estimate: 3 plates and 2 mugs" },
-        { label: "Wide/tall", prompt: "Wide or tall piece: ", topic: "dropoff_change", status: "Add the piece that needs extra shelf room.", placeholder: "Wide or tall piece: one 14 inch platter" },
+        { label: "Regular pieces", prompt: "Fit estimate: ", topic: "dropoff_change", status: "List the regular pieces in the batch.", placeholder: "Fit estimate: 3 plates and 2 mugs" },
+        { label: "Wide/tall", prompt: "Wide or tall piece: ", topic: "dropoff_change", status: "Add the piece that needs room.", placeholder: "Wide or tall piece: one 14 inch platter" },
         { label: "Piece count", prompt: "Piece count: ", topic: "dropoff_change", status: "Add the total pieces staff should expect.", placeholder: "Piece count: 6 total pieces" },
-        { label: "Dropoff", prompt: "Dropoff update: ", topic: "dropoff_change", status: "Add any packing or arrival detail.", placeholder: "Dropoff update: packed in towels, ready for crates" },
+        { label: "Dropoff note", prompt: "Dropoff note: ", topic: "dropoff_change", status: "Add any packing or arrival detail.", placeholder: "Dropoff note: packed in towels, ready for crates" },
       ],
       handoff: [
-        { label: "Edit note", action: "summary", status: "Review the studio note before sending an update." },
-        { label: "Add contact", action: "contact", status: "Add contact if staff should reply directly." },
-        { label: "More detail", prompt: "More detail: ", topic: "support_preview_update", status: "Add a detail Ember should append to the studio note.", placeholder: "More detail: I can be flexible within 30 minutes" },
+        { label: "Edit note", action: "summary", status: "Review the note before sending an update." },
+        { label: "Add contact", action: "contact", status: "Add contact for a staff reply." },
+        { label: "More detail", prompt: "More detail: ", topic: "support_preview_update", status: "Add one more detail.", placeholder: "More detail: I can be flexible within 30 minutes" },
         { label: "New thread", action: "reset", status: "Start a clean Ember thread." },
       ],
     };
@@ -430,21 +430,21 @@
       if (supportId) {
         threadCard.hidden = false;
         if (savedState.thread && savedState.thread.title) {
-          threadState.textContent = savedState.contactAttached ? "Contact sent" : savedState.thread.state === "sent_to_studio" ? "Sent to studio" : "Saved for staff";
+          threadState.textContent = savedState.contactAttached ? "Contact attached" : savedState.thread.state === "sent_to_studio" ? "Sent to studio" : "Saved for staff";
           threadTitle.textContent = savedState.thread.title;
-          threadDetail.textContent = savedState.thread.detail || `Studio queue ref ${supportId}. Staff still confirms timing, readiness, and exceptions.`;
+          threadDetail.textContent = savedState.thread.detail || `Ref ${supportId}. Staff confirms timing, readiness, and anything unusual.`;
         } else if (savedState.contactAttached) {
-          threadState.textContent = "Contact sent";
+          threadState.textContent = "Contact attached";
           threadTitle.textContent = "Staff has the note and your contact.";
-          threadDetail.textContent = `Studio queue ref ${supportId}. Staff still confirms timing, readiness, and exceptions.`;
+          threadDetail.textContent = `Ref ${supportId}. Staff confirms timing, readiness, and anything unusual.`;
         } else if (savedState.supportEmailQueued) {
           threadState.textContent = "Sent to studio";
           threadTitle.textContent = "Studio note is with staff.";
-          threadDetail.textContent = `Queue ref ${supportId}. Add contact if staff should reply directly, or edit the summary if something is off.`;
+          threadDetail.textContent = `Ref ${supportId}. Add contact for a reply, or edit the summary.`;
         } else {
           threadState.textContent = "Saved for staff";
           threadTitle.textContent = "Studio note is saved.";
-          threadDetail.textContent = `Queue ref ${supportId}. Open the studio account for private account details.`;
+          threadDetail.textContent = `Ref ${supportId}. Open the studio account for private account details.`;
         }
         return;
       }
@@ -476,7 +476,7 @@
       const hasDraft = Boolean(input.value.trim());
       dock.toggleAttribute("hidden", chatMostlyVisible || (!hasThread && !hasDraft));
       if (dockState) {
-        if (savedState.contactAttached) dockState.textContent = "Contact sent";
+        if (savedState.contactAttached) dockState.textContent = "Contact attached";
         else if (savedState.supportEmailQueued) dockState.textContent = "Sent to studio";
         else if (hasStaffNote) dockState.textContent = "Staff note";
         else if (savedState.nextQuestion) dockState.textContent = "Needs detail";
@@ -589,7 +589,7 @@
       if (!message) return null;
       if (echo) addBubble(clientEcho || message, "client");
       setBusy("sending", true);
-      status.textContent = "Ember is reading that.";
+      status.textContent = "Ember is turning that into a studio note.";
 
       try {
         const contactPayload = includeContact ? collectContact() : { hasContact: false, contact: {}, consentToContact: false };
@@ -646,9 +646,9 @@
         applyPromptPreset(data.supportRequestId ? "handoff" : (data.triage && data.triage.intent) || topic || selectedTopic || "default");
 
         const actionMessage = data.contactAttached
-          ? "Contact sent to studio."
+          ? "Contact attached for staff."
           : topic === "support_preview_update"
-            ? data.supportEmailQueued ? "Summary update sent to studio." : "Summary updated."
+            ? data.supportEmailQueued ? "Updated note sent to studio." : "Summary updated."
             : data.supportEmailQueued
               ? "Sent to studio."
               : data.supportRequestId
@@ -663,10 +663,10 @@
           status.textContent = data.nextQuestion;
           if (data.contactRequested || data.supportRequestId) setContactVisible(true);
         } else if (data.contactRequested || data.supportRequestId) {
-          status.textContent = "Staff note saved. You can add contact or edit the summary.";
+          status.textContent = "Your note is saved. You can add contact or edit the summary.";
           setContactVisible(true);
         } else if (data.nextAction === "open_studio_account") {
-          status.textContent = "Use the studio account for private status. Ember can still collect the note.";
+          status.textContent = "Use the studio account for private status. Ember can still help shape the note.";
         } else {
           status.textContent = "Ready for the next detail. Ember is still here.";
         }
@@ -680,7 +680,7 @@
             ? error.message
             : "I can't reach the studio support link from this preview. Open the studio account so staff can keep the request tied together.";
         addBubble(message, "ember", true);
-        status.textContent = error && error.status ? "Ember could not send that note." : "Studio account is the fallback. Thread saved.";
+        status.textContent = error && error.status ? "Ember could not send that note." : "Studio account is the fallback. This thread stays here.";
         return null;
       } finally {
         setBusy("sending", false);
@@ -765,7 +765,7 @@
       if (!file) return null;
       setBusy("uploading", true);
       if (attachmentStatus) attachmentStatus.textContent = "Preparing photo.";
-      status.textContent = "Ember is preparing that photo.";
+      status.textContent = "Ember is getting that photo ready.";
 
       try {
         const image = await prepareAttachmentImage(file);
@@ -809,7 +809,7 @@
           attachmentStore: data.attachmentStore || "studio-brain-postgres",
           threadChecklist: Array.isArray(data.threadChecklist) ? data.threadChecklist.slice(0, 6) : savedState.threadChecklist || [],
         });
-        addBubble(`Photo attached for staff: ${attachment && attachment.fileName ? attachment.fileName : image.fileName}`, "client");
+        addBubble(`Photo added for staff: ${attachment && attachment.fileName ? attachment.fileName : image.fileName}`, "client");
         addBubble(data.emberMessage || "I added that photo to the studio note.", "ember");
         if (attachmentStatus) attachmentStatus.textContent = attachment && attachment.fileName ? attachment.fileName : "Photo attached";
         showActionToast("Photo added.");
@@ -917,7 +917,7 @@
           return;
         }
         await postChatMessage({
-          message: "Please add my contact details to this staff-review note.",
+          message: "Please add my contact details to this studio note.",
           topic: "contact_followup",
           includeContact: true,
           clientEcho: "I added my contact details for staff.",

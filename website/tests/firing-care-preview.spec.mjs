@@ -47,7 +47,21 @@ test.describe("firing care preview source", () => {
       await expect(page.locator('link[href*="/firing-care-preview/preview.css"]')).toHaveCount(1);
       await expect(page.locator('script[src*="/firing-care-preview/preview.js"]')).toHaveCount(1);
       await expect(page.locator("main#main")).toBeVisible();
+      await expect(page.getByText("A2C")).toHaveCount(0);
+      await expect(page.getByText("Agent-readable preview note")).toHaveCount(0);
+      await expect(page.getByText("What this site should make obvious")).toHaveCount(0);
+      await expect(page.getByText("Reference plan")).toHaveCount(0);
     }
+
+    await page.goto("/firing-care-preview/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Bring the work. We'll handle the fire." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Clear steps, fewer surprises." })).toBeVisible();
+    await expect(page.getByText("Before you drop off")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "A few details help us care for the work." })).toHaveCount(0);
+
+    await page.goto("/firing-care-preview/firing-services/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Drop off with a clear plan." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Quick is the goal. Careful is the rule." })).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
   });
@@ -55,6 +69,23 @@ test.describe("firing care preview source", () => {
   test("support page exposes Ember chat and keeps attachment UI local until used", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/firing-care-preview/support-pickup/", { waitUntil: "networkidle" });
+
+    await expect(page.getByRole("heading", { name: "Need pickup help?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tell Ember what would help." })).toBeVisible();
+    await expect(page.getByText("Tell Ember what changed.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "I'm ready for my stuff!" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Is my work ready?" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "I have a date coming up" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "I have dropoff details" })).toBeVisible();
+    const faq = page.locator(".support-faq-section");
+    await expect(faq).toBeVisible();
+    await expect(faq.getByRole("heading", { name: "Three quick answers." })).toBeVisible();
+    await expect(faq.locator(".support-faq-item")).toHaveCount(3);
+    await expect(faq).toContainText("Can I change my pickup time?");
+    await expect(faq).toContainText("Is my work ready?");
+    await expect(faq).toContainText("Can I update a dropoff or deadline?");
+    await expect(page.getByText("What support can move")).toHaveCount(0);
+    await expect(page.getByText("What staff confirms")).toHaveCount(0);
 
     const chat = page.locator("[data-ember-chat]");
     await expect(chat).toBeVisible();

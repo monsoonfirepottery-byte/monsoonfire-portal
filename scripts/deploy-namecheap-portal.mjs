@@ -80,6 +80,9 @@ const remoteRollbackPath = buildRemoteRollbackPath(options.remotePath);
 const remoteRollbackPathWithSlash = ensureTrailingSlash(remoteRollbackPath);
 const remoteUploadDirName = "staging";
 const remoteUploadPath = `${remotePathWithSlash}${remoteUploadDirName}`;
+assertSafeRemotePath(options.remotePath, "remote deploy path");
+assertSafeRemotePath(remoteRollbackPath, "remote rollback path");
+assertSafeRemoteName(remoteUploadDirName, "remote upload directory name");
 
 const webDist = resolve(repoRoot, "web", "dist");
 const htaccessTemplate = resolve(repoRoot, "web", "deploy", "namecheap", ".htaccess");
@@ -577,6 +580,28 @@ function ensureTrailingSlash(value) {
 function buildRemoteRollbackPath(value) {
   const trimmed = String(value || "").replace(/\/+$/, "");
   return `${trimmed}.__rollback__`;
+}
+
+function assertSafeRemotePath(value, label) {
+  const raw = String(value || "").trim();
+  const normalized = raw.replace(/\\/g, "/").replace(/\/+/g, "/");
+  if (!normalized || normalized === "/" || normalized === "." || normalized === "./" || normalized === "~" || normalized === "~/") {
+    fail(`Unsafe ${label}: ${raw || "(empty)"}`);
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.length === 0 || segments.includes("..")) {
+    fail(`Unsafe ${label}: ${raw}`);
+  }
+  if (/[;&|`$<>]/.test(normalized)) {
+    fail(`Unsafe ${label} contains shell metacharacters: ${raw}`);
+  }
+}
+
+function assertSafeRemoteName(value, label) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "." || raw === ".." || raw.includes("/") || raw.includes("\\") || /[;&|`$<>]/.test(raw)) {
+    fail(`Unsafe ${label}: ${raw || "(empty)"}`);
+  }
 }
 
 function toPortableShellPath(value) {

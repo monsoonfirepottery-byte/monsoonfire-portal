@@ -83,6 +83,29 @@ resolve_runner() {
   fi
 }
 
+assert_smoke_cleanup_path() {
+  local target="$1"
+  local root_real target_real
+  mkdir -p "${DATA_ROOT}" "${target}"
+  root_real="$(cd "${DATA_ROOT}" && pwd -P)"
+  target_real="$(cd "${target}" && pwd -P)"
+
+  if [[ -z "${target_real}" || "${target_real}" == "/" || "${target_real}" == "${root_real}" ]]; then
+    echo "Refusing to clean unsafe Bambu smoke output path: ${target}" >&2
+    return 1
+  fi
+
+  case "${target_real}" in
+    "${root_real}"/*)
+      return 0
+      ;;
+    *)
+      echo "Refusing to clean Bambu smoke output outside data root: ${target_real}" >&2
+      return 1
+      ;;
+  esac
+}
+
 print_status() {
   local as_json="${1:-0}"
   local current_target=""
@@ -194,6 +217,7 @@ PY
   fi
 
   if [[ "${exit_code}" -eq 0 && "${keep_output}" != "1" ]]; then
+    assert_smoke_cleanup_path "${output_dir}"
     rm -rf "${output_dir}"
   fi
 

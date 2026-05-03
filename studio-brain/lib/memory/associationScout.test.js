@@ -95,6 +95,9 @@ function createBundle() {
                 captured.childCodexHome && (0, node_fs_1.existsSync)((0, node_path_1.join)(captured.childCodexHome, "auth.json"))
                     ? (0, node_fs_1.readFileSync)((0, node_path_1.join)(captured.childCodexHome, "auth.json"), "utf8")
                     : "";
+            if (captured.childCodexHome) {
+                (0, node_fs_1.writeFileSync)((0, node_path_1.join)(captured.childCodexHome, "auth.json"), JSON.stringify({ access_token: "refreshed-session" }), "utf8");
+            }
             const schemaIndex = captured.args.indexOf("--output-schema");
             const outputIndex = captured.args.indexOf("-o");
             captured.schemaPath = schemaIndex >= 0 ? captured.args[schemaIndex + 1] : "";
@@ -158,6 +161,8 @@ function createBundle() {
         strict_1.default.notEqual(captured.childCodexHome, sourceCodexHome);
         strict_1.default.notEqual(captured.childHome, process.env.HOME ?? process.env.USERPROFILE ?? "");
         strict_1.default.match(String(captured.childAuthSnapshot || ""), /chatgpt-session/);
+        captured.sourceAuthAfterRun = (0, node_fs_1.readFileSync)(sourceAuthPath, "utf8");
+        strict_1.default.match(String(captured.sourceAuthAfterRun || ""), /refreshed-session/);
         strict_1.default.equal(Boolean(captured.prompt?.includes("\"bundleId\":\"bundle-1\"")), true);
         strict_1.default.equal(Boolean(captured.args?.includes("--output-schema")), true);
         strict_1.default.equal(Boolean(captured.args?.includes("-o")), true);

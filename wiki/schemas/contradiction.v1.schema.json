@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contradiction.v1.schema.json",
+  "title": "Studio Brain Wiki Contradiction",
+  "type": "object",
+  "required": ["schema", "contradictionId", "conflictFingerprint", "conflictKey", "severity", "status", "sourceRefs"],
+  "properties": {
+    "schema": { "const": "wiki-contradiction.v1" },
+    "contradictionId": { "type": "string" },
+    "conflictFingerprint": { "type": "string" },
+    "conflictKey": { "type": "string" },
+    "severity": { "type": "string", "enum": ["soft", "hard", "critical"] },
+    "status": { "type": "string", "enum": ["open", "in-review", "blocked", "resolved", "dismissed"] },
+    "claimAId": { "type": ["string", "null"] },
+    "claimBId": { "type": ["string", "null"] },
+    "recommendedAction": { "type": ["string", "null"] },
+    "sourceRefs": { "type": "array" }
+  },
+  "additionalProperties": true
+}

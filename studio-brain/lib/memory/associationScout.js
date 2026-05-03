@@ -179,13 +179,21 @@ function prepareIsolatedCodexHome(tempRoot, env = process.env) {
         return null;
     const homeRoot = (0, node_path_1.join)(tempRoot, "home");
     const isolatedCodexHome = (0, node_path_1.join)(homeRoot, ".codex");
+    const isolatedAuthPath = (0, node_path_1.join)(isolatedCodexHome, "auth.json");
     (0, node_fs_1.mkdirSync)(isolatedCodexHome, { recursive: true });
-    (0, node_fs_1.copyFileSync)(authPath, (0, node_path_1.join)(isolatedCodexHome, "auth.json"));
+    (0, node_fs_1.copyFileSync)(authPath, isolatedAuthPath);
     (0, node_fs_1.writeFileSync)((0, node_path_1.join)(isolatedCodexHome, "config.toml"), "", "utf8");
     return {
         codexHome: isolatedCodexHome,
         homeRoot,
+        sourceAuthPath: authPath,
+        isolatedAuthPath,
     };
+}
+function persistRefreshedCodexAuth(isolatedCodexHome) {
+    if (!isolatedCodexHome || !(0, node_fs_1.existsSync)(isolatedCodexHome.isolatedAuthPath))
+        return;
+    (0, node_fs_1.copyFileSync)(isolatedCodexHome.isolatedAuthPath, isolatedCodexHome.sourceAuthPath);
 }
 function resolveAssociationScoutProvider(env = process.env) {
     const normalized = clean(env.STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_PROVIDER).toLowerCase();
@@ -462,6 +470,7 @@ async function callCodexAssociationScout(input) {
             throw new Error(clean(result.stderr || result.stdout)
                 || `association scout codex exec failed (${result.exitCode}).`);
         }
+        persistRefreshedCodexAuth(isolatedCodexHome);
         const outputText = (0, node_fs_1.existsSync)(outputPath) ? (0, node_fs_1.readFileSync)(outputPath, "utf8") : "";
         const normalized = clean(outputText);
         if (!normalized) {

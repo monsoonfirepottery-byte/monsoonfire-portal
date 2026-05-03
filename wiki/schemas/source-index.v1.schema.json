@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "source-index.v1.schema.json",
+  "title": "Studio Brain Wiki Source Index",
+  "type": "object",
+  "required": ["schema", "generatedAt", "sources", "summary"],
+  "properties": {
+    "schema": { "const": "wiki-source-index.v1" },
+    "generatedAt": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sourceId", "sourceKind", "sourcePath", "contentHash", "ingestStatus"],
+        "properties": {
+          "sourceId": { "type": "string" },
+          "sourceKind": { "type": "string" },
+          "sourcePath": { "type": ["string", "null"] },
+          "sourceUri": { "type": ["string", "null"] },
+          "contentHash": { "type": ["string", "null"] },
+          "ingestStatus": { "type": "string" },
+          "chunkCount": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": { "type": "object" }
+  },
+  "additionalProperties": true
+}

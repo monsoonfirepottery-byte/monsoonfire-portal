@@ -76,6 +76,7 @@ import type {
   ControlTowerApprovalItem,
   ControlTowerEvent,
   ControlTowerHostCard,
+  ControlTowerIdleWorkerSummary,
   ControlTowerMemoryHealth,
   ControlTowerMemoryBrief,
   ControlTowerNextAction,
@@ -108,6 +109,7 @@ import {
 
 const CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"] as const;
 const CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"] as const;
+const CONTROL_TOWER_IDLE_WORKER_RELATIVE_PATH = ["output", "studio-brain", "idle-worker", "latest.json"] as const;
 const CONTROL_TOWER_STARTUP_SCORECARD_RELATIVE_PATH = ["output", "qa", "codex-startup-scorecard.json"] as const;
 const CONTROL_TOWER_EVENT_STREAM_POLL_MS = 5_000;
 const CONTROL_TOWER_EVENT_STREAM_HEARTBEAT_MS = 15_000;
@@ -226,16 +228,64 @@ function deriveArtifactConsolidationMode(
   return fallback;
 }
 
+function summarizeIdleWorkerJob(job: Record<string, unknown>): string {
+  const payloadSummary = toObjectRecord(job.payloadSummary);
+  const rawSummary = payloadSummary.summary ?? job.summary;
+  if (typeof rawSummary === "string") return rawSummary.trim();
+  if (rawSummary && typeof rawSummary === "object") return JSON.stringify(rawSummary);
+  return "";
+}
+
+function readControlTowerIdleWorkerSummary(repoRoot: string): ControlTowerIdleWorkerSummary | null {
+  const payload = readJsonFile<Record<string, unknown>>(
+    resolve(repoRoot, ...CONTROL_TOWER_IDLE_WORKER_RELATIVE_PATH)
+  );
+  if (!payload) return null;
+
+  const summary = toObjectRecord(payload.summary);
+  const jobs = (Array.isArray(payload.jobs) ? payload.jobs : [])
+    .map((entry) => {
+      const job = toObjectRecord(entry);
+      return {
+        id: toTrimmedString(job.id),
+        status: toTrimmedString(job.status) || null,
+        durationMs: toNullableNumber(job.durationMs),
+        summary: summarizeIdleWorkerJob(job),
+      };
+    })
+    .filter((job) => job.id)
+    .slice(0, 32);
+
+  return {
+    runId: toTrimmedString(payload.runId) || null,
+    status: toTrimmedString(payload.status) || null,
+    profile: toTrimmedString(payload.profile) || null,
+    generatedAt: toTrimmedString(payload.generatedAt) || null,
+    completedAt: toTrimmedString(payload.completedAt) || null,
+    artifactPath: CONTROL_TOWER_IDLE_WORKER_RELATIVE_PATH.join("/"),
+    summary: {
+      planned: toBoundedInt(summary.planned, 0, 0, 1_000_000),
+      passed: toBoundedInt(summary.passed, 0, 0, 1_000_000),
+      warning: toBoundedInt(summary.warning, 0, 0, 1_000_000),
+      failed: toBoundedInt(summary.failed, 0, 0, 1_000_000),
+      skipped: toBoundedInt(summary.skipped, 0, 0, 1_000_000),
+    },
+    jobs,
+  };
+}
+
 function readControlTowerMemoryBrief(repoRoot: string, fallback: ControlTowerMemoryBrief): ControlTowerMemoryBrief {
   const targetPath = resolve(repoRoot, ...CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH);
   const payload = readJsonFile<Record<string, unknown>>(targetPath);
   const consolidationArtifact = readJsonFile<Record<string, unknown>>(
     resolve(repoRoot, ...CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH)
   );
+  const idleWorker = readControlTowerIdleWorkerSummary(repoRoot);
   if (!payload) {
     return {
       ...fallback,
       sourcePath: fallback.sourcePath || CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH.join("/"),
+      idleWorker: idleWorker ?? fallback.idleWorker ?? null,
       consolidation: {
         ...fallback.consolidation,
         mode: deriveArtifactConsolidationMode(consolidationArtifact, fallback.consolidation.mode),
@@ -278,6 +328,7 @@ function readControlTowerMemoryBrief(repoRoot: string, fallback: ControlTowerMem
     recommendedNextActions: toStringList(payload.recommendedNextActions, 8),
     fallbackSources: toStringList(payload.fallbackSources, 8),
     sourcePath: CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH.join("/"),
+    idleWorker: idleWorker ?? fallback.idleWorker ?? null,
     layers: {
       coreBlocks: toStringList(layers.coreBlocks, 8),
       workingMemory: toStringList(layers.workingMemory, 8),
@@ -613,6 +664,38 @@ function buildSyntheticControlTowerEvents(
       lastError: memoryBrief.consolidation.lastError ?? null,
     },
   });
+
+  if (memoryBrief.idleWorker) {
+    const idleWorker = memoryBrief.idleWorker;
+    const at = idleWorker.completedAt || idleWorker.generatedAt || memoryBrief.generatedAt;
+    output.push({
+      id: `idle-worker:${idleWorker.runId || at}`,
+      at,
+      kind: "operator",
+      type: "task.updated",
+      runId: idleWorker.runId,
+      agentId: null,
+      channel: "memory",
+      occurredAt: at,
+      severity: idleWorker.summary.failed > 0 ? "critical" : idleWorker.summary.warning > 0 ? "warning" : "info",
+      title:
+        idleWorker.summary.failed > 0
+          ? "Idle worker needs attention"
+          : idleWorker.summary.warning > 0
+            ? "Idle worker completed with warnings"
+            : "Idle worker completed",
+      summary: clipText(
+        `Ran ${idleWorker.summary.planned} jobs: ${idleWorker.summary.passed} passed, ${idleWorker.summary.warning} warnings, ${idleWorker.summary.failed} failed.`,
+        220,
+      ),
+      actor: "studio-brain-idle-worker",
+      roomId: null,
+      serviceId: null,
+      actionLabel: null,
+      sourceAction: "control_tower.idle_worker",
+      payload: idleWorker as unknown as Record<string, unknown>,
+    });
+  }
 
   approvals
     .filter((approval) => approval.status === "pending_approval")

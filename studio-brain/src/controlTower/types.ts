@@ -274,6 +274,28 @@ export type ControlTowerMemoryConsolidation = {
   lastError?: string | null;
 };
 
+export type ControlTowerIdleWorkerSummary = {
+  runId: string | null;
+  status: string | null;
+  profile: string | null;
+  generatedAt: string | null;
+  completedAt: string | null;
+  artifactPath: string | null;
+  summary: {
+    planned: number;
+    passed: number;
+    warning: number;
+    failed: number;
+    skipped: number;
+  };
+  jobs: Array<{
+    id: string;
+    status: string | null;
+    durationMs: number | null;
+    summary: string;
+  }>;
+};
+
 export type ControlTowerMemoryBrief = {
   schema: "studio-brain.memory-brief.v1";
   generatedAt: string;
@@ -292,6 +314,7 @@ export type ControlTowerMemoryBrief = {
     canonicalMemory: string[];
   };
   consolidation: ControlTowerMemoryConsolidation;
+  idleWorker: ControlTowerIdleWorkerSummary | null;
 };
 
 export type ControlTowerStartupScorecard = {

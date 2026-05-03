@@ -377,6 +377,7 @@ function refreshBriefAfterMutation(repoRoot: string, brief: PartnerBrief): Partn
         maintenanceActions: [],
         outputs: [brief.artifacts.latestBriefPath, brief.artifacts.openLoopsPath],
       },
+      idleWorker: null,
     },
     [],
     openLoops,

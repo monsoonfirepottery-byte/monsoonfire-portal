@@ -560,18 +560,31 @@ function buildMissionBoard(rows: ControlTowerRoomSummary[]): ControlTowerBoardRo
 }
 
 function buildMemoryMaintenanceRow(memoryBrief: ControlTowerMemoryBrief): ControlTowerBoardRow {
+  const idleWorker = memoryBrief.idleWorker;
+  const idleTask = idleWorker
+    ? `Idle worker ${idleWorker.status || "unknown"}: ${idleWorker.summary.planned} jobs, ${idleWorker.summary.passed} passed, ${idleWorker.summary.warning} warnings, ${idleWorker.summary.failed} failed.`
+    : "";
   const status = memoryBrief.consolidation.status || memoryBrief.consolidation.mode;
+  const hasIdleFailures = (idleWorker?.summary.failed ?? 0) > 0;
+  const hasIdleWarnings = (idleWorker?.summary.warning ?? 0) > 0;
+  const next = hasIdleFailures
+    ? "Inspect the latest idle-worker artifact."
+    : hasIdleWarnings
+      ? "Review idle-worker warnings before promoting write-capable lanes."
+      : memoryBrief.consolidation.mode === "repair" || memoryBrief.consolidation.status === "failed"
+        ? "Repair continuity"
+        : "Review dream-cycle outputs";
   return {
     id: "board:memory-maintenance",
     owner: "Memory maintenance",
-    task: clipText(memoryBrief.consolidation.summary || "Dream-cycle maintenance is waiting for the next quiet window.", 120),
-    state: status || "idle",
-    blocker: memoryBrief.consolidation.lastError || memoryBrief.blockers[0] || "",
-    next:
-      memoryBrief.consolidation.mode === "repair" || memoryBrief.consolidation.status === "failed"
-        ? "Repair continuity"
-        : "Review dream-cycle outputs",
-    last_update: memoryBrief.consolidation.lastRunAt || memoryBrief.generatedAt,
+    task: clipText(idleTask || memoryBrief.consolidation.summary || "Dream-cycle maintenance is waiting for the next quiet window.", 120),
+    state: idleWorker?.status || status || "idle",
+    blocker:
+      hasIdleFailures
+        ? "Idle worker has failed jobs."
+        : memoryBrief.consolidation.lastError || memoryBrief.blockers[0] || "",
+    next,
+    last_update: idleWorker?.completedAt || memoryBrief.consolidation.lastRunAt || memoryBrief.generatedAt,
     roomId: null,
     sessionName: null,
   };
@@ -679,6 +692,7 @@ function buildFallbackMemoryBrief(
       topActions: recommendedNextActions.slice(0, 3),
       lastError: null,
     },
+    idleWorker: null,
   };
 }
 

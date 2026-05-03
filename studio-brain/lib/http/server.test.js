@@ -321,6 +321,7 @@ function createControlTowerFixture() {
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "overseer", "discord"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-brief"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "studio-brain", "memory-consolidation"), { recursive: true });
+    (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "studio-brain", "idle-worker"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "qa"), { recursive: true });
     (0, node_fs_1.mkdirSync)((0, node_path_1.join)(root, "output", "agent-runs", "run-background-1"), { recursive: true });
     (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "ops-cockpit", "agents", "sb-room.json"), `${JSON.stringify({
@@ -407,6 +408,53 @@ function createControlTowerFixture() {
         outputs: [
             "output/studio-brain/memory-brief/latest.json",
             "output/studio-brain/memory-consolidation/latest.json",
+        ],
+    }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "studio-brain", "idle-worker", "latest.json"), `${JSON.stringify({
+        schema: "studiobrain-idle-worker-v1",
+        runId: "idle-worker-fixture",
+        generatedAt: "2026-03-30T10:06:00.000Z",
+        completedAt: "2026-03-30T10:06:19.000Z",
+        status: "passed_with_warnings",
+        profile: "idle",
+        summary: {
+            planned: 13,
+            passed: 11,
+            warning: 2,
+            failed: 0,
+            skipped: 0,
+        },
+        jobs: [
+            {
+                id: "memory-consolidation",
+                status: "passed",
+                durationMs: 13000,
+                payloadSummary: {
+                    summary: "Processed 95 candidates.",
+                },
+            },
+            {
+                id: "wiki-contradiction-scan",
+                status: "warning",
+                durationMs: 700,
+                payloadSummary: {
+                    summary: {
+                        contradictions: 1,
+                        hard: 1,
+                    },
+                },
+            },
+            {
+                id: "wiki-export-drift-check",
+                status: "warning",
+                durationMs: 700,
+                payloadSummary: {
+                    summary: {
+                        exports: 4,
+                        drift: 4,
+                    },
+                },
+            },
         ],
     }, null, 2)}\n`, "utf8");
     (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "qa", "codex-startup-scorecard.json"), `${JSON.stringify({
@@ -3441,6 +3489,11 @@ function createControlTowerRunner() {
                 "Reuse the promoted approval summary memory as the canonical startup thread.",
                 "Review and split the unknown mail-thread cluster before the next dream pass.",
             ]);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.status, "passed_with_warnings");
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.summary.planned, 13);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.summary.warning, 2);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.jobs.some((entry) => entry.id === "wiki-contradiction-scan" && /contradictions/.test(entry.summary)), true);
+            strict_1.default.equal(payload.state.board.some((entry) => entry.owner === "Memory maintenance" && /13 jobs/.test(entry.task)), true);
             strict_1.default.equal(payload.state.startupScorecard?.rubric.grade, "A");
             strict_1.default.equal(payload.state.startupScorecard?.rubric.overallScore, 98);
             strict_1.default.equal(payload.state.startupScorecard?.metrics.readyRate, 0.98);
@@ -3474,6 +3527,7 @@ function createControlTowerRunner() {
             strict_1.default.equal(payload.state.overview.needsAttention.some((entry) => /secret-bearing memories need review|shadow mcp memory needs governance review/i.test(entry.title)), true);
             strict_1.default.ok(payload.state.events.some((entry) => entry.type === "memory.promoted"));
             strict_1.default.ok(payload.state.events.some((entry) => entry.sourceAction === "control_tower.memory_consolidation"));
+            strict_1.default.ok(payload.state.events.some((entry) => entry.sourceAction === "control_tower.idle_worker"));
             const roomResponse = await fetch(`${baseUrl}/api/control-tower/rooms/portal`, {
                 headers: { authorization: "Bearer test-staff" },
             });
@@ -3947,6 +4001,9 @@ function createControlTowerRunner() {
             strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "control_tower.memory_consolidation" &&
                 entry.type === "memory.promoted" &&
                 entry.payload?.mode === "scheduled"));
+            strict_1.default.ok(eventsPayload.events.some((entry) => entry.sourceAction === "control_tower.idle_worker" &&
+                entry.type === "task.updated" &&
+                entry.payload?.status === "passed_with_warnings"));
             const sseResponse = await fetch(`${baseUrl}/api/control-tower/events?stream=1&once=1`, {
                 headers: {
                     authorization: "Bearer test-staff",
@@ -3957,6 +4014,7 @@ function createControlTowerRunner() {
             const sseText = await sseResponse.text();
             strict_1.default.match(sseText, /event:\s+memory\.promoted/);
             strict_1.default.match(sseText, /control_tower\.memory_consolidation/);
+            strict_1.default.match(sseText, /control_tower\.idle_worker/);
         });
     }
     finally {

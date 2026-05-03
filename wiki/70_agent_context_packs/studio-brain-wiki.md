@@ -14,11 +14,11 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 914198f1a7ce29c982b02b34204e0ee343e2863f8dc8d92790e3b5fbb6aa1860
+export_hash: d63c724cffbccb97df8ac4ac30ab8f2c3f321ac91fe857e82d62db35a457c747
 ---
 # Studio Brain Wiki Context Pack
 
-Snapshot: e4756483435b710a43304f1219520a5bec0eee5212eaa9ac3afd12da7f55897b
+Snapshot: 7319cf63c5171e42c73ee82029960f048a1ea9bb66adc97ad7406bcd04757f32
 
 ## Usefulness Signals
 
@@ -26,11 +26,11 @@ Snapshot: e4756483435b710a43304f1219520a5bec0eee5212eaa9ac3afd12da7f55897b
 - wiki-relevant outcomes: 1; helpful: 1; stale_or_misleading: 0; minutes_saved: 18
 
 ## Verified Operational Context
-- Monsoon Fire has decommissioned all membership tiers and uses straight pricing for services only. [claim_57ec680d6070e4f40169; docs/policies/service-pricing-and-membership-decommission.md#L1]
-- Monsoon Fire kiln firing service pricing has three lanes: low fire, mid fire, and custom; each lane is priced by the half shelf. Volume pricing and cubic-inch pricing are not used. [claim_ae5fcb85bab41a024b86; docs/policies/service-pricing-and-membership-decommission.md#L1]
+
+No VERIFIED or OPERATIONAL_TRUTH wiki claims are currently available. Agents must use repo/source reads for operational claims.
 
 ## Warnings
-- unverified-claims-excluded-summary: 272 total; showing 10; omitted 262
+- unverified-claims-excluded-summary: 259 total; showing 10; omitted 249
 - unverified-claim-excluded: policy-doc:docs/policies/accessibility.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/agent_policy_actions.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/agent_work_intake_policy.md (requires human approval)
@@ -42,4 +42,4 @@ Snapshot: e4756483435b710a43304f1219520a5bec0eee5212eaa9ac3afd12da7f55897b
 - unverified-claim-excluded: policy-doc:docs/policies/media-accessibility.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/payments-refunds.md (requires human approval)
 - active-contradictions-summary: 1 total; showing 1; omitted 0
-- blocked-source-drift-after-operational-truth: membership-required-vs-decommission (current truth: claim_57ec680d6070e4f40169; update stale sources before customer-facing use; gate: Blocked until the website/portal redesign owner updates customer-facing surfaces or the user explicitly reopens that edit surface.)
+- open-contradiction: membership-required-vs-decommission

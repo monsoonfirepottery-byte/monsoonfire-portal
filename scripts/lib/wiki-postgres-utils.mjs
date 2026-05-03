@@ -77,7 +77,6 @@ const APPROVED_SOURCE_ROOTS = [
   "config/studiobrain",
   "docs",
   "functions/src",
-  "memory/accepted",
   "scripts",
   "studio-brain/docs",
   "studio-brain/src",

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "context-pack.v1.schema.json",
+  "title": "Studio Brain Wiki Context Pack",
+  "type": "object",
+  "required": ["schema", "contextPackId", "packKey", "title", "status", "generatedText", "items", "warnings"],
+  "properties": {
+    "schema": { "const": "wiki-context-pack.v1" },
+    "contextPackId": { "type": "string" },
+    "packKey": { "type": "string" },
+    "title": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "stale", "deprecated", "draft"] },
+    "generatedText": { "type": "string" },
+    "items": { "type": "array" },
+    "warnings": { "type": "array" },
+    "budget": { "type": "object" }
+  },
+  "additionalProperties": true
+}

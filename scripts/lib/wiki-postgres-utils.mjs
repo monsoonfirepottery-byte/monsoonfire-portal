@@ -149,7 +149,7 @@ const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns n
 
 export const DEFAULT_WIKI_OUTCOMES_PATH = process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH
   ? resolve(REPO_ROOT, process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH)
-  : resolve(REPO_ROOT, "output/studio-brain/agent-harness/outcomes.jsonl");
+  : resolve(WIKI_ROOT, "00_source_index", "outcome-ledger.jsonl");
 
 const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only\s+(benefit|benefits|feature|features|logistics|pricing|plan|plans|membership|access|page|pages|content|area|areas)|active studio members|membership tiers include|memberships are tiered|membership(s)?\s+(is|are)\s+required\b|membership(s)?\b.{0,40}\brequired\s+(before|to|for)\b|membership plan|current tier|storage discounts|storage and discounts)\b/i;
 

@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 9b599d4fa0b218d1c1afed7fee7d98f07b071f565815916e89af736df35ef989
+export_hash: ce81de65b041ee5f27ef95ed479ab7873ac5d6f1265d53d946e3f8f676cf7029
 ---
 
 # Source Map
 
-Snapshot: 9b599d4fa0b218d1c1afed7fee7d98f07b071f565815916e89af736df35ef989
+Snapshot: ce81de65b041ee5f27ef95ed479ab7873ac5d6f1265d53d946e3f8f676cf7029
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -609,7 +609,7 @@ Snapshot: 9b599d4fa0b218d1c1afed7fee7d98f07b071f565815916e89af736df35ef989
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `505f7366c6e1` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `ad39dbf12605` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `b31a5f9b1a5c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 30 | `d8a0fa5ab24c` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 31 | `5c15ccea27e8` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `9f8548f535be` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `c3a4de589100` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `e58affa06efe` |
@@ -791,6 +791,7 @@ Snapshot: 9b599d4fa0b218d1c1afed7fee7d98f07b071f565815916e89af736df35ef989
 | `scripts/validate-well-known.mjs` | indexed | repo | 5 | `3455b0e9fc25` |
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `702adc22d926` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `cd73819cf645` |
+| `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `7c69dbe21c55` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `159adc1e052a` |
 | `storage.rules` | indexed | repo | 1 | `f04626065d5f` |

@@ -147,7 +147,7 @@ const NO_VOLUME_PRICING_PATTERN = /\b(do not bill by kiln volume|do not measure 
 
 const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns no|forbidden|deny|not allowed|should not|must not|without volume pricing|no billing-path matches)\b/i;
 
-const DEFAULT_WIKI_OUTCOMES_PATH = process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH
+export const DEFAULT_WIKI_OUTCOMES_PATH = process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH
   ? resolve(REPO_ROOT, process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH)
   : resolve(REPO_ROOT, "output/studio-brain/agent-harness/outcomes.jsonl");
 

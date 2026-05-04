@@ -274,13 +274,14 @@ export type ControlTowerMemoryConsolidation = {
   lastError?: string | null;
 };
 
-export type ControlTowerIdleWorkerSummary = {
+export type ControlTowerIdleWorkerRunDigest = {
   runId: string | null;
   status: string | null;
   profile: string | null;
   generatedAt: string | null;
+  startedAt?: string | null;
   completedAt: string | null;
-  artifactPath: string | null;
+  dryRun?: boolean;
   summary: {
     planned: number;
     passed: number;
@@ -288,6 +289,36 @@ export type ControlTowerIdleWorkerSummary = {
     failed: number;
     skipped: number;
   };
+  utilization: {
+    attemptedJobs: number;
+    activeJobDurationMs: number | null;
+    runDurationMs: number | null;
+    averageJobDurationMs: number | null;
+    longestJob: {
+      id: string;
+      status: string | null;
+      durationMs: number | null;
+    } | null;
+    failedJobIds: string[];
+    warningJobIds: string[];
+    skippedJobIds: string[];
+    idleReason: string | null;
+    nextRecommendedJob: string | null;
+  };
+};
+
+export type ControlTowerIdleWorkerSummary = ControlTowerIdleWorkerRunDigest & {
+  artifactPath: string | null;
+  historyPath: string | null;
+  ageMinutes: number | null;
+  stale: boolean;
+  problemClusters: Array<{
+    jobId: string;
+    affectedRuns: number;
+    warningRuns: number;
+    failedRuns: number;
+  }>;
+  recentRuns: ControlTowerIdleWorkerRunDigest[];
   jobs: Array<{
     id: string;
     status: string | null;

@@ -140,3 +140,47 @@ test("wiki startup pack audit warns when pack is honest but not startup-eligible
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("wiki startup pack audit allows bounded verified core with broad excluded backlog", () => {
+  const root = mkdtempSync(join(tmpdir(), "wiki-startup-pack-bounded-core-"));
+  try {
+    writeJson(join(root, "output/wiki/context-refresh.json"), contextPack({
+      warnings: [
+        { type: "unverified-claims-excluded-summary", total: 80, shown: 10, omitted: 70 },
+        { type: "unverified-claim-excluded", claimId: "claim_gated", requiresHumanApproval: true },
+      ],
+      budget: {
+        chars: 80,
+        verifiedClaims: 1,
+        warningCount: 2,
+        totalWarningItems: 80,
+        humanApprovalClaimCount: 1,
+        activeContradictionCount: 0,
+        outcomeVerdict: "insufficient_real_usage",
+      },
+    }));
+    writeJsonl(join(root, "wiki/00_source_index/extracted-facts.jsonl"), [
+      {
+        claimId: "claim_verified",
+        status: "VERIFIED",
+        requiresHumanApproval: false,
+        sourceRefs: [{ sourcePath: "docs/runbooks/example.md", lineStart: 1, lineEnd: 2 }],
+      },
+      { claimId: "claim_gated", status: "EXTRACTED", requiresHumanApproval: true, sourceRefs: [] },
+    ]);
+
+    const report = auditWikiStartupPack({
+      repoRoot: root,
+      artifact: "output/audit.json",
+      markdown: "output/audit.md",
+      maxWarningItems: 50,
+    });
+
+    assert.equal(report.status, "warn");
+    assert.equal(report.startupEligible, true);
+    assert.equal(report.metrics.totalWarningItems, 80);
+    assert.equal(report.findings.some((finding) => finding.code === "startup-warning-volume-too-high"), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

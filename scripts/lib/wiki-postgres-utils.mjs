@@ -139,6 +139,8 @@ const CONTRADICTION_SCAN_EXCLUDED_PATHS = new Set([
 
 const SERVICE_PRICING_POLICY_PATH = "docs/policies/service-pricing-and-membership-decommission.md";
 
+const WIKI_DECISION_SOURCE_ROOT = "wiki/40_decisions/";
+
 const VOLUME_PRICING_PATTERN = /\b(by volume|per cubic inch|volume pricing|useVolumePricing|volumeIn3)\b/i;
 
 const NO_VOLUME_PRICING_PATTERN = /\b(do not bill by kiln volume|do not measure kiln volume for billing|not based on kiln volume|no-volume billing|no volume pricing|does not use volume pricing|no cubic-inch pricing)\b/i;
@@ -147,7 +149,7 @@ const GUARDRAIL_VOLUME_CONTEXT_PATTERN = /\b(assertNoMatches|repo grep|returns n
 
 const DEFAULT_WIKI_OUTCOMES_PATH = process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH
   ? resolve(REPO_ROOT, process.env.STUDIO_BRAIN_WIKI_OUTCOMES_PATH)
-  : "";
+  : resolve(REPO_ROOT, "output/studio-brain/agent-harness/outcomes.jsonl");
 
 const MEMBERSHIP_ACTIVE_MODEL_PATTERN = /\b(member-only\s+(benefit|benefits|feature|features|logistics|pricing|plan|plans|membership|access|page|pages|content|area|areas)|active studio members|membership tiers include|memberships are tiered|membership(s)?\s+(is|are)\s+required\b|membership(s)?\b.{0,40}\brequired\s+(before|to|for)\b|membership plan|current tier|storage discounts|storage and discounts)\b/i;
 
@@ -575,6 +577,69 @@ function makeClaim({
   };
 }
 
+function parseSimpleFrontmatter(markdown) {
+  const text = normalizeTextContent(markdown);
+  if (!text.startsWith("---\n")) return { data: {}, body: text };
+  const end = text.indexOf("\n---", 4);
+  if (end === -1) return { data: {}, body: text };
+  const frontmatter = text.slice(4, end).trim();
+  const body = text.slice(end + 4).replace(/^\n+/, "");
+  const data = {};
+  for (const line of frontmatter.split("\n")) {
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!match) continue;
+    const key = match[1];
+    const raw = match[2].trim();
+    if (raw === "null") {
+      data[key] = null;
+      continue;
+    }
+    if (raw.startsWith("[") && raw.endsWith("]")) {
+      try {
+        data[key] = JSON.parse(raw);
+        continue;
+      } catch {
+        data[key] = raw;
+        continue;
+      }
+    }
+    if (/^-?\d+(\.\d+)?$/.test(raw)) {
+      data[key] = Number(raw);
+      continue;
+    }
+    data[key] = raw.replace(/^"(.*)"$/, "$1");
+  }
+  return { data, body };
+}
+
+function firstMeaningfulBodyText(markdown, maxParagraphs = 4) {
+  const paragraphs = normalizeTextContent(markdown)
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/^#{1,6}\s+.+$/gm, "").trim())
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter((paragraph) => paragraph.length > 0);
+  return paragraphs.slice(0, maxParagraphs).join(" ");
+}
+
+function sourceRefsFromFrontmatterRefs(value) {
+  const refs = Array.isArray(value) ? value : [];
+  return refs
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const match = entry.match(/^(.+?)(?:#L(\d+)(?:-L?(\d+))?)?$/);
+      const sourcePath = match?.[1] || entry;
+      const lineStart = match?.[2] ? Number(match[2]) : null;
+      const lineEnd = match?.[3] ? Number(match[3]) : lineStart;
+      return {
+        sourcePath,
+        refRole: "supports",
+        lineStart,
+        lineEnd,
+      };
+    });
+}
+
 function hasHumanApprovalMetadata(claim) {
   const metadata = claim?.metadata || {};
   return Boolean(metadata.approvedBy && metadata.approvedAt);
@@ -697,6 +762,59 @@ export function extractClaims(index, options = {}) {
         chunk,
         confidence: 0.88,
       }));
+      continue;
+    }
+
+    if (source.sourcePath.startsWith(WIKI_DECISION_SOURCE_ROOT) && source.sourcePath.endsWith(".md")) {
+      const chunk = sourceChunks[0];
+      const sourceContent = sourceChunks
+        .sort((left, right) => (left.lineStart || 0) - (right.lineStart || 0))
+        .map((entry) => entry.content || "")
+        .join("\n\n");
+      const { data: frontmatter, body } = parseSimpleFrontmatter(sourceContent);
+      const status = String(frontmatter.status || "").trim();
+      const agentAllowedUse = String(frontmatter.agent_allowed_use || "").trim();
+      if (
+        ["VERIFIED", "OPERATIONAL_TRUTH"].includes(status) &&
+        ["planning_context", "operational_context"].includes(agentAllowedUse)
+      ) {
+        const objectText = firstMeaningfulBodyText(body);
+        if (objectText) {
+          const approvalMetadata = {
+            statusSource: "wiki-decision-frontmatter",
+            wikiPageId: frontmatter.id || null,
+            wikiPageTitle: frontmatter.title || source.sourcePath,
+            lastVerified: frontmatter.last_verified || null,
+            lastChangedBy: frontmatter.last_changed_by || null,
+            approvedBy: `wiki-decision:${frontmatter.owner || "owner"}`,
+            approvedAt: frontmatter.last_verified || "unknown",
+            approvalScope: "Existing wiki decision frontmatter; not an autonomous promotion.",
+            sourceRefs: sourceRefsFromFrontmatterRefs(frontmatter.source_refs),
+          };
+          const claim = makeClaim({
+            tenantScope,
+            claimKind: "decision",
+            subjectKey: frontmatter.id || `wiki-decision:${source.sourcePath}`,
+            predicateKey: "states",
+            objectText,
+            source,
+            chunk,
+            confidence: Number(frontmatter.confidence || 0.9),
+            status,
+            truthStatus: "known_truth",
+            agentAllowedUse,
+            requiresHumanApproval: false,
+            humanApprovalReason: null,
+            owner: frontmatter.owner || "platform",
+            metadata: approvalMetadata,
+          });
+          const frontmatterRefs = approvalMetadata.sourceRefs;
+          if (frontmatterRefs.length > 0) {
+            claim.sourceRefs = [...claim.sourceRefs, ...frontmatterRefs];
+          }
+          add(claim);
+        }
+      }
       continue;
     }
 
@@ -1722,6 +1840,15 @@ function claimSetKey(claims = []) {
   );
 }
 
+function isStartupCoreEligible(pack, competitionRisk, options = {}) {
+  const maxWarningCount = Number(options.maxStartupWarningCount ?? 50);
+  const maxChars = Number(options.maxStartupChars ?? 4000);
+  return competitionRisk.status !== "unsafe" &&
+    Number(pack?.budget?.verifiedClaims || 0) > 0 &&
+    Number(pack?.budget?.warningCount || 0) <= maxWarningCount &&
+    Number(pack?.budget?.chars || 0) <= maxChars;
+}
+
 export function buildIdleTaskQueueReport(options = {}) {
   const tenantScope = options.tenantScope || "monsoonfire-main";
   const index = options.index || buildSourceIndex(options);
@@ -1730,9 +1857,7 @@ export function buildIdleTaskQueueReport(options = {}) {
   const drift = options.drift || buildExportDriftReport({ ...options, index, extraction, scan });
   const pack = options.contextPack || generateContextPack(extraction.claims, scan.contradictions, options);
   const competitionRisk = analyzeWikiCompetitionRisk(extraction.claims, pack, scan.contradictions);
-  const startupEligible = competitionRisk.status !== "unsafe" &&
-    pack.budget.verifiedClaims > 0 &&
-    pack.budget.totalWarningItems <= 50;
+  const startupEligible = isStartupCoreEligible(pack, competitionRisk, options);
   const dbProbe = options.dbProbe || buildDbProbeReport();
   const humanApprovalClaims = extraction.claims.filter((claim) => claim.requiresHumanApproval);
   const operationalTruthClaims = extraction.claims.filter((claim) => claim.status === "OPERATIONAL_TRUTH");
@@ -1984,23 +2109,22 @@ export function buildWikiEffectivenessAudit(options = {}) {
   const scan = detectContradictions(index, extraction.claims);
   const pack = generateContextPack(extraction.claims, scan.contradictions, options);
   const competitionRisk = analyzeWikiCompetitionRisk(extraction.claims, pack, scan.contradictions);
-  const startupEligible = competitionRisk.status !== "unsafe" &&
-    pack.budget.verifiedClaims > 0 &&
-    pack.budget.totalWarningItems <= 50;
+  const startupEligible = isStartupCoreEligible(pack, competitionRisk, options);
   const drift = buildExportDriftReport({ ...options, index, extraction, scan, contextPack: pack });
   const queue = buildIdleTaskQueueReport({ ...options, index, extraction, scan, contextPack: pack, drift });
   const recommendations = [];
   if (drift.status !== "pass") recommendations.push("Refresh markdown exports or inspect drift before trusting git as the review surface.");
   if (queue.summary.blocked > 0) recommendations.push("Keep blocked wiki tasks visible but out of the ready queue until the owning surface is reopened.");
   if (pack.budget.outcomeTotal < 3) recommendations.push("Record at least three wiki-relevant harness outcomes before expanding context-pack scope.");
-  if (!startupEligible) recommendations.push("Treat the wiki context pack as audit/planning context, not startup operational context, until verified claims exist and warning volume drops.");
+  if (pack.budget.totalWarningItems > 50) recommendations.push("Keep broad excluded wiki backlog as audit triage; the startup core may use only included verified or operational-truth claims.");
+  if (!startupEligible) recommendations.push("Treat the wiki context pack as audit/planning context, not startup operational context, until verified claims exist and the rendered startup pack stays compact.");
   if (competitionRisk.status === "unsafe") recommendations.push("Remove unverified or human-gated claims from context-pack included items before using the wiki as startup context.");
   if (scan.summary.hard > 0 && queue.summary.ready === 0) recommendations.push("Hard contradictions are blocked rather than ready; this is good when the losing evidence is owner-gated.");
   return {
     schema: "wiki-effectiveness-audit.v1",
     generatedAt: new Date().toISOString(),
     tenantScope: options.tenantScope || "monsoonfire-main",
-    status: drift.status === "pass" && pack.budget.warningCount <= 15 && competitionRisk.status !== "unsafe" && startupEligible ? "pass" : "warning",
+    status: drift.status === "pass" && pack.budget.warningCount <= 15 && competitionRisk.status !== "unsafe" && startupEligible && pack.budget.outcomeTotal >= 3 ? "pass" : "warning",
     operatingLayer: {
       contract: buildWikiOperatingLayerContract(),
       startupEligible,

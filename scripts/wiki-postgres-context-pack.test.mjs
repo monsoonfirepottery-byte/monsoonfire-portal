@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   analyzeWikiCompetitionRisk,
+  extractClaims,
   generateContextPack,
   renderContextPack,
 } from "./lib/wiki-postgres-utils.mjs";
@@ -45,4 +46,55 @@ test("wiki context pack declares operating-layer boundaries and excludes unverif
   ], pack, []);
   assert.equal(risk.status, "contained");
   assert.equal(risk.includedUnverifiedClaims, 0);
+});
+
+test("wiki decision frontmatter becomes operational context without human-gate leakage", () => {
+  const sourcePath = "wiki/40_decisions/2026-05-04-test-decision.md";
+  const content = `---
+schema: wiki-page.v1
+id: wiki:decision:test-operational-context
+title: Test Operational Context
+kind: decision
+status: OPERATIONAL_TRUTH
+confidence: 0.96
+owner: policy
+source_refs: ["docs/epics/example.md#L1"]
+last_verified: 2026-05-04
+last_changed_by: codex
+agent_allowed_use: operational_context
+---
+
+# Test Operational Context
+
+Studio Brain may use this existing wiki decision as operational context.
+`;
+  const index = {
+    tenantScope: "monsoonfire-main",
+    sources: [{
+      sourceId: "src_decision",
+      sourcePath,
+      authorityClass: "repo",
+    }],
+    chunks: [{
+      sourceId: "src_decision",
+      chunkId: "chk_decision",
+      sourcePath,
+      lineStart: 1,
+      lineEnd: 18,
+      content,
+    }],
+  };
+
+  const extraction = extractClaims(index);
+  assert.equal(extraction.claims.length, 1);
+  assert.equal(extraction.claims[0].status, "OPERATIONAL_TRUTH");
+  assert.equal(extraction.claims[0].agentAllowedUse, "operational_context");
+  assert.equal(extraction.claims[0].requiresHumanApproval, false);
+  assert.equal(extraction.claims[0].metadata.statusSource, "wiki-decision-frontmatter");
+  assert.deepEqual(extraction.claims[0].sourceRefs.map((ref) => ref.sourcePath), [sourcePath, "docs/epics/example.md"]);
+
+  const pack = generateContextPack(extraction.claims, []);
+  assert.equal(pack.budget.operationalTruthClaims, 1);
+  assert.equal(pack.items.length, 1);
+  assert.match(pack.generatedText, /Studio Brain may use this existing wiki decision as operational context/);
 });

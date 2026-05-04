@@ -1607,6 +1607,13 @@ function idleTask(taskKey, title, options = {}) {
   };
 }
 
+function claimSetKey(claims = []) {
+  return stableHash(
+    JSON.stringify((Array.isArray(claims) ? claims : []).map((claim) => claim.claimId).filter(Boolean).sort()),
+    24,
+  );
+}
+
 export function buildIdleTaskQueueReport(options = {}) {
   const tenantScope = options.tenantScope || "monsoonfire-main";
   const index = options.index || buildSourceIndex(options);
@@ -1614,6 +1621,10 @@ export function buildIdleTaskQueueReport(options = {}) {
   const scan = options.scan || detectContradictions(index, extraction.claims);
   const drift = options.drift || buildExportDriftReport({ ...options, index, extraction, scan });
   const pack = options.contextPack || generateContextPack(extraction.claims, scan.contradictions, options);
+  const dbProbe = options.dbProbe || buildDbProbeReport();
+  const humanApprovalClaims = extraction.claims.filter((claim) => claim.requiresHumanApproval);
+  const operationalTruthClaims = extraction.claims.filter((claim) => claim.status === "OPERATIONAL_TRUTH");
+  const blockedContradictions = scan.contradictions.filter((entry) => entry.status === "blocked");
   const tasks = [
     idleTask("wiki-source-index-refresh", "Refresh wiki source index and chunk inventory", {
       tenantScope,
@@ -1622,6 +1633,27 @@ export function buildIdleTaskQueueReport(options = {}) {
       idempotencyKey: index.snapshotHash,
       metadata: { lane: "source-index", indexedSources: index.sources.length, chunks: index.chunks.length },
     }),
+    idleTask("wiki-claim-extraction-review", "Review wiki claim extraction coverage", {
+      tenantScope,
+      priority: 0.6,
+      outputArtifactPath: "output/wiki/extract-check.json",
+      idempotencyKey: claimSetKey(extraction.claims),
+      metadata: {
+        lane: "claim-extraction",
+        claims: extraction.summary.claims,
+        requiresHumanApproval: extraction.summary.requiresHumanApproval,
+        operationalTruthClaims: operationalTruthClaims.length,
+      },
+    }),
+    ...(humanApprovalClaims.length > 0
+      ? [idleTask("wiki-human-approval-triage", "Triage wiki claims requiring human approval", {
+          tenantScope,
+          priority: 0.7,
+          outputArtifactPath: "output/wiki/extract-check.json",
+          idempotencyKey: claimSetKey(humanApprovalClaims),
+          metadata: { lane: "human-approval", claims: humanApprovalClaims.length },
+        })]
+      : []),
     idleTask("wiki-context-pack-refresh", "Refresh Studio Brain wiki context pack", {
       tenantScope,
       priority: 0.65,
@@ -1635,6 +1667,51 @@ export function buildIdleTaskQueueReport(options = {}) {
         unverifiedClaimExcludedCount: pack.budget.unverifiedClaimExcludedCount,
         activeContradictionCount: pack.budget.activeContradictionCount,
       },
+    }),
+    idleTask("wiki-contradiction-scan-review", "Review wiki contradiction scan", {
+      tenantScope,
+      priority: scan.summary.contradictions > 0 ? 0.8 : 0.52,
+      outputArtifactPath: "output/wiki/contradictions-scan.json",
+      idempotencyKey: stableHash(
+        JSON.stringify(scan.contradictions.map((entry) => [entry.conflictKey, entry.status, entry.conflictFingerprint])),
+        24,
+      ),
+      metadata: {
+        lane: "contradiction-scan",
+        contradictions: scan.summary.contradictions,
+        hard: scan.summary.hard,
+        critical: scan.summary.critical,
+        blocked: blockedContradictions.length,
+      },
+    }),
+    idleTask(
+      drift.status === "pass" ? "wiki-export-drift-verify" : "wiki-export-drift-review",
+      drift.status === "pass" ? "Verify deterministic wiki exports" : "Review deterministic wiki export drift",
+      {
+        tenantScope,
+        priority: drift.status === "pass" ? 0.5 : 0.75,
+        outputArtifactPath: "output/wiki/export-drift.json",
+        idempotencyKey: stableHash(
+          JSON.stringify(drift.exports.map((entry) => [entry.path, entry.status, entry.expectedHash])),
+          24,
+        ),
+        metadata: {
+          lane: "export-drift",
+          drift: drift.summary.drift,
+          missing: drift.summary.missing,
+          match: drift.summary.match,
+        },
+      },
+    ),
+    idleTask("wiki-db-probe-plan-review", "Review wiki DB query probe plan", {
+      tenantScope,
+      priority: 0.42,
+      outputArtifactPath: "output/wiki/db-probe.json",
+      idempotencyKey: stableHash(
+        JSON.stringify(dbProbe.queries.map((query) => [query.name, query.targetMs])),
+        24,
+      ),
+      metadata: { lane: "db-probe", queryCount: dbProbe.summary.queryCount },
     }),
   ];
   for (const contradiction of scan.contradictions) {
@@ -1652,15 +1729,6 @@ export function buildIdleTaskQueueReport(options = {}) {
         status: contradiction.status,
         humanGate: contradiction.metadata?.humanGate || "",
       },
-    }));
-  }
-  if (drift.status !== "pass") {
-    tasks.push(idleTask("wiki-export-drift-review", "Review deterministic wiki export drift", {
-      tenantScope,
-      priority: 0.75,
-      outputArtifactPath: "output/wiki/export-drift.json",
-      idempotencyKey: stableHash(JSON.stringify(drift.exports.map((entry) => [entry.path, entry.status, entry.expectedHash])), 24),
-      metadata: { lane: "export-drift", drift: drift.summary.drift, missing: drift.summary.missing },
     }));
   }
   tasks.sort((a, b) => b.priority - a.priority || a.taskKey.localeCompare(b.taskKey));
@@ -1731,11 +1799,32 @@ function formatIdleTaskSignals(task) {
   if (metadata.lane === "source-index") {
     return `sources=${metadata.indexedSources ?? 0}, chunks=${metadata.chunks ?? 0}`;
   }
+  if (metadata.lane === "claim-extraction") {
+    return [
+      `claims=${metadata.claims ?? 0}`,
+      `human_approval=${metadata.requiresHumanApproval ?? 0}`,
+      `operational_truth=${metadata.operationalTruthClaims ?? 0}`,
+    ].join(", ");
+  }
+  if (metadata.lane === "human-approval") {
+    return `claims=${metadata.claims ?? 0}`;
+  }
+  if (metadata.lane === "contradiction-scan") {
+    return [
+      `contradictions=${metadata.contradictions ?? 0}`,
+      `hard=${metadata.hard ?? 0}`,
+      `critical=${metadata.critical ?? 0}`,
+      `blocked=${metadata.blocked ?? 0}`,
+    ].join(", ");
+  }
   if (metadata.lane === "contradictions") {
     return `severity=${metadata.severity || "unknown"}, status=${metadata.status || task.status}`;
   }
   if (metadata.lane === "export-drift") {
-    return `drift=${metadata.drift ?? 0}, missing=${metadata.missing ?? 0}`;
+    return `drift=${metadata.drift ?? 0}, missing=${metadata.missing ?? 0}, match=${metadata.match ?? 0}`;
+  }
+  if (metadata.lane === "db-probe") {
+    return `queries=${metadata.queryCount ?? 0}`;
   }
   return "";
 }

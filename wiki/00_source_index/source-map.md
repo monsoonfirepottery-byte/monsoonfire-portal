@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
+export_hash: 607c3724b93fc841f7490ec0ce7315bd0d17360087a17060d103414e81a067ef
 ---
 
 # Source Map
 
-Snapshot: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
+Snapshot: 607c3724b93fc841f7490ec0ce7315bd0d17360087a17060d103414e81a067ef
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -362,7 +362,7 @@ Snapshot: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
 | `functions/src/updateReservation.ts` | indexed | repo | 4 | `270f9ef3044b` |
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `b36f9157a098` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `52c56b489e8e` |
-| `package.json` | indexed | repo | 7 | `3e7c0c566638` |
+| `package.json` | indexed | repo | 7 | `9c5e46db3f28` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `44edaa77d984` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -609,7 +609,7 @@ Snapshot: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `505f7366c6e1` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `ad39dbf12605` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `b31a5f9b1a5c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 35 | `71afbc9439ad` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 35 | `a4eacd6d9376` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `9f8548f535be` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `c3a4de589100` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `e58affa06efe` |
@@ -797,6 +797,8 @@ Snapshot: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
 | `scripts/wiki-human-gates-approval-packets.test.mjs` | indexed | repo | 2 | `294f3496a92e` |
 | `scripts/wiki-human-gates-list.mjs` | indexed | repo | 3 | `e537f54a1268` |
 | `scripts/wiki-human-gates-list.test.mjs` | indexed | repo | 2 | `4f9edd716fbc` |
+| `scripts/wiki-outcome-record.mjs` | indexed | repo | 4 | `ac148409382d` |
+| `scripts/wiki-outcome-record.test.mjs` | indexed | repo | 2 | `3223a655904d` |
 | `scripts/wiki-postgres-context-pack.test.mjs` | indexed | repo | 2 | `d789c5111503` |
 | `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `e60ae4a4832e` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |

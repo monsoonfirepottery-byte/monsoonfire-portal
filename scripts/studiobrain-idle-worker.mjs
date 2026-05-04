@@ -514,6 +514,7 @@ function wikiJobScript(mode, lane) {
       extract: "wiki:extract:apply",
       contradictions: "wiki:contradictions:record",
       context: "wiki:context:apply",
+      startupAudit: "wiki:startup-pack:audit",
       exportDrift: "wiki:export:drift:record",
       idleTasks: "wiki:idle-tasks:apply",
       dbProbe: "wiki:db:probe:live",
@@ -525,6 +526,7 @@ function wikiJobScript(mode, lane) {
       extract: "wiki:extract",
       contradictions: "wiki:contradictions:export",
       context: "wiki:context:refresh",
+      startupAudit: "wiki:startup-pack:audit",
       exportDrift: "wiki:export:drift",
       idleTasks: "wiki:idle-tasks:export",
       dbProbe: "wiki:db:probe",
@@ -535,6 +537,7 @@ function wikiJobScript(mode, lane) {
     extract: "wiki:extract:check",
     contradictions: "wiki:contradictions:scan",
     context: "wiki:context:check",
+    startupAudit: "wiki:startup-pack:audit",
     exportDrift: "wiki:export:drift",
     idleTasks: "wiki:idle-tasks:check",
     dbProbe: "wiki:db:probe",
@@ -549,6 +552,21 @@ function buildWikiLaneJob({ id, label, lane, artifactName, options, timeoutMs })
     script: wikiJobScript(options.wikiMode || "check", lane),
     scriptArgs: ["--artifact", artifact],
     scriptArtifacts: [artifact],
+    runRoot: options.runRoot,
+    timeoutMs,
+  });
+}
+
+function buildWikiStartupAuditJob(options, timeoutMs) {
+  const contextArtifact = toRepoRelative(resolve(options.runRoot, "wiki-context-pack.json"));
+  const artifact = toRepoRelative(resolve(options.runRoot, "wiki-startup-pack-audit.json"));
+  const markdown = toRepoRelative(resolve(options.runRoot, "wiki-startup-pack-audit.md"));
+  return branchGuardedNpmJob({
+    id: "wiki-startup-pack-audit",
+    label: "Wiki startup pack audit",
+    script: wikiJobScript(options.wikiMode || "check", "startupAudit"),
+    scriptArgs: ["--context", contextArtifact, "--artifact", artifact, "--markdown", markdown],
+    scriptArtifacts: [artifact, markdown],
     runRoot: options.runRoot,
     timeoutMs,
   });
@@ -590,6 +608,7 @@ function buildWikiJobs(options) {
       options,
       timeoutMs,
     }),
+    buildWikiStartupAuditJob(options, timeoutMs),
     buildWikiLaneJob({
       id: "wiki-export-drift-check",
       label: mode === "check" ? "Wiki export drift check" : `Wiki export drift ${mode}`,

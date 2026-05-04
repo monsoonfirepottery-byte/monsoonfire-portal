@@ -11,6 +11,7 @@ test("wiki idle task queue advertises the read-only idle budget lanes", () => {
     "wiki-source-index-refresh",
     "wiki-claim-extraction-review",
     "wiki-context-pack-refresh",
+    "wiki-startup-pack-audit",
     "wiki-contradiction-scan-review",
     "wiki-db-probe-plan-review",
   ]) {
@@ -25,6 +26,10 @@ test("wiki idle task queue advertises the read-only idle budget lanes", () => {
   assert.ok(report.summary.tasks >= 6);
   assert.equal(report.summary.readOnly, report.summary.tasks);
   assert.equal(report.summary.writeCapable, 0);
+  assert.equal(byKey.get("wiki-context-pack-refresh").metadata.operatingLayerRole, "compiled_operating_layer");
+  assert.equal(byKey.get("wiki-context-pack-refresh").metadata.memoryRelationship, "not_a_competing_memory_source");
+  assert.equal(byKey.get("wiki-startup-pack-audit").metadata.lane, "startup-pack");
+  assert.equal(byKey.get("wiki-startup-pack-audit").metadata.competitionRisk, "contained");
   assert.equal(byKey.get("wiki-claim-extraction-review").metadata.lane, "claim-extraction");
   assert.equal(byKey.get("wiki-db-probe-plan-review").metadata.queryCount, 5);
 });

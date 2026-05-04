@@ -14,6 +14,7 @@ const DEFAULT_MAX_AGE_MINUTES = 180;
 const DEFAULT_MIN_READY_TASKS = 5;
 const DEFAULT_MIN_PASS_RATE = 0.95;
 const DEFAULT_MAX_RUNS = 20;
+const STARTUP_GATE_WARNING_JOB_ID = "wiki-startup-pack-audit";
 
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -123,29 +124,72 @@ function ageMinutes(isoDate) {
   return Math.max(0, Math.round((Date.now() - parsed) / 60000));
 }
 
-function isCleanPassedRun(run) {
+function warningJobIdsFor(run) {
+  return (Array.isArray(run?.utilization?.warningJobIds) ? run.utilization.warningJobIds : []).map(clean).filter(Boolean);
+}
+
+function startupGateTask(queue) {
+  return (Array.isArray(queue?.topTasks) ? queue.topTasks : []).find((task) => clean(task?.taskKey) === STARTUP_GATE_WARNING_JOB_ID);
+}
+
+function hasContainedStartupGate(queue) {
+  const task = startupGateTask(queue);
+  const metadata = task?.metadata || {};
+  return (
+    Boolean(task) &&
+    metadata.startupEligible === false &&
+    clean(metadata.competitionRisk) === "contained" &&
+    Number(metadata.includedUnverifiedClaims || 0) === 0
+  );
+}
+
+function containedWarningJobIds(run, queue) {
+  const warningIds = new Set(warningJobIdsFor(run));
+  if (!warningIds.has(STARTUP_GATE_WARNING_JOB_ID) || !hasContainedStartupGate(queue)) return [];
+  const job = (Array.isArray(run?.jobs) ? run.jobs : []).find((entry) => clean(entry?.id) === STARTUP_GATE_WARNING_JOB_ID);
+  if (job && clean(job?.payloadSummary?.schema) && clean(job.payloadSummary.schema) !== "wiki-startup-pack-audit.v1") return [];
+  return [STARTUP_GATE_WARNING_JOB_ID];
+}
+
+function actionableWarningJobIds(run, queue) {
+  const contained = new Set(containedWarningJobIds(run, queue));
+  return warningJobIdsFor(run).filter((jobId) => !contained.has(jobId));
+}
+
+function hasActionableWarnings(run, queue) {
+  const summary = run?.summary || {};
+  const warningCount = Number(summary.warning || 0);
+  const statusWarn = clean(run?.status) === "passed_with_warnings";
+  const warningIds = warningJobIdsFor(run);
+  const containedIds = containedWarningJobIds(run, queue);
+  if (actionableWarningJobIds(run, queue).length > 0) return true;
+  if (warningIds.length === 0 && (warningCount > 0 || statusWarn)) return true;
+  return warningCount > containedIds.length;
+}
+
+function isCleanPassedRun(run, queue = null) {
   const summary = run?.summary || {};
   return (
-    clean(run?.status) === "passed" &&
+    (clean(run?.status) === "passed" || (clean(run?.status) === "passed_with_warnings" && !hasActionableWarnings(run, queue))) &&
     Number(summary.failed || 0) === 0 &&
-    Number(summary.warning || 0) === 0 &&
+    !hasActionableWarnings(run, queue) &&
     Number(summary.skipped || 0) === 0
   );
 }
 
-function collectProblemIds(run) {
+function collectProblemIds(run, queue = null) {
   const utilization = run?.utilization || {};
   return [
     ...(Array.isArray(utilization.failedJobIds) ? utilization.failedJobIds : []),
-    ...(Array.isArray(utilization.warningJobIds) ? utilization.warningJobIds : []),
+    ...actionableWarningJobIds(run, queue),
     ...(Array.isArray(utilization.skippedJobIds) ? utilization.skippedJobIds : []),
   ].map(clean).filter(Boolean);
 }
 
-function buildProblemClusters(runs) {
+function buildProblemClusters(runs, queue = null) {
   const counts = new Map();
   for (const run of runs) {
-    for (const jobId of new Set(collectProblemIds(run))) {
+    for (const jobId of new Set(collectProblemIds(run, queue))) {
       counts.set(jobId, (counts.get(jobId) || 0) + 1);
     }
   }
@@ -155,10 +199,10 @@ function buildProblemClusters(runs) {
     .sort((a, b) => b.count - a.count || a.jobId.localeCompare(b.jobId));
 }
 
-function latestResolvedWarnings(runs) {
+function latestResolvedWarnings(runs, queue = null) {
   const latest = runs[0] || {};
-  const latestProblemIds = new Set(collectProblemIds(latest));
-  const olderProblemIds = new Set(runs.slice(1).flatMap((run) => collectProblemIds(run)));
+  const latestProblemIds = new Set(collectProblemIds(latest, queue));
+  const olderProblemIds = new Set(runs.slice(1).flatMap((run) => collectProblemIds(run, queue)));
   return [...olderProblemIds].filter((jobId) => !latestProblemIds.has(jobId)).sort();
 }
 
@@ -203,13 +247,13 @@ function calculateScore(metrics, findings, thresholds) {
   return Math.max(0, Math.min(100, score));
 }
 
-function calculateCurrentScore(latestRun, latestAgeMinutes, stale, findings) {
+function calculateCurrentScore(latestRun, latestAgeMinutes, stale, findings, currentHasActionableWarnings) {
   let score = 100;
   const summary = latestRun?.summary || {};
   if (!latestRun) score -= 60;
   if (latestAgeMinutes === null || stale) score -= 20;
   if (Number(summary.failed || 0) > 0 || clean(latestRun?.status) === "degraded") score -= 40;
-  if (Number(summary.warning || 0) > 0 || clean(latestRun?.status) === "passed_with_warnings") score -= 20;
+  if (currentHasActionableWarnings) score -= 20;
   if (Number(summary.skipped || 0) > 0 || clean(latestRun?.status) === "skipped") score -= 10;
   if (findings.some((finding) => finding.severity === "error")) score -= 20;
   return Math.max(0, Math.min(100, score));
@@ -269,10 +313,11 @@ function buildHealthSections({ latestRun, latestAge, stale, metrics, thresholds,
       status: clean(latestRun?.status) || null,
     });
   }
-  if (Number(summary.warning || 0) > 0 || clean(latestRun?.status) === "passed_with_warnings") {
+  if (metrics.currentHasActionableWarnings) {
     pushFinding(currentFindings, "warning", "current-idle-worker-warning", "Latest idle-worker run reported warnings.", {
       warning: Number(summary.warning || 0),
-      warningJobIds: Array.isArray(latestRun?.utilization?.warningJobIds) ? latestRun.utilization.warningJobIds : [],
+      warningJobIds: metrics.currentActionableWarningJobIds,
+      containedWarningJobIds: metrics.currentContainedWarningJobIds,
     });
   }
   if (Number(summary.skipped || 0) > 0 || clean(latestRun?.status) === "skipped") {
@@ -329,7 +374,7 @@ function buildHealthSections({ latestRun, latestAge, stale, metrics, thresholds,
     }
   }
 
-  const currentScore = calculateCurrentScore(latestRun, latestAge, stale, currentFindings);
+  const currentScore = calculateCurrentScore(latestRun, latestAge, stale, currentFindings, metrics.currentHasActionableWarnings);
   const historyScore = calculateHistoryScore(metrics, historyFindings, thresholds);
   const approvalScore = calculateApprovalScore(metrics.queue, approvalFindings, thresholds);
   return {
@@ -396,13 +441,17 @@ export function auditIdleWorkerEffectivity(options = {}) {
   const completedAt = clean(latestRun?.completedAt);
   const latestAge = ageMinutes(completedAt);
   const stale = latestAge === null || latestAge > maxAgeMinutes;
-  const cleanPassedRuns = runs.filter(isCleanPassedRun).length;
-  const failedRuns = runs.filter((run) => Number(run?.summary?.failed || 0) > 0 || clean(run?.status) === "degraded").length;
-  const warningRuns = runs.filter((run) => Number(run?.summary?.warning || 0) > 0 || clean(run?.status) === "passed_with_warnings").length;
-  const skippedRuns = runs.filter((run) => Number(run?.summary?.skipped || 0) > 0 || clean(run?.status) === "skipped").length;
-  const repeatedProblemClusters = buildProblemClusters(runs);
-  const resolvedProblemIds = latestResolvedWarnings(runs);
   const queue = summarizeQueue(wikiIdleTasks);
+  const currentActionableWarningJobIds = latestRun ? actionableWarningJobIds(latestRun, queue) : [];
+  const currentContainedWarningJobIds = latestRun ? containedWarningJobIds(latestRun, queue) : [];
+  const currentHasActionableWarnings = latestRun ? hasActionableWarnings(latestRun, queue) : false;
+  const cleanPassedRuns = runs.filter((run) => isCleanPassedRun(run, queue)).length;
+  const failedRuns = runs.filter((run) => Number(run?.summary?.failed || 0) > 0 || clean(run?.status) === "degraded").length;
+  const warningRuns = runs.filter((run) => hasActionableWarnings(run, queue)).length;
+  const containedWarningRuns = runs.filter((run) => containedWarningJobIds(run, queue).length > 0).length;
+  const skippedRuns = runs.filter((run) => Number(run?.summary?.skipped || 0) > 0 || clean(run?.status) === "skipped").length;
+  const repeatedProblemClusters = buildProblemClusters(runs, queue);
+  const resolvedProblemIds = latestResolvedWarnings(runs, queue);
   const passRate = runs.length > 0 ? cleanPassedRuns / runs.length : 0;
   const latestUtilization = latestRun?.utilization || {};
 
@@ -478,10 +527,14 @@ export function auditIdleWorkerEffectivity(options = {}) {
     passRate,
     cleanPassedRuns,
     warningRuns,
+    containedWarningRuns,
     failedRuns,
     skippedRuns,
     repeatedProblemClusters,
     resolvedProblemIds,
+    currentHasActionableWarnings,
+    currentActionableWarningJobIds,
+    currentContainedWarningJobIds,
     nextRecommendedJob: clean(latestUtilization.nextRecommendedJob) || null,
     idleReason: clean(latestUtilization.idleReason) || null,
     queue,
@@ -553,6 +606,7 @@ function renderMarkdown(report) {
     `- Latest run: ${metrics.latestRunId || "unknown"} (${metrics.latestStatus || "unknown"})`,
     `- Latest age: ${metrics.latestAgeMinutes === null ? "unknown" : `${metrics.latestAgeMinutes} minutes`}`,
     `- Pass rate: ${(metrics.passRate * 100).toFixed(1)}%`,
+    `- Contained guard warnings: ${metrics.containedWarningRuns}`,
     `- Latest jobs: ${metrics.plannedJobs} planned, ${metrics.attemptedJobs} attempted`,
     `- Queue: ${metrics.queue.ready} ready / ${metrics.queue.tasks} tasks, write-capable=${metrics.queue.writeCapable}`,
     `- Human-gated claims: ${metrics.queue.humanApprovalClaims}`,

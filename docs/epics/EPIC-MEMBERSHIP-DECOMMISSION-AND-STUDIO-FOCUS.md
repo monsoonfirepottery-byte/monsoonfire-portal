@@ -1,21 +1,21 @@
 # Epic: Membership Decommission and Studio Feature Focus (Portal + Website)
 
 ## Epic Summary
-Monsoon Fire will decommission the membership feature across both the Portal product (`web/`) and the marketing Website (`website/`), then re-center product and content experience around proven studio workflows.
+Monsoon Fire is decommissioning the membership and reservation systems across both the Portal product (`web/`) and the marketing Website (`website/`) during May 2026, with end-of-life on May 31, 2026. Product and content experience should re-center around proven studio workflows.
 
 Primary intent:
-- Remove confusing or partially-operational membership paths.
+- Remove confusing or partially-operational membership and reservation paths.
 - Reduce support burden and edge-case failures.
 - Keep users focused on working features that are already delivering value in studio operations.
 
 ## Problem Statement
-The membership surface creates product complexity and expectation mismatch relative to what is currently stable and actively operated in-studio. This causes:
+The membership and reservation surfaces create product complexity and expectation mismatch relative to what is currently stable and actively operated in-studio. This causes:
 - UX fragmentation between Portal and Website.
 - Extra maintenance burden (copy, flows, support responses, and potential dead-end routes).
 - Operational drag that distracts from core batch-first kiln workflow quality.
 
 ## Goals
-1. Remove membership acquisition, management, and promotional surfaces from Portal and Website in controlled phases.
+1. Remove membership acquisition, management, promotional, and reservation self-service surfaces from Portal and Website in controlled phases.
 2. Preserve continuity for existing users by providing clear messaging and safe redirects (no blank screens, no broken nav).
 3. Reallocate product attention to working studio features:
    - Active batches
@@ -31,21 +31,21 @@ The membership surface creates product complexity and expectation mismatch relat
 
 ## Scope
 ### In Scope
-- Portal UI removal/hiding of membership feature entries, routes, and CTAs.
-- Website removal/hiding of membership marketing pages, links, and conversion elements.
+- Portal UI removal/hiding of membership and reservation feature entries, routes, and CTAs.
+- Website removal/hiding of membership marketing, reservation, links, and conversion elements.
 - Redirects and fallback UX for removed URLs.
 - Support/comms updates for the transition.
-- Lightweight data retention + archival decision for historical membership records.
+- Lightweight data retention + archival decision for historical membership and reservation records.
 
 ### Out of Scope
 - Pricing/commerce redesign beyond membership shutdown messaging.
-- New backend monetization APIs.
+- New backend monetization or reservation APIs.
 - iOS client membership support (deprioritized by strategy).
 
 ## Success Metrics
-- 0 production blank-screen incidents tied to membership route removal.
+- 0 production blank-screen incidents tied to membership or reservation route removal.
 - 0 broken primary-nav links in Portal and Website after cutover.
-- Membership-related support tickets trend down within 30 days of launch.
+- Membership- and reservation-related support tickets trend down within 30 days of launch.
 - Increased engagement concentration on studio workflows (Active/History/Timeline/Continue Journey).
 
 ## Risks and Mitigations
@@ -55,17 +55,17 @@ The membership surface creates product complexity and expectation mismatch relat
    - Mitigation: phased flagging, smoke checks, and top-level error boundary verification before each phase close.
 3. **Risk: Content mismatch between Portal and Website during rollout.**
    - Mitigation: shared cutover checklist and same-day content freeze/cutover window.
-4. **Risk: Team uncertainty about historical membership data policy.**
+4. **Risk: Team uncertainty about historical membership and reservation data policy.**
    - Mitigation: explicit archive/retention decision checkpoint in Phase 1.
 
 ## Phase Plan
 
 ## Phase 0 — Discovery and Freeze (1–2 days)
-**Objective:** Prevent further expansion of membership and inventory current surfaces.
+**Objective:** Prevent further expansion of membership or reservation systems and inventory current surfaces.
 
 ### Deliverables
-- Membership touchpoint inventory (Portal routes/components, Website pages/links, support docs).
-- Freeze policy: no new membership work merged unless explicitly approved.
+- Membership and reservation touchpoint inventory (Portal routes/components, Website pages/links, support docs).
+- Freeze policy: no new membership or reservation work merged unless explicitly approved.
 - Owner-approved decommission messaging draft.
 
 ### Exit Criteria
@@ -76,41 +76,41 @@ The membership surface creates product complexity and expectation mismatch relat
 **Objective:** Lock down backend and data handling posture before UI removal.
 
 ### Deliverables
-- Decision record for membership data retention (archive, read-only retention window, or purge schedule).
-- Cloud Functions behavior plan for deprecated membership endpoints (return explicit deprecation response where applicable).
-- Monitoring checklist for any residual membership traffic.
+- Decision record for membership and reservation data retention (archive, read-only retention window, or purge schedule).
+- Cloud Functions behavior plan for deprecated membership and reservation endpoints (return explicit deprecation response where applicable).
+- Monitoring checklist for any residual membership or reservation traffic.
 
 ### Exit Criteria
-- Written decision on retention and endpoint behavior approved.
+- Written decision on retention and endpoint behavior approved before May 31, 2026 EOL.
 - Backward-compatible response strategy confirmed for any in-flight clients.
 
 ## Phase 2 — Portal Decommission (2–4 days)
-**Objective:** Remove membership from the Portal without breaking existing stable studio workflows.
+**Objective:** Remove membership and reservation self-service from the Portal without breaking existing stable studio workflows.
 
 ### Work Items
-- Remove/hide membership navigation entries and CTAs.
-- Remove or deprecate membership-specific routes; add safe redirects to core studio destinations.
+- Remove/hide membership and reservation navigation entries and CTAs.
+- Remove or deprecate membership- and reservation-specific routes; add safe redirects to core studio destinations.
 - Update empty states and dashboard copy to emphasize operational studio actions.
 - Validate that Active/History/Continue Journey/Timeline remain unaffected.
 - Ensure errors are explicit and recoverable if deprecated endpoints are hit.
 
 ### QA Focus
-- No white-screen on direct navigation to legacy membership URLs.
+- No white-screen on direct navigation to legacy membership or reservation URLs.
 - Authenticated and unauthenticated route behavior remains intentional.
 - Continue Journey contract and existing auth headers remain unchanged.
 
 ### Exit Criteria
 - Portal smoke pass complete with no severity-1 regressions.
-- Legacy membership entry points resolve to safe destinations.
+- Legacy membership and reservation entry points resolve to safe destinations.
 
 ## Phase 3 — Website Decommission (2–3 days)
-**Objective:** Remove membership marketing UX and align site narrative around working studio offerings.
+**Objective:** Remove membership and reservation marketing UX and align site narrative around working studio offerings.
 
 ### Work Items
-- Remove membership hero sections, plan cards, dedicated membership page links, and footer references.
+- Remove membership hero sections, reservation CTAs, plan cards, dedicated membership page links, and footer references.
 - Add replacement messaging highlighting active studio offerings and pathways.
-- Configure redirects for removed membership pages.
-- Refresh sitemap/internal links to remove membership destinations.
+- Configure redirects for removed membership and reservation pages.
+- Refresh sitemap/internal links to remove membership and reservation destinations.
 
 ### QA Focus
 - No dead links from homepage/nav/footer/blog references.
@@ -118,8 +118,8 @@ The membership surface creates product complexity and expectation mismatch relat
 - Mobile layout remains stable after section removal.
 
 ### Exit Criteria
-- Website navigation and content fully membership-free.
-- Redirect checks pass for known legacy membership URLs.
+- Website navigation and content fully membership- and reservation-free.
+- Redirect checks pass for known legacy membership and reservation URLs.
 
 ## Phase 4 — Communications and Operational Readiness (1–2 days)
 **Objective:** Ensure users/staff understand the transition and support has a single answer.
@@ -146,10 +146,10 @@ The membership surface creates product complexity and expectation mismatch relat
 - Post-epic review published with lessons and next studio-priority roadmap slice.
 
 ## Delivery Checklist
-- [ ] Membership touchpoint inventory completed.
+- [ ] Membership and reservation touchpoint inventory completed.
 - [ ] Data retention/deprecation decision recorded.
-- [ ] Portal membership routes removed or redirected.
-- [ ] Website membership pages/links removed or redirected.
+- [ ] Portal membership and reservation routes removed or redirected.
+- [ ] Website membership and reservation pages/links removed or redirected.
 - [ ] Shared communications package published.
 - [ ] Stabilization review completed and next studio-focused backlog queued.
 
@@ -165,7 +165,7 @@ The membership surface creates product complexity and expectation mismatch relat
 
 ## Definition of Done
 This epic is complete when:
-1. Membership no longer appears as an active product path in Portal or Website.
-2. Legacy membership URLs fail safely via redirect/message (not crash or blank page).
+1. Membership and reservation no longer appear as active product paths in Portal or Website.
+2. Legacy membership and reservation URLs fail safely via redirect/message (not crash or blank page).
 3. Users and staff are clearly directed to currently working studio workflows.
 4. Stabilization window closes without critical decommission-related incidents.

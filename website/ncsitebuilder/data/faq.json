@@ -11,7 +11,7 @@
   },
   {
     "question": "How do I get started in the portal?",
-    "answer": "<p>Create a free account in the portal first. After signup, you can request kiln firing, reserve studio time, and get access details.</p><p><a href=\"https://portal.monsoonfire.com\" target=\"_blank\" rel=\"noopener noreferrer\">Open the portal</a></p>",
+    "answer": "<p>Create a free account in the portal first. After signup, you can request kiln firing, ask for studio access, and get access details after staff confirms the visit context. The legacy reservation system is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026.</p><p><a href=\"https://portal.monsoonfire.com\" target=\"_blank\" rel=\"noopener noreferrer\">Open the portal</a></p>",
     "tags": ["portal", "overview"]
   },
   {
@@ -75,9 +75,9 @@
     "tags": ["studio", "pricing", "access"]
   },
   {
-    "question": "How do memberships work?",
-    "answer": "<p>Memberships are tiered for cadence and usage level. Tiers differ by firing credits, storage, and discounts. If you are unsure, we can map your typical monthly volume to the right tier.</p>",
-    "tags": ["memberships", "pricing", "studio"]
+    "question": "What is happening to memberships?",
+    "answer": "<p>Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Studio services are moving toward direct firing, access, and support workflows instead of recurring membership.</p>",
+    "tags": ["membership", "decommission", "studio"]
   },
   {
     "question": "How often are community events?",
@@ -86,13 +86,13 @@
   },
   {
     "question": "How do I get Discord access?",
-    "answer": "<p>Discord invites are shared with active clients and members. Request access through support if your invite has expired.</p>",
+    "answer": "<p>Discord invites are shared with active clients and studio participants. Request access through support if your invite has expired.</p>",
     "tags": ["community", "portal", "support"]
   },
   {
     "question": "Can I request supplies through Monsoon Fire?",
-    "answer": "<p>Yes. You can request commonly stocked supplies through support or the portal and pick up during your reservation window.</p>",
-    "tags": ["supplies", "memberships", "portal"]
+    "answer": "<p>Yes. You can request commonly stocked supplies through support or the portal and pick up during a staff-confirmed visit window.</p>",
+    "tags": ["supplies", "studio-services", "portal"]
   },
   {
     "question": "Do you offer reduction firing?",

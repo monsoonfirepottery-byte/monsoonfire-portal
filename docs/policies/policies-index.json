@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-16T02:17:00.355Z",
+  "generatedAt": "2026-05-04T01:41:46.672Z",
   "policies": [
     {
       "slug": "accessibility",
@@ -438,30 +438,30 @@
     {
       "slug": "studio-access",
       "title": "Studio access & supervision",
-      "version": "2026-04-02",
-      "summary": "Studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context.",
+      "version": "2026-05-04",
+      "summary": "Studio visits remain appointment-only while the portal reservation system is decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Access details are shared only after account verification and staff-approved visit context.",
       "status": "active",
       "tags": [
         "studio",
         "access",
         "supervision"
       ],
-      "effectiveDate": "2026-04-02",
+      "effectiveDate": "2026-05-04",
       "reviewDate": "2026-10-02",
       "owner": "Studio Operations",
       "sourceUrl": "/policies/studio-access/",
       "agent": {
         "canActForSelf": true,
         "canActForOthers": true,
-        "decisionDomain": "Appointment-only access, reservation verification, guest approval, and supervised equipment requests.",
+        "decisionDomain": "Appointment-only access, visit-window verification, guest approval, and supervised equipment requests.",
         "defaultActions": [
-          "check reservation status and share upcoming access steps",
-          "verify whether the booking context is sufficient to release access details",
+          "check visit-window status and share upcoming access steps",
+          "verify whether the approved visit context is sufficient to release access details",
           "verify whether a request requires supervision flagging",
           "collect and confirm guest list and approval requirement"
         ],
         "allowedLowRiskActions": [
-          "answer appointment-only and reservation requirement questions",
+          "answer appointment-only and access-planning questions",
           "collect preferred visit windows and tool needs",
           "confirm whether supervision review is required"
         ],
@@ -472,16 +472,16 @@
         ],
         "requiredSignals": [
           "user category and account",
-          "reservation id, day-pass booking, or preferred window",
+          "staff-approved visit window, day-pass context, or preferred window",
           "requested tools or stations"
         ],
         "escalateWhen": [
           "safety or occupancy risk",
-          "walk-in request without a confirmed reservation",
+          "walk-in request without a staff-approved visit window",
           "repeated no-shows or access policy breaches",
           "guest approval rejected by facility lead"
         ],
-        "replyTemplate": "State that the studio is appointment-only, confirm the booking status, explain when access details can be shared, and note whether supervision is needed."
+        "replyTemplate": "State that the studio is appointment-only, confirm the approved visit status, explain when access details can be shared, and note whether supervision is needed."
       }
     }
   ]

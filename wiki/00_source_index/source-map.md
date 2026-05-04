@@ -14,21 +14,21 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
+export_hash: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
 ---
 
 # Source Map
 
-Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
+Snapshot: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
 | `.governance/audit/README.md` | indexed | policy | 1 | `6d99c6cdd685` |
 | `.governance/config/authority-map.json` | indexed | policy | 1 | `22bb70e65071` |
 | `.governance/config/supervisor-thresholds.json` | indexed | policy | 2 | `1e93dca5acb0` |
-| `.governance/customer-service-policies/policy-inventory.json` | indexed | policy | 20 | `bfff1d2becb8` |
-| `.governance/customer-service-policies/policy-program.json` | indexed | policy | 24 | `7982f056c214` |
-| `.governance/customer-service-policies/policy-resolution-contract.json` | indexed | policy | 14 | `a160cf441b59` |
+| `.governance/customer-service-policies/policy-inventory.json` | indexed | policy | 20 | `112a90e9bd0f` |
+| `.governance/customer-service-policies/policy-program.json` | indexed | policy | 24 | `ef6091c46f16` |
+| `.governance/customer-service-policies/policy-resolution-contract.json` | indexed | policy | 14 | `c85eb308a85a` |
 | `.governance/customer-service-policies/README.md` | indexed | policy | 1 | `fd0e66760a03` |
 | `.governance/intents/ops.triage.incident.intent.json` | indexed | policy | 2 | `0f0b7b1e9b00` |
 | `.governance/intents/repo.change.small_fix.intent.json` | indexed | policy | 2 | `6cf11608ce16` |
@@ -111,7 +111,7 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `docs/epics/EPIC-LABEL-PRINTABILITY-AND-SUPPORT-FREE-CRATE-SIGNS.md` | indexed | repo | 7 | `d7e91c9c7c6b` |
 | `docs/epics/EPIC-LENDING-LIBRARY-EXPERIENCE-AND-LEARNING-JOURNEYS.md` | indexed | repo | 15 | `9db830e54ab4` |
 | `docs/epics/EPIC-LIVE-SURFACE-TRUST-AND-SERVICE-OPERATING-SYSTEM.md` | indexed | repo | 11 | `4b86deace939` |
-| `docs/epics/EPIC-MEMBERSHIP-DECOMMISSION-AND-STUDIO-FOCUS.md` | indexed | repo | 35 | `7c81ffaf23ca` |
+| `docs/epics/EPIC-MEMBERSHIP-DECOMMISSION-AND-STUDIO-FOCUS.md` | indexed | repo | 35 | `42598ea31ebd` |
 | `docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md` | indexed | repo | 7 | `6b63110356be` |
 | `docs/epics/EPIC-PST-INGESTION-RELATIONSHIP-INDEXING.md` | indexed | repo | 8 | `a34771607a5c` |
 | `docs/epics/EPIC-REQUESTS-SURFACE-DEPRECATION-AND-AGENT-INTAKE-RATIONALIZATION.md` | indexed | repo | 11 | `d7def3f0b2ce` |
@@ -161,17 +161,17 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `docs/policies/CHANGELOG.md` | indexed | policy | 4 | `7ed830579ed2` |
 | `docs/policies/clay-materials.md` | indexed | policy | 7 | `c97fba88e50c` |
 | `docs/policies/community-conduct.md` | indexed | policy | 7 | `dd1f37d66b23` |
-| `docs/policies/customer-service-policy-program.config.json` | indexed | policy | 6 | `6b11431f15e8` |
+| `docs/policies/customer-service-policy-program.config.json` | indexed | policy | 6 | `3bd9a9e2c078` |
 | `docs/policies/damage-responsibility.md` | indexed | policy | 7 | `eb909c58b8b6` |
 | `docs/policies/firing-scheduling.md` | indexed | policy | 7 | `16e5be8dcdcc` |
 | `docs/policies/media-accessibility.md` | indexed | policy | 7 | `033b1cb23baa` |
 | `docs/policies/payments-refunds.md` | indexed | policy | 7 | `1bd4fe54fe26` |
-| `docs/policies/policies-index.json` | indexed | policy | 7 | `dd75190eec86` |
-| `docs/policies/README.md` | indexed | policy | 7 | `3a3acabe7365` |
+| `docs/policies/policies-index.json` | indexed | policy | 7 | `ba571ff76753` |
+| `docs/policies/README.md` | indexed | policy | 7 | `37c23864c285` |
 | `docs/policies/safety-kiln-rules.md` | indexed | policy | 7 | `924dc292e238` |
 | `docs/policies/storage-abandoned-work.md` | indexed | policy | 9 | `0e92085d1a94` |
 | `docs/policies/STUDIO_OS_V3_RETENTION.md` | indexed | policy | 5 | `5b5bd113bc6b` |
-| `docs/policies/studio-access.md` | indexed | policy | 7 | `adc83573c260` |
+| `docs/policies/studio-access.md` | indexed | policy | 7 | `360ae6589661` |
 | `docs/PORTAL_A11Y_REGRESSION_GUARDRAILS.md` | indexed | repo | 5 | `c0a2e0f7aa5d` |
 | `docs/PORTAL_ACCESSIBILITY_ASSESSMENT_2026-02-11.md` | indexed | repo | 11 | `7c9e649c2bc5` |
 | `docs/PORTAL_ACCESSIBILITY_BASELINE.md` | indexed | repo | 9 | `9a3dd2768092` |
@@ -250,7 +250,7 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `docs/SCHEMA_ORDERS.md` | indexed | repo | 5 | `02c8b4a71591` |
 | `docs/SCHEMA_PROFILE.md` | indexed | repo | 4 | `6cae8d5b94ee` |
 | `docs/SCHEMA_RESERVATIONS.md` | indexed | repo | 16 | `5eedacda3dd5` |
-| `docs/SCHEMA_SUPPORT.md` | indexed | repo | 5 | `917da4b743ac` |
+| `docs/SCHEMA_SUPPORT.md` | indexed | repo | 5 | `0ff8932024a3` |
 | `docs/SECURITY_KEY_ROTATION_AUTOMATION.md` | indexed | repo | 7 | `5361c829b81b` |
 | `docs/SESSION_HANDOFF_2026-02-06.md` | indexed | repo | 12 | `10b7ae592b88` |
 | `docs/SESSION_HANDOFF_2026-02-12_REBOOT.md` | indexed | repo | 8 | `2a40107308fe` |
@@ -290,7 +290,7 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `docs/STUDIO_OPERATIONS_REVIEW_AND_ACTION_PLAN_2026-02-17.md` | indexed | repo | 11 | `9b64c7526a2f` |
 | `docs/STUDIO_OS_V3_ARCHITECTURE.md` | indexed | repo | 19 | `4473efbb8d97` |
 | `docs/STUDIO_OS_V3_EVIDENCE_PACK.md` | indexed | repo | 6 | `eeefb6001e25` |
-| `docs/STUDIO_OS_V3_STRATEGY.md` | indexed | repo | 14 | `04fed432e4f5` |
+| `docs/STUDIO_OS_V3_STRATEGY.md` | indexed | repo | 14 | `6874861e4eed` |
 | `docs/studiobrain-host-url-contract-matrix.md` | indexed | repo | 3 | `983b5e8f0f98` |
 | `docs/WEBSITE_A11Y_REGRESSION_GUARDRAILS.md` | indexed | repo | 6 | `c07507925207` |
 | `docs/WEBSITE_ACCESSIBILITY_BASELINE.md` | indexed | repo | 8 | `c5b2b52f6f35` |
@@ -1444,7 +1444,7 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `web/src/views/MaterialsView.css` | indexed | repo | 6 | `a5f108c4ab3f` |
 | `web/src/views/MaterialsView.tsx` | indexed | repo | 11 | `f88963dce694` |
 | `web/src/views/MembershipView.css` | indexed | repo | 8 | `dbfe4b59cb68` |
-| `web/src/views/MembershipView.tsx` | indexed | repo | 8 | `82f50655e908` |
+| `web/src/views/MembershipView.tsx` | indexed | repo | 1 | `b576c80c759a` |
 | `web/src/views/MessagesView.test.tsx` | indexed | repo | 5 | `22e9513fced7` |
 | `web/src/views/MessagesView.tsx` | indexed | repo | 12 | `f7d3d290b8da` |
 | `web/src/views/MyPiecesView.css` | indexed | repo | 6 | `de85d8c8680a` |
@@ -1518,11 +1518,11 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `web/src/views/StudioResourcesView.css` | indexed | repo | 2 | `629c915a271b` |
 | `web/src/views/StudioResourcesView.tsx` | indexed | repo | 1 | `21cb08dd248f` |
 | `web/src/views/SupportView.css` | indexed | repo | 3 | `782c3b8df628` |
-| `web/src/views/SupportView.tsx` | indexed | repo | 8 | `2dd22ff1a208` |
+| `web/src/views/SupportView.tsx` | indexed | repo | 8 | `74020652e81a` |
 | `web/src/views/WareCheckInView.tsx` | indexed | repo | 1 | `08baebbf45be` |
 | `website/.well-known/assetlinks.json` | indexed | repo | 1 | `2fc896b40547` |
-| `website/ab/a/index.html` | indexed | repo | 4 | `b32c8d8157fd` |
-| `website/ab/b/index.html` | indexed | repo | 4 | `bdfeeba31d67` |
+| `website/ab/a/index.html` | indexed | repo | 4 | `2725f9f0ca3b` |
+| `website/ab/b/index.html` | indexed | repo | 4 | `dfa26f345b1d` |
 | `website/ab/README.md` | indexed | repo | 1 | `f300a98616e9` |
 | `website/about/index.html` | indexed | repo | 2 | `61a5c69bb701` |
 | `website/agent-docs/index.html` | indexed | repo | 1 | `396d7d6975a6` |
@@ -1539,23 +1539,23 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `website/blog/index.html` | indexed | repo | 3 | `7c6eb38608ac` |
 | `website/classes/index.html` | indexed | repo | 2 | `0a5280097ed3` |
 | `website/contact/index.html` | indexed | repo | 4 | `50722624b845` |
-| `website/data/announcements.json` | indexed | repo | 3 | `f6790dc27db1` |
+| `website/data/announcements.json` | indexed | repo | 3 | `1cfd70f7fafd` |
 | `website/data/blogs.json` | indexed | repo | 1 | `f2d77e6ccba6` |
-| `website/data/faq.json` | indexed | repo | 3 | `b5cbe7d788cb` |
+| `website/data/faq.json` | indexed | repo | 3 | `d07f8be179a1` |
 | `website/data/highlights.json` | indexed | repo | 1 | `f8db5a9fa971` |
 | `website/data/kiln-status.json` | indexed | repo | 1 | `08756725a2bd` |
-| `website/data/policies.json` | indexed | repo | 2 | `39ffe6e3f9af` |
-| `website/faq/index.html` | indexed | repo | 3 | `0cad73636c07` |
+| `website/data/policies.json` | indexed | repo | 2 | `e2cb1c5f3c17` |
+| `website/faq/index.html` | indexed | repo | 3 | `69625000d05d` |
 | `website/gallery/index.html` | indexed | repo | 2 | `10a105424cfa` |
-| `website/highlights/index.html` | indexed | repo | 4 | `c207003e22f8` |
-| `website/index.html` | indexed | repo | 6 | `e95528a7a285` |
-| `website/kiln-firing/index.html` | indexed | repo | 3 | `e6af528269fd` |
+| `website/highlights/index.html` | indexed | repo | 4 | `be1c5acbca86` |
+| `website/index.html` | indexed | repo | 6 | `2667f65659bb` |
+| `website/kiln-firing/index.html` | indexed | repo | 3 | `38be3941d855` |
 | `website/lighthouserc.json` | indexed | repo | 1 | `0bb1803b4685` |
 | `website/llms.txt` | indexed | repo | 1 | `9cd91992b9e1` |
-| `website/memberships/index.html` | indexed | repo | 3 | `02e73024eff8` |
+| `website/memberships/index.html` | indexed | repo | 2 | `cb51aa189b71` |
 | `website/ncsitebuilder/.well-known/assetlinks.json` | indexed | repo | 1 | `3d94dc0b84cc` |
-| `website/ncsitebuilder/ab/a/index.html` | indexed | repo | 4 | `b32c8d8157fd` |
-| `website/ncsitebuilder/ab/b/index.html` | indexed | repo | 4 | `bdfeeba31d67` |
+| `website/ncsitebuilder/ab/a/index.html` | indexed | repo | 4 | `2725f9f0ca3b` |
+| `website/ncsitebuilder/ab/b/index.html` | indexed | repo | 4 | `dfa26f345b1d` |
 | `website/ncsitebuilder/ab/README.md` | indexed | repo | 1 | `23047b495904` |
 | `website/ncsitebuilder/about/index.html` | indexed | repo | 2 | `61a5c69bb701` |
 | `website/ncsitebuilder/agent-docs/index.html` | indexed | repo | 1 | `396d7d6975a6` |
@@ -1572,18 +1572,18 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `website/ncsitebuilder/classes/index.html` | indexed | repo | 2 | `0a5280097ed3` |
 | `website/ncsitebuilder/contact/index.html` | indexed | repo | 4 | `50722624b845` |
 | `website/ncsitebuilder/data/blogs.json` | indexed | repo | 1 | `f2d77e6ccba6` |
-| `website/ncsitebuilder/data/faq.json` | indexed | repo | 2 | `1802e5a075c0` |
+| `website/ncsitebuilder/data/faq.json` | indexed | repo | 2 | `b1df9364b313` |
 | `website/ncsitebuilder/data/highlights.json` | indexed | repo | 1 | `f8db5a9fa971` |
 | `website/ncsitebuilder/data/kiln-status.json` | indexed | repo | 1 | `08756725a2bd` |
-| `website/ncsitebuilder/data/policies.json` | indexed | repo | 1 | `45abc5a4e697` |
+| `website/ncsitebuilder/data/policies.json` | indexed | repo | 1 | `79be41792e97` |
 | `website/ncsitebuilder/faq/index.html` | indexed | repo | 3 | `a5814eda5e52` |
 | `website/ncsitebuilder/gallery/index.html` | indexed | repo | 2 | `10a105424cfa` |
-| `website/ncsitebuilder/highlights/index.html` | indexed | repo | 4 | `c207003e22f8` |
-| `website/ncsitebuilder/index.html` | indexed | repo | 6 | `dbf91a889773` |
-| `website/ncsitebuilder/kiln-firing/index.html` | indexed | repo | 3 | `e6af528269fd` |
+| `website/ncsitebuilder/highlights/index.html` | indexed | repo | 4 | `be1c5acbca86` |
+| `website/ncsitebuilder/index.html` | indexed | repo | 6 | `d255441f69fb` |
+| `website/ncsitebuilder/kiln-firing/index.html` | indexed | repo | 3 | `38be3941d855` |
 | `website/ncsitebuilder/lighthouserc.json` | indexed | repo | 1 | `0bb1803b4685` |
 | `website/ncsitebuilder/llms.txt` | indexed | repo | 1 | `9cd91992b9e1` |
-| `website/ncsitebuilder/memberships/index.html` | indexed | repo | 3 | `02e73024eff8` |
+| `website/ncsitebuilder/memberships/index.html` | indexed | repo | 2 | `cb51aa189b71` |
 | `website/ncsitebuilder/policies/accessibility/index.html` | indexed | repo | 2 | `aa63c1874079` |
 | `website/ncsitebuilder/policies/clay-materials/index.html` | indexed | repo | 2 | `99ea0c083a40` |
 | `website/ncsitebuilder/policies/community-conduct/index.html` | indexed | repo | 2 | `9a2235d307f6` |
@@ -1594,10 +1594,10 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `website/ncsitebuilder/policies/payments-refunds/index.html` | indexed | repo | 2 | `e95041efb1ab` |
 | `website/ncsitebuilder/policies/safety-kiln-rules/index.html` | indexed | repo | 2 | `52a257189e49` |
 | `website/ncsitebuilder/policies/storage-abandoned-work/index.html` | indexed | repo | 3 | `28c4166f9b2e` |
-| `website/ncsitebuilder/policies/studio-access/index.html` | indexed | repo | 2 | `0ba957bd519d` |
+| `website/ncsitebuilder/policies/studio-access/index.html` | indexed | repo | 2 | `b08e91cb50c7` |
 | `website/ncsitebuilder/robots.txt` | indexed | repo | 1 | `bd69cf416dfb` |
 | `website/ncsitebuilder/scripts/serve.mjs` | indexed | repo | 2 | `5ee54620b107` |
-| `website/ncsitebuilder/services/index.html` | indexed | repo | 4 | `6dd844a5be3a` |
+| `website/ncsitebuilder/services/index.html` | indexed | repo | 4 | `688753194931` |
 | `website/ncsitebuilder/supplies/index.html` | indexed | repo | 2 | `8b50797ee141` |
 | `website/ncsitebuilder/support/index.html` | indexed | repo | 4 | `158683591691` |
 | `website/playwright.config.mjs` | indexed | repo | 1 | `c045628f9864` |
@@ -1611,7 +1611,7 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `website/policies/payments-refunds/index.html` | indexed | repo | 2 | `e95041efb1ab` |
 | `website/policies/safety-kiln-rules/index.html` | indexed | repo | 2 | `52a257189e49` |
 | `website/policies/storage-abandoned-work/index.html` | indexed | repo | 3 | `28c4166f9b2e` |
-| `website/policies/studio-access/index.html` | indexed | repo | 2 | `0ba957bd519d` |
+| `website/policies/studio-access/index.html` | indexed | repo | 2 | `b08e91cb50c7` |
 | `website/robots.txt` | indexed | repo | 1 | `bd69cf416dfb` |
 | `website/scripts/deploy.mjs` | indexed | repo | 3 | `b525c507cbef` |
 | `website/scripts/lint-policies.mjs` | indexed | repo | 1 | `38df47cd44af` |
@@ -1622,13 +1622,13 @@ Snapshot: 8ece2e6e5929f37d173c302725dceefa88a379343094d3d9b73a5e69080ef8f9
 | `website/scripts/sync-community-blogs.mjs` | indexed | repo | 11 | `2d8070132696` |
 | `website/scripts/sync-community-blogs.test.mjs` | indexed | repo | 2 | `305cc5479e47` |
 | `website/scripts/sync-policies.mjs` | indexed | repo | 2 | `f8037e981f4d` |
-| `website/services/index.html` | indexed | repo | 4 | `6dd844a5be3a` |
+| `website/services/index.html` | indexed | repo | 4 | `688753194931` |
 | `website/supplies/index.html` | indexed | repo | 2 | `8b50797ee141` |
 | `website/support/index.html` | indexed | repo | 3 | `990a7981d38b` |
 | `website/tests/legacy-host-guard.test.mjs` | indexed | repo | 1 | `c2b339f7a1cf` |
 | `website/tests/marketing-site.spec.mjs` | indexed | repo | 4 | `00945e9bfa11` |
-| `website/updates/index.html` | indexed | repo | 2 | `176e5b50ac48` |
-| `wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md` | indexed | repo | 2 | `0ccb18a61fcf` |
+| `website/updates/index.html` | indexed | repo | 2 | `950635af872e` |
+| `wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md` | indexed | repo | 2 | `e49b23d0244e` |
 | `WORKLOG.md` | indexed | repo | 18 | `971ee61c24a1` |
 
 ## Denied Sources

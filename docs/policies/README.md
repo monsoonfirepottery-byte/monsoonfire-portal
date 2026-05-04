@@ -66,7 +66,7 @@ effectiveDate: "2026-02-17"
 reviewDate: "2026-08-01"
 owner: "Studio Operations"
 sourceUrl: "/policies/studio-access/"
-summary: "Reservations are required for all visits..."
+summary: "Studio visits are appointment-only while legacy reservation tooling is deprecated..."
 tags:
   - "studio"
   - "access"
@@ -74,9 +74,9 @@ tags:
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "Reservations, check-in, and supervision."
+  decisionDomain: "Appointment-only access, check-in, and supervision."
   defaultActions:
-    - "check reservation status and share upcoming access steps"
+    - "check approved visit-window status and share upcoming access steps"
     - "verify whether a request requires supervision flagging"
   allowedLowRiskActions:
     - "answer appointment-only questions"

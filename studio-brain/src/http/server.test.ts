@@ -480,6 +480,22 @@ function createControlTowerFixture() {
           failed: 0,
           skipped: 0,
         },
+        utilization: {
+          attemptedJobs: 13,
+          activeJobDurationMs: 14400,
+          runDurationMs: 19000,
+          averageJobDurationMs: 1108,
+          longestJob: {
+            id: "memory-consolidation",
+            status: "passed",
+            durationMs: 13000,
+          },
+          failedJobIds: [],
+          warningJobIds: ["wiki-contradiction-scan", "wiki-export-drift-check"],
+          skippedJobIds: [],
+          idleReason: "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.",
+          nextRecommendedJob: "wiki-contradiction-scan",
+        },
         jobs: [
           {
             id: "memory-consolidation",
@@ -509,6 +525,83 @@ function createControlTowerFixture() {
                 exports: 4,
                 drift: 4,
               },
+            },
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  writeFileSync(
+    join(root, "output", "studio-brain", "idle-worker", "history.json"),
+    `${JSON.stringify(
+      {
+        schema: "studiobrain-idle-worker-history-v1",
+        generatedAt: "2026-03-30T10:06:20.000Z",
+        latestRunId: "idle-worker-fixture",
+        limit: 20,
+        runs: [
+          {
+            runId: "idle-worker-fixture",
+            status: "passed_with_warnings",
+            profile: "idle",
+            generatedAt: "2026-03-30T10:06:00.000Z",
+            completedAt: "2026-03-30T10:06:19.000Z",
+            summary: {
+              planned: 13,
+              passed: 11,
+              warning: 2,
+              failed: 0,
+              skipped: 0,
+            },
+            utilization: {
+              attemptedJobs: 13,
+              activeJobDurationMs: 14400,
+              runDurationMs: 19000,
+              averageJobDurationMs: 1108,
+              longestJob: {
+                id: "memory-consolidation",
+                status: "passed",
+                durationMs: 13000,
+              },
+              failedJobIds: [],
+              warningJobIds: ["wiki-contradiction-scan", "wiki-export-drift-check"],
+              skippedJobIds: [],
+              idleReason: "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.",
+              nextRecommendedJob: "wiki-contradiction-scan",
+            },
+          },
+          {
+            runId: "idle-worker-older-warning",
+            status: "passed_with_warnings",
+            profile: "idle",
+            generatedAt: "2026-03-30T08:00:00.000Z",
+            completedAt: "2026-03-30T08:01:40.000Z",
+            summary: {
+              planned: 13,
+              passed: 11,
+              warning: 2,
+              failed: 0,
+              skipped: 0,
+            },
+            utilization: {
+              attemptedJobs: 13,
+              activeJobDurationMs: 100000,
+              runDurationMs: 100000,
+              averageJobDurationMs: 7692,
+              longestJob: {
+                id: "memory-consolidation",
+                status: "passed",
+                durationMs: 90000,
+              },
+              failedJobIds: [],
+              warningJobIds: ["wiki-contradiction-scan", "wiki-export-drift-check"],
+              skippedJobIds: [],
+              idleReason: "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.",
+              nextRecommendedJob: "wiki-contradiction-scan",
             },
           },
         ],
@@ -4063,6 +4156,17 @@ test("control tower state routes derive browser-friendly room and service data",
                   failed: number;
                   skipped: number;
                 };
+                utilization: {
+                  attemptedJobs: number;
+                  activeJobDurationMs: number | null;
+                  idleReason: string | null;
+                  nextRecommendedJob: string | null;
+                  warningJobIds: string[];
+                };
+                stale: boolean;
+                ageMinutes: number | null;
+                problemClusters: Array<{ jobId: string; affectedRuns: number; warningRuns: number; failedRuns: number }>;
+                recentRuns: Array<{ runId: string | null; status: string | null }>;
                 jobs: Array<{ id: string; status: string | null; summary: string }>;
               } | null;
             };
@@ -4120,6 +4224,15 @@ test("control tower state routes derive browser-friendly room and service data",
         assert.equal(payload.state.memoryBrief.idleWorker?.status, "passed_with_warnings");
         assert.equal(payload.state.memoryBrief.idleWorker?.summary.planned, 13);
         assert.equal(payload.state.memoryBrief.idleWorker?.summary.warning, 2);
+        assert.equal(payload.state.memoryBrief.idleWorker?.recentRuns.length, 2);
+        assert.equal(payload.state.memoryBrief.idleWorker?.recentRuns[1]?.runId, "idle-worker-older-warning");
+        assert.equal(payload.state.memoryBrief.idleWorker?.stale, true);
+        assert.equal(payload.state.memoryBrief.idleWorker?.problemClusters[0]?.jobId, "wiki-contradiction-scan");
+        assert.equal(payload.state.memoryBrief.idleWorker?.problemClusters[0]?.affectedRuns, 2);
+        assert.equal(payload.state.memoryBrief.idleWorker?.utilization.attemptedJobs, 13);
+        assert.equal(payload.state.memoryBrief.idleWorker?.utilization.activeJobDurationMs, 14400);
+        assert.equal(payload.state.memoryBrief.idleWorker?.utilization.nextRecommendedJob, "wiki-contradiction-scan");
+        assert.ok(payload.state.memoryBrief.idleWorker?.utilization.warningJobIds.includes("wiki-export-drift-check"));
         assert.equal(
           payload.state.memoryBrief.idleWorker?.jobs.some((entry) =>
             entry.id === "wiki-contradiction-scan" && /contradictions/.test(entry.summary)
@@ -4127,7 +4240,7 @@ test("control tower state routes derive browser-friendly room and service data",
           true,
         );
         assert.equal(
-          payload.state.board.some((entry) => entry.owner === "Memory maintenance" && /13 jobs/.test(entry.task)),
+          payload.state.board.some((entry) => entry.owner === "Memory maintenance" && /2 recent runs tracked/.test(entry.task)),
           true,
         );
         assert.equal(payload.state.startupScorecard?.rubric.grade, "A");

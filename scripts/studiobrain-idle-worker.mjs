@@ -11,6 +11,7 @@ const REPO_ROOT = resolve(dirname(__filename), "..");
 const DEFAULT_RUN_ROOT = resolve(REPO_ROOT, "output", "studio-brain", "idle-worker");
 const DEFAULT_JOBS = ["memory", "repo", "harness", "wiki"];
 const DEFAULT_OUTPUT_TAIL_CHARS = 2_000;
+const DEFAULT_HISTORY_LIMIT = 20;
 const WIKI_MODES = new Set(["check", "refresh", "apply"]);
 const JOB_ALIASES = new Map([
   ["all", DEFAULT_JOBS],
@@ -134,6 +135,7 @@ function printUsage() {
       "  --run-id <id>                          Run identifier",
       "  --run-root <path>                      Artifact directory",
       "  --artifact <path>                      latest report path",
+      "  --history-limit <n>                    Recent run history cap (default: 20)",
       "  --lock-path <path>                     lock file path",
       "  --watch                                Repeat on an interval",
       "  --interval-minutes <n>                 Watch interval (default: 240)",
@@ -171,6 +173,7 @@ export function parseArgs(argv) {
     runId: "",
     runRoot: DEFAULT_RUN_ROOT,
     artifact: "",
+    historyLimit: DEFAULT_HISTORY_LIMIT,
     lockPath: "",
     lockStaleMinutes: 0,
   };
@@ -313,6 +316,11 @@ export function parseArgs(argv) {
     if (arg === "--artifact") {
       if (!next) throw new Error("--artifact requires a path.");
       parsed.artifact = resolve(REPO_ROOT, next);
+      index += 1;
+      continue;
+    }
+    if (arg === "--history-limit") {
+      parsed.historyLimit = parsePositiveInteger(next, "--history-limit");
       index += 1;
       continue;
     }
@@ -841,6 +849,32 @@ function buildBaseReport(options, runId, jobs) {
       maxLoad1m: options.maxLoad1m,
       observed: captureLoad(),
     },
+    budget: {
+      commandTimeoutMs: options.commandTimeoutMs,
+      repoDepth: options.repoDepth,
+      wikiMode: options.wikiMode,
+      maxLoad1m: options.maxLoad1m,
+      lockStaleMinutes: options.lockStaleMinutes,
+      memory: {
+        mode: options.memoryMode,
+        maxCandidates: options.memoryMaxCandidates,
+        maxWrites: options.memoryMaxWrites,
+        timeBudgetMs: options.memoryTimeBudgetMs,
+        timeoutMs: options.memoryTimeoutMs,
+      },
+    },
+    utilization: {
+      attemptedJobs: 0,
+      activeJobDurationMs: 0,
+      runDurationMs: null,
+      averageJobDurationMs: null,
+      longestJob: null,
+      failedJobIds: [],
+      warningJobIds: [],
+      skippedJobIds: [],
+      idleReason: "Idle worker run is still active.",
+      nextRecommendedJob: null,
+    },
     jobs: jobs.map((job) => ({
       id: job.id,
       label: job.label,
@@ -860,6 +894,80 @@ function buildBaseReport(options, runId, jobs) {
   };
 }
 
+function numericDuration(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : 0;
+}
+
+function jobIdsWithStatus(report, status) {
+  return report.jobs
+    .filter((job) => clean(job.status).toLowerCase() === status)
+    .map((job) => clean(job.id))
+    .filter(Boolean);
+}
+
+function deriveIdleReason(report) {
+  if (report.status === "planned") {
+    return "Dry run planned the idle-worker jobs without spending the execution budget.";
+  }
+  if (report.status === "skipped" && report.loadGate?.skipped) {
+    return `Skipped because load1m ${report.loadGate.observed?.load1m} exceeded max ${report.loadGate.maxLoad1m}.`;
+  }
+  if (report.status === "skipped" && report.lock?.reason) {
+    return clean(report.lock.reason);
+  }
+  if (report.summary.failed > 0) {
+    return "Idle-worker budget was spent, but failed jobs need operator attention.";
+  }
+  if (report.summary.warning > 0) {
+    return "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.";
+  }
+  if (report.summary.skipped > 0) {
+    return "Idle-worker work was partially skipped; review skipped job reasons before treating the lane as fully used.";
+  }
+  return "All planned idle jobs completed cleanly; no operator intervention is needed.";
+}
+
+function deriveNextRecommendedJob(report) {
+  const failed = jobIdsWithStatus(report, "failed");
+  if (failed.length > 0) return failed[0];
+  const warning = jobIdsWithStatus(report, "warning");
+  if (warning.length > 0) return warning[0];
+  const skipped = jobIdsWithStatus(report, "skipped");
+  if (skipped.length > 0) return skipped[0];
+  const preferred = report.jobs.find((job) => clean(job.id) === "memory-consolidation") || report.jobs[0];
+  return preferred ? clean(preferred.id) : null;
+}
+
+function buildUtilizationSummary(report) {
+  const completedJobs = report.jobs.filter((job) => ["passed", "warning", "failed"].includes(clean(job.status).toLowerCase()));
+  const durations = completedJobs.map((job) => numericDuration(job.durationMs));
+  const activeJobDurationMs = durations.reduce((sum, durationMs) => sum + durationMs, 0);
+  const started = Date.parse(clean(report.startedAt));
+  const completed = Date.parse(clean(report.completedAt));
+  const runDurationMs = Number.isFinite(started) && Number.isFinite(completed) && completed >= started ? completed - started : null;
+  const longestJob = completedJobs
+    .map((job) => ({
+      id: clean(job.id),
+      status: clean(job.status) || null,
+      durationMs: numericDuration(job.durationMs),
+    }))
+    .sort((left, right) => right.durationMs - left.durationMs)[0] || null;
+
+  return {
+    attemptedJobs: completedJobs.length,
+    activeJobDurationMs,
+    runDurationMs,
+    averageJobDurationMs: completedJobs.length > 0 ? Math.round(activeJobDurationMs / completedJobs.length) : null,
+    longestJob,
+    failedJobIds: jobIdsWithStatus(report, "failed"),
+    warningJobIds: jobIdsWithStatus(report, "warning"),
+    skippedJobIds: jobIdsWithStatus(report, "skipped"),
+    idleReason: deriveIdleReason(report),
+    nextRecommendedJob: deriveNextRecommendedJob(report),
+  };
+}
+
 function finishReport(report) {
   const statuses = report.jobs.map((job) => job.status);
   report.summary.passed = statuses.filter((status) => status === "passed").length;
@@ -871,7 +979,50 @@ function finishReport(report) {
       report.summary.failed > 0 ? "degraded" : report.summary.warning > 0 ? "passed_with_warnings" : "passed";
   }
   report.completedAt = nowIso();
+  report.utilization = buildUtilizationSummary(report);
   return report;
+}
+
+function summarizeHistoryRun(report) {
+  return {
+    runId: clean(report.runId) || null,
+    status: clean(report.status) || null,
+    profile: clean(report.profile) || null,
+    generatedAt: clean(report.generatedAt) || null,
+    startedAt: clean(report.startedAt) || null,
+    completedAt: clean(report.completedAt) || null,
+    dryRun: Boolean(report.dryRun),
+    summary: report.summary,
+    utilization: report.utilization,
+  };
+}
+
+function writeHistory(report, options) {
+  const historyPath = resolve(options.runRoot, "history.json");
+  const existing = readJsonIfPresent(historyPath);
+  const existingRuns = Array.isArray(existing?.runs) ? existing.runs : [];
+  const current = summarizeHistoryRun(report);
+  const seen = new Set([current.runId].filter(Boolean));
+  const runs = [
+    current,
+    ...existingRuns.filter((entry) => {
+      const runId = clean(entry?.runId);
+      if (!runId || seen.has(runId)) return false;
+      seen.add(runId);
+      return true;
+    }),
+  ].slice(0, Math.max(1, options.historyLimit || DEFAULT_HISTORY_LIMIT));
+
+  const history = {
+    schema: "studiobrain-idle-worker-history-v1",
+    generatedAt: nowIso(),
+    latestRunId: current.runId,
+    runRoot: options.runRoot,
+    artifact: options.artifact,
+    limit: Math.max(1, options.historyLimit || DEFAULT_HISTORY_LIMIT),
+    runs,
+  };
+  writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`, "utf8");
 }
 
 function writeReport(report, options) {
@@ -879,6 +1030,7 @@ function writeReport(report, options) {
   writeFileSync(options.artifact, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   const runPath = resolve(options.runRoot, `${safeSegment(report.runId)}.json`);
   writeFileSync(runPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  writeHistory(report, options);
 }
 
 export async function runIdleWorker(rawOptions, deps = {}) {

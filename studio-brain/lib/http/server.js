@@ -45,7 +45,9 @@ const service_3 = require("../partner/service");
 const CONTROL_TOWER_MEMORY_BRIEF_RELATIVE_PATH = ["output", "studio-brain", "memory-brief", "latest.json"];
 const CONTROL_TOWER_MEMORY_CONSOLIDATION_RELATIVE_PATH = ["output", "studio-brain", "memory-consolidation", "latest.json"];
 const CONTROL_TOWER_IDLE_WORKER_RELATIVE_PATH = ["output", "studio-brain", "idle-worker", "latest.json"];
+const CONTROL_TOWER_IDLE_WORKER_HISTORY_RELATIVE_PATH = ["output", "studio-brain", "idle-worker", "history.json"];
 const CONTROL_TOWER_STARTUP_SCORECARD_RELATIVE_PATH = ["output", "qa", "codex-startup-scorecard.json"];
+const CONTROL_TOWER_IDLE_WORKER_STALE_MINUTES = 180;
 const CONTROL_TOWER_EVENT_STREAM_POLL_MS = 5_000;
 const CONTROL_TOWER_EVENT_STREAM_HEARTBEAT_MS = 15_000;
 function withSecurityHeaders(headers) {
@@ -163,11 +165,107 @@ function summarizeIdleWorkerJob(job) {
         return JSON.stringify(rawSummary);
     return "";
 }
+function idleWorkerJobIdsWithStatus(jobs, status) {
+    return jobs
+        .filter((job) => toTrimmedString(job.status).toLowerCase() === status)
+        .map((job) => job.id)
+        .filter(Boolean)
+        .slice(0, 16);
+}
+function parseIdleWorkerRunDigest(payload, jobs = []) {
+    const summary = toObjectRecord(payload.summary);
+    const utilization = toObjectRecord(payload.utilization);
+    const longestJob = toObjectRecord(utilization.longestJob);
+    const completedJobs = jobs.filter((job) => ["passed", "warning", "failed"].includes(toTrimmedString(job.status).toLowerCase()));
+    const activeJobDurationMs = completedJobs.reduce((sum, job) => sum + (job.durationMs ?? 0), 0);
+    return {
+        runId: toTrimmedString(payload.runId) || null,
+        status: toTrimmedString(payload.status) || null,
+        profile: toTrimmedString(payload.profile) || null,
+        generatedAt: toTrimmedString(payload.generatedAt) || null,
+        startedAt: toTrimmedString(payload.startedAt) || null,
+        completedAt: toTrimmedString(payload.completedAt) || null,
+        dryRun: Boolean(payload.dryRun),
+        summary: {
+            planned: toBoundedInt(summary.planned, 0, 0, 1_000_000),
+            passed: toBoundedInt(summary.passed, 0, 0, 1_000_000),
+            warning: toBoundedInt(summary.warning, 0, 0, 1_000_000),
+            failed: toBoundedInt(summary.failed, 0, 0, 1_000_000),
+            skipped: toBoundedInt(summary.skipped, 0, 0, 1_000_000),
+        },
+        utilization: {
+            attemptedJobs: toBoundedInt(utilization.attemptedJobs, completedJobs.length, 0, 1_000_000),
+            activeJobDurationMs: toNullableNumber(utilization.activeJobDurationMs) ?? activeJobDurationMs,
+            runDurationMs: toNullableNumber(utilization.runDurationMs),
+            averageJobDurationMs: toNullableNumber(utilization.averageJobDurationMs),
+            longestJob: toTrimmedString(longestJob.id)
+                ? {
+                    id: toTrimmedString(longestJob.id),
+                    status: toTrimmedString(longestJob.status) || null,
+                    durationMs: toNullableNumber(longestJob.durationMs),
+                }
+                : null,
+            failedJobIds: toStringList(utilization.failedJobIds, 16).length
+                ? toStringList(utilization.failedJobIds, 16)
+                : idleWorkerJobIdsWithStatus(jobs, "failed"),
+            warningJobIds: toStringList(utilization.warningJobIds, 16).length
+                ? toStringList(utilization.warningJobIds, 16)
+                : idleWorkerJobIdsWithStatus(jobs, "warning"),
+            skippedJobIds: toStringList(utilization.skippedJobIds, 16).length
+                ? toStringList(utilization.skippedJobIds, 16)
+                : idleWorkerJobIdsWithStatus(jobs, "skipped"),
+            idleReason: toTrimmedString(utilization.idleReason) || null,
+            nextRecommendedJob: toTrimmedString(utilization.nextRecommendedJob) || null,
+        },
+    };
+}
+function buildIdleWorkerProblemClusters(recentRuns) {
+    const clusters = new Map();
+    for (const run of recentRuns) {
+        const runKey = run.runId || run.completedAt || run.generatedAt || "";
+        const addJob = (jobId, kind) => {
+            const cleanJobId = toTrimmedString(jobId);
+            if (!cleanJobId)
+                return;
+            const cluster = clusters.get(cleanJobId) ?? {
+                jobId: cleanJobId,
+                affectedRunIds: new Set(),
+                warningRuns: 0,
+                failedRuns: 0,
+            };
+            if (kind === "warning")
+                cluster.warningRuns += 1;
+            if (kind === "failed")
+                cluster.failedRuns += 1;
+            cluster.affectedRunIds.add(runKey || `${cleanJobId}:${cluster.warningRuns}:${cluster.failedRuns}`);
+            clusters.set(cleanJobId, cluster);
+        };
+        for (const jobId of run.utilization.warningJobIds)
+            addJob(jobId, "warning");
+        for (const jobId of run.utilization.failedJobIds)
+            addJob(jobId, "failed");
+    }
+    return Array.from(clusters.values())
+        .map((cluster) => ({
+        jobId: cluster.jobId,
+        affectedRuns: cluster.affectedRunIds.size,
+        warningRuns: cluster.warningRuns,
+        failedRuns: cluster.failedRuns,
+    }))
+        .filter((cluster) => cluster.affectedRuns > 1 || cluster.failedRuns > 0)
+        .sort((left, right) => {
+        if (right.failedRuns !== left.failedRuns)
+            return right.failedRuns - left.failedRuns;
+        if (right.affectedRuns !== left.affectedRuns)
+            return right.affectedRuns - left.affectedRuns;
+        return left.jobId.localeCompare(right.jobId);
+    })
+        .slice(0, 8);
+}
 function readControlTowerIdleWorkerSummary(repoRoot) {
     const payload = readJsonFile((0, node_path_1.resolve)(repoRoot, ...CONTROL_TOWER_IDLE_WORKER_RELATIVE_PATH));
     if (!payload)
         return null;
-    const summary = toObjectRecord(payload.summary);
     const jobs = (Array.isArray(payload.jobs) ? payload.jobs : [])
         .map((entry) => {
         const job = toObjectRecord(entry);
@@ -180,20 +278,27 @@ function readControlTowerIdleWorkerSummary(repoRoot) {
     })
         .filter((job) => job.id)
         .slice(0, 32);
+    const latestRun = parseIdleWorkerRunDigest(payload, jobs);
+    const history = readJsonFile((0, node_path_1.resolve)(repoRoot, ...CONTROL_TOWER_IDLE_WORKER_HISTORY_RELATIVE_PATH));
+    const seenRunIds = new Set();
+    const recentRuns = [latestRun, ...(Array.isArray(history?.runs) ? history.runs : []).map((entry) => parseIdleWorkerRunDigest(toObjectRecord(entry)))]
+        .filter((run) => {
+        const key = run.runId || `${run.completedAt || run.generatedAt || ""}:${run.status || ""}`;
+        if (!key || seenRunIds.has(key))
+            return false;
+        seenRunIds.add(key);
+        return true;
+    })
+        .slice(0, 10);
+    const ageMinutes = ageMinutesSince(latestRun.completedAt || latestRun.generatedAt);
     return {
-        runId: toTrimmedString(payload.runId) || null,
-        status: toTrimmedString(payload.status) || null,
-        profile: toTrimmedString(payload.profile) || null,
-        generatedAt: toTrimmedString(payload.generatedAt) || null,
-        completedAt: toTrimmedString(payload.completedAt) || null,
+        ...latestRun,
         artifactPath: CONTROL_TOWER_IDLE_WORKER_RELATIVE_PATH.join("/"),
-        summary: {
-            planned: toBoundedInt(summary.planned, 0, 0, 1_000_000),
-            passed: toBoundedInt(summary.passed, 0, 0, 1_000_000),
-            warning: toBoundedInt(summary.warning, 0, 0, 1_000_000),
-            failed: toBoundedInt(summary.failed, 0, 0, 1_000_000),
-            skipped: toBoundedInt(summary.skipped, 0, 0, 1_000_000),
-        },
+        historyPath: CONTROL_TOWER_IDLE_WORKER_HISTORY_RELATIVE_PATH.join("/"),
+        ageMinutes,
+        stale: ageMinutes != null && ageMinutes > CONTROL_TOWER_IDLE_WORKER_STALE_MINUTES,
+        problemClusters: buildIdleWorkerProblemClusters(recentRuns),
+        recentRuns,
         jobs,
     };
 }

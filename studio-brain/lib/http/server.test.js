@@ -424,6 +424,22 @@ function createControlTowerFixture() {
             failed: 0,
             skipped: 0,
         },
+        utilization: {
+            attemptedJobs: 13,
+            activeJobDurationMs: 14400,
+            runDurationMs: 19000,
+            averageJobDurationMs: 1108,
+            longestJob: {
+                id: "memory-consolidation",
+                status: "passed",
+                durationMs: 13000,
+            },
+            failedJobIds: [],
+            warningJobIds: ["wiki-contradiction-scan", "wiki-export-drift-check"],
+            skippedJobIds: [],
+            idleReason: "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.",
+            nextRecommendedJob: "wiki-contradiction-scan",
+        },
         jobs: [
             {
                 id: "memory-consolidation",
@@ -453,6 +469,74 @@ function createControlTowerFixture() {
                         exports: 4,
                         drift: 4,
                     },
+                },
+            },
+        ],
+    }, null, 2)}\n`, "utf8");
+    (0, node_fs_1.writeFileSync)((0, node_path_1.join)(root, "output", "studio-brain", "idle-worker", "history.json"), `${JSON.stringify({
+        schema: "studiobrain-idle-worker-history-v1",
+        generatedAt: "2026-03-30T10:06:20.000Z",
+        latestRunId: "idle-worker-fixture",
+        limit: 20,
+        runs: [
+            {
+                runId: "idle-worker-fixture",
+                status: "passed_with_warnings",
+                profile: "idle",
+                generatedAt: "2026-03-30T10:06:00.000Z",
+                completedAt: "2026-03-30T10:06:19.000Z",
+                summary: {
+                    planned: 13,
+                    passed: 11,
+                    warning: 2,
+                    failed: 0,
+                    skipped: 0,
+                },
+                utilization: {
+                    attemptedJobs: 13,
+                    activeJobDurationMs: 14400,
+                    runDurationMs: 19000,
+                    averageJobDurationMs: 1108,
+                    longestJob: {
+                        id: "memory-consolidation",
+                        status: "passed",
+                        durationMs: 13000,
+                    },
+                    failedJobIds: [],
+                    warningJobIds: ["wiki-contradiction-scan", "wiki-export-drift-check"],
+                    skippedJobIds: [],
+                    idleReason: "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.",
+                    nextRecommendedJob: "wiki-contradiction-scan",
+                },
+            },
+            {
+                runId: "idle-worker-older-warning",
+                status: "passed_with_warnings",
+                profile: "idle",
+                generatedAt: "2026-03-30T08:00:00.000Z",
+                completedAt: "2026-03-30T08:01:40.000Z",
+                summary: {
+                    planned: 13,
+                    passed: 11,
+                    warning: 2,
+                    failed: 0,
+                    skipped: 0,
+                },
+                utilization: {
+                    attemptedJobs: 13,
+                    activeJobDurationMs: 100000,
+                    runDurationMs: 100000,
+                    averageJobDurationMs: 7692,
+                    longestJob: {
+                        id: "memory-consolidation",
+                        status: "passed",
+                        durationMs: 90000,
+                    },
+                    failedJobIds: [],
+                    warningJobIds: ["wiki-contradiction-scan", "wiki-export-drift-check"],
+                    skippedJobIds: [],
+                    idleReason: "Idle-worker budget was spent and warnings should be reviewed before widening write-capable work.",
+                    nextRecommendedJob: "wiki-contradiction-scan",
                 },
             },
         ],
@@ -3492,8 +3576,17 @@ function createControlTowerRunner() {
             strict_1.default.equal(payload.state.memoryBrief.idleWorker?.status, "passed_with_warnings");
             strict_1.default.equal(payload.state.memoryBrief.idleWorker?.summary.planned, 13);
             strict_1.default.equal(payload.state.memoryBrief.idleWorker?.summary.warning, 2);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.recentRuns.length, 2);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.recentRuns[1]?.runId, "idle-worker-older-warning");
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.stale, true);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.problemClusters[0]?.jobId, "wiki-contradiction-scan");
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.problemClusters[0]?.affectedRuns, 2);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.utilization.attemptedJobs, 13);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.utilization.activeJobDurationMs, 14400);
+            strict_1.default.equal(payload.state.memoryBrief.idleWorker?.utilization.nextRecommendedJob, "wiki-contradiction-scan");
+            strict_1.default.ok(payload.state.memoryBrief.idleWorker?.utilization.warningJobIds.includes("wiki-export-drift-check"));
             strict_1.default.equal(payload.state.memoryBrief.idleWorker?.jobs.some((entry) => entry.id === "wiki-contradiction-scan" && /contradictions/.test(entry.summary)), true);
-            strict_1.default.equal(payload.state.board.some((entry) => entry.owner === "Memory maintenance" && /13 jobs/.test(entry.task)), true);
+            strict_1.default.equal(payload.state.board.some((entry) => entry.owner === "Memory maintenance" && /2 recent runs tracked/.test(entry.task)), true);
             strict_1.default.equal(payload.state.startupScorecard?.rubric.grade, "A");
             strict_1.default.equal(payload.state.startupScorecard?.rubric.overallScore, 98);
             strict_1.default.equal(payload.state.startupScorecard?.metrics.readyRate, 0.98);

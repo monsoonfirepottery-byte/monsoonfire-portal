@@ -82,12 +82,32 @@ test("idle-worker effectivity audit scores clean runs and surfaces human gates",
 
     assert.equal(report.schema, "studiobrain-idle-worker-effectivity-audit.v1");
     assert.equal(report.status, "warn");
+    assert.equal(report.health.current.status, "pass");
+    assert.equal(report.health.history.status, "warn");
+    assert.equal(report.health.history.findings.some((finding) => finding.code === "low-idle-worker-history-pass-rate"), true);
+    assert.equal(report.health.approvals.status, "warn");
     assert.equal(report.metrics.runsAudited, 2);
     assert.equal(report.metrics.queue.ready, 7);
     assert.equal(report.metrics.queue.humanApprovalClaims, 21);
     assert.deepEqual(report.metrics.resolvedProblemIds, ["wiki-export-drift-check"]);
     assert.equal(report.findings.some((finding) => finding.code === "human-gated-wiki-claims"), true);
     assert.match(readFileSync(join(auditRoot, "effectivity.md"), "utf8"), /Human-gated claims: 21/);
+    assert.match(readFileSync(join(auditRoot, "effectivity.md"), "utf8"), /Current health: pass/);
+
+    const currentOnlyReport = auditIdleWorkerEffectivity({
+      repoRoot: root,
+      runRoot: "output/studio-brain/idle-worker",
+      artifact: "output/studio-brain/audits/effectivity-current.json",
+      markdown: "output/studio-brain/audits/effectivity-current.md",
+      maxAgeMinutes: 9999,
+      currentOnly: true,
+    });
+    assert.equal(currentOnlyReport.mode, "current-only");
+    assert.equal(currentOnlyReport.status, "pass");
+    assert.equal(currentOnlyReport.findings.length, 0);
+    assert.equal(currentOnlyReport.completeFindings.some((finding) => finding.code === "human-gated-wiki-claims"), true);
+    assert.equal(currentOnlyReport.health.history.status, "warn");
+    assert.equal(currentOnlyReport.health.approvals.status, "warn");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

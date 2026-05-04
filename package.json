@@ -495,6 +495,8 @@
     "studio:ops:idle-worker:overnight:json": "node ./scripts/studiobrain-idle-worker.mjs --profile overnight --jobs memory,repo,harness,wiki --json",
     "studio:ops:idle-worker:wiki": "node ./scripts/studiobrain-idle-worker.mjs --profile idle --jobs wiki",
     "studio:ops:idle-worker:wiki:json": "node ./scripts/studiobrain-idle-worker.mjs --profile idle --jobs wiki --json",
+    "studio:ops:idle-worker:effectivity:audit": "node ./scripts/studiobrain-idle-worker-effectivity-audit.mjs --json",
+    "studio:ops:idle-worker:effectivity:audit:strict": "node ./scripts/studiobrain-idle-worker-effectivity-audit.mjs --strict --json",
     "studio:ops:agent-harness": "node ./scripts/studiobrain-agent-harness-work-packet.mjs --write",
     "studio:ops:agent-harness:json": "node ./scripts/studiobrain-agent-harness-work-packet.mjs --write --json",
     "wiki:validate": "node ./scripts/wiki-postgres.mjs validate --json",

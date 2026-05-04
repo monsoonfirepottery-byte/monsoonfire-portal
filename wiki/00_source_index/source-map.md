@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: ce81de65b041ee5f27ef95ed479ab7873ac5d6f1265d53d946e3f8f676cf7029
+export_hash: 434b848b217a06f28499e4037fb067abbf9753779c757a24e38f87eef41745e6
 ---
 
 # Source Map
 
-Snapshot: ce81de65b041ee5f27ef95ed479ab7873ac5d6f1265d53d946e3f8f676cf7029
+Snapshot: 434b848b217a06f28499e4037fb067abbf9753779c757a24e38f87eef41745e6
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -362,7 +362,7 @@ Snapshot: ce81de65b041ee5f27ef95ed479ab7873ac5d6f1265d53d946e3f8f676cf7029
 | `functions/src/updateReservation.ts` | indexed | repo | 4 | `270f9ef3044b` |
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `b36f9157a098` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `52c56b489e8e` |
-| `package.json` | indexed | repo | 7 | `4c2d8f410696` |
+| `package.json` | indexed | repo | 7 | `1ee5248cf1aa` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `44edaa77d984` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -767,6 +767,8 @@ Snapshot: ce81de65b041ee5f27ef95ed479ab7873ac5d6f1265d53d946e3f8f676cf7029
 | `scripts/studiobrain-control-tower-proxy.mjs` | indexed | repo | 2 | `527a507bec88` |
 | `scripts/studiobrain-host-access.py` | indexed | repo | 4 | `81909429b312` |
 | `scripts/studiobrain-host-access.sh` | indexed | repo | 1 | `4032a072ee4c` |
+| `scripts/studiobrain-idle-worker-effectivity-audit.mjs` | indexed | repo | 6 | `c03fabce948e` |
+| `scripts/studiobrain-idle-worker-effectivity-audit.test.mjs` | indexed | repo | 2 | `0a6abe440b91` |
 | `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 15 | `9acb760d8cbc` |
 | `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 1 | `e862a1356de5` |
 | `scripts/studiobrain-incident-bundle.mjs` | indexed | repo | 6 | `3564751f1f33` |

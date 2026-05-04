@@ -18,7 +18,7 @@ operating_layer_role: compiled_operating_layer
 serves_system: studio-brain
 memory_relationship: not_a_competing_memory_source
 source_of_truth_mode: compiled_from_repo_and_postgres_claims
-export_hash: 2ad9be091ee1eb494a90c860faf637d37484f1c103256fa069053e3a6d71f2dc
+export_hash: 419ffdb88296ded0d4d628c88f7144be1b335590c6d40c2f63c4f403db9c489b
 ---
 # Studio Brain Wiki Context Pack
 
@@ -43,8 +43,8 @@ Snapshot: f819cdad4ae4dc9b28a2e266792251ed4a2583c82efc1e83b5a807fd84db6b33
 
 ## Usefulness Signals
 
-- outcome verdict: insufficient_real_usage
-- wiki-relevant outcomes: 1; helpful: 1; stale_or_misleading: 0; minutes_saved: 18
+- outcome verdict: useful
+- wiki-relevant outcomes: 3; helpful: 3; stale_or_misleading: 0; minutes_saved: 0
 
 ## Verified Operational Context
 - Monsoon Fire is decommissioning membership and reservation systems during May 2026. Both systems reach end-of-life on May 31, 2026. Monsoon Fire uses straight pricing for services only. Kiln firing service pricing has three lanes: low fire, mid fire, and custom. Each lane is priced by the half shelf. There is no volume pricing, cubic-inch pricing, or membership-tier pricing for kiln services. Website and portal edits for this decommission are approved for May 2026 EOL cleanup. Preserve safe redirects or explicit transition messaging for legacy membership and reservation entry points. Pricing amounts are not defined here. Do not infer current prices from older whole-kiln, bisque/glaze, firing-credit, discount, or membership-tier copy. [claim_e2387dc9714da3f1b596; wiki/40_decisions/2026-04-28-service-pricing-and-membership-decommission.md#L1, docs/epics/EPIC-MEMBERSHIP-DECOMMISSION-AND-STUDIO-FOCUS.md#L1]

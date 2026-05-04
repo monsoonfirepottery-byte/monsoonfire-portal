@@ -273,7 +273,7 @@ export function auditWikiStartupPack(options = {}) {
   }
 
   const failCount = findings.filter((finding) => finding.severity === "error").length;
-  const startupEligible = failCount === 0 && verifiedClaims > 0 && totalWarningItems <= maxWarningItems;
+  const startupEligible = failCount === 0 && verifiedClaims > 0 && warningCount <= maxWarningItems;
   const report = {
     schema: "wiki-startup-pack-audit.v1",
     generatedAt: new Date().toISOString(),

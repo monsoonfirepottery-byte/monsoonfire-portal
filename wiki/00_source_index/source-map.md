@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: e0dc21e76a42231d7a8611fe631f98e25137558d15dec4c4e3d9b952f3c67872
+export_hash: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
 ---
 
 # Source Map
 
-Snapshot: e0dc21e76a42231d7a8611fe631f98e25137558d15dec4c4e3d9b952f3c67872
+Snapshot: 8ff69c8c8bd7e5195a1b6c93f4743385d8cca97bf0d223fc1c6fa2ca24939857
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -609,7 +609,7 @@ Snapshot: e0dc21e76a42231d7a8611fe631f98e25137558d15dec4c4e3d9b952f3c67872
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `505f7366c6e1` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `ad39dbf12605` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `b31a5f9b1a5c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 33 | `059a1277cd45` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 35 | `71afbc9439ad` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `9f8548f535be` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `c3a4de589100` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `e58affa06efe` |
@@ -797,11 +797,11 @@ Snapshot: e0dc21e76a42231d7a8611fe631f98e25137558d15dec4c4e3d9b952f3c67872
 | `scripts/wiki-human-gates-approval-packets.test.mjs` | indexed | repo | 2 | `294f3496a92e` |
 | `scripts/wiki-human-gates-list.mjs` | indexed | repo | 3 | `e537f54a1268` |
 | `scripts/wiki-human-gates-list.test.mjs` | indexed | repo | 2 | `4f9edd716fbc` |
-| `scripts/wiki-postgres-context-pack.test.mjs` | indexed | repo | 1 | `baa9ee0b19d4` |
+| `scripts/wiki-postgres-context-pack.test.mjs` | indexed | repo | 2 | `d789c5111503` |
 | `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `e60ae4a4832e` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
-| `scripts/wiki-startup-pack-audit.mjs` | indexed | repo | 5 | `486368ebd878` |
-| `scripts/wiki-startup-pack-audit.test.mjs` | indexed | repo | 2 | `0d33816a8503` |
+| `scripts/wiki-startup-pack-audit.mjs` | indexed | repo | 5 | `4381382055d2` |
+| `scripts/wiki-startup-pack-audit.test.mjs` | indexed | repo | 3 | `12a71225089c` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `159adc1e052a` |
 | `storage.rules` | indexed | repo | 1 | `f04626065d5f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `2cf3086af64e` |

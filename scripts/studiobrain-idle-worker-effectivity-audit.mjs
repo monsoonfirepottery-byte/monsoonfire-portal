@@ -28,6 +28,7 @@ function parseArgs(argv) {
   const args = {
     json: false,
     strict: false,
+    currentOnly: false,
     includeDryRuns: false,
     runRoot: DEFAULT_RUN_ROOT,
     history: null,
@@ -50,6 +51,10 @@ function parseArgs(argv) {
     }
     if (arg === "--strict") {
       args.strict = true;
+      continue;
+    }
+    if (arg === "--current-only") {
+      args.currentOnly = true;
       continue;
     }
     if (arg === "--include-dry-runs") {
@@ -198,12 +203,169 @@ function calculateScore(metrics, findings, thresholds) {
   return Math.max(0, Math.min(100, score));
 }
 
+function calculateCurrentScore(latestRun, latestAgeMinutes, stale, findings) {
+  let score = 100;
+  const summary = latestRun?.summary || {};
+  if (!latestRun) score -= 60;
+  if (latestAgeMinutes === null || stale) score -= 20;
+  if (Number(summary.failed || 0) > 0 || clean(latestRun?.status) === "degraded") score -= 40;
+  if (Number(summary.warning || 0) > 0 || clean(latestRun?.status) === "passed_with_warnings") score -= 20;
+  if (Number(summary.skipped || 0) > 0 || clean(latestRun?.status) === "skipped") score -= 10;
+  if (findings.some((finding) => finding.severity === "error")) score -= 20;
+  return Math.max(0, Math.min(100, score));
+}
+
+function calculateHistoryScore(metrics, findings, thresholds) {
+  let score = 100;
+  if (metrics.runsAudited === 0) score -= 60;
+  if (metrics.passRate < thresholds.minPassRate) {
+    score -= Math.min(25, Math.round((thresholds.minPassRate - metrics.passRate) * 100));
+  }
+  score -= Math.min(30, metrics.failedRuns * 15);
+  score -= Math.min(20, metrics.warningRuns * 6);
+  score -= Math.min(15, metrics.skippedRuns * 5);
+  score -= Math.min(20, metrics.repeatedProblemClusters.length * 10);
+  if (findings.some((finding) => finding.severity === "error")) score -= 20;
+  return Math.max(0, Math.min(100, score));
+}
+
+function calculateApprovalScore(queue, findings, thresholds) {
+  let score = 100;
+  if (!queue.present) score -= 20;
+  if (queue.present && queue.ready < thresholds.minReadyTasks) score -= 10;
+  if (queue.writeCapable > 0) score -= 25;
+  if (queue.humanApprovalClaims > 0) score -= 3;
+  if (findings.some((finding) => finding.severity === "error")) score -= 20;
+  return Math.max(0, Math.min(100, score));
+}
+
 function deriveStatus(score, findings, strict) {
   const errors = findings.filter((finding) => finding.severity === "error").length;
   const warnings = findings.filter((finding) => finding.severity === "warning").length;
   if (errors > 0 || (strict && warnings > 0)) return "fail";
   if (warnings > 0 || score < 85) return "warn";
   return "pass";
+}
+
+function buildHealthSections({ latestRun, latestAge, stale, metrics, thresholds, strict }) {
+  const summary = latestRun?.summary || {};
+  const currentFindings = [];
+  const historyFindings = [];
+  const approvalFindings = [];
+
+  if (!latestRun) {
+    pushFinding(currentFindings, "error", "missing-current-idle-worker-run", "No current idle-worker run was available.");
+  }
+  if (stale) {
+    pushFinding(currentFindings, "warning", "stale-current-idle-worker-run", "Latest idle-worker run is stale or missing completedAt.", {
+      completedAt: metrics.latestCompletedAt,
+      latestAgeMinutes: latestAge,
+      maxAgeMinutes: thresholds.maxAgeMinutes,
+    });
+  }
+  if (Number(summary.failed || 0) > 0 || clean(latestRun?.status) === "degraded") {
+    pushFinding(currentFindings, "error", "current-idle-worker-failed", "Latest idle-worker run failed.", {
+      failed: Number(summary.failed || 0),
+      status: clean(latestRun?.status) || null,
+    });
+  }
+  if (Number(summary.warning || 0) > 0 || clean(latestRun?.status) === "passed_with_warnings") {
+    pushFinding(currentFindings, "warning", "current-idle-worker-warning", "Latest idle-worker run reported warnings.", {
+      warning: Number(summary.warning || 0),
+      warningJobIds: Array.isArray(latestRun?.utilization?.warningJobIds) ? latestRun.utilization.warningJobIds : [],
+    });
+  }
+  if (Number(summary.skipped || 0) > 0 || clean(latestRun?.status) === "skipped") {
+    pushFinding(currentFindings, "warning", "current-idle-worker-skipped", "Latest idle-worker run skipped work.", {
+      skipped: Number(summary.skipped || 0),
+      skippedJobIds: Array.isArray(latestRun?.utilization?.skippedJobIds) ? latestRun.utilization.skippedJobIds : [],
+    });
+  }
+
+  if (metrics.runsAudited === 0) {
+    pushFinding(historyFindings, "error", "missing-idle-worker-history", "No executed idle-worker history runs were available.");
+  }
+  if (metrics.failedRuns > 0) {
+    pushFinding(historyFindings, "error", "failed-idle-worker-history", "One or more audited history runs failed.", {
+      failedRuns: metrics.failedRuns,
+    });
+  }
+  if (metrics.warningRuns > 0) {
+    pushFinding(historyFindings, "warning", "warning-idle-worker-history", "One or more audited history runs reported warnings.", {
+      warningRuns: metrics.warningRuns,
+      resolvedProblemIds: metrics.resolvedProblemIds,
+    });
+  }
+  if (metrics.runsAudited > 0 && metrics.passRate < thresholds.minPassRate) {
+    pushFinding(historyFindings, "warning", "low-idle-worker-history-pass-rate", "Audited idle-worker history pass rate is below threshold.", {
+      passRate: metrics.passRate,
+      minPassRate: thresholds.minPassRate,
+    });
+  }
+  if (metrics.repeatedProblemClusters.length > 0) {
+    pushFinding(historyFindings, "warning", "repeated-idle-worker-history-problems", "A job appears repeatedly in failed, warning, or skipped sets.", {
+      repeatedProblemClusters: metrics.repeatedProblemClusters,
+    });
+  }
+
+  if (!metrics.queue.present) {
+    pushFinding(approvalFindings, "warning", "missing-wiki-approval-queue", "Wiki idle-task queue artifact was not available.");
+  } else {
+    if (metrics.queue.ready < thresholds.minReadyTasks) {
+      pushFinding(approvalFindings, "warning", "thin-approval-queue", "Wiki idle-task queue has fewer ready read-only tasks than expected.", {
+        ready: metrics.queue.ready,
+        minReadyTasks: thresholds.minReadyTasks,
+      });
+    }
+    if (metrics.queue.writeCapable > 0) {
+      pushFinding(approvalFindings, "error", "write-capable-approval-tasks", "Wiki idle-task queue includes write-capable work.", {
+        writeCapable: metrics.queue.writeCapable,
+      });
+    }
+    if (metrics.queue.humanApprovalClaims > 0) {
+      pushFinding(approvalFindings, "warning", "human-gated-wiki-claims", "Wiki queue includes claims that require human approval.", {
+        claims: metrics.queue.humanApprovalClaims,
+      });
+    }
+  }
+
+  const currentScore = calculateCurrentScore(latestRun, latestAge, stale, currentFindings);
+  const historyScore = calculateHistoryScore(metrics, historyFindings, thresholds);
+  const approvalScore = calculateApprovalScore(metrics.queue, approvalFindings, thresholds);
+  return {
+    current: {
+      status: deriveStatus(currentScore, currentFindings, strict),
+      score: currentScore,
+      latestRunId: metrics.latestRunId,
+      latestStatus: metrics.latestStatus,
+      latestAgeMinutes: metrics.latestAgeMinutes,
+      plannedJobs: metrics.plannedJobs,
+      attemptedJobs: metrics.attemptedJobs,
+      findings: currentFindings,
+    },
+    history: {
+      status: deriveStatus(historyScore, historyFindings, strict),
+      score: historyScore,
+      runsAudited: metrics.runsAudited,
+      passRate: metrics.passRate,
+      cleanPassedRuns: metrics.cleanPassedRuns,
+      warningRuns: metrics.warningRuns,
+      failedRuns: metrics.failedRuns,
+      skippedRuns: metrics.skippedRuns,
+      resolvedProblemIds: metrics.resolvedProblemIds,
+      repeatedProblemClusters: metrics.repeatedProblemClusters,
+      findings: historyFindings,
+    },
+    approvals: {
+      status: deriveStatus(approvalScore, approvalFindings, strict),
+      score: approvalScore,
+      ready: metrics.queue.ready,
+      tasks: metrics.queue.tasks,
+      writeCapable: metrics.queue.writeCapable,
+      humanApprovalClaims: metrics.queue.humanApprovalClaims,
+      findings: approvalFindings,
+    },
+  };
 }
 
 export function auditIdleWorkerEffectivity(options = {}) {
@@ -222,6 +384,7 @@ export function auditIdleWorkerEffectivity(options = {}) {
   const minReadyTasks = Math.max(0, Math.round(Number(options.minReadyTasks || DEFAULT_MIN_READY_TASKS)));
   const minPassRate = Number(options.minPassRate ?? DEFAULT_MIN_PASS_RATE);
   const includeDryRuns = Boolean(options.includeDryRuns);
+  const currentOnly = Boolean(options.currentOnly);
 
   const findings = [];
   const history = readJsonIfPresent(historyPath);
@@ -330,13 +493,25 @@ export function auditIdleWorkerEffectivity(options = {}) {
     maxRuns,
     includeDryRuns,
   };
+  const health = buildHealthSections({
+    latestRun,
+    latestAge,
+    stale,
+    metrics,
+    thresholds,
+    strict: Boolean(options.strict),
+  });
   const score = calculateScore(metrics, findings, thresholds);
+  const statusScore = currentOnly ? health.current.score : score;
+  const statusFindings = currentOnly ? health.current.findings : findings;
   const report = {
     schema: "studiobrain-idle-worker-effectivity-audit.v1",
     generatedAt: new Date().toISOString(),
-    status: deriveStatus(score, findings, Boolean(options.strict)),
+    mode: currentOnly ? "current-only" : "complete",
+    status: deriveStatus(statusScore, statusFindings, Boolean(options.strict)),
     strict: Boolean(options.strict),
-    score,
+    score: statusScore,
+    completeScore: score,
     thresholds,
     paths: {
       runRoot,
@@ -346,8 +521,10 @@ export function auditIdleWorkerEffectivity(options = {}) {
       artifactPath,
       markdownPath,
     },
+    health,
     metrics,
-    findings,
+    findings: statusFindings,
+    ...(currentOnly ? { completeFindings: findings } : {}),
   };
 
   mkdirSync(dirname(artifactPath), { recursive: true });
@@ -365,9 +542,13 @@ function renderMarkdown(report) {
     `Generated: ${report.generatedAt}`,
     `Status: ${report.status}`,
     `Score: ${report.score}`,
+    `Mode: ${report.mode}`,
     "",
     "## Summary",
     "",
+    `- Current health: ${report.health.current.status} (${report.health.current.score})`,
+    `- History health: ${report.health.history.status} (${report.health.history.score})`,
+    `- Approval health: ${report.health.approvals.status} (${report.health.approvals.score})`,
     `- Runs audited: ${metrics.runsAudited}`,
     `- Latest run: ${metrics.latestRunId || "unknown"} (${metrics.latestStatus || "unknown"})`,
     `- Latest age: ${metrics.latestAgeMinutes === null ? "unknown" : `${metrics.latestAgeMinutes} minutes`}`,
@@ -399,6 +580,9 @@ function printHumanSummary(report) {
   process.stdout.write("Studio Brain idle-worker effectivity audit\n");
   process.stdout.write(`  status: ${report.status}\n`);
   process.stdout.write(`  score: ${report.score}\n`);
+  process.stdout.write(`  current health: ${report.health.current.status} (${report.health.current.score})\n`);
+  process.stdout.write(`  history health: ${report.health.history.status} (${report.health.history.score})\n`);
+  process.stdout.write(`  approval health: ${report.health.approvals.status} (${report.health.approvals.score})\n`);
   process.stdout.write(`  runs audited: ${report.metrics.runsAudited}\n`);
   process.stdout.write(`  latest: ${report.metrics.latestRunId || "unknown"} (${report.metrics.latestStatus || "unknown"})\n`);
   process.stdout.write(`  queue ready: ${report.metrics.queue.ready}\n`);

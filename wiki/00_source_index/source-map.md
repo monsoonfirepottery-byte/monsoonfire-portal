@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
+export_hash: 9b599d4fa0b218d1c1afed7fee7d98f07b071f565815916e89af736df35ef989
 ---
 
 # Source Map
 
-Snapshot: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
+Snapshot: 9b599d4fa0b218d1c1afed7fee7d98f07b071f565815916e89af736df35ef989
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -767,7 +767,8 @@ Snapshot: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
 | `scripts/studiobrain-control-tower-proxy.mjs` | indexed | repo | 2 | `527a507bec88` |
 | `scripts/studiobrain-host-access.py` | indexed | repo | 4 | `81909429b312` |
 | `scripts/studiobrain-host-access.sh` | indexed | repo | 1 | `4032a072ee4c` |
-| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 13 | `60b79bb7c2f3` |
+| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 15 | `9acb760d8cbc` |
+| `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 1 | `e862a1356de5` |
 | `scripts/studiobrain-incident-bundle.mjs` | indexed | repo | 6 | `3564751f1f33` |
 | `scripts/studiobrain-local-host-heartbeat.mjs` | indexed | repo | 5 | `4cdbce4f4b01` |
 | `scripts/studiobrain-network-check.mjs` | indexed | repo | 4 | `7a7ab6257eae` |
@@ -849,9 +850,9 @@ Snapshot: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
 | `studio-brain/src/connectors/types.ts` | indexed | repo | 1 | `f4a4b38623e7` |
 | `studio-brain/src/controlTower/actions.ts` | indexed | repo | 4 | `81b684073485` |
 | `studio-brain/src/controlTower/collect.ts` | indexed | repo | 9 | `fcb62ab086e0` |
-| `studio-brain/src/controlTower/derive.ts` | indexed | repo | 10 | `93de414807d9` |
+| `studio-brain/src/controlTower/derive.ts` | indexed | repo | 11 | `5d456f19ee10` |
 | `studio-brain/src/controlTower/hosts.ts` | indexed | repo | 3 | `34f020e5df21` |
-| `studio-brain/src/controlTower/types.ts` | indexed | repo | 7 | `d277a8d8a1e1` |
+| `studio-brain/src/controlTower/types.ts` | indexed | repo | 7 | `df7ec46cec4b` |
 | `studio-brain/src/db/maintenance.ts` | indexed | repo | 1 | `d9e0ce9f0116` |
 | `studio-brain/src/db/migrate.ts` | indexed | repo | 1 | `548f7651d398` |
 | `studio-brain/src/db/postgres.ts` | indexed | repo | 2 | `5679cb65db5c` |
@@ -862,7 +863,7 @@ Snapshot: e52478ee9f954a30fd19e0627f5a90ed20b4e60ea90edd94ec97301c13a881aa
 | `studio-brain/src/fabrication/workflows.ts` | indexed | repo | 4 | `22bb8ffff2b9` |
 | `studio-brain/src/http/dashboard.test.ts` | indexed | repo | 1 | `291396ea135c` |
 | `studio-brain/src/http/dashboard.ts` | indexed | repo | 2 | `658d5f851240` |
-| `studio-brain/src/http/server.ts` | indexed | repo | 109 | `e80ec53bb4e4` |
+| `studio-brain/src/http/server.ts` | indexed | repo | 110 | `258bfce0dec6` |
 | `studio-brain/src/index.ts` | indexed | repo | 13 | `5c29035486cd` |
 | `studio-brain/src/infra/backend.integration.test.ts` | indexed | repo | 5 | `8e7583b6877c` |
 | `studio-brain/src/infra/dockerComposeConfig.test.ts` | indexed | repo | 1 | `637879fa43a4` |

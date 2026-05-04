@@ -14,11 +14,11 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: bd50856bd201c44a96fe6eb4c1bf560619c6f6d078fa6d87bfde07beff40f1f5
+export_hash: 109c50aa549f9b329651718bb913e515a38308be00141b6bccbc7e3fe8b90d4c
 ---
 # Studio Brain Wiki Context Pack
 
-Snapshot: 4ce1cf1b704a8e1e124e013812c7e0f22cb93f6ce272939c585390f52ac03e4b
+Snapshot: 366f99dda795498fe83dced846d9303eaaf9ce70b930d8907449738eebbde101
 
 ## Usefulness Signals
 
@@ -30,7 +30,7 @@ Snapshot: 4ce1cf1b704a8e1e124e013812c7e0f22cb93f6ce272939c585390f52ac03e4b
 No VERIFIED or OPERATIONAL_TRUTH wiki claims are currently available. Agents must use repo/source reads for operational claims.
 
 ## Warnings
-- unverified-claims-excluded-summary: 259 total; showing 10; omitted 249
+- unverified-claims-excluded-summary: 261 total; showing 10; omitted 251
 - unverified-claim-excluded: policy-doc:docs/policies/accessibility.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/agent_policy_actions.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/agent_work_intake_policy.md (requires human approval)

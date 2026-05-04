@@ -34,6 +34,9 @@ test("wiki outcome recorder appends first-class harness outcome records", () => 
       minutesSaved: 12,
       usedBy: "unit-test",
       notes: "Wiki context pack pointed directly at the verified membership decommission truth.",
+      classification: "test",
+      sourceCommand: "npm run wiki:context:check",
+      evidenceArtifactPath: "output/wiki/context-check.json",
     }, {
       now: () => "2026-05-04T12:00:00.000Z",
     });
@@ -47,6 +50,9 @@ test("wiki outcome recorder appends first-class harness outcome records", () => 
     assert.equal(rows[0].schema, "studiobrain-agent-harness-outcome.v1");
     assert.equal(rows[0].title, "Wiki context pack shortened startup triage");
     assert.equal(rows[0].source, "wiki-outcome-recorder");
+    assert.equal(rows[0].classification, "test");
+    assert.equal(rows[0].organicEligible, false);
+    assert.equal(rows[0].provenance.sourceCommand, "npm run wiki:context:check");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -87,6 +93,7 @@ test("wiki outcome summary turns useful after three helpful wiki outcomes", () =
         outcome: "helpful",
         minutesSaved: 5,
         notes: "Wiki evidence was used by the unit test ledger.",
+        classification: "test",
       }, {
         now: () => `2026-05-04T12:0${index}:00.000Z`,
       });
@@ -101,6 +108,9 @@ test("wiki outcome summary turns useful after three helpful wiki outcomes", () =
     assert.equal(report.summary.helpful, 3);
     assert.equal(report.summary.totalMinutesSaved, 15);
     assert.equal(report.summary.verdict, "useful");
+    assert.equal(report.summary.test, 3);
+    assert.equal(report.summary.organic, 0);
+    assert.equal(report.trend.totals.staleOrMisleadingRate, 0);
     assert.equal(report.status, "pass");
   } finally {
     rmSync(root, { recursive: true, force: true });

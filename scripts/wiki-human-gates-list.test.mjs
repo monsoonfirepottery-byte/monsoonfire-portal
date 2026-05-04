@@ -47,6 +47,8 @@ test("wiki human gates list groups approval-required claims", () => {
       source,
       artifact: "output/wiki/human-gates.json",
       markdown: "output/wiki/human-gates.md",
+      snapshot: "wiki/00_source_index/human-gates-snapshot.json",
+      approvalState: "wiki/00_source_index/human-gate-approval-state.json",
     });
 
     assert.equal(report.schema, "wiki-human-gates-report.v1");
@@ -56,9 +58,14 @@ test("wiki human gates list groups approval-required claims", () => {
     assert.equal(report.summary.claims, 2);
     assert.equal(report.summary.byCategory["policy-doc"], 1);
     assert.equal(report.summary.byCategory["package-procedure"], 1);
+    assert.equal(report.summary.byState.pending, 2);
     assert.deepEqual(report.items.map((item) => item.claimId).sort(), ["claim_policy", "claim_script"]);
+    assert.equal(report.approvalState.summary.byState.pending, 2);
+    assert.equal(report.trackedSnapshot.summary.claims, 2);
     assert.match(readFileSync(join(root, "output/wiki/human-gates.md"), "utf8"), /claim_policy/);
     assert.match(readFileSync(join(root, "output/wiki/human-gates.md"), "utf8"), /Operating layer impact:/);
+    assert.match(readFileSync(join(root, "wiki/00_source_index/human-gates-snapshot.json"), "utf8"), /wiki-human-gates-snapshot.v1/);
+    assert.match(readFileSync(join(root, "wiki/00_source_index/human-gate-approval-state.json"), "utf8"), /"approvalState": "pending"/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

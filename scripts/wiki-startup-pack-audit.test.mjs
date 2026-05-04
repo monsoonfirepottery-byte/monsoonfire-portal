@@ -36,7 +36,9 @@ function contextPack(overrides = {}) {
         chars: 25,
         verifiedClaims: 1,
         warningCount: 0,
+        startupWarningItems: 0,
         totalWarningItems: 0,
+        excludedWarningBacklogItems: 0,
         humanApprovalClaimCount: 0,
         activeContradictionCount: 0,
         outcomeVerdict: "useful",
@@ -115,7 +117,9 @@ test("wiki startup pack audit warns when pack is honest but not startup-eligible
         chars: 24,
         verifiedClaims: 0,
         warningCount: 1,
+        startupWarningItems: 80,
         totalWarningItems: 80,
+        excludedWarningBacklogItems: 80,
         activeContradictionCount: 0,
         outcomeVerdict: "insufficient_real_usage",
       },
@@ -153,10 +157,12 @@ test("wiki startup pack audit allows bounded verified core with broad excluded b
         chars: 80,
         verifiedClaims: 1,
         warningCount: 2,
-        totalWarningItems: 80,
+        startupWarningItems: 2,
+        totalWarningItems: 2,
+        excludedWarningBacklogItems: 80,
         humanApprovalClaimCount: 1,
         activeContradictionCount: 0,
-        outcomeVerdict: "insufficient_real_usage",
+        outcomeVerdict: "useful",
       },
     }));
     writeJsonl(join(root, "wiki/00_source_index/extracted-facts.jsonl"), [
@@ -176,10 +182,13 @@ test("wiki startup pack audit allows bounded verified core with broad excluded b
       maxWarningItems: 50,
     });
 
-    assert.equal(report.status, "warn");
+    assert.equal(report.status, "pass");
     assert.equal(report.startupEligible, true);
-    assert.equal(report.metrics.totalWarningItems, 80);
-    assert.equal(report.findings.some((finding) => finding.code === "startup-warning-volume-too-high"), true);
+    assert.equal(report.metrics.startupWarningItems, 2);
+    assert.equal(report.metrics.excludedWarningBacklogItems, 80);
+    assert.equal(report.findings.some((finding) => finding.code === "startup-warning-volume-too-high"), false);
+    assert.equal(report.findings.some((finding) => finding.code === "human-gated-claims-await-approval"), true);
+    assert.equal(report.strictGate.status, "pass");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

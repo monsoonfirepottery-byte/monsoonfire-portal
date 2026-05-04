@@ -667,6 +667,9 @@ function summarizeJsonPayload(payload) {
     schema: clean(payload.schema || ""),
     status: clean(payload.status || ""),
     summary,
+    startupEligible: typeof payload.startupEligible === "boolean" ? payload.startupEligible : undefined,
+    strictGateStatus: clean(payload.strictGate?.status || ""),
+    outcomeVerdict: clean(payload.metrics?.outcomeVerdict || payload.summary?.outcomeVerdict || ""),
     actionabilityStatus: clean(payload.actionabilityStatus || ""),
     artifactPath: clean(payload.artifactPath || ""),
     markdownPath: clean(payload.markdownPath || ""),
@@ -950,12 +953,34 @@ function deriveIdleReason(report) {
 function deriveNextRecommendedJob(report) {
   const failed = jobIdsWithStatus(report, "failed");
   if (failed.length > 0) return failed[0];
-  const warning = jobIdsWithStatus(report, "warning");
-  if (warning.length > 0) return warning[0];
+  const warningJobs = report.jobs.filter((job) => clean(job.status).toLowerCase() === "warning");
+  const actionableWarning = warningJobs.find((job) => {
+    if (clean(job.id) !== "wiki-startup-pack-audit") return true;
+    return !(job.payloadSummary?.startupEligible === true && clean(job.payloadSummary?.strictGateStatus) === "pass");
+  });
+  if (actionableWarning) return clean(actionableWarning.id);
   const skipped = jobIdsWithStatus(report, "skipped");
   if (skipped.length > 0) return skipped[0];
+  const wikiIdleTask = nextReadyWikiIdleTask(report);
+  if (wikiIdleTask) return wikiIdleTask;
   const preferred = report.jobs.find((job) => clean(job.id) === "memory-consolidation") || report.jobs[0];
   return preferred ? clean(preferred.id) : null;
+}
+
+function nextReadyWikiIdleTask(report) {
+  const queueJob = report.jobs.find((job) => clean(job.id) === "wiki-idle-task-queue");
+  if (!queueJob) return null;
+  for (const artifact of queueJob.artifacts || []) {
+    if (!String(artifact).endsWith(".json")) continue;
+    const payload = readJsonIfPresent(resolve(REPO_ROOT, artifact));
+    const tasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
+    const ready = tasks
+      .filter((task) => clean(task.status) === "ready")
+      .filter((task) => clean(task.taskKey) !== "wiki-startup-pack-audit")
+      .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0) || clean(left.taskKey).localeCompare(clean(right.taskKey)));
+    if (ready[0]?.taskKey) return clean(ready[0].taskKey);
+  }
+  return null;
 }
 
 function buildUtilizationSummary(report) {

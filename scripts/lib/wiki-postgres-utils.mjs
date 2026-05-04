@@ -157,7 +157,7 @@ const MEMBERSHIP_CURRENT_PLAN_PATTERN = /\b(membership|memberships|member)\b.{0,
 
 const MEMBERSHIP_FIRING_CREDIT_PATTERN = /\b(membership|memberships|member|tier|tiers)\b.{0,80}\bfiring credits\b|\bfiring credits\b.{0,80}\b(membership|memberships|member|tier|tiers)\b/i;
 
-const MEMBERSHIP_DECOMMISSION_PATTERN = /\bmembership(s)?\b.{0,140}\b(decommission|phase(d)? out|phasing out|being phased out|remove|removed|sunset|straight pricing for services only)\b/i;
+const MEMBERSHIP_DECOMMISSION_PATTERN = /\bmembership(s)?\b.{0,140}\b(decommission(?:ed|ing)?|deprecat(?:ed|ing|ion)|end-of-life|eol|phase(d)? out|phasing out|being phased out|remove|removed|sunset|straight pricing for services only)\b/i;
 
 const STALE_MEMBERSHIP_CONTEXT_PATTERN = /\b(stale|decommission|decommissioned|paused|redesign|do not infer|do not edit|no longer presents)\b/i;
 
@@ -309,6 +309,36 @@ function secretReasonForContent(content) {
 
 export function contentDenyReason(content) {
   return secretReasonForContent(content);
+}
+
+function classifyDeniedSource(denied) {
+  const reason = String(denied?.reason || "");
+  if (reason.startsWith("deny-prefix:") || reason.startsWith("deny-path-part:") || reason === "not-approved-source-root") {
+    return {
+      ...denied,
+      classification: "expected",
+      rationale: "outside the approved wiki source inventory or generated/runtime output boundary",
+    };
+  }
+  if (reason.startsWith("secret-pattern:")) {
+    return {
+      ...denied,
+      classification: "needs-fix",
+      rationale: "an approved source matched a secret-like content pattern and must be reviewed without exposing the value",
+    };
+  }
+  if (reason.startsWith("read-error:") || reason === "invalid-path") {
+    return {
+      ...denied,
+      classification: "needs-fix",
+      rationale: "the wiki index could not safely read or normalize this approved source",
+    };
+  }
+  return {
+    ...denied,
+    classification: "needs-fix",
+    rationale: "unclassified deny reason requires operator review",
+  };
 }
 
 function shouldReadTextFile(relativePath, maxFileBytes) {
@@ -489,6 +519,7 @@ export function buildSourceIndex(options = {}) {
     denied,
   }));
 
+  const deniedReview = denied.map(classifyDeniedSource);
   return {
     schema: "wiki-source-index.v1",
     generatedAt,
@@ -497,11 +528,14 @@ export function buildSourceIndex(options = {}) {
     sources,
     chunks,
     denied,
+    deniedReview,
     summary: {
       discovered: files.length,
       selected: selected.length,
       indexed: sources.length,
       denied: denied.length,
+      deniedExpected: deniedReview.filter((entry) => entry.classification === "expected").length,
+      deniedNeedsFix: deniedReview.filter((entry) => entry.classification === "needs-fix").length,
       chunks: chunks.length,
     },
   };
@@ -1132,15 +1166,36 @@ export function summarizeWikiOutcomeUsefulness(outcomes = []) {
   const helpful = relevant.filter((entry) => ["used", "helpful", "resolved"].includes(String(entry.outcome || "")));
   const staleOrMisleading = relevant.filter((entry) => ["stale", "misleading"].includes(String(entry.outcome || "")));
   const blocked = relevant.filter((entry) => entry.outcome === "blocked");
+  const byClassification = relevant.reduce((summary, entry) => {
+    const classification = String(entry.classification || (entry.organicEligible === false ? "test" : "organic"));
+    summary[classification] = (summary[classification] || 0) + 1;
+    return summary;
+  }, {});
+  const recentRecords = [...relevant]
+    .sort((a, b) => String(b.recordedAt || "").localeCompare(String(a.recordedAt || "")))
+    .slice(0, 5)
+    .map((entry) => ({
+      recordedAt: entry.recordedAt || null,
+      packetId: entry.packetId || null,
+      outcome: entry.outcome || null,
+      classification: entry.classification || (entry.organicEligible === false ? "test" : "organic"),
+      source: entry.source || null,
+    }));
   const totalMinutesSaved = relevant.reduce((sum, entry) => sum + (Number(entry.minutesSaved) || 0), 0);
   const usefulnessScore = relevant.length === 0
     ? 0
     : Math.max(0, Math.min(1, (helpful.length + totalMinutesSaved / 30 - staleOrMisleading.length * 2) / Math.max(1, relevant.length)));
+  const staleOrMisleadingRate = relevant.length > 0 ? Math.round((staleOrMisleading.length / relevant.length) * 1000) / 1000 : 0;
   return {
     total: relevant.length,
     helpful: helpful.length,
     staleOrMisleading: staleOrMisleading.length,
+    staleOrMisleadingRate,
     blocked: blocked.length,
+    byClassification,
+    organic: byClassification.organic || 0,
+    test: byClassification.test || 0,
+    recentRecords,
     totalMinutesSaved,
     usefulnessScore: Math.round(usefulnessScore * 100) / 100,
     verdict: relevant.length < 3
@@ -1182,6 +1237,82 @@ function summarizeClaimStates(claims = []) {
     operationalTruthClaims: all.filter((claim) => claim.status === "OPERATIONAL_TRUTH").length,
     unverifiedClaims: all.filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status)).length,
     humanApprovalClaims: all.filter((claim) => claim.requiresHumanApproval).length,
+  };
+}
+
+function humanGateCategoryForClaim(claim) {
+  const subjectKey = String(claim?.subjectKey || "");
+  if (subjectKey.startsWith("policy-doc:") || claim?.claimKind === "policy") return "policy-doc";
+  if (subjectKey.startsWith("package-script:")) return "package-procedure";
+  if (subjectKey.startsWith("source-of-truth:")) return "source-of-truth";
+  if (subjectKey.startsWith("agents:") || claim?.claimKind === "guardrail") return "agent-guardrail";
+  if (subjectKey.startsWith("repo-config:")) return "repo-config";
+  if (subjectKey.startsWith("wiki:") || subjectKey.startsWith("wiki-decision:")) return "wiki";
+  return "other";
+}
+
+function summarizeClaimWarningCategories(claims = []) {
+  const summaries = new Map();
+  for (const claim of claims) {
+    const category = humanGateCategoryForClaim(claim);
+    const existing = summaries.get(category) || {
+      category,
+      total: 0,
+      humanApproval: 0,
+      sampleClaimIds: [],
+      sampleSources: [],
+    };
+    existing.total += 1;
+    if (claim?.requiresHumanApproval) existing.humanApproval += 1;
+    if (existing.sampleClaimIds.length < 3 && claim?.claimId) existing.sampleClaimIds.push(claim.claimId);
+    const sourcePath = claim?.sourceRefs?.[0]?.sourcePath;
+    if (sourcePath && existing.sampleSources.length < 3 && !existing.sampleSources.includes(sourcePath)) {
+      existing.sampleSources.push(sourcePath);
+    }
+    summaries.set(category, existing);
+  }
+  return [...summaries.values()].sort((a, b) => b.total - a.total || a.category.localeCompare(b.category));
+}
+
+function summarizeContradictionWarningCategories(contradictions = []) {
+  const summaries = new Map();
+  for (const contradiction of contradictions) {
+    const category = contradiction?.severity || "unknown";
+    const existing = summaries.get(category) || {
+      category,
+      total: 0,
+      sampleContradictionIds: [],
+      sampleConflictKeys: [],
+    };
+    existing.total += 1;
+    if (existing.sampleContradictionIds.length < 3 && contradiction?.contradictionId) {
+      existing.sampleContradictionIds.push(contradiction.contradictionId);
+    }
+    if (existing.sampleConflictKeys.length < 3 && contradiction?.conflictKey) {
+      existing.sampleConflictKeys.push(contradiction.conflictKey);
+    }
+    summaries.set(category, existing);
+  }
+  return [...summaries.values()].sort((a, b) => b.total - a.total || a.category.localeCompare(b.category));
+}
+
+function isStaleMembershipOperationalClaim(claim) {
+  if (!claim || !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status)) return false;
+  const text = `${claim.subjectKey || ""} ${claim.objectText || ""}`;
+  if (MEMBERSHIP_DECOMMISSION_PATTERN.test(text)) return false;
+  return MEMBERSHIP_ACTIVE_MODEL_PATTERN.test(text) ||
+    MEMBERSHIP_CURRENT_PLAN_PATTERN.test(text) ||
+    MEMBERSHIP_FIRING_CREDIT_PATTERN.test(text);
+}
+
+function summarizeMembershipEolContext(verifiedClaims = []) {
+  const safeClaims = verifiedClaims.filter((claim) => {
+    const text = `${claim.subjectKey || ""} ${claim.objectText || ""}`;
+    return MEMBERSHIP_DECOMMISSION_PATTERN.test(text) && /reservation/i.test(text);
+  });
+  return {
+    safeOperationalTruthClaims: safeClaims.length,
+    claimIds: safeClaims.map((claim) => claim.claimId).filter(Boolean),
   };
 }
 
@@ -1230,35 +1361,52 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
   const outcomeUsefulness = options.outcomeUsefulness || summarizeWikiOutcomeUsefulness(readJsonlIfPresent(options.outcomesPath));
   const claimStates = summarizeClaimStates(claims);
   const operatingLayerContract = buildWikiOperatingLayerContract();
-  const verified = claims.filter((claim) =>
+  const verifiedCandidates = claims.filter((claim) =>
     (claim.status === "VERIFIED" || claim.status === "OPERATIONAL_TRUTH") &&
     (claim.agentAllowedUse === "planning_context" || claim.agentAllowedUse === "operational_context")
   );
+  const staleMembershipOperationalClaims = verifiedCandidates.filter(isStaleMembershipOperationalClaim);
+  const verified = verifiedCandidates.filter((claim) => !isStaleMembershipOperationalClaim(claim));
   const verifiedById = new Map(verified.map((claim) => [claim.claimId, claim]));
   const unverifiedClaims = claims.filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status));
   const activeContradictions = contradictions.filter((entry) => ["open", "in-review", "blocked"].includes(entry.status));
-  const sampledUnverifiedClaims = [...unverifiedClaims].sort(compareUnverifiedWarningClaims).slice(0, 10).map((claim) => ({
-    type: "unverified-claim-excluded",
-    claimId: claim.claimId,
-    status: claim.status,
-    subjectKey: claim.subjectKey,
-    requiresHumanApproval: Boolean(claim.requiresHumanApproval),
-    owner: claim.owner || "",
-  }));
-  const sampledContradictions = activeContradictions.slice(0, 10).map((entry) => contradictionContextWarning(entry, verifiedById));
+  const humanApprovalClaims = unverifiedClaims.filter((claim) => claim.requiresHumanApproval);
+  const unverifiedCategorySummaries = summarizeClaimWarningCategories(unverifiedClaims);
+  const humanApprovalCategorySummaries = summarizeClaimWarningCategories(humanApprovalClaims);
+  const contradictionCategorySummaries = summarizeContradictionWarningCategories(activeContradictions);
+  const sampledContradictions = activeContradictions.slice(0, 5).map((entry) => contradictionContextWarning(entry, verifiedById));
+  const membershipEolContext = summarizeMembershipEolContext(verified);
   const warnings = [
     ...(unverifiedClaims.length > 0 ? [{
       type: "unverified-claims-excluded-summary",
       total: unverifiedClaims.length,
-      shown: sampledUnverifiedClaims.length,
-      omitted: Math.max(0, unverifiedClaims.length - sampledUnverifiedClaims.length),
+      categories: unverifiedCategorySummaries.length,
+      fullArtifactPath: "wiki/00_source_index/extracted-facts.jsonl",
+      approvalSnapshotPath: "wiki/00_source_index/human-gates-snapshot.json",
     }] : []),
-    ...sampledUnverifiedClaims,
+    ...(humanApprovalClaims.length > 0 ? [{
+      type: "human-gated-claims-summary",
+      total: humanApprovalClaims.length,
+      categories: humanApprovalCategorySummaries,
+      approvalStatePath: "wiki/00_source_index/human-gate-approval-state.json",
+      approvalPacketCommand: "npm run wiki:human-gates:packets",
+    }] : []),
+    ...unverifiedCategorySummaries.map((summary) => ({
+      type: "unverified-claims-excluded-category",
+      ...summary,
+      fullArtifactPath: "wiki/00_source_index/extracted-facts.jsonl",
+    })),
+    ...(staleMembershipOperationalClaims.length > 0 ? [{
+      type: "stale-membership-operational-claim-excluded",
+      total: staleMembershipOperationalClaims.length,
+      sampleClaimIds: staleMembershipOperationalClaims.slice(0, 3).map((claim) => claim.claimId),
+      reason: "membership-or-reservation-required language cannot become startup operational truth while the May 2026 EOL decision is active",
+    }] : []),
     ...(activeContradictions.length > 0 ? [{
       type: "active-contradictions-summary",
       total: activeContradictions.length,
-      shown: sampledContradictions.length,
-      omitted: Math.max(0, activeContradictions.length - sampledContradictions.length),
+      categories: contradictionCategorySummaries,
+      fullArtifactPath: "wiki/50_contradictions",
     }] : []),
     ...sampledContradictions,
   ];
@@ -1353,10 +1501,16 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
       totalClaims: claimStates.claims,
       operationalTruthClaims: claimStates.operationalTruthClaims,
       warningCount: warnings.length,
-      totalWarningItems: unverifiedClaims.length + activeContradictions.length,
+      startupWarningItems: warnings.length,
+      totalWarningItems: warnings.length,
+      excludedWarningBacklogItems: unverifiedClaims.length + activeContradictions.length + staleMembershipOperationalClaims.length,
       unverifiedClaimExcludedCount: unverifiedClaims.length,
       humanApprovalClaimCount: claimStates.humanApprovalClaims,
+      warningDigestCategories: unverifiedCategorySummaries.length + contradictionCategorySummaries.length,
       activeContradictionCount: activeContradictions.length,
+      staleMembershipOperationalExcludedCount: staleMembershipOperationalClaims.length,
+      membershipEolOperationalTruthClaims: membershipEolContext.safeOperationalTruthClaims,
+      membershipEolOperationalTruthClaimIds: membershipEolContext.claimIds,
       usefulnessScore: outcomeUsefulness.usefulnessScore,
       outcomeTotal: outcomeUsefulness.total,
       outcomeVerdict: outcomeUsefulness.verdict,
@@ -1408,10 +1562,32 @@ function formatClaimSourceRefs(claim) {
 function formatContextWarning(warning) {
   const subject = warning.conflictKey || warning.subjectKey || warning.claimId || warning.contradictionId;
   if (warning.type === "unverified-claims-excluded-summary") {
-    return `- ${warning.type}: ${warning.total} total; showing ${warning.shown}; omitted ${warning.omitted}`;
+    return `- ${warning.type}: ${warning.total} backlog claims across ${warning.categories || 0} categories; full ledger: ${warning.fullArtifactPath}; approval snapshot: ${warning.approvalSnapshotPath}`;
+  }
+  if (warning.type === "human-gated-claims-summary") {
+    const categories = Array.isArray(warning.categories)
+      ? warning.categories.map((entry) => `${entry.category}=${entry.total}`).join(", ")
+      : "none";
+    return `- ${warning.type}: ${warning.total} pending approval-only claims (${categories}); state: ${warning.approvalStatePath}; packets: ${warning.approvalPacketCommand}`;
+  }
+  if (warning.type === "unverified-claims-excluded-category") {
+    const approval = warning.humanApproval ? `; human_gated=${warning.humanApproval}` : "";
+    const samples = Array.isArray(warning.sampleClaimIds) && warning.sampleClaimIds.length > 0
+      ? `; sample_claims=${warning.sampleClaimIds.join(",")}`
+      : "";
+    return `- ${warning.type}: ${warning.category} total=${warning.total}${approval}${samples}`;
+  }
+  if (warning.type === "stale-membership-operational-claim-excluded") {
+    const samples = Array.isArray(warning.sampleClaimIds) && warning.sampleClaimIds.length > 0
+      ? `; sample_claims=${warning.sampleClaimIds.join(",")}`
+      : "";
+    return `- ${warning.type}: ${warning.total} excluded${samples}; ${warning.reason}`;
   }
   if (warning.type === "active-contradictions-summary") {
-    return `- ${warning.type}: ${warning.total} total; showing ${warning.shown}; omitted ${warning.omitted}`;
+    const categories = Array.isArray(warning.categories)
+      ? warning.categories.map((entry) => `${entry.category}=${entry.total}`).join(", ")
+      : "none";
+    return `- ${warning.type}: ${warning.total} active contradictions (${categories}); full artifacts: ${warning.fullArtifactPath}`;
   }
   if (warning.type === "source-drift-after-operational-truth" || warning.type === "blocked-source-drift-after-operational-truth") {
     const gate = warning.humanGate ? `; gate: ${warning.humanGate}` : "";
@@ -1509,36 +1685,88 @@ export function buildDbProbeReport() {
       name: "context-pack-latest",
       sql: "SELECT context_pack_id, generated_text FROM wiki_context_pack WHERE tenant_scope = $1 AND pack_key = $2 AND status = 'active' ORDER BY generated_at DESC LIMIT 1",
       targetMs: 100,
+      parameters: ["tenant_scope", "pack_key"],
+      expectedIndexAssumptions: ["wiki_context_pack tenant_scope+pack_key+status+generated_at"],
+      mutationSafety: "read-only EXPLAIN probe; no data mutation in dry-run mode",
     },
     {
       name: "verified-claim-search",
       sql: "SELECT claim_id, object_text FROM wiki_claim WHERE tenant_scope = $1 AND status IN ('VERIFIED','OPERATIONAL_TRUTH') AND subject_key = $2 ORDER BY updated_at DESC LIMIT 40",
       targetMs: 100,
+      parameters: ["tenant_scope", "subject_key"],
+      expectedIndexAssumptions: ["wiki_claim tenant_scope+status+subject_key+updated_at"],
+      mutationSafety: "read-only EXPLAIN probe; no data mutation in dry-run mode",
     },
     {
       name: "open-contradictions",
       sql: "SELECT contradiction_id, conflict_key, severity FROM wiki_contradiction WHERE tenant_scope = $1 AND status IN ('open','in-review','blocked') ORDER BY severity DESC, updated_at DESC LIMIT 50",
       targetMs: 100,
+      parameters: ["tenant_scope"],
+      expectedIndexAssumptions: ["wiki_contradiction tenant_scope+status+severity+updated_at"],
+      mutationSafety: "read-only EXPLAIN probe; no data mutation in dry-run mode",
     },
     {
       name: "ready-idle-tasks",
       sql: "SELECT task_id, title FROM wiki_idle_task WHERE tenant_scope = $1 AND status = 'ready' AND (next_run_at IS NULL OR next_run_at <= now()) ORDER BY priority DESC, next_run_at ASC LIMIT 20",
       targetMs: 100,
+      parameters: ["tenant_scope"],
+      expectedIndexAssumptions: ["wiki_idle_task tenant_scope+status+next_run_at+priority"],
+      mutationSafety: "read-only SELECT shape in dry-run mode; apply mode leases separately through wiki_idle_task",
     },
     {
       name: "source-freshness",
       sql: "SELECT source_id, source_path, content_hash FROM wiki_source WHERE tenant_scope = $1 AND ingest_status IN ('indexed','unchanged') ORDER BY last_indexed_at DESC LIMIT 100",
       targetMs: 25,
+      parameters: ["tenant_scope"],
+      expectedIndexAssumptions: ["wiki_source tenant_scope+ingest_status+last_indexed_at"],
+      mutationSafety: "read-only EXPLAIN probe; no data mutation in dry-run mode",
     },
   ];
+  const queryNames = new Set();
+  const findings = [];
+  for (const query of queries) {
+    if (queryNames.has(query.name)) {
+      findings.push({ code: "duplicate-query-name", severity: "error", query: query.name });
+    }
+    queryNames.add(query.name);
+    const sqlParameterCount = new Set([...query.sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]))).size;
+    if (sqlParameterCount !== query.parameters.length) {
+      findings.push({
+        code: "query-parameter-count-mismatch",
+        severity: "error",
+        query: query.name,
+        sqlParameterCount,
+        declaredParameterCount: query.parameters.length,
+      });
+    }
+    if (!Number.isFinite(Number(query.targetMs)) || Number(query.targetMs) <= 0) {
+      findings.push({ code: "invalid-target-ms", severity: "error", query: query.name, targetMs: query.targetMs });
+    }
+    if (!Array.isArray(query.expectedIndexAssumptions) || query.expectedIndexAssumptions.length === 0) {
+      findings.push({ code: "missing-index-assumption", severity: "error", query: query.name });
+    }
+  }
   return {
     schema: "wiki-db-probe.v1",
     generatedAt: new Date().toISOString(),
-    status: "planned",
+    status: findings.length > 0 ? "fail" : "pass",
     queries,
+    staticVerification: {
+      status: findings.length > 0 ? "fail" : "pass",
+      findings,
+      checks: [
+        "query names are unique",
+        "declared parameters match SQL placeholders",
+        "target latency budgets are positive",
+        "expected index assumptions are documented",
+        "dry-run mode does not connect to or mutate Postgres",
+      ],
+    },
     summary: {
       queryCount: queries.length,
-      note: "Run with --apply-db in a configured Studio Brain environment to execute EXPLAIN probes.",
+      targetMsMax: Math.max(...queries.map((query) => Number(query.targetMs) || 0)),
+      expectedIndexAssumptions: queries.reduce((sum, query) => sum + query.expectedIndexAssumptions.length, 0),
+      note: "Dry-run statically validates query shape and safety. Run with --apply-db in a configured Studio Brain environment to execute read-only EXPLAIN probes.",
     },
   };
 }
@@ -1573,14 +1801,15 @@ export function renderSourceMap(index) {
   for (const source of index.sources) {
     lines.push(`| \`${source.sourcePath}\` | ${source.ingestStatus || "indexed"} | ${source.authorityClass} | ${source.chunkCount || 0} | \`${String(source.contentHash || "").slice(0, 12)}\` |`);
   }
-  if (index.denied.length > 0) {
+  const deniedReview = Array.isArray(index.deniedReview) ? index.deniedReview : (index.denied || []).map(classifyDeniedSource);
+  if (deniedReview.length > 0) {
     lines.push("");
     lines.push("## Denied Sources");
     lines.push("");
-    lines.push("| Source | Reason |");
-    lines.push("|---|---|");
-    for (const denied of index.denied) {
-      lines.push(`| \`${denied.sourcePath}\` | ${denied.reason} |`);
+    lines.push("| Source | Reason | Classification | Rationale |");
+    lines.push("|---|---|---|---|");
+    for (const denied of deniedReview) {
+      lines.push(`| \`${denied.sourcePath}\` | ${denied.reason} | ${denied.classification} | ${denied.rationale} |`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -1817,6 +2046,9 @@ function idleTask(taskKey, title, options = {}) {
   const tenantScope = options.tenantScope || "monsoonfire-main";
   const priority = Number(options.priority ?? 0.5);
   const metadata = options.metadata || {};
+  const readOnly = options.readOnly !== false;
+  const safetyRationale = options.safetyRationale ||
+    "Report-only wiki maintenance task; it writes at most the declared output artifact and does not approve, promote, or mutate Studio Brain data.";
   return {
     taskId: `task_${stableHash(`${tenantScope}:${taskKey}`, 20)}`,
     tenantScope,
@@ -1824,12 +2056,16 @@ function idleTask(taskKey, title, options = {}) {
     title,
     status: options.status || "ready",
     priority: Math.max(0, Math.min(1, priority)),
-    readOnly: options.readOnly !== false,
+    readOnly,
+    safetyRationale,
     nextRunAt: options.nextRunAt || null,
     sourceRefs: options.sourceRefs || [],
     outputArtifactPath: options.outputArtifactPath || null,
     idempotencyKey: options.idempotencyKey || stableHash(`${taskKey}:${JSON.stringify(metadata)}`, 24),
-    metadata,
+    metadata: {
+      ...metadata,
+      safetyRationale,
+    },
   };
 }
 
@@ -1843,9 +2079,10 @@ function claimSetKey(claims = []) {
 function isStartupCoreEligible(pack, competitionRisk, options = {}) {
   const maxWarningCount = Number(options.maxStartupWarningCount ?? 50);
   const maxChars = Number(options.maxStartupChars ?? 4000);
+  const startupWarningItems = Number(pack?.budget?.startupWarningItems ?? pack?.budget?.warningCount ?? 0);
   return competitionRisk.status !== "unsafe" &&
     Number(pack?.budget?.verifiedClaims || 0) > 0 &&
-    Number(pack?.budget?.warningCount || 0) <= maxWarningCount &&
+    startupWarningItems <= maxWarningCount &&
     Number(pack?.budget?.chars || 0) <= maxChars;
 }
 
@@ -1903,13 +2140,14 @@ export function buildIdleTaskQueueReport(options = {}) {
         verifiedClaims: pack.budget.verifiedClaims,
         warnings: pack.budget.warningCount,
         totalWarningItems: pack.budget.totalWarningItems,
+        excludedWarningBacklogItems: pack.budget.excludedWarningBacklogItems,
         unverifiedClaimExcludedCount: pack.budget.unverifiedClaimExcludedCount,
         activeContradictionCount: pack.budget.activeContradictionCount,
       },
     }),
     idleTask("wiki-startup-pack-audit", "Audit wiki startup-pack eligibility", {
       tenantScope,
-      priority: startupEligible ? 0.48 : 0.68,
+      priority: startupEligible ? 0.36 : 0.68,
       outputArtifactPath: "output/wiki/startup-pack-audit.json",
       idempotencyKey: stableHash(
         JSON.stringify([
@@ -1917,7 +2155,8 @@ export function buildIdleTaskQueueReport(options = {}) {
           startupEligible,
           competitionRisk.status,
           competitionRisk.includedUnverifiedClaims,
-          pack.budget.totalWarningItems,
+          pack.budget.startupWarningItems,
+          pack.budget.excludedWarningBacklogItems,
         ]),
         24,
       ),
@@ -1929,6 +2168,8 @@ export function buildIdleTaskQueueReport(options = {}) {
         competitionRisk: competitionRisk.status,
         verifiedClaims: pack.budget.verifiedClaims,
         totalWarningItems: pack.budget.totalWarningItems,
+        startupWarningItems: pack.budget.startupWarningItems,
+        excludedWarningBacklogItems: pack.budget.excludedWarningBacklogItems,
         humanApprovalClaims: competitionRisk.humanApprovalClaims,
         includedUnverifiedClaims: competitionRisk.includedUnverifiedClaims,
       },
@@ -1973,10 +2214,15 @@ export function buildIdleTaskQueueReport(options = {}) {
       priority: 0.42,
       outputArtifactPath: "output/wiki/db-probe.json",
       idempotencyKey: stableHash(
-        JSON.stringify(dbProbe.queries.map((query) => [query.name, query.targetMs])),
+        JSON.stringify(dbProbe.queries.map((query) => [query.name, query.targetMs, query.parameters, query.expectedIndexAssumptions])),
         24,
       ),
-      metadata: { lane: "db-probe", queryCount: dbProbe.summary.queryCount },
+      metadata: {
+        lane: "db-probe",
+        queryCount: dbProbe.summary.queryCount,
+        staticVerification: dbProbe.staticVerification?.status || "unknown",
+        expectedIndexAssumptions: dbProbe.summary.expectedIndexAssumptions,
+      },
     }),
   ];
   for (const contradiction of scan.contradictions) {
@@ -2041,9 +2287,9 @@ export function writeIdleTasks(report, artifactPath) {
     "",
     "# Wiki Idle Task Queue",
     "",
-    "| Task | Status | Priority | Read Only | Output | Signals |",
-    "|---|---|---:|---:|---|---|",
-    ...report.tasks.map((task) => `| ${task.title} | ${task.status} | ${task.priority} | ${task.readOnly} | \`${task.outputArtifactPath || ""}\` | ${formatIdleTaskSignals(task)} |`),
+    "| Task | Status | Priority | Read Only | Output | Safety | Signals |",
+    "|---|---|---:|---:|---|---|---|",
+    ...report.tasks.map((task) => `| ${task.title} | ${task.status} | ${task.priority} | ${task.readOnly} | \`${task.outputArtifactPath || ""}\` | ${task.safetyRationale || ""} | ${formatIdleTaskSignals(task)} |`),
   ];
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
@@ -2057,6 +2303,7 @@ function formatIdleTaskSignals(task) {
       `verified=${metadata.verifiedClaims ?? 0}`,
       `warnings=${metadata.warnings ?? 0}`,
       `total_warning_items=${metadata.totalWarningItems ?? metadata.warnings ?? 0}`,
+      `backlog_items=${metadata.excludedWarningBacklogItems ?? 0}`,
       `unverified=${metadata.unverifiedClaimExcludedCount ?? 0}`,
       `active_contradictions=${metadata.activeContradictionCount ?? 0}`,
     ].join(", ");
@@ -2079,7 +2326,8 @@ function formatIdleTaskSignals(task) {
       `eligible=${metadata.startupEligible === true}`,
       `risk=${metadata.competitionRisk || "unknown"}`,
       `verified=${metadata.verifiedClaims ?? 0}`,
-      `warnings=${metadata.totalWarningItems ?? 0}`,
+      `warnings=${metadata.startupWarningItems ?? metadata.totalWarningItems ?? 0}`,
+      `backlog=${metadata.excludedWarningBacklogItems ?? 0}`,
       `human_approval=${metadata.humanApprovalClaims ?? 0}`,
     ].join(", ");
   }
@@ -2098,9 +2346,38 @@ function formatIdleTaskSignals(task) {
     return `drift=${metadata.drift ?? 0}, missing=${metadata.missing ?? 0}, match=${metadata.match ?? 0}`;
   }
   if (metadata.lane === "db-probe") {
-    return `queries=${metadata.queryCount ?? 0}`;
+    return `queries=${metadata.queryCount ?? 0}, static=${metadata.staticVerification || "unknown"}, index_assumptions=${metadata.expectedIndexAssumptions ?? 0}`;
   }
   return "";
+}
+
+function buildHumanGateAudit(claims = []) {
+  const gated = claims.filter((claim) => claim.requiresHumanApproval);
+  const falsePositiveCandidates = gated
+    .filter((claim) => {
+      const category = humanGateCategoryForClaim(claim);
+      return category === "package-procedure" || category === "source-of-truth";
+    })
+    .map((claim) => ({
+      claimId: claim.claimId,
+      category: humanGateCategoryForClaim(claim),
+      subjectKey: claim.subjectKey,
+      sourcePath: claim.sourceRefs?.[0]?.sourcePath || null,
+      approvalState: "pending",
+      reviewNote: "Candidate for human review only; extraction stays human-gated until explicitly approved.",
+    }))
+    .sort((a, b) => a.category.localeCompare(b.category) || a.subjectKey.localeCompare(b.subjectKey));
+  return {
+    schema: "wiki-human-gate-audit.v1",
+    status: "review_only",
+    summary: {
+      humanGatedClaims: gated.length,
+      falsePositiveCandidates: falsePositiveCandidates.length,
+      automaticLoosening: 0,
+    },
+    byCategory: summarizeClaimWarningCategories(gated),
+    falsePositiveCandidates,
+  };
 }
 
 export function buildWikiEffectivenessAudit(options = {}) {
@@ -2112,14 +2389,17 @@ export function buildWikiEffectivenessAudit(options = {}) {
   const startupEligible = isStartupCoreEligible(pack, competitionRisk, options);
   const drift = buildExportDriftReport({ ...options, index, extraction, scan, contextPack: pack });
   const queue = buildIdleTaskQueueReport({ ...options, index, extraction, scan, contextPack: pack, drift });
+  const dbProbe = buildDbProbeReport();
+  const humanGateAudit = buildHumanGateAudit(extraction.claims);
   const recommendations = [];
   if (drift.status !== "pass") recommendations.push("Refresh markdown exports or inspect drift before trusting git as the review surface.");
   if (queue.summary.blocked > 0) recommendations.push("Keep blocked wiki tasks visible but out of the ready queue until the owning surface is reopened.");
   if (pack.budget.outcomeTotal < 3) recommendations.push("Record at least three wiki-relevant harness outcomes before expanding context-pack scope.");
-  if (pack.budget.totalWarningItems > 50) recommendations.push("Keep broad excluded wiki backlog as audit triage; the startup core may use only included verified or operational-truth claims.");
+  if (pack.budget.excludedWarningBacklogItems > 50) recommendations.push("Keep broad excluded wiki backlog as audit triage; the startup core uses the bounded warning digest only.");
   if (!startupEligible) recommendations.push("Treat the wiki context pack as audit/planning context, not startup operational context, until verified claims exist and the rendered startup pack stays compact.");
   if (competitionRisk.status === "unsafe") recommendations.push("Remove unverified or human-gated claims from context-pack included items before using the wiki as startup context.");
   if (scan.summary.hard > 0 && queue.summary.ready === 0) recommendations.push("Hard contradictions are blocked rather than ready; this is good when the losing evidence is owner-gated.");
+  if (humanGateAudit.summary.falsePositiveCandidates > 0) recommendations.push("Review package-procedure and source-of-truth human gates as possible false positives; do not loosen them automatically.");
   return {
     schema: "wiki-effectiveness-audit.v1",
     generatedAt: new Date().toISOString(),
@@ -2143,22 +2423,36 @@ export function buildWikiEffectivenessAudit(options = {}) {
       contextPackChars: pack.budget.chars,
       contextWarnings: pack.budget.warningCount,
       contextWarningItems: pack.budget.totalWarningItems,
+      contextWarningBacklogItems: pack.budget.excludedWarningBacklogItems,
       contextUnverifiedClaims: pack.budget.unverifiedClaimExcludedCount,
       startupEligible,
       competitionRiskStatus: competitionRisk.status,
       includedUnverifiedClaims: competitionRisk.includedUnverifiedClaims,
       contextActiveContradictions: pack.budget.activeContradictionCount,
+      staleMembershipOperationalExcludedCount: pack.budget.staleMembershipOperationalExcludedCount,
+      membershipEolOperationalTruthClaims: pack.budget.membershipEolOperationalTruthClaims,
       usefulnessScore: pack.budget.usefulnessScore,
       exportDrift: drift.summary.drift,
       exportMissing: drift.summary.missing,
       idleReadyTasks: queue.summary.ready,
       idleBlockedTasks: queue.summary.blocked,
+      sourceDeniedExpected: index.summary.deniedExpected,
+      sourceDeniedNeedsFix: index.summary.deniedNeedsFix,
+      humanGateFalsePositiveCandidates: humanGateAudit.summary.falsePositiveCandidates,
+      dbProbeStaticVerification: dbProbe.staticVerification.status,
     },
     recommendations,
     summaries: {
       exportDrift: drift.summary,
       idleTasks: queue.summary,
       contextPack: pack.budget,
+      sourceDeniedReview: {
+        expected: index.summary.deniedExpected,
+        needsFix: index.summary.deniedNeedsFix,
+        items: index.deniedReview,
+      },
+      humanGateAudit,
+      dbProbe: dbProbe.summary,
     },
   };
 }

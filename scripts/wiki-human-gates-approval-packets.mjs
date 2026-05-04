@@ -8,8 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const DEFAULT_SOURCE = "wiki/00_source_index/extracted-facts.jsonl";
+const DEFAULT_APPROVAL_STATE = "wiki/00_source_index/human-gate-approval-state.json";
 const DEFAULT_ARTIFACT = "output/wiki/human-gates-approval-packets.json";
 const DEFAULT_MARKDOWN = "output/wiki/human-gates-approval-packets.md";
+const APPROVAL_STATES = new Set(["pending", "approved", "rejected", "superseded"]);
 
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -19,6 +21,7 @@ function parseArgs(argv) {
   const args = {
     json: false,
     source: DEFAULT_SOURCE,
+    approvalState: DEFAULT_APPROVAL_STATE,
     artifact: DEFAULT_ARTIFACT,
     markdown: DEFAULT_MARKDOWN,
   };
@@ -47,6 +50,11 @@ function parseArgs(argv) {
       args.artifact = artifact;
       continue;
     }
+    const approvalState = readValue("--approval-state");
+    if (approvalState !== null) {
+      args.approvalState = approvalState;
+      continue;
+    }
     const markdown = readValue("--markdown");
     if (markdown !== null) {
       args.markdown = markdown;
@@ -70,6 +78,11 @@ function parseJsonl(path) {
         throw new Error(`Invalid JSONL at ${path}:${index + 1}: ${error.message}`);
       }
     });
+}
+
+function readJsonIfPresent(path) {
+  if (!path || !existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8"));
 }
 
 function categoryFor(claim) {
@@ -99,15 +112,55 @@ function summarizeByCategory(packets) {
   }, {});
 }
 
-function buildPacket(claim) {
+function approvalStateByClaim(path) {
+  const artifact = readJsonIfPresent(path);
+  const items = Array.isArray(artifact?.items) ? artifact.items : [];
+  return new Map(items
+    .filter((item) => clean(item?.claimId))
+    .map((item) => {
+      const approvalState = APPROVAL_STATES.has(clean(item.approvalState)) ? clean(item.approvalState) : "pending";
+      return [clean(item.claimId), approvalState];
+    }));
+}
+
+function buildReviewBundles(packets) {
+  const labels = {
+    "policy-doc": "Policy Docs",
+    "package-procedure": "Package Procedures",
+    "source-of-truth": "Source-of-Truth Claim",
+    other: "Other",
+  };
+  return Object.entries(packets.reduce((groups, packet) => {
+    groups[packet.category] ||= [];
+    groups[packet.category].push(packet);
+    return groups;
+  }, {}))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([category, groupedPackets]) => ({
+      category,
+      label: labels[category] || category,
+      claims: groupedPackets.length,
+      approvalEffects: "none",
+      packetIds: groupedPackets.map((packet) => packet.claimId),
+      reviewerChecklist: [
+        "Verify the cited source still says this.",
+        "Choose pending, approved, rejected, or superseded in the tracked approval-state artifact.",
+        "Do not promote the claim from this packet alone.",
+      ],
+    }));
+}
+
+function buildPacket(claim, stateByClaim) {
   const sourceRefs = sourceRefsFor(claim);
   const primarySource = sourceRefs.find((ref) => ref.sourcePath) || null;
   const category = categoryFor(claim);
+  const claimId = clean(claim?.claimId);
   return {
-    claimId: clean(claim?.claimId),
+    claimId,
     category,
+    approvalState: stateByClaim.get(claimId) || "pending",
     reviewStatus: "pending_human_review",
-    allowedOutcomes: ["approve_with_citation", "reject", "keep_gated"],
+    allowedOutcomes: ["pending", "approved", "rejected", "superseded"],
     nonApprovalGuard: "This packet prepares review context only; it does not approve or promote the claim.",
     claim: {
       kind: clean(claim?.claimKind),
@@ -130,20 +183,23 @@ function buildPacket(claim) {
         "Record the human decision separately before any promotion or customer-facing use.",
       ],
     },
-    reviewerPrompt: `Review ${clean(claim?.claimId)} and choose approve_with_citation, reject, or keep_gated.`,
+    reviewerPrompt: `Review ${claimId} and update the tracked approval state to pending, approved, rejected, or superseded.`,
   };
 }
 
 export function buildWikiHumanGateApprovalPackets(options = {}) {
   const repoRoot = options.repoRoot || REPO_ROOT;
   const sourcePath = resolve(repoRoot, options.source || DEFAULT_SOURCE);
+  const approvalStatePath = resolve(repoRoot, options.approvalState || DEFAULT_APPROVAL_STATE);
   const artifactPath = resolve(repoRoot, options.artifact || DEFAULT_ARTIFACT);
   const markdownPath = resolve(repoRoot, options.markdown || DEFAULT_MARKDOWN);
   const claims = parseJsonl(sourcePath);
+  const stateByClaim = approvalStateByClaim(approvalStatePath);
   const packets = claims
     .filter((claim) => Boolean(claim?.requiresHumanApproval))
-    .map(buildPacket)
+    .map((claim) => buildPacket(claim, stateByClaim))
     .sort((a, b) => a.category.localeCompare(b.category) || a.claim.subjectKey.localeCompare(b.claim.subjectKey));
+  const reviewBundles = buildReviewBundles(packets);
   const report = {
     schema: "wiki-human-gates-approval-packets.v1",
     generatedAt: new Date().toISOString(),
@@ -151,14 +207,17 @@ export function buildWikiHumanGateApprovalPackets(options = {}) {
     operatingLayerImpact: "prepares_human_review_without_promotion",
     approvalEffects: "none",
     sourcePath,
+    approvalStatePath,
     artifactPath,
     markdownPath,
     summary: {
       claims: packets.length,
       byCategory: summarizeByCategory(packets),
+      bundles: reviewBundles.length,
       reviewStatus: "pending_human_review",
       approvalEffects: "none",
     },
+    reviewBundles,
     packets,
   };
 
@@ -175,6 +234,7 @@ function renderMarkdown(report) {
     "",
     `Generated: ${report.generatedAt}`,
     `Source: ${report.sourcePath}`,
+    `Approval state: ${report.approvalStatePath}`,
     `Claims: ${report.summary.claims}`,
     `Serves: ${report.servesSystem}`,
     `Operating layer impact: ${report.operatingLayerImpact}`,
@@ -188,11 +248,21 @@ function renderMarkdown(report) {
   for (const [category, count] of Object.entries(report.summary.byCategory).sort(([a], [b]) => a.localeCompare(b))) {
     lines.push(`- ${category}: ${count}`);
   }
-  lines.push("", "## Packets", "");
+  lines.push("", "## Review Bundles", "");
+  for (const bundle of report.reviewBundles) {
+    lines.push(`### ${bundle.label}`);
+    lines.push("");
+    lines.push(`- claims: ${bundle.claims}`);
+    lines.push(`- approval effects: ${bundle.approvalEffects}`);
+    lines.push(`- packet ids: ${bundle.packetIds.join(", ")}`);
+    lines.push("");
+  }
+  lines.push("## Packets", "");
   for (const packet of report.packets) {
     lines.push(`### ${packet.claimId}`);
     lines.push("");
     lines.push(`- status: ${packet.reviewStatus}`);
+    lines.push(`- approval state: ${packet.approvalState}`);
     lines.push(`- category: ${packet.category}`);
     lines.push(`- subject: ${packet.claim.subjectKey}`);
     lines.push(`- owner: ${packet.claim.owner || "unknown"}`);
@@ -209,6 +279,7 @@ function printHumanSummary(report) {
   process.stdout.write("Wiki human-gate approval packets\n");
   process.stdout.write(`  claims: ${report.summary.claims}\n`);
   process.stdout.write("  approval effects: none\n");
+  process.stdout.write(`  bundles: ${report.summary.bundles}\n`);
   for (const [category, count] of Object.entries(report.summary.byCategory).sort(([a], [b]) => a.localeCompare(b))) {
     process.stdout.write(`  ${category}: ${count}\n`);
   }

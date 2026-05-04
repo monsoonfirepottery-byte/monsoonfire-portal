@@ -508,6 +508,7 @@
     "wiki:extract": "node ./scripts/wiki-postgres.mjs extract --write-markdown --json --artifact output/wiki/extract.json",
     "wiki:extract:apply": "node ./scripts/wiki-postgres.mjs extract --apply-db --write-markdown --json --artifact output/wiki/extract-apply.json",
     "wiki:human-gates:list": "node ./scripts/wiki-human-gates-list.mjs --json",
+    "wiki:human-gates:snapshot": "node ./scripts/wiki-human-gates-list.mjs --json --tracked",
     "wiki:human-gates:packets": "node ./scripts/wiki-human-gates-approval-packets.mjs --json",
     "wiki:startup-pack:audit": "node ./scripts/wiki-startup-pack-audit.mjs --json",
     "wiki:context:check": "node ./scripts/wiki-postgres.mjs context --fresh-extract --json --artifact output/wiki/context-check.json",
@@ -523,6 +524,7 @@
     "wiki:idle-tasks:apply": "node ./scripts/wiki-postgres.mjs idle-tasks --apply-db --write-markdown --json --artifact output/wiki/idle-tasks-apply.json",
     "wiki:outcome:record": "node ./scripts/wiki-outcome-record.mjs --json",
     "wiki:outcome:summary": "node ./scripts/wiki-outcome-record.mjs --summary --json",
+    "wiki:outcome:trend": "node ./scripts/wiki-outcome-record.mjs --trend --json",
     "wiki:audit:effectiveness": "node ./scripts/wiki-postgres.mjs effectiveness --json --artifact output/wiki/effectiveness-audit.json",
     "wiki:db:probe": "node ./scripts/wiki-postgres.mjs db-probe --json --artifact output/wiki/db-probe.json",
     "wiki:db:probe:live": "node ./scripts/wiki-postgres.mjs db-probe --apply-db --json --artifact output/wiki/db-probe-live.json"

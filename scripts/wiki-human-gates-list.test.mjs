@@ -50,11 +50,15 @@ test("wiki human gates list groups approval-required claims", () => {
     });
 
     assert.equal(report.schema, "wiki-human-gates-report.v1");
+    assert.equal(report.servesSystem, "studio-brain");
+    assert.equal(report.operatingLayerImpact, "blocked_from_operational_truth_until_human_approved");
+    assert.equal(report.approvalEffects, "none");
     assert.equal(report.summary.claims, 2);
     assert.equal(report.summary.byCategory["policy-doc"], 1);
     assert.equal(report.summary.byCategory["package-procedure"], 1);
     assert.deepEqual(report.items.map((item) => item.claimId).sort(), ["claim_policy", "claim_script"]);
     assert.match(readFileSync(join(root, "output/wiki/human-gates.md"), "utf8"), /claim_policy/);
+    assert.match(readFileSync(join(root, "output/wiki/human-gates.md"), "utf8"), /Operating layer impact:/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

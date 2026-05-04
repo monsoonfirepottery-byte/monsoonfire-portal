@@ -1033,9 +1033,85 @@ export function summarizeWikiOutcomeUsefulness(outcomes = []) {
   };
 }
 
+export function buildWikiOperatingLayerContract() {
+  return {
+    operatingLayerRole: "compiled_operating_layer",
+    servesSystem: "studio-brain",
+    memoryRelationship: "not_a_competing_memory_source",
+    sourceOfTruthMode: "compiled_from_repo_and_postgres_claims",
+    allowedUse: ["startup_orientation", "planning_context", "audit_triage"],
+    disallowedUse: ["raw_memory_write_source", "unverified_operational_truth"],
+    repoRuntime: "behavior_source_of_truth",
+    studioBrainMemory: "continuity_and_event_memory",
+    wiki: "compiled_audited_context_layer",
+    verifiedWikiClaims: "usable_with_source_refs_when_agent_allowed_use_permits",
+    unverifiedWikiClaims: "planning_hint_only",
+    humanGatedClaims: "approval_queue_only",
+    contradictions: "routing_and_review_surface",
+    truthBoundary: {
+      operationalClaimsRequireStatus: ["VERIFIED", "OPERATIONAL_TRUTH"],
+      humanApprovalRequiredForOperationalTruth: true,
+      repoSourcesRemainAuthoritative: true,
+    },
+  };
+}
+
+function summarizeClaimStates(claims = []) {
+  const all = Array.isArray(claims) ? claims : [];
+  return {
+    claims: all.length,
+    verifiedClaims: all.filter((claim) => claim.status === "VERIFIED").length,
+    operationalTruthClaims: all.filter((claim) => claim.status === "OPERATIONAL_TRUTH").length,
+    unverifiedClaims: all.filter((claim) => !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status)).length,
+    humanApprovalClaims: all.filter((claim) => claim.requiresHumanApproval).length,
+  };
+}
+
+export function analyzeWikiCompetitionRisk(claims = [], pack = {}, contradictions = []) {
+  const claimById = new Map((Array.isArray(claims) ? claims : []).map((claim) => [claim.claimId, claim]));
+  const included = Array.isArray(pack.items) ? pack.items : [];
+  const includedUnverified = included
+    .map((item) => claimById.get(item.itemId))
+    .filter((claim) => claim && !["VERIFIED", "OPERATIONAL_TRUTH"].includes(claim.status));
+  const activeContradictions = (Array.isArray(contradictions) ? contradictions : []).filter((entry) =>
+    ["open", "in-review", "blocked"].includes(entry.status)
+  );
+  const state = summarizeClaimStates(claims);
+  const riskFactors = [];
+  if (includedUnverified.length > 0) {
+    riskFactors.push("context-pack-includes-unverified-claims");
+  }
+  if (state.unverifiedClaims > 0 && includedUnverified.length === 0) {
+    riskFactors.push("unverified-claims-contained-as-warnings");
+  }
+  if (state.humanApprovalClaims > 0) {
+    riskFactors.push("human-gated-claims-require-approval-before-promotion");
+  }
+  if (activeContradictions.length > 0) {
+    riskFactors.push("active-contradictions-visible-for-routing");
+  }
+  return {
+    status: includedUnverified.length > 0 ? "unsafe" : riskFactors.length > 0 ? "contained" : "clear",
+    includedUnverifiedClaims: includedUnverified.length,
+    activeContradictions: activeContradictions.length,
+    humanApprovalClaims: state.humanApprovalClaims,
+    unverifiedClaims: state.unverifiedClaims,
+    guards: [
+      "context-pack-only-includes-verified-or-operational-truth-claims",
+      "unverified-claims-render-as-warnings",
+      "human-gated-claims-render-as-approval-queue",
+      "repo-runtime-remains-behavior-source-of-truth",
+      "studio-brain-memory-remains-continuity-source",
+    ],
+    riskFactors,
+  };
+}
+
 export function generateContextPack(claims, contradictions = [], options = {}) {
   const tenantScope = options.tenantScope || "monsoonfire-main";
   const outcomeUsefulness = options.outcomeUsefulness || summarizeWikiOutcomeUsefulness(readJsonlIfPresent(options.outcomesPath));
+  const claimStates = summarizeClaimStates(claims);
+  const operatingLayerContract = buildWikiOperatingLayerContract();
   const verified = claims.filter((claim) =>
     (claim.status === "VERIFIED" || claim.status === "OPERATIONAL_TRUTH") &&
     (claim.agentAllowedUse === "planning_context" || claim.agentAllowedUse === "operational_context")
@@ -1086,6 +1162,23 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
   lines.push("");
   lines.push(`Snapshot: ${snapshotHash}`);
   lines.push("");
+  lines.push("## Operating Layer Contract");
+  lines.push("");
+  lines.push(`- repo/runtime: ${operatingLayerContract.repoRuntime}`);
+  lines.push(`- Studio Brain memory: ${operatingLayerContract.studioBrainMemory}`);
+  lines.push(`- wiki: ${operatingLayerContract.wiki}`);
+  lines.push(`- verified wiki claims: ${operatingLayerContract.verifiedWikiClaims}`);
+  lines.push(`- unverified wiki claims: ${operatingLayerContract.unverifiedWikiClaims}`);
+  lines.push(`- human-gated wiki claims: ${operatingLayerContract.humanGatedClaims}`);
+  lines.push("");
+  lines.push("## Claim State Summary");
+  lines.push("");
+  lines.push(`- claims: ${claimStates.claims}`);
+  lines.push(`- verified: ${claimStates.verifiedClaims}`);
+  lines.push(`- operational_truth: ${claimStates.operationalTruthClaims}`);
+  lines.push(`- unverified_excluded: ${claimStates.unverifiedClaims}`);
+  lines.push(`- human_gated: ${claimStates.humanApprovalClaims}`);
+  lines.push("");
   lines.push("## Usefulness Signals");
   lines.push("");
   lines.push(`- outcome verdict: ${outcomeUsefulness.verdict}`);
@@ -1120,6 +1213,13 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     packKey: "studio-brain-wiki",
     title: "Studio Brain Wiki",
     status: "active",
+    operatingLayerRole: operatingLayerContract.operatingLayerRole,
+    servesSystem: operatingLayerContract.servesSystem,
+    memoryRelationship: operatingLayerContract.memoryRelationship,
+    sourceOfTruthMode: operatingLayerContract.sourceOfTruthMode,
+    allowedUse: operatingLayerContract.allowedUse,
+    disallowedUse: operatingLayerContract.disallowedUse,
+    truthBoundary: operatingLayerContract.truthBoundary,
     generatedText,
     items: verified.map((claim, index) => ({
       itemId: claim.claimId,
@@ -1132,13 +1232,17 @@ export function generateContextPack(claims, contradictions = [], options = {}) {
     budget: {
       chars: generatedText.length,
       verifiedClaims: verified.length,
+      totalClaims: claimStates.claims,
+      operationalTruthClaims: claimStates.operationalTruthClaims,
       warningCount: warnings.length,
       totalWarningItems: unverifiedClaims.length + activeContradictions.length,
       unverifiedClaimExcludedCount: unverifiedClaims.length,
+      humanApprovalClaimCount: claimStates.humanApprovalClaims,
       activeContradictionCount: activeContradictions.length,
       usefulnessScore: outcomeUsefulness.usefulnessScore,
       outcomeTotal: outcomeUsefulness.total,
       outcomeVerdict: outcomeUsefulness.verdict,
+      operatingLayerContract,
     },
     exportHash: fullHash(generatedText),
     generatedAt: new Date().toISOString(),
@@ -1401,6 +1505,10 @@ export function renderContextPack(pack) {
     "supersedes: []",
     "superseded_by: []",
     "related_pages: []",
+    `operating_layer_role: ${pack.operatingLayerRole || "compiled_operating_layer"}`,
+    `serves_system: ${pack.servesSystem || "studio-brain"}`,
+    `memory_relationship: ${pack.memoryRelationship || "not_a_competing_memory_source"}`,
+    `source_of_truth_mode: ${pack.sourceOfTruthMode || "compiled_from_repo_and_postgres_claims"}`,
     `export_hash: ${pack.exportHash}`,
     "---",
     "",
@@ -1621,6 +1729,10 @@ export function buildIdleTaskQueueReport(options = {}) {
   const scan = options.scan || detectContradictions(index, extraction.claims);
   const drift = options.drift || buildExportDriftReport({ ...options, index, extraction, scan });
   const pack = options.contextPack || generateContextPack(extraction.claims, scan.contradictions, options);
+  const competitionRisk = analyzeWikiCompetitionRisk(extraction.claims, pack, scan.contradictions);
+  const startupEligible = competitionRisk.status !== "unsafe" &&
+    pack.budget.verifiedClaims > 0 &&
+    pack.budget.totalWarningItems <= 50;
   const dbProbe = options.dbProbe || buildDbProbeReport();
   const humanApprovalClaims = extraction.claims.filter((claim) => claim.requiresHumanApproval);
   const operationalTruthClaims = extraction.claims.filter((claim) => claim.status === "OPERATIONAL_TRUTH");
@@ -1661,11 +1773,39 @@ export function buildIdleTaskQueueReport(options = {}) {
       idempotencyKey: pack.snapshotHash,
       metadata: {
         lane: "context",
+        operatingLayerRole: pack.operatingLayerRole,
+        memoryRelationship: pack.memoryRelationship,
         verifiedClaims: pack.budget.verifiedClaims,
         warnings: pack.budget.warningCount,
         totalWarningItems: pack.budget.totalWarningItems,
         unverifiedClaimExcludedCount: pack.budget.unverifiedClaimExcludedCount,
         activeContradictionCount: pack.budget.activeContradictionCount,
+      },
+    }),
+    idleTask("wiki-startup-pack-audit", "Audit wiki startup-pack eligibility", {
+      tenantScope,
+      priority: startupEligible ? 0.48 : 0.68,
+      outputArtifactPath: "output/wiki/startup-pack-audit.json",
+      idempotencyKey: stableHash(
+        JSON.stringify([
+          pack.snapshotHash,
+          startupEligible,
+          competitionRisk.status,
+          competitionRisk.includedUnverifiedClaims,
+          pack.budget.totalWarningItems,
+        ]),
+        24,
+      ),
+      metadata: {
+        lane: "startup-pack",
+        operatingLayerRole: pack.operatingLayerRole,
+        memoryRelationship: pack.memoryRelationship,
+        startupEligible,
+        competitionRisk: competitionRisk.status,
+        verifiedClaims: pack.budget.verifiedClaims,
+        totalWarningItems: pack.budget.totalWarningItems,
+        humanApprovalClaims: competitionRisk.humanApprovalClaims,
+        includedUnverifiedClaims: competitionRisk.includedUnverifiedClaims,
       },
     }),
     idleTask("wiki-contradiction-scan-review", "Review wiki contradiction scan", {
@@ -1809,6 +1949,15 @@ function formatIdleTaskSignals(task) {
   if (metadata.lane === "human-approval") {
     return `claims=${metadata.claims ?? 0}`;
   }
+  if (metadata.lane === "startup-pack") {
+    return [
+      `eligible=${metadata.startupEligible === true}`,
+      `risk=${metadata.competitionRisk || "unknown"}`,
+      `verified=${metadata.verifiedClaims ?? 0}`,
+      `warnings=${metadata.totalWarningItems ?? 0}`,
+      `human_approval=${metadata.humanApprovalClaims ?? 0}`,
+    ].join(", ");
+  }
   if (metadata.lane === "contradiction-scan") {
     return [
       `contradictions=${metadata.contradictions ?? 0}`,
@@ -1834,23 +1983,36 @@ export function buildWikiEffectivenessAudit(options = {}) {
   const extraction = extractClaims(index, options);
   const scan = detectContradictions(index, extraction.claims);
   const pack = generateContextPack(extraction.claims, scan.contradictions, options);
+  const competitionRisk = analyzeWikiCompetitionRisk(extraction.claims, pack, scan.contradictions);
+  const startupEligible = competitionRisk.status !== "unsafe" &&
+    pack.budget.verifiedClaims > 0 &&
+    pack.budget.totalWarningItems <= 50;
   const drift = buildExportDriftReport({ ...options, index, extraction, scan, contextPack: pack });
   const queue = buildIdleTaskQueueReport({ ...options, index, extraction, scan, contextPack: pack, drift });
   const recommendations = [];
   if (drift.status !== "pass") recommendations.push("Refresh markdown exports or inspect drift before trusting git as the review surface.");
   if (queue.summary.blocked > 0) recommendations.push("Keep blocked wiki tasks visible but out of the ready queue until the owning surface is reopened.");
   if (pack.budget.outcomeTotal < 3) recommendations.push("Record at least three wiki-relevant harness outcomes before expanding context-pack scope.");
+  if (!startupEligible) recommendations.push("Treat the wiki context pack as audit/planning context, not startup operational context, until verified claims exist and warning volume drops.");
+  if (competitionRisk.status === "unsafe") recommendations.push("Remove unverified or human-gated claims from context-pack included items before using the wiki as startup context.");
   if (scan.summary.hard > 0 && queue.summary.ready === 0) recommendations.push("Hard contradictions are blocked rather than ready; this is good when the losing evidence is owner-gated.");
   return {
     schema: "wiki-effectiveness-audit.v1",
     generatedAt: new Date().toISOString(),
     tenantScope: options.tenantScope || "monsoonfire-main",
-    status: drift.status === "pass" && pack.budget.warningCount <= 15 ? "pass" : "warning",
+    status: drift.status === "pass" && pack.budget.warningCount <= 15 && competitionRisk.status !== "unsafe" && startupEligible ? "pass" : "warning",
+    operatingLayer: {
+      contract: buildWikiOperatingLayerContract(),
+      startupEligible,
+      competitionRisk,
+    },
     metrics: {
       indexedSources: index.sources.length,
       chunks: index.chunks.length,
       claims: extraction.claims.length,
       operationalTruthClaims: extraction.claims.filter((claim) => claim.status === "OPERATIONAL_TRUTH").length,
+      verifiedClaims: extraction.claims.filter((claim) => claim.status === "VERIFIED").length,
+      humanApprovalClaims: extraction.claims.filter((claim) => claim.requiresHumanApproval).length,
       contradictions: scan.summary.contradictions,
       hardContradictions: scan.summary.hard,
       blockedContradictions: scan.contradictions.filter((entry) => entry.status === "blocked").length,
@@ -1858,6 +2020,9 @@ export function buildWikiEffectivenessAudit(options = {}) {
       contextWarnings: pack.budget.warningCount,
       contextWarningItems: pack.budget.totalWarningItems,
       contextUnverifiedClaims: pack.budget.unverifiedClaimExcludedCount,
+      startupEligible,
+      competitionRiskStatus: competitionRisk.status,
+      includedUnverifiedClaims: competitionRisk.includedUnverifiedClaims,
       contextActiveContradictions: pack.budget.activeContradictionCount,
       usefulnessScore: pack.budget.usefulnessScore,
       exportDrift: drift.summary.drift,

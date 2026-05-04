@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 3584b0a986a0177adb051f60849718674186f382d5e5f1b76fe5c782531ecea3
+export_hash: e0dc21e76a42231d7a8611fe631f98e25137558d15dec4c4e3d9b952f3c67872
 ---
 
 # Source Map
 
-Snapshot: 3584b0a986a0177adb051f60849718674186f382d5e5f1b76fe5c782531ecea3
+Snapshot: e0dc21e76a42231d7a8611fe631f98e25137558d15dec4c4e3d9b952f3c67872
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -362,7 +362,7 @@ Snapshot: 3584b0a986a0177adb051f60849718674186f382d5e5f1b76fe5c782531ecea3
 | `functions/src/updateReservation.ts` | indexed | repo | 4 | `270f9ef3044b` |
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `b36f9157a098` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `52c56b489e8e` |
-| `package.json` | indexed | repo | 7 | `b345c2d3c02a` |
+| `package.json` | indexed | repo | 7 | `3e7c0c566638` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `44edaa77d984` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -609,7 +609,7 @@ Snapshot: 3584b0a986a0177adb051f60849718674186f382d5e5f1b76fe5c782531ecea3
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `505f7366c6e1` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `ad39dbf12605` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `b31a5f9b1a5c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 31 | `5c15ccea27e8` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 33 | `059a1277cd45` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `9f8548f535be` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `c3a4de589100` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `e58affa06efe` |
@@ -767,10 +767,10 @@ Snapshot: 3584b0a986a0177adb051f60849718674186f382d5e5f1b76fe5c782531ecea3
 | `scripts/studiobrain-control-tower-proxy.mjs` | indexed | repo | 2 | `527a507bec88` |
 | `scripts/studiobrain-host-access.py` | indexed | repo | 4 | `81909429b312` |
 | `scripts/studiobrain-host-access.sh` | indexed | repo | 1 | `4032a072ee4c` |
-| `scripts/studiobrain-idle-worker-effectivity-audit.mjs` | indexed | repo | 8 | `81035b7a403c` |
-| `scripts/studiobrain-idle-worker-effectivity-audit.test.mjs` | indexed | repo | 2 | `c0661d1a27dd` |
-| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 15 | `9acb760d8cbc` |
-| `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 1 | `e862a1356de5` |
+| `scripts/studiobrain-idle-worker-effectivity-audit.mjs` | indexed | repo | 9 | `9588bcade839` |
+| `scripts/studiobrain-idle-worker-effectivity-audit.test.mjs` | indexed | repo | 3 | `21d23bbf7daa` |
+| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 15 | `2089b4bc3d08` |
+| `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 1 | `762170b4df2f` |
 | `scripts/studiobrain-incident-bundle.mjs` | indexed | repo | 6 | `3564751f1f33` |
 | `scripts/studiobrain-local-host-heartbeat.mjs` | indexed | repo | 5 | `4cdbce4f4b01` |
 | `scripts/studiobrain-network-check.mjs` | indexed | repo | 4 | `7a7ab6257eae` |
@@ -793,10 +793,15 @@ Snapshot: 3584b0a986a0177adb051f60849718674186f382d5e5f1b76fe5c782531ecea3
 | `scripts/validate-well-known.mjs` | indexed | repo | 5 | `3455b0e9fc25` |
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `702adc22d926` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `cd73819cf645` |
-| `scripts/wiki-human-gates-list.mjs` | indexed | repo | 3 | `cf51fae09eee` |
-| `scripts/wiki-human-gates-list.test.mjs` | indexed | repo | 1 | `343f7d5dee52` |
-| `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `7c69dbe21c55` |
+| `scripts/wiki-human-gates-approval-packets.mjs` | indexed | repo | 3 | `f08e102c8a63` |
+| `scripts/wiki-human-gates-approval-packets.test.mjs` | indexed | repo | 2 | `294f3496a92e` |
+| `scripts/wiki-human-gates-list.mjs` | indexed | repo | 3 | `e537f54a1268` |
+| `scripts/wiki-human-gates-list.test.mjs` | indexed | repo | 2 | `4f9edd716fbc` |
+| `scripts/wiki-postgres-context-pack.test.mjs` | indexed | repo | 1 | `baa9ee0b19d4` |
+| `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `e60ae4a4832e` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
+| `scripts/wiki-startup-pack-audit.mjs` | indexed | repo | 5 | `486368ebd878` |
+| `scripts/wiki-startup-pack-audit.test.mjs` | indexed | repo | 2 | `0d33816a8503` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `159adc1e052a` |
 | `storage.rules` | indexed | repo | 1 | `f04626065d5f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `2cf3086af64e` |

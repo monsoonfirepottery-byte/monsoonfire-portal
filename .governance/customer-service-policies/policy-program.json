@@ -1,6 +1,6 @@
 {
   "schemaVersion": "customer-service-policy-program.v1",
-  "generatedAt": "2026-04-16T02:17:00.355Z",
+  "generatedAt": "2026-05-04T01:41:46.672Z",
   "canonicalSource": "docs/policies/*.md",
   "reviewOrder": [
     "payments-refunds",
@@ -127,22 +127,15 @@
         "charges",
         "invoice details",
         "details",
-        "membership plan",
-        "plan",
-        "current tier",
-        "current",
-        "tier",
-        "change request",
-        "change",
+        "membership decommission",
+        "decommission",
+        "membership eol",
+        "transition request",
+        "transition",
         "request",
         "refund question",
         "question",
-        "change membership",
-        "pause membership",
-        "pause",
-        "cancel membership",
-        "cancel",
-        "current plan",
+        "billing transition",
         "how do payments work?",
         "portal",
         "mistaken membership charge followed by refund",
@@ -192,11 +185,11 @@
         {
           "id": "fallback-membership",
           "kind": "derived-summary",
-          "title": "Can I change my membership plan?",
+          "title": "What is happening to membership?",
           "sourcePath": "web/src/views/SupportView.tsx",
           "sourceType": "operational_faq",
           "policyVersion": null,
-          "summary": "Open Membership in the portal to review your current tier and available options, then submit a change request."
+          "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Submit a support request for billing, archive, or transition questions."
         },
         {
           "id": "faq-billing-receipt",
@@ -210,11 +203,11 @@
         {
           "id": "faq-membership",
           "kind": "derived-summary",
-          "title": "How do I change, pause, or cancel my membership?",
+          "title": "What is happening to memberships?",
           "sourcePath": "docs/SCHEMA_SUPPORT.md",
           "sourceType": "operational_faq",
           "policyVersion": null,
-          "summary": "Send a request with your current plan and the change you want, and we will handle it."
+          "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Send a support request for billing, archive, or transition help."
         },
         {
           "id": "kilnfire-membership-charge-refund",
@@ -417,13 +410,10 @@
         "marked",
         "studio hours",
         "hours",
-        "reserve kiln time",
-        "reserve",
+        "request kiln time",
         "time",
         "preferred window",
         "preferred",
-        "booking change",
-        "booking",
         "clay body",
         "clay",
         "body",
@@ -448,6 +438,8 @@
         "behavior",
         "reservation cleanup",
         "preferred dates",
+        "booking change",
+        "booking",
         "coordination"
       ],
       "sourceSurfaces": [
@@ -508,11 +500,11 @@
         {
           "id": "faq-kiln-reservations",
           "kind": "derived-summary",
-          "title": "Can I reserve kiln time from the portal?",
+          "title": "Can I request kiln time from the portal?",
           "sourcePath": "docs/SCHEMA_SUPPORT.md",
           "sourceType": "operational_faq",
           "policyVersion": null,
-          "summary": "Use the form to request a booking or change, and include your clay body, size, and preferred window."
+          "summary": "Use the firing request flow or support form to request kiln time, and include your clay body, size, preferred window, and any deadline."
         },
         {
           "id": "faq-kiln-schedule",
@@ -816,33 +808,33 @@
     {
       "slug": "studio-access",
       "title": "Studio access & supervision",
-      "version": "2026-04-02",
+      "version": "2026-05-04",
       "owner": "Studio Operations",
       "status": "active",
-      "effectiveDate": "2026-04-02",
+      "effectiveDate": "2026-05-04",
       "reviewDate": "2026-10-02",
-      "summary": "Studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context.",
-      "decisionDomain": "Appointment-only access, reservation verification, guest approval, and supervised equipment requests.",
+      "summary": "Studio visits remain appointment-only while the portal reservation system is decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Access details are shared only after account verification and staff-approved visit context.",
+      "decisionDomain": "Appointment-only access, visit-window verification, guest approval, and supervised equipment requests.",
       "defaultActions": [
-        "check reservation status and share upcoming access steps",
-        "verify whether the booking context is sufficient to release access details",
+        "check visit-window status and share upcoming access steps",
+        "verify whether the approved visit context is sufficient to release access details",
         "verify whether a request requires supervision flagging",
         "collect and confirm guest list and approval requirement"
       ],
       "requiredSignals": [
         "user category and account",
-        "reservation id, day-pass booking, or preferred window",
+        "staff-approved visit window, day-pass context, or preferred window",
         "requested tools or stations"
       ],
       "escalateWhen": [
         "safety or occupancy risk",
-        "walk-in request without a confirmed reservation",
+        "walk-in request without a staff-approved visit window",
         "repeated no-shows or access policy breaches",
         "guest approval rejected by facility lead"
       ],
-      "replyTemplate": "State that the studio is appointment-only, confirm the booking status, explain when access details can be shared, and note whether supervision is needed.",
+      "replyTemplate": "State that the studio is appointment-only, confirm the approved visit status, explain when access details can be shared, and note whether supervision is needed.",
       "allowedLowRiskActions": [
-        "answer appointment-only and reservation requirement questions",
+        "answer appointment-only and access-planning questions",
         "collect preferred visit windows and tool needs",
         "confirm whether supervision review is required"
       ],
@@ -857,19 +849,28 @@
         "access",
         "studio access & supervision",
         "supervision",
-        "studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context.",
+        "studio visits remain appointment-only while the portal reservation system is decommissioned during may 2026 and reaches end-of-life on may 31, 2026. access details are shared only after account verification and staff-approved visit context.",
         "visits",
+        "remain",
         "appointment",
         "only",
-        "reservations",
-        "required",
+        "while",
+        "portal",
+        "reservation",
+        "system",
+        "decommissioned",
+        "during",
+        "2026",
+        "reaches",
+        "life",
         "details",
         "shared",
         "after",
         "account",
         "verification",
+        "staff",
         "approved",
-        "booking",
+        "visit",
         "context",
         "appointment only",
         "appointment-only",
@@ -884,9 +885,11 @@
         "code",
         "address",
         "studio visit",
-        "visit",
-        "reservation required",
-        "reservation",
+        "appointment-only access",
+        "approved visit window",
+        "window",
+        "reservation decommission",
+        "decommission",
         "access details",
         "studio visits are still by appointment only",
         "still",
@@ -920,7 +923,6 @@
         "checks",
         "support response window",
         "response",
-        "window",
         "support form",
         "support email",
         "firing target",
@@ -937,7 +939,6 @@
         "appointment planning",
         "planning",
         "how do i get the address and gate code?",
-        "portal",
         "logistics",
         "what is a day pass?",
         "what",
@@ -977,8 +978,8 @@
           "title": "Studio access & supervision",
           "sourcePath": "docs/policies/studio-access.md",
           "sourceType": "canonical_summary",
-          "policyVersion": "2026-04-02",
-          "summary": "Studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context."
+          "policyVersion": "2026-05-04",
+          "summary": "Studio visits remain appointment-only while the portal reservation system is decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Access details are shared only after account verification and staff-approved visit context."
         },
         {
           "id": "docs-policy-index",
@@ -1059,7 +1060,7 @@
           "sourcePath": "website/data/faq.json",
           "sourceType": "operational_faq",
           "policyVersion": "2026-04-02",
-          "summary": "We share the exact address and access details through the portal once your account is verified and you have a confirmed reservation, day pass, or approved visit context. Create a free portal account here ."
+          "summary": "We share the exact address and access details through the portal once your account is verified and you have approved visit context. The legacy reservation system is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Create a free portal account here ."
         },
         {
           "id": "website-faq:what-is-a-day-pass",
@@ -1068,7 +1069,7 @@
           "sourcePath": "website/data/faq.json",
           "sourceType": "operational_faq",
           "policyVersion": "2026-04-02",
-          "summary": "Day passes are $40 and include appointment-only access to studio equipment and work areas by reservation. Book through the portal so we can confirm your visit window before sharing access details."
+          "summary": "Day passes are $40 and include appointment-only access to studio equipment and work areas after staff confirms your visit window. Request access through the portal or support so we can confirm your visit before sharing access details."
         },
         {
           "id": "website-policy-summaries",

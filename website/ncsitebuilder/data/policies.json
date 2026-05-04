@@ -1,7 +1,7 @@
 [
   {
     "title": "Studio access and supervision",
-    "body": "<p><strong>Draft policy.</strong> Reservations are required for every visit so work areas remain safe and predictable.</p><ul><li>Access details are shared in the portal after account setup.</li><li>Supervised equipment may require staff approval before use.</li><li>Guests or observers must be pre-approved.</li></ul>",
+    "body": "<p><strong>Draft policy.</strong> Studio visits remain appointment-only while the legacy reservation system is decommissioned during May 2026 and reaches end-of-life on May 31, 2026.</p><ul><li>Access details are shared in the portal after account setup and staff-approved visit context.</li><li>Supervised equipment may require staff approval before use.</li><li>Guests or observers must be pre-approved.</li></ul>",
     "tags": ["studio", "access", "policies"],
     "status": "draft",
     "effectiveDate": "2026-02-20"
@@ -30,7 +30,7 @@
   {
     "title": "Storage and abandoned work",
     "body": "<p><strong>Draft policy.</strong> Most completed work is picked up within about 2 weeks, but storage can extend to 4 weeks.</p><ul><li>Normal pickup pattern: roughly within 2 weeks.</li><li>Maximum hold window: up to 4 weeks before abandoned-work handling.</li><li>Notification attempts are made before any disposition steps.</li></ul>",
-    "tags": ["storage", "memberships", "policies", "logistics"],
+    "tags": ["storage", "studio-services", "policies", "logistics"],
     "status": "draft",
     "effectiveDate": "2026-02-20"
   },

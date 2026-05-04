@@ -101,13 +101,13 @@
   },
   {
     "title": "Studio access & supervision",
-    "body": "<p>Studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context.</p>",
+    "body": "<p>Studio visits remain appointment-only while the portal reservation system is decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Access details are shared only after account verification and staff-approved visit context.</p>",
     "tags": [
       "studio",
       "access",
       "supervision"
     ],
     "status": "active",
-    "effectiveDate": "2026-04-02"
+    "effectiveDate": "2026-05-04"
   }
 ]

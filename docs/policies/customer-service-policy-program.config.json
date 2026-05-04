@@ -172,7 +172,9 @@
         "gate code",
         "address",
         "studio visit",
-        "reservation required",
+        "appointment-only access",
+        "approved visit window",
+        "reservation decommission",
         "access details"
       ]
     },
@@ -277,12 +279,12 @@
     {
       "id": "fallback-membership",
       "kind": "derived-summary",
-      "title": "Can I change my membership plan?",
+      "title": "What is happening to membership?",
       "sourcePath": "web/src/views/SupportView.tsx",
       "sourceType": "operational_faq",
       "policySlugs": ["payments-refunds"],
-      "summary": "Open Membership in the portal to review your current tier and available options, then submit a change request.",
-      "routingTerms": ["membership plan", "current tier", "change request"]
+      "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Submit a support request for billing, archive, or transition questions.",
+      "routingTerms": ["membership decommission", "membership eol", "transition request"]
     },
     {
       "id": "fallback-billing",
@@ -311,8 +313,8 @@
       "sourcePath": "web/src/views/SupportView.tsx",
       "sourceType": "operational_faq",
       "policySlugs": [],
-      "summary": "Open Support and request a continuity export if you need a full JSON or CSV archive.",
-      "routingTerms": ["reservation history", "continuity export", "json", "csv"]
+      "summary": "Open Support and request a continuity export if you need a full JSON or CSV archive of legacy reservation records.",
+      "routingTerms": ["legacy reservation history", "continuity export", "json", "csv"]
     }
   ],
   "portalFaqSeedLinks": [
@@ -349,22 +351,22 @@
     {
       "id": "faq-membership",
       "kind": "derived-summary",
-      "title": "How do I change, pause, or cancel my membership?",
+      "title": "What is happening to memberships?",
       "sourcePath": "docs/SCHEMA_SUPPORT.md",
       "sourceType": "operational_faq",
       "policySlugs": ["payments-refunds"],
-      "summary": "Send a request with your current plan and the change you want, and we will handle it.",
-      "routingTerms": ["change membership", "pause membership", "cancel membership", "current plan"]
+      "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Send a support request for billing, archive, or transition help.",
+      "routingTerms": ["membership decommission", "membership eol", "billing transition"]
     },
     {
       "id": "faq-kiln-reservations",
       "kind": "derived-summary",
-      "title": "Can I reserve kiln time from the portal?",
+      "title": "Can I request kiln time from the portal?",
       "sourcePath": "docs/SCHEMA_SUPPORT.md",
       "sourceType": "operational_faq",
       "policySlugs": ["firing-scheduling"],
-      "summary": "Use the form to request a booking or change, and include your clay body, size, and preferred window.",
-      "routingTerms": ["reserve kiln time", "preferred window", "booking change", "clay body"]
+      "summary": "Use the firing request flow or support form to request kiln time, and include your clay body, size, preferred window, and any deadline.",
+      "routingTerms": ["request kiln time", "preferred window", "schedule change", "clay body"]
     },
     {
       "id": "faq-storage",
@@ -385,7 +387,7 @@
       "sourcePath": "marketing/announcements/public-updates-live.json",
       "sourceType": "announcement_summary",
       "policySlugs": [],
-      "routingTerms": ["public studio updates", "member-only logistics", "pickup windows", "queue details"]
+      "routingTerms": ["public studio updates", "client logistics", "pickup windows", "queue details"]
     },
     {
       "id": "announcement-appointment-only-reminder",

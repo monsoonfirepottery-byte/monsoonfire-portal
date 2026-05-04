@@ -8,7 +8,7 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - v3 captures this without introducing a second source of truth.
 
 ## Strategic Positioning
-- **Product**: Studio OS is an operator cockpit, not just a member portal.
+- **Product**: Studio OS is an operator cockpit, not just a client portal.
 - **Architecture**: Hybrid local+cloud where cloud is authoritative and local is intelligence/orchestration.
 - **Safety**: Approval-first writes and immutable audit are core product features, not add-ons.
 

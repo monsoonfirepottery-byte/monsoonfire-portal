@@ -13,13 +13,13 @@
     "answer": "<p>We are most useful for production potters and serious hobbyists who need dependable firing and workspace. If you are brand-new to clay and want structured group workshops, we can point you to great Phoenix studios. If you want focused, independent time, you will feel at home here.</p>",
     "tags": [
       "studio",
-      "memberships",
+      "studio-services",
       "workshops"
     ]
   },
   {
     "question": "How is Potter of the Month selected?",
-    "answer": "<p>Potter of the Month features are selected from active studio members. We look at the work moving through the kilns and rotate highlights through the membership. It is a member-only feature rather than an open nomination.</p>",
+    "answer": "<p>Potter of the Month features are selected from active studio clients and working potters moving through the kilns. It is a studio-curated feature rather than an open nomination.</p>",
     "tags": [
       "studio",
       "policies"
@@ -27,7 +27,7 @@
   },
   {
     "question": "How do I get the address and gate code?",
-    "answer": "<p>We share the exact address and access details through the portal once your account is verified and you have a confirmed reservation, day pass, or approved visit context. <a href=\"https://portal.monsoonfire.com/new-user\" target=\"_blank\" rel=\"noopener\">Create a free portal account here</a>.</p>",
+    "answer": "<p>We share the exact address and access details through the portal once your account is verified and you have approved visit context. The legacy reservation system is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. <a href=\"https://portal.monsoonfire.com/new-user\" target=\"_blank\" rel=\"noopener\">Create a free portal account here</a>.</p>",
     "policySlug": "studio-access",
     "policyVersion": "2026-04-02",
     "sourceType": "operational_faq",
@@ -106,7 +106,7 @@
   },
   {
     "question": "What is a day pass?",
-    "answer": "<p>Day passes are $40 and include appointment-only access to studio equipment and work areas by reservation. Book through the portal so we can confirm your visit window before sharing access details.</p>",
+    "answer": "<p>Day passes are $40 and include appointment-only access to studio equipment and work areas after staff confirms your visit window. Request access through the portal or support so we can confirm your visit before sharing access details.</p>",
     "policySlug": "studio-access",
     "policyVersion": "2026-04-02",
     "sourceType": "operational_faq",
@@ -117,10 +117,11 @@
     ]
   },
   {
-    "question": "How do memberships work?",
-    "answer": "<p>Membership tiers include A la Carte, Apprentice, Journeyman, and Master, with varying firing credits, storage, and discounts. Compare tiers on the Memberships page; pricing is published in the portal. We are happy to help you choose.</p>",
+    "question": "What is happening to memberships?",
+    "answer": "<p>Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Studio services are moving toward direct firing, access, and support workflows instead of recurring membership.</p>",
     "tags": [
-      "memberships",
+      "membership",
+      "decommission",
       "pricing"
     ]
   },
@@ -137,7 +138,7 @@
   },
   {
     "question": "How often are workshops offered?",
-    "answer": "<p>Workshops are occasional and announced when the studio schedule allows. Invites go to members and details are posted in the portal.</p>",
+    "answer": "<p>Workshops are occasional and announced when the studio schedule allows. Details are posted through the portal and public studio updates when a session is ready.</p>",
     "tags": [
       "workshops",
       "scheduling"
@@ -145,10 +146,10 @@
   },
   {
     "question": "Can you pick up supplies for me?",
-    "answer": "<p>Yes. Members can request supplies through the portal and pick them up during a reservation, or ask for delivery.</p>",
+    "answer": "<p>Yes. Clients can request supplies through support or the portal and pick them up during a staff-confirmed visit window, or ask for delivery.</p>",
     "tags": [
       "supplies",
-      "memberships"
+      "studio-services"
     ]
   },
   {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "customer-service-policy-inventory.v1",
-  "generatedAt": "2026-04-16T02:17:00.355Z",
+  "generatedAt": "2026-05-04T01:41:46.672Z",
   "reviewOrder": [
     "payments-refunds",
     "firing-scheduling",
@@ -71,7 +71,7 @@
       "title": "Public studio updates are now live",
       "sourcePath": "marketing/announcements/public-updates-live.json",
       "sourceType": "announcement_summary",
-      "summary": "Non-member announcements now have a public home while member-only logistics stay inside the portal.",
+      "summary": "Public studio updates now have a home while client-specific logistics stay inside the portal.",
       "policySlugs": [],
       "policyVersion": null,
       "routingTerms": [
@@ -80,19 +80,18 @@
         "studio",
         "updates",
         "live",
-        "non-member announcements now have a public home while member-only logistics stay inside the portal.",
-        "member",
-        "announcements",
+        "public studio updates now have a home while client-specific logistics stay inside the portal.",
         "have",
         "home",
         "while",
-        "only",
+        "client",
+        "specific",
         "logistics",
         "stay",
         "inside",
         "portal",
         "public studio updates",
-        "member-only logistics",
+        "client logistics",
         "pickup windows",
         "queue details"
       ],
@@ -550,30 +549,39 @@
       "title": "Studio access & supervision",
       "sourcePath": "docs/policies/studio-access.md",
       "sourceType": "canonical_summary",
-      "summary": "Studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context.",
+      "summary": "Studio visits remain appointment-only while the portal reservation system is decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Access details are shared only after account verification and staff-approved visit context.",
       "policySlugs": [
         "studio-access"
       ],
-      "policyVersion": "2026-04-02",
+      "policyVersion": "2026-05-04",
       "routingTerms": [
         "studio access",
         "studio",
         "access",
         "studio access & supervision",
         "supervision",
-        "studio visits are appointment-only, reservations are required for all visits, and access details are shared only after account verification and approved booking context.",
+        "studio visits remain appointment-only while the portal reservation system is decommissioned during may 2026 and reaches end-of-life on may 31, 2026. access details are shared only after account verification and staff-approved visit context.",
         "visits",
+        "remain",
         "appointment",
         "only",
-        "reservations",
-        "required",
+        "while",
+        "portal",
+        "reservation",
+        "system",
+        "decommissioned",
+        "during",
+        "2026",
+        "reaches",
+        "life",
         "details",
         "shared",
         "after",
         "account",
         "verification",
+        "staff",
         "approved",
-        "booking",
+        "visit",
         "context"
       ],
       "notes": null,
@@ -646,11 +654,11 @@
       "title": "How do I keep a copy of my reservation history?",
       "sourcePath": "web/src/views/SupportView.tsx",
       "sourceType": "operational_faq",
-      "summary": "Open Support and request a continuity export if you need a full JSON or CSV archive.",
+      "summary": "Open Support and request a continuity export if you need a full JSON or CSV archive of legacy reservation records.",
       "policySlugs": [],
       "policyVersion": null,
       "routingTerms": [
-        "reservation history",
+        "legacy reservation history",
         "continuity export",
         "json",
         "csv"
@@ -687,18 +695,18 @@
     {
       "id": "fallback-membership",
       "kind": "derived-summary",
-      "title": "Can I change my membership plan?",
+      "title": "What is happening to membership?",
       "sourcePath": "web/src/views/SupportView.tsx",
       "sourceType": "operational_faq",
-      "summary": "Open Membership in the portal to review your current tier and available options, then submit a change request.",
+      "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Submit a support request for billing, archive, or transition questions.",
       "policySlugs": [
         "payments-refunds"
       ],
       "policyVersion": null,
       "routingTerms": [
-        "membership plan",
-        "current tier",
-        "change request"
+        "membership decommission",
+        "membership eol",
+        "transition request"
       ],
       "notes": null,
       "priority": null,
@@ -780,18 +788,18 @@
     {
       "id": "faq-kiln-reservations",
       "kind": "derived-summary",
-      "title": "Can I reserve kiln time from the portal?",
+      "title": "Can I request kiln time from the portal?",
       "sourcePath": "docs/SCHEMA_SUPPORT.md",
       "sourceType": "operational_faq",
-      "summary": "Use the form to request a booking or change, and include your clay body, size, and preferred window.",
+      "summary": "Use the firing request flow or support form to request kiln time, and include your clay body, size, preferred window, and any deadline.",
       "policySlugs": [
         "firing-scheduling"
       ],
       "policyVersion": null,
       "routingTerms": [
-        "reserve kiln time",
+        "request kiln time",
         "preferred window",
-        "booking change",
+        "schedule change",
         "clay body"
       ],
       "notes": null,
@@ -826,19 +834,18 @@
     {
       "id": "faq-membership",
       "kind": "derived-summary",
-      "title": "How do I change, pause, or cancel my membership?",
+      "title": "What is happening to memberships?",
       "sourcePath": "docs/SCHEMA_SUPPORT.md",
       "sourceType": "operational_faq",
-      "summary": "Send a request with your current plan and the change you want, and we will handle it.",
+      "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Send a support request for billing, archive, or transition help.",
       "policySlugs": [
         "payments-refunds"
       ],
       "policyVersion": null,
       "routingTerms": [
-        "change membership",
-        "pause membership",
-        "cancel membership",
-        "current plan"
+        "membership decommission",
+        "membership eol",
+        "billing transition"
       ],
       "notes": null,
       "priority": null,
@@ -1001,14 +1008,14 @@
       "title": "Can you pick up supplies for me?",
       "sourcePath": "website/data/faq.json",
       "sourceType": "operational_faq",
-      "summary": "Yes. Members can request supplies through the portal and pick them up during a reservation, or ask for delivery.",
+      "summary": "Yes. Clients can request supplies through support or the portal and pick them up during a staff-confirmed visit window, or ask for delivery.",
       "policySlugs": [],
       "policyVersion": null,
       "routingTerms": [
         "can you pick up supplies for me?",
         "pick",
         "supplies",
-        "memberships"
+        "studio-services"
       ],
       "notes": null,
       "priority": null,
@@ -1120,7 +1127,7 @@
       "title": "How do I get the address and gate code?",
       "sourcePath": "website/data/faq.json",
       "sourceType": "operational_faq",
-      "summary": "We share the exact address and access details through the portal once your account is verified and you have a confirmed reservation, day pass, or approved visit context. Create a free portal account here .",
+      "summary": "We share the exact address and access details through the portal once your account is verified and you have approved visit context. The legacy reservation system is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Create a free portal account here .",
       "policySlugs": [
         "studio-access"
       ],
@@ -1166,27 +1173,6 @@
       "discrepancyStatus": null
     },
     {
-      "id": "website-faq:how-do-memberships-work",
-      "kind": "derived-summary",
-      "title": "How do memberships work?",
-      "sourcePath": "website/data/faq.json",
-      "sourceType": "operational_faq",
-      "summary": "Membership tiers include A la Carte, Apprentice, Journeyman, and Master, with varying firing credits, storage, and discounts. Compare tiers on the Memberships page; pricing is published in the portal. We are happy to help you choose.",
-      "policySlugs": [],
-      "policyVersion": null,
-      "routingTerms": [
-        "how do memberships work?",
-        "memberships",
-        "work",
-        "pricing"
-      ],
-      "notes": null,
-      "priority": null,
-      "observedPractice": null,
-      "canonicalConcern": null,
-      "discrepancyStatus": null
-    },
-    {
       "id": "website-faq:how-do-payments-work",
       "kind": "derived-summary",
       "title": "How do payments work?",
@@ -1215,7 +1201,7 @@
       "title": "How is Potter of the Month selected?",
       "sourcePath": "website/data/faq.json",
       "sourceType": "operational_faq",
-      "summary": "Potter of the Month features are selected from active studio members. We look at the work moving through the kilns and rotate highlights through the membership. It is a member-only feature rather than an open nomination.",
+      "summary": "Potter of the Month features are selected from active studio clients and working potters moving through the kilns. It is a studio-curated feature rather than an open nomination.",
       "policySlugs": [],
       "policyVersion": null,
       "routingTerms": [
@@ -1238,7 +1224,7 @@
       "title": "How often are workshops offered?",
       "sourcePath": "website/data/faq.json",
       "sourceType": "operational_faq",
-      "summary": "Workshops are occasional and announced when the studio schedule allows. Invites go to members and details are posted in the portal.",
+      "summary": "Workshops are occasional and announced when the studio schedule allows. Details are posted through the portal and public studio updates when a session is ready.",
       "policySlugs": [],
       "policyVersion": null,
       "routingTerms": [
@@ -1307,7 +1293,7 @@
       "title": "What is a day pass?",
       "sourcePath": "website/data/faq.json",
       "sourceType": "operational_faq",
-      "summary": "Day passes are $40 and include appointment-only access to studio equipment and work areas by reservation. Book through the portal so we can confirm your visit window before sharing access details.",
+      "summary": "Day passes are $40 and include appointment-only access to studio equipment and work areas after staff confirms your visit window. Request access through the portal or support so we can confirm your visit before sharing access details.",
       "policySlugs": [
         "studio-access"
       ],
@@ -1319,6 +1305,30 @@
         "studio",
         "pricing",
         "access"
+      ],
+      "notes": null,
+      "priority": null,
+      "observedPractice": null,
+      "canonicalConcern": null,
+      "discrepancyStatus": null
+    },
+    {
+      "id": "website-faq:what-is-happening-to-memberships",
+      "kind": "derived-summary",
+      "title": "What is happening to memberships?",
+      "sourcePath": "website/data/faq.json",
+      "sourceType": "operational_faq",
+      "summary": "Membership is being decommissioned during May 2026 and reaches end-of-life on May 31, 2026. Studio services are moving toward direct firing, access, and support workflows instead of recurring membership.",
+      "policySlugs": [],
+      "policyVersion": null,
+      "routingTerms": [
+        "what is happening to memberships?",
+        "what",
+        "happening",
+        "memberships",
+        "membership",
+        "decommission",
+        "pricing"
       ],
       "notes": null,
       "priority": null,
@@ -1384,7 +1394,7 @@
       "routingTerms": [
         "who is the studio for?",
         "studio",
-        "memberships",
+        "studio-services",
         "workshops"
       ],
       "notes": null,

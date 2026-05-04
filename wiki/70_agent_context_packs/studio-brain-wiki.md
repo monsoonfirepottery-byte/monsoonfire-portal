@@ -14,11 +14,11 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: ead54f43ced5a9e651f807b0e587b00db92faaace1dc7ccb037e351418f8b092
+export_hash: bd50856bd201c44a96fe6eb4c1bf560619c6f6d078fa6d87bfde07beff40f1f5
 ---
 # Studio Brain Wiki Context Pack
 
-Snapshot: 7319cf63c5171e42c73ee82029960f048a1ea9bb66adc97ad7406bcd04757f32
+Snapshot: 4ce1cf1b704a8e1e124e013812c7e0f22cb93f6ce272939c585390f52ac03e4b
 
 ## Usefulness Signals
 
@@ -41,5 +41,3 @@ No VERIFIED or OPERATIONAL_TRUTH wiki claims are currently available. Agents mus
 - unverified-claim-excluded: policy-doc:docs/policies/firing-scheduling.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/media-accessibility.md (requires human approval)
 - unverified-claim-excluded: policy-doc:docs/policies/payments-refunds.md (requires human approval)
-- active-contradictions-summary: 1 total; showing 1; omitted 0
-- open-contradiction: membership-required-vs-decommission

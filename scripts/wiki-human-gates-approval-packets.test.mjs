@@ -59,9 +59,13 @@ test("wiki human gate approval packets prepare review context without approval e
     assert.equal(report.operatingLayerImpact, "prepares_human_review_without_promotion");
     assert.equal(report.approvalEffects, "none");
     assert.equal(report.summary.claims, 1);
+    assert.equal(report.summary.bundles, 1);
     assert.equal(report.summary.approvalEffects, "none");
+    assert.equal(report.reviewBundles[0].category, "policy-doc");
+    assert.equal(report.reviewBundles[0].approvalEffects, "none");
     assert.equal(report.packets[0].reviewStatus, "pending_human_review");
-    assert.deepEqual(report.packets[0].allowedOutcomes, ["approve_with_citation", "reject", "keep_gated"]);
+    assert.equal(report.packets[0].approvalState, "pending");
+    assert.deepEqual(report.packets[0].allowedOutcomes, ["pending", "approved", "rejected", "superseded"]);
     assert.match(report.packets[0].nonApprovalGuard, /does not approve/);
     assert.equal(report.packets[0].evidence.primarySourcePath, "docs/policies/accessibility.md");
     assert.equal(report.packets[0].evidence.sourceRefs[0].lineStart, 1);

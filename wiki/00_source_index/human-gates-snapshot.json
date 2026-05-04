@@ -1,0 +1,379 @@
+{
+  "schema": "wiki-human-gates-snapshot.v1",
+  "sourcePath": "wiki/00_source_index/extracted-facts.jsonl",
+  "snapshotHash": "9761c062f45ae28b0ba87c0f9ee662877db00cae38e40b91e0f777c075cc187d",
+  "approvalEffects": "none",
+  "noPromotionWithoutHumanApproval": true,
+  "summary": {
+    "claims": 21,
+    "byCategory": {
+      "package-procedure": 5,
+      "policy-doc": 15,
+      "source-of-truth": 1
+    },
+    "byState": {
+      "pending": 21
+    },
+    "safePromotionCandidateClaimId": "claim_86e09901fc2a5d843709",
+    "safePromotionCandidateReason": "Lowest-risk approval workflow fixture candidate; packet generation only, no promotion side effects."
+  },
+  "items": [
+    {
+      "claimId": "claim_b299e83b58d7a751f762",
+      "category": "package-procedure",
+      "subjectKey": "package-script:codex:model-policy",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "package.json",
+          "lineStart": 1,
+          "lineEnd": 80
+        }
+      ]
+    },
+    {
+      "claimId": "claim_26fa0636b37f71bc8aae",
+      "category": "package-procedure",
+      "subjectKey": "package-script:codex:model-policy:strict",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "package.json",
+          "lineStart": 1,
+          "lineEnd": 80
+        }
+      ]
+    },
+    {
+      "claimId": "claim_1f1946f58d80d28a3b33",
+      "category": "package-procedure",
+      "subjectKey": "package-script:codex:plugin-policy:audit",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "package.json",
+          "lineStart": 1,
+          "lineEnd": 80
+        }
+      ]
+    },
+    {
+      "claimId": "claim_73488dc1358f5f388665",
+      "category": "package-procedure",
+      "subjectKey": "package-script:codex:plugin-policy:audit:strict",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "package.json",
+          "lineStart": 1,
+          "lineEnd": 80
+        }
+      ]
+    },
+    {
+      "claimId": "claim_0fe1fc2898b038f0b5c1",
+      "category": "package-procedure",
+      "subjectKey": "package-script:policy:sot:check",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "package.json",
+          "lineStart": 1,
+          "lineEnd": 80
+        }
+      ]
+    },
+    {
+      "claimId": "claim_ebed41c7f6c09c3dba9f",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/accessibility.md",
+      "sourcePath": "docs/policies/accessibility.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/accessibility.md",
+          "lineStart": 1,
+          "lineEnd": 41
+        }
+      ]
+    },
+    {
+      "claimId": "claim_c5424890b62176065ebe",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/agent_policy_actions.md",
+      "sourcePath": "docs/policies/AGENT_POLICY_ACTIONS.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/AGENT_POLICY_ACTIONS.md",
+          "lineStart": 1,
+          "lineEnd": 5
+        }
+      ]
+    },
+    {
+      "claimId": "claim_cb11bf25a0f0bd949b80",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/agent_work_intake_policy.md",
+      "sourcePath": "docs/policies/AGENT_WORK_INTAKE_POLICY.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/AGENT_WORK_INTAKE_POLICY.md",
+          "lineStart": 1,
+          "lineEnd": 2
+        }
+      ]
+    },
+    {
+      "claimId": "claim_e198ab92b5844d95be04",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/changelog.md",
+      "sourcePath": "docs/policies/CHANGELOG.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/CHANGELOG.md",
+          "lineStart": 1,
+          "lineEnd": 2
+        }
+      ]
+    },
+    {
+      "claimId": "claim_11aadfb99e47d9e923f9",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/clay-materials.md",
+      "sourcePath": "docs/policies/clay-materials.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/clay-materials.md",
+          "lineStart": 1,
+          "lineEnd": 42
+        }
+      ]
+    },
+    {
+      "claimId": "claim_0a980fd7ad96521d29b1",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/community-conduct.md",
+      "sourcePath": "docs/policies/community-conduct.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/community-conduct.md",
+          "lineStart": 1,
+          "lineEnd": 42
+        }
+      ]
+    },
+    {
+      "claimId": "claim_d2be9805482a1473ddd2",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/damage-responsibility.md",
+      "sourcePath": "docs/policies/damage-responsibility.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/damage-responsibility.md",
+          "lineStart": 1,
+          "lineEnd": 43
+        }
+      ]
+    },
+    {
+      "claimId": "claim_18949bc7109060654ed2",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/firing-scheduling.md",
+      "sourcePath": "docs/policies/firing-scheduling.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/firing-scheduling.md",
+          "lineStart": 1,
+          "lineEnd": 44
+        }
+      ]
+    },
+    {
+      "claimId": "claim_48d9e9bb9a02a5779846",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/media-accessibility.md",
+      "sourcePath": "docs/policies/media-accessibility.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/media-accessibility.md",
+          "lineStart": 1,
+          "lineEnd": 41
+        }
+      ]
+    },
+    {
+      "claimId": "claim_b3f97c818098201a889e",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/payments-refunds.md",
+      "sourcePath": "docs/policies/payments-refunds.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/payments-refunds.md",
+          "lineStart": 1,
+          "lineEnd": 43
+        }
+      ]
+    },
+    {
+      "claimId": "claim_ea92a0b38154b8d9bb44",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/readme.md",
+      "sourcePath": "docs/policies/README.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/README.md",
+          "lineStart": 1,
+          "lineEnd": 5
+        }
+      ]
+    },
+    {
+      "claimId": "claim_95e7cb02d56c7f016432",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/safety-kiln-rules.md",
+      "sourcePath": "docs/policies/safety-kiln-rules.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/safety-kiln-rules.md",
+          "lineStart": 1,
+          "lineEnd": 41
+        }
+      ]
+    },
+    {
+      "claimId": "claim_e76c3e39cd32e15d116d",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/storage-abandoned-work.md",
+      "sourcePath": "docs/policies/storage-abandoned-work.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/storage-abandoned-work.md",
+          "lineStart": 1,
+          "lineEnd": 43
+        }
+      ]
+    },
+    {
+      "claimId": "claim_ee0a98d6543c1a0d4811",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/studio_os_v3_retention.md",
+      "sourcePath": "docs/policies/STUDIO_OS_V3_RETENTION.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/STUDIO_OS_V3_RETENTION.md",
+          "lineStart": 1,
+          "lineEnd": 2
+        }
+      ]
+    },
+    {
+      "claimId": "claim_f197645bb036072c8947",
+      "category": "policy-doc",
+      "subjectKey": "policy-doc:docs/policies/studio-access.md",
+      "sourcePath": "docs/policies/studio-access.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": false,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/policies/studio-access.md",
+          "lineStart": 1,
+          "lineEnd": 43
+        }
+      ]
+    },
+    {
+      "claimId": "claim_86e09901fc2a5d843709",
+      "category": "source-of-truth",
+      "subjectKey": "source-of-truth:emulator-and-host-policy",
+      "sourcePath": "docs/SOURCE_OF_TRUTH_INDEX.md",
+      "approvalState": "pending",
+      "owner": "policy",
+      "humanApprovalReason": "policy-or-customer-facing-claim",
+      "safePromotionCandidate": true,
+      "sourceRefs": [
+        {
+          "sourcePath": "docs/SOURCE_OF_TRUTH_INDEX.md",
+          "lineStart": 43,
+          "lineEnd": 64
+        }
+      ]
+    }
+  ]
+}

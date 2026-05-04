@@ -14,12 +14,12 @@ agent_allowed_use: planning_context
 supersedes: []
 superseded_by: []
 related_pages: []
-export_hash: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
+export_hash: 95b57b434ab2ade0fe9a2750fe186c0b3fcec738d0440babde8ae38062b22e2e
 ---
 
 # Source Map
 
-Snapshot: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
+Snapshot: 95b57b434ab2ade0fe9a2750fe186c0b3fcec738d0440babde8ae38062b22e2e
 
 | Source | Status | Authority | Chunks | Hash |
 |---|---:|---|---:|---|
@@ -362,7 +362,7 @@ Snapshot: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
 | `functions/src/updateReservation.ts` | indexed | repo | 4 | `270f9ef3044b` |
 | `functions/src/v3Execution/pilotFirestoreAction.ts` | indexed | repo | 3 | `b36f9157a098` |
 | `functions/src/websiteKilnBoard.ts` | indexed | repo | 5 | `52c56b489e8e` |
-| `package.json` | indexed | repo | 7 | `9c5e46db3f28` |
+| `package.json` | indexed | repo | 7 | `e9fa257a08c6` |
 | `PROJECT_SNAPSHOT.md` | indexed | repo | 12 | `44edaa77d984` |
 | `scripts/agent-file-plan-apply.mjs` | indexed | repo | 3 | `d8a827ad3b76` |
 | `scripts/agent-file-plan-apply.test.mjs` | indexed | repo | 2 | `0bbc43c11b3c` |
@@ -609,7 +609,7 @@ Snapshot: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
 | `scripts/lib/studiobrain-posture-policy.mjs` | indexed | repo | 3 | `505f7366c6e1` |
 | `scripts/lib/studiobrain-posture-policy.test.mjs` | indexed | repo | 1 | `ad39dbf12605` |
 | `scripts/lib/website-ga-utils.mjs` | indexed | repo | 2 | `b31a5f9b1a5c` |
-| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 35 | `03dc5c5970cb` |
+| `scripts/lib/wiki-postgres-utils.mjs` | indexed | repo | 39 | `e1a53a452d9a` |
 | `scripts/library-rollout-rollback-drill.mjs` | indexed | repo | 7 | `9f8548f535be` |
 | `scripts/libratom-export-jsonl.sh` | indexed | repo | 3 | `c3a4de589100` |
 | `scripts/libratom.sh` | indexed | repo | 1 | `e58affa06efe` |
@@ -769,7 +769,7 @@ Snapshot: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
 | `scripts/studiobrain-host-access.sh` | indexed | repo | 1 | `4032a072ee4c` |
 | `scripts/studiobrain-idle-worker-effectivity-audit.mjs` | indexed | repo | 9 | `9588bcade839` |
 | `scripts/studiobrain-idle-worker-effectivity-audit.test.mjs` | indexed | repo | 3 | `21d23bbf7daa` |
-| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 15 | `2089b4bc3d08` |
+| `scripts/studiobrain-idle-worker.mjs` | indexed | repo | 16 | `3c6874ef8f15` |
 | `scripts/studiobrain-idle-worker.test.mjs` | indexed | repo | 1 | `762170b4df2f` |
 | `scripts/studiobrain-incident-bundle.mjs` | indexed | repo | 6 | `3564751f1f33` |
 | `scripts/studiobrain-local-host-heartbeat.mjs` | indexed | repo | 5 | `4cdbce4f4b01` |
@@ -793,17 +793,18 @@ Snapshot: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
 | `scripts/validate-well-known.mjs` | indexed | repo | 5 | `3455b0e9fc25` |
 | `scripts/verify-harness-dedupe-safe.mjs` | indexed | repo | 5 | `702adc22d926` |
 | `scripts/website-playwright-smoke.mjs` | indexed | repo | 6 | `cd73819cf645` |
-| `scripts/wiki-human-gates-approval-packets.mjs` | indexed | repo | 3 | `f08e102c8a63` |
-| `scripts/wiki-human-gates-approval-packets.test.mjs` | indexed | repo | 2 | `294f3496a92e` |
-| `scripts/wiki-human-gates-list.mjs` | indexed | repo | 3 | `e537f54a1268` |
-| `scripts/wiki-human-gates-list.test.mjs` | indexed | repo | 2 | `4f9edd716fbc` |
-| `scripts/wiki-outcome-record.mjs` | indexed | repo | 4 | `ac148409382d` |
-| `scripts/wiki-outcome-record.test.mjs` | indexed | repo | 2 | `3223a655904d` |
-| `scripts/wiki-postgres-context-pack.test.mjs` | indexed | repo | 2 | `d789c5111503` |
-| `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `e60ae4a4832e` |
+| `scripts/wiki-human-gates-approval-packets.mjs` | indexed | repo | 4 | `05b052a04bf6` |
+| `scripts/wiki-human-gates-approval-packets.test.mjs` | indexed | repo | 2 | `e39a6fbd619a` |
+| `scripts/wiki-human-gates-list.mjs` | indexed | repo | 5 | `894110a0ae27` |
+| `scripts/wiki-human-gates-list.test.mjs` | indexed | repo | 2 | `fb17f74de775` |
+| `scripts/wiki-outcome-record.mjs` | indexed | repo | 4 | `026159cac66e` |
+| `scripts/wiki-outcome-record.test.mjs` | indexed | repo | 2 | `1f23d90f8f80` |
+| `scripts/wiki-postgres-context-pack.test.mjs` | indexed | repo | 3 | `2a6522a81848` |
+| `scripts/wiki-postgres-db-probe.test.mjs` | indexed | repo | 1 | `6a44775ef3a2` |
+| `scripts/wiki-postgres-idle-tasks.test.mjs` | indexed | repo | 1 | `4a174dc039a6` |
 | `scripts/wiki-postgres.mjs` | indexed | repo | 3 | `5f477a33811d` |
-| `scripts/wiki-startup-pack-audit.mjs` | indexed | repo | 5 | `4381382055d2` |
-| `scripts/wiki-startup-pack-audit.test.mjs` | indexed | repo | 3 | `12a71225089c` |
+| `scripts/wiki-startup-pack-audit.mjs` | indexed | repo | 6 | `9b69a37db6fe` |
+| `scripts/wiki-startup-pack-audit.test.mjs` | indexed | repo | 3 | `5fd84f29c9a0` |
 | `scripts/workflow-failure-ticket.mjs` | indexed | repo | 4 | `159adc1e052a` |
 | `storage.rules` | indexed | repo | 1 | `f04626065d5f` |
 | `studio-brain/docs/ENVIRONMENT_REFERENCE.md` | indexed | repo | 15 | `2cf3086af64e` |
@@ -1646,9 +1647,9 @@ Snapshot: 6c8a6b2b7a9836390aef1c2e800b650bf5f5ff3b4afe77ebaeecb95fb887f912
 
 ## Denied Sources
 
-| Source | Reason |
-|---|---|
-| `scripts/codex-compaction-memory.test.mjs` | secret-pattern:bearer-token |
-| `scripts/hybrid-memory-utils.test.mjs` | secret-pattern:bearer-token |
-| `studio-brain/src/http/server.test.ts` | secret-pattern:bearer-token |
-| `studio-brain/src/memory/associationScout.test.ts` | secret-pattern:openai-key |
+| Source | Reason | Classification | Rationale |
+|---|---|---|---|
+| `scripts/codex-compaction-memory.test.mjs` | secret-pattern:bearer-token | needs-fix | an approved source matched a secret-like content pattern and must be reviewed without exposing the value |
+| `scripts/hybrid-memory-utils.test.mjs` | secret-pattern:bearer-token | needs-fix | an approved source matched a secret-like content pattern and must be reviewed without exposing the value |
+| `studio-brain/src/http/server.test.ts` | secret-pattern:bearer-token | needs-fix | an approved source matched a secret-like content pattern and must be reviewed without exposing the value |
+| `studio-brain/src/memory/associationScout.test.ts` | secret-pattern:openai-key | needs-fix | an approved source matched a secret-like content pattern and must be reviewed without exposing the value |

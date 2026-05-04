@@ -201,7 +201,9 @@ export function auditWikiStartupPack(options = {}) {
   const includedHumanGated = includedClaims.filter((claim) => Boolean(claim.requiresHumanApproval));
   const includedMissingSources = includedClaims.filter((claim) => sourceRefsFor(claim).length === 0);
   const verifiedClaims = Number(pack?.budget?.verifiedClaims ?? items.length);
-  const totalWarningItems = Number(pack?.budget?.totalWarningItems ?? pack?.warnings?.length ?? 0);
+  const startupWarningItems = Number(pack?.budget?.startupWarningItems ?? pack?.budget?.totalWarningItems ?? pack?.warnings?.length ?? 0);
+  const totalWarningItems = Number(pack?.budget?.totalWarningItems ?? startupWarningItems);
+  const excludedWarningBacklogItems = Number(pack?.budget?.excludedWarningBacklogItems ?? totalWarningItems);
   const warningCount = Number(pack?.budget?.warningCount ?? pack?.warnings?.length ?? 0);
   const humanGatedClaims = deriveHumanGateCount(humanGatesArtifact, claims);
   const activeContradictions = Number(pack?.budget?.activeContradictionCount ?? 0);
@@ -247,17 +249,17 @@ export function auditWikiStartupPack(options = {}) {
       details: { verifiedClaims },
     });
   }
-  if (totalWarningItems > maxWarningItems) {
+  if (startupWarningItems > maxWarningItems) {
     findings.push({
       severity: "warning",
       code: "startup-warning-volume-too-high",
-      message: "Context pack warning volume is too broad for startup use.",
-      details: { totalWarningItems, maxWarningItems },
+      message: "Context pack startup warning digest is too broad for startup use.",
+      details: { startupWarningItems, maxWarningItems, excludedWarningBacklogItems },
     });
   }
   if (humanGatedClaims > 0) {
     findings.push({
-      severity: "warning",
+      severity: "info",
       code: "human-gated-claims-await-approval",
       message: "Human-gated claims are present and must remain approval-only.",
       details: { humanGatedClaims },
@@ -273,12 +275,29 @@ export function auditWikiStartupPack(options = {}) {
   }
 
   const failCount = findings.filter((finding) => finding.severity === "error").length;
-  const startupEligible = failCount === 0 && verifiedClaims > 0 && warningCount <= maxWarningItems;
+  const startupEligible = failCount === 0 && verifiedClaims > 0 && startupWarningItems <= maxWarningItems;
+  const strictGateFindings = findings.filter((finding) => finding.severity === "error");
   const report = {
     schema: "wiki-startup-pack-audit.v1",
     generatedAt: new Date().toISOString(),
     status: deriveStatus(findings),
     startupEligible,
+    strictGate: {
+      status: strictGateFindings.length > 0 ? "fail" : "pass",
+      mode: "included-claim-safety",
+      failOn: [
+        "included unverified claims",
+        "included human-gated claims",
+        "included claims missing source refs",
+        "startup character budget overflow",
+      ],
+      warningOnly: [
+        "excluded backlog volume",
+        "pending human-gated approval queue",
+        "usefulness verdict below useful",
+      ],
+      failedCodes: strictGateFindings.map((finding) => finding.code),
+    },
     packKey: clean(pack?.packKey) || null,
     contextPackId: clean(pack?.contextPackId) || null,
     snapshotHash: clean(pack?.snapshotHash) || null,
@@ -303,7 +322,9 @@ export function auditWikiStartupPack(options = {}) {
       chars,
       verifiedClaims,
       warningCount,
+      startupWarningItems,
       totalWarningItems,
+      excludedWarningBacklogItems,
       humanGatedClaims,
       activeContradictions,
       includedUnverifiedClaims: includedUnverified.length,
@@ -342,7 +363,8 @@ function renderMarkdown(report) {
     "",
     `- chars: ${report.metrics.chars}`,
     `- verified claims: ${report.metrics.verifiedClaims}`,
-    `- warning items: ${report.metrics.totalWarningItems}`,
+    `- startup warning items: ${report.metrics.startupWarningItems}`,
+    `- backlog warning items: ${report.metrics.excludedWarningBacklogItems}`,
     `- human-gated claims: ${report.metrics.humanGatedClaims}`,
     `- included unverified claims: ${report.metrics.includedUnverifiedClaims}`,
     "",
@@ -365,7 +387,8 @@ function printHumanSummary(report) {
   process.stdout.write(`  status: ${report.status}\n`);
   process.stdout.write(`  startup eligible: ${report.startupEligible}\n`);
   process.stdout.write(`  verified claims: ${report.metrics.verifiedClaims}\n`);
-  process.stdout.write(`  warning items: ${report.metrics.totalWarningItems}\n`);
+  process.stdout.write(`  startup warning items: ${report.metrics.startupWarningItems}\n`);
+  process.stdout.write(`  backlog warning items: ${report.metrics.excludedWarningBacklogItems}\n`);
   process.stdout.write(`  human-gated claims: ${report.metrics.humanGatedClaims}\n`);
   process.stdout.write(`  artifact: ${report.paths.artifactPath}\n`);
   process.stdout.write(`  markdown: ${report.paths.markdownPath}\n`);
@@ -379,7 +402,7 @@ function main() {
   } else {
     printHumanSummary(report);
   }
-  if (args.strict && report.status !== "pass") process.exitCode = 1;
+  if (args.strict && report.strictGate.status !== "pass") process.exitCode = 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {

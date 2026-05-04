@@ -24,6 +24,7 @@ const OUTCOME_VALUES = new Set([
   "blocked",
   "superseded",
 ]);
+const CLASSIFICATION_VALUES = new Set(["test", "organic"]);
 
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -81,8 +82,10 @@ export function parseArgs(argv) {
     json: false,
     dryRun: false,
     summary: false,
+    trend: false,
     outcomesPath: DEFAULT_WIKI_OUTCOMES_PATH,
     artifactPath: resolveRepoPath(DEFAULT_ARTIFACT),
+    artifactExplicit: false,
     packetId: "",
     title: "",
     outcome: "",
@@ -90,6 +93,9 @@ export function parseArgs(argv) {
     usedBy: clean(process.env.USERNAME) || clean(process.env.USER) || "codex",
     notes: "",
     source: "wiki-outcome-recorder",
+    classification: "",
+    sourceCommand: "",
+    evidenceArtifactPath: "",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -107,6 +113,11 @@ export function parseArgs(argv) {
       args.summary = true;
       continue;
     }
+    if (arg === "--trend") {
+      args.summary = true;
+      args.trend = true;
+      continue;
+    }
 
     const mappings = [
       ["--outcomes", "outcomesPath"],
@@ -120,12 +131,16 @@ export function parseArgs(argv) {
       ["--notes", "notes"],
       ["--note", "notes"],
       ["--source", "source"],
+      ["--classification", "classification"],
+      ["--source-command", "sourceCommand"],
+      ["--evidence-artifact", "evidenceArtifactPath"],
     ];
     let consumed = false;
     for (const [flag, key] of mappings) {
       const parsed = readValue(argv, index, flag);
       if (!parsed.matched) continue;
       args[key] = parsed.value;
+      if (key === "artifactPath") args.artifactExplicit = true;
       index = parsed.nextIndex;
       consumed = true;
       break;
@@ -136,8 +151,14 @@ export function parseArgs(argv) {
 
   args.outcomesPath = resolveRepoPath(args.outcomesPath);
   args.artifactPath = args.artifactPath ? resolveRepoPath(args.artifactPath) : "";
+  args.evidenceArtifactPath = clean(args.evidenceArtifactPath);
   args.minutesSaved = Number(args.minutesSaved) || 0;
   return args;
+}
+
+function defaultClassification(options) {
+  const hint = `${options.source || ""} ${options.packetId || ""} ${options.title || ""}`;
+  return /\b(test|fixture|e2e|unit)\b/i.test(hint) ? "test" : "organic";
 }
 
 export function buildWikiOutcomeEntry(options = {}, deps = {}) {
@@ -148,10 +169,14 @@ export function buildWikiOutcomeEntry(options = {}, deps = {}) {
   const notes = clean(options.notes);
   const packetId = clean(options.packetId) || `wiki-outcome-${slug(title || notes || outcome)}-${recordedAt.replace(/[:.]/g, "-")}`;
   const minutesSaved = Number(options.minutesSaved) || 0;
+  const classification = clean(options.classification) || defaultClassification({ ...options, packetId, title });
 
   if (!outcome) throw new Error("--outcome is required.");
   if (!OUTCOME_VALUES.has(outcome)) {
     throw new Error(`Unsupported --outcome value: ${outcome}. Expected one of ${[...OUTCOME_VALUES].join(", ")}.`);
+  }
+  if (!CLASSIFICATION_VALUES.has(classification)) {
+    throw new Error(`Unsupported --classification value: ${classification}. Expected one of ${[...CLASSIFICATION_VALUES].join(", ")}.`);
   }
   if (!title && !notes) throw new Error("--title or --notes is required.");
   if (minutesSaved < 0) throw new Error("--minutes-saved must be zero or greater.");
@@ -169,6 +194,13 @@ export function buildWikiOutcomeEntry(options = {}, deps = {}) {
     usedBy: clean(options.usedBy) || "codex",
     notes,
     source: clean(options.source) || "wiki-outcome-recorder",
+    classification,
+    organicEligible: classification === "organic",
+    provenance: {
+      sourceCommand: clean(options.sourceCommand) || null,
+      artifactPath: clean(options.evidenceArtifactPath) || null,
+      classification,
+    },
   };
 }
 
@@ -206,14 +238,29 @@ export function summarizeWikiOutcomes(options = {}) {
   const outcomes = readJsonlFileIfExists(outcomesPath);
   const summary = summarizeWikiOutcomeUsefulness(outcomes);
   const report = {
-    schema: "wiki-outcome-summary-report.v1",
+    schema: options.trend ? "wiki-outcome-trend-report.v1" : "wiki-outcome-summary-report.v1",
     generatedAt: new Date().toISOString(),
     status: summary.verdict === "useful" ? "pass" : "warning",
     outcomesPath,
     outcomesPathRelative: repoRelative(outcomesPath),
     summary,
+    trend: {
+      totals: {
+        outcomes: summary.total,
+        helpful: summary.helpful,
+        staleOrMisleading: summary.staleOrMisleading,
+        staleOrMisleadingRate: summary.staleOrMisleadingRate,
+        organic: summary.organic,
+        test: summary.test,
+      },
+      verdict: summary.verdict,
+      recentRecords: summary.recentRecords,
+    },
   };
-  const artifactPath = options.artifactPath === "" ? "" : resolveRepoPath(options.artifactPath || "output/wiki/outcome-summary.json");
+  const defaultArtifactPath = options.trend ? "output/wiki/outcome-trend.json" : "output/wiki/outcome-summary.json";
+  const artifactPath = options.artifactPath === ""
+    ? ""
+    : resolveRepoPath(options.artifactExplicit ? options.artifactPath : defaultArtifactPath);
   if (artifactPath) {
     report.artifactPath = artifactPath;
     report.artifactPathRelative = repoRelative(artifactPath);
@@ -227,6 +274,8 @@ function printHuman(report) {
   process.stdout.write(`  outcomes: ${report.summary.total}\n`);
   process.stdout.write(`  helpful: ${report.summary.helpful}\n`);
   process.stdout.write(`  staleOrMisleading: ${report.summary.staleOrMisleading}\n`);
+  process.stdout.write(`  organic: ${report.summary.organic}\n`);
+  process.stdout.write(`  test: ${report.summary.test}\n`);
   process.stdout.write(`  minutesSaved: ${report.summary.totalMinutesSaved}\n`);
   process.stdout.write(`  verdict: ${report.summary.verdict}\n`);
   if (report.entry) process.stdout.write(`  recorded: ${report.entry.packetId} ${report.entry.outcome}\n`);

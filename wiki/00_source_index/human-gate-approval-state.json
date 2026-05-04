@@ -1,0 +1,231 @@
+{
+  "schema": "wiki-human-gate-approval-state.v1",
+  "sourcePath": "wiki/00_source_index/extracted-facts.jsonl",
+  "stateHash": "3fddb1a4ca898f2f17e210a7c16828d458ed941b4f674bf1ac849b8d0b4664f0",
+  "approvalStates": [
+    "approved",
+    "pending",
+    "rejected",
+    "superseded"
+  ],
+  "approvalEffects": "none",
+  "promotionGuard": "Approved state records eligibility only; claim promotion requires a separate tracked source/edit with human approval metadata.",
+  "summary": {
+    "claims": 21,
+    "byState": {
+      "pending": 21
+    }
+  },
+  "items": [
+    {
+      "claimId": "claim_b299e83b58d7a751f762",
+      "category": "package-procedure",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_26fa0636b37f71bc8aae",
+      "category": "package-procedure",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_1f1946f58d80d28a3b33",
+      "category": "package-procedure",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_73488dc1358f5f388665",
+      "category": "package-procedure",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_0fe1fc2898b038f0b5c1",
+      "category": "package-procedure",
+      "sourcePath": "package.json",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_ebed41c7f6c09c3dba9f",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/accessibility.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_c5424890b62176065ebe",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/AGENT_POLICY_ACTIONS.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_cb11bf25a0f0bd949b80",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/AGENT_WORK_INTAKE_POLICY.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_e198ab92b5844d95be04",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/CHANGELOG.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_11aadfb99e47d9e923f9",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/clay-materials.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_0a980fd7ad96521d29b1",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/community-conduct.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_d2be9805482a1473ddd2",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/damage-responsibility.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_18949bc7109060654ed2",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/firing-scheduling.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_48d9e9bb9a02a5779846",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/media-accessibility.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_b3f97c818098201a889e",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/payments-refunds.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_ea92a0b38154b8d9bb44",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/README.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_95e7cb02d56c7f016432",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/safety-kiln-rules.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_e76c3e39cd32e15d116d",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/storage-abandoned-work.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_ee0a98d6543c1a0d4811",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/STUDIO_OS_V3_RETENTION.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_f197645bb036072c8947",
+      "category": "policy-doc",
+      "sourcePath": "docs/policies/studio-access.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    },
+    {
+      "claimId": "claim_86e09901fc2a5d843709",
+      "category": "source-of-truth",
+      "sourcePath": "docs/SOURCE_OF_TRUTH_INDEX.md",
+      "approvalState": "pending",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionSource": null,
+      "notes": ""
+    }
+  ]
+}

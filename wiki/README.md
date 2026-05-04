@@ -32,3 +32,18 @@ Pricing, legal, tax, medical, refund/payment, membership/access, and customer-fa
 - Contradictions can be `blocked` when current operational truth is known but the losing evidence is owned by a paused edit surface.
 - `wiki_idle_task` is the Postgres queue for bounded wiki maintenance; report-only idle runs plan tasks, and apply mode leases ready tasks with `FOR UPDATE SKIP LOCKED`.
 - Export drift checks compare deterministic markdown/JSONL renders against git files before agents trust the wiki as a review surface.
+
+## Wiki And Studio Brain Memory
+
+Use Studio Brain memory first for continuity, recent events, open loops, and "what was I doing?" startup recovery. Use this wiki as the compiled, audited context layer after memory has oriented the thread.
+
+The wiki should be quiet enough for startup: verified or operational-truth claims can enter the context pack, while unverified and human-gated claims stay in bounded warning digests and approval snapshots. The full backlog remains inspectable in `00_source_index/`, `50_contradictions/`, and generated `output/wiki/` reports.
+
+## Approval And Outcome Commands
+
+- `npm run wiki:human-gates:snapshot` refreshes the tracked human-gate approval state and snapshot. It has no approval side effects.
+- `npm run wiki:human-gates:packets` emits reviewer packets grouped by policy docs, package procedures, and source-of-truth claims. Packet output does not approve or promote claims.
+- `npm run wiki:outcome:record -- --classification organic --title "Wiki context pack helped ..." --outcome helpful --notes "..." --source-command "..." --evidence-artifact "..."` records real non-test wiki usage.
+- `npm run wiki:outcome:trend` emits the weekly-friendly trend summary for automation.
+
+Record organic outcomes only when the wiki actually changed a future agent's work: faster startup, prevented stale source use, routed a contradiction, or avoided a broad repo read. Mark harness, fixture, and end-to-end verification runs as `test`; do not fabricate organic value to satisfy an audit.

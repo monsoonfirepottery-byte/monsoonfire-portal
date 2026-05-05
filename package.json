@@ -510,7 +510,7 @@
     "wiki:human-gates:list": "node ./scripts/wiki-human-gates-list.mjs --json",
     "wiki:human-gates:snapshot": "node ./scripts/wiki-human-gates-list.mjs --json --tracked",
     "wiki:human-gates:packets": "node ./scripts/wiki-human-gates-approval-packets.mjs --json",
-    "wiki:startup-pack:audit": "node ./scripts/wiki-startup-pack-audit.mjs --json",
+    "wiki:startup-pack:audit": "node ./scripts/wiki-startup-pack-audit-preflight.mjs --json",
     "wiki:context:check": "node ./scripts/wiki-postgres.mjs context --fresh-extract --json --artifact output/wiki/context-check.json",
     "wiki:context:refresh": "node ./scripts/wiki-postgres.mjs context --fresh-extract --write-markdown --json --artifact output/wiki/context-refresh.json",
     "wiki:context:apply": "node ./scripts/wiki-postgres.mjs context --fresh-extract --apply-db --write-markdown --json --artifact output/wiki/context-apply.json",

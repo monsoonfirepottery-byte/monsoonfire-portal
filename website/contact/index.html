@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/css/styles.css" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=2.1.4" />
   <style>
     .contact-intake {
       margin-top: var(--space-4);
@@ -194,19 +194,32 @@
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="container footer-grid">
-      <div>
-        <div class="footer-brand">Monsoon Fire Pottery</div>
-        <p class="footer-note">West Valley, Arizona. Address shared via portal.</p>
-        <p>All interactions are by appointment only.</p>
-        </div>
-      <div>
-        <div class="footer-title">Contact</div>
-        <p><a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a></p>
-        <p><a href="/contact/">Contact form</a></p>
-        <p><a href="/policies/accessibility/">Accessibility statement</a></p>
+    <footer class="footer" aria-label="Site footer">
+    <div class="container footer-grid footer-grid--site">
+      <div class="footer-primary">
+        <a class="footer-brand" href="/">Monsoon Fire</a>
+        <p class="footer-note">Kiln firing care for ceramic artists in the West Valley.</p>
+        <p class="footer-note">All visits are by appointment. Address and access details are shared after staff confirms the request.</p>
       </div>
+      <nav class="footer-nav" aria-label="Footer navigation">
+        <div>
+          <div class="footer-title">Firing care</div>
+          <p><a href="/">Firing Care</a></p>
+          <p><a href="/firing-services/">Firing Services</a></p>
+          <p><a href="/support-pickup/">Support and pickup</a></p>
+        </div>
+        <div>
+          <div class="footer-title">Studio</div>
+          <p><a href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer" data-portal-target="footer-studio-account">Studio account</a></p>
+          <p><a href="/support-pickup/#ember-chat">Use Ember</a></p>
+          <p><a href="/policies/">Policies</a></p>
+        </div>
+        <div>
+          <div class="footer-title">Help</div>
+          <p><a href="/policies/accessibility/">Accessibility</a></p>
+          <p><a href="mailto:support@monsoonfire.com">Email support</a></p>
+        </div>
+      </nav>
     </div>
   </footer>
 

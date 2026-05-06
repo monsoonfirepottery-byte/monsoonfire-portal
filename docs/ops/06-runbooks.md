@@ -192,6 +192,48 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 4. Check Docker health.
 5. Escalate only after identifying whether the bottleneck is app, database, storage, or network.
 
+## Mission Control Node CPU / Ingest Storm Response
+
+Use this when the Studio Brain host shows sustained Node CPU pressure, Mission Control feels slow, SSE clients pile up, or Codex/laptop watcher ingest traffic appears to be noisy. Treat this as an evidence-capture workflow first; do not kill watcher processes, restart Mission Control, or tune ingest limits unless an active incident owner approves it.
+
+1. Capture a baseline before mitigation:
+   - `make ops-app-review`
+   - `make ops-incident-bundle`
+   - `ps -eo pid,ppid,pcpu,pmem,etime,cmd --sort=-pcpu | head -20`
+   - `ss -tanp 2>/dev/null | grep -E ':(4100|8787|14100)\\b' || true`
+2. Check Mission Control pressure:
+   - from the host: `curl -fsS http://127.0.0.1:4100/api/mission-control/health`
+   - from the laptop tunnel: `curl -fsS http://127.0.0.1:14100/api/mission-control/health`
+   - review request pressure, socket counts, state-cache size, and `codexIngest` counters.
+3. Classify the pressure:
+   - High `codexIngest.acceptedRequests` with rising CPU means the ingest stream is still heavy.
+   - Rising `codexIngest.rateLimitedRequests` or skipped ingest with stable CPU usually means the governor is protecting the host.
+   - High active requests or slow request timings with low ingest counters points to a broader app or dependency issue.
+   - Many sockets with little useful traffic points to SSE client churn or a stale watcher loop.
+4. Capture logs only when needed:
+   - `journalctl -u studio-brain-mission-control.service --since "30 minutes ago" --no-pager`
+   - Avoid pasting raw logs into tickets until they are reviewed for secrets or private payloads.
+5. Safe first responses:
+   - Stop new manual ingest/replay jobs.
+   - Leave the ingest governor enabled.
+   - Prefer reducing watcher noise or increasing batching in a PR over killing processes.
+   - If a laptop-side watcher is suspected, record its task/process identity and current logs; do not auto-kill it.
+6. Approval-required responses:
+   - Restarting `studio-brain-mission-control.service`.
+   - Killing Node, watcher, SSH tunnel, or gateway processes.
+   - Changing `MISSION_CONTROL_CODEX_INGEST_MIN_INTERVAL_MS` or related runtime configuration.
+   - Deploying a new Mission Control artifact.
+7. Verification after mitigation:
+   - Node CPU stays below the warning threshold for at least 10 minutes.
+   - `/api/mission-control/health` remains reachable locally and through the laptop tunnel.
+   - Request active counts and socket queues stop growing.
+   - `codexIngest` counters show accepted work plus expected throttling, not runaway retries.
+   - Mission Control UI loads the operator surface and pressure panel.
+8. Rollback:
+   - Revert the Mission Control PR or redeploy the last known-good artifact.
+   - Restore the prior ingest throttle setting if a tuning change blocks legitimate events.
+   - Restart services only during an approved service window or active incident.
+
 ## Incident Evidence Bundle
 
 1. Capture a read-only bundle before restarting, pruning, upgrading, or deleting anything:

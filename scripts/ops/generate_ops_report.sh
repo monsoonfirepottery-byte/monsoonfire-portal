@@ -28,6 +28,7 @@ run_to_file docker_inventory bash "${SCRIPT_DIR}/docker_inventory.sh"
 run_to_file disk_pressure bash "${SCRIPT_DIR}/disk_pressure.sh"
 run_to_file log_pressure bash "${SCRIPT_DIR}/log_pressure.sh"
 run_to_file dependency_inventory bash "${SCRIPT_DIR}/dependency_inventory.sh"
+run_to_file backup_evidence bash "${SCRIPT_DIR}/backup_evidence.sh"
 
 if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -qx "${PG_CONTAINER}"; then
   run_to_file postgres_readonly_review docker exec -i -u postgres "${PG_CONTAINER}" psql -d "${PGDATABASE}" -X -v ON_ERROR_STOP=1 -f - <"${SCRIPT_DIR}/postgres_readonly_review.sql"

@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodic Studio Brain privileged ops evidence capture
+Documentation=https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/ops/22-privileged-evidence-capture.md
+
+[Timer]
+OnBootSec=10m
+OnUnitActiveSec=1h
+AccuracySec=5m
+RandomizedDelaySec=2m
+Persistent=true
+Unit=studio-brain-ops-capture.service
+
+[Install]
+WantedBy=timers.target

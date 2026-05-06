@@ -1,0 +1,11 @@
+# Studio Brain privileged evidence capture.
+#
+# Install only after human approval:
+#   sudo visudo -cf /path/to/this/file
+#   sudo install -o root -g root -m 0440 /path/to/this/file /etc/sudoers.d/studio-brain-ops-capture
+#
+# This grants the approved group exactly one no-argument root command.
+# The command writes redacted read-only evidence under /var/lib/studio-brain/ops-evidence.
+
+Cmnd_Alias STUDIO_BRAIN_OPS_CAPTURE = /usr/local/sbin/studio-brain-ops-capture
+%studio-brain-ops-capture ALL=(root) NOPASSWD: STUDIO_BRAIN_OPS_CAPTURE

@@ -11,10 +11,10 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### Backup Evidence Is Split And Restore Confidence Is Incomplete
 
 - Affected component: backups, restore posture, PostgreSQL/Redis/MinIO data.
-- Evidence: `studio-brain-backup.timer` runs daily and root-owned config archives exist through 2026-05-05 under `/var/backups/studio-brain/daily`, but `/home/wuff/monsoonfire-portal/output/backups/latest.json` still points to 2026-04-28. The tracked system backup script archives host and Studio Brain config, not an obvious PostgreSQL dump, Redis snapshot, or MinIO object backup.
+- Evidence: `studio-brain-backup.timer` runs daily and root-owned config archives exist under `/var/backups/studio-brain/daily`, but app-level backup manifests and restore-drill summaries are not consistently current. The tracked system backup script now writes `/var/backups/studio-brain/latest-metadata.json` so non-root operators can verify archive metadata, but that still does not prove PostgreSQL dump, Redis snapshot, MinIO object backup, or restore correctness.
 - Likely impact: operators may believe full service backups are fresh while only config-level archives are demonstrably current; restore time and data-loss exposure are unknown.
 - Recommended action: unify backup evidence into one current manifest that distinguishes config archive, PostgreSQL dump, Redis state, MinIO data, and restore-drill status.
-- Safe next step: add a read-only backup evidence script and run a non-destructive restore-prerequisite drill.
+- Safe next step: deploy the metadata manifest update, rerun `make ops-backup-evidence`, then run a non-destructive restore-prerequisite drill against a disposable target.
 - Rollback/undo notes: documentation/script additions can be reverted; do not delete existing backups.
 - PR can address it: yes, for documentation and read-only verification scripts. Full backup changes require approval.
 

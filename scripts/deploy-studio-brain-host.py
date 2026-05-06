@@ -89,10 +89,16 @@ STATIC_SUPPORT_PATHS = (
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.timer",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.sh",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.service.d" / "10-readonly-depth.conf",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.service.d" / "20-clean-lane.conf",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.timer",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.timer.d" / "10-cadence.conf",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker-overnight.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker-overnight.service.d" / "20-clean-lane.conf",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker-overnight.timer",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.sh",
+    REPO_ROOT / "scripts" / "studiobrain-idle-worker-effectivity-audit.mjs",
+    REPO_ROOT / "scripts" / "ops" / "backup_evidence.sh",
 )
 HOST_DRIFT_ALLOWLIST_PATH = REPO_ROOT / "studio-brain" / "host-drift-allowlist.json"
 DISCORD_ENV_PATH = REPO_ROOT / "secrets" / "studio-brain" / "discord-mcp.env"

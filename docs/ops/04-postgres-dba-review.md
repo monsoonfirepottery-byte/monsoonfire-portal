@@ -1,6 +1,6 @@
 # Studio Brain PostgreSQL DBA Review
 
-Snapshot time: 2026-05-06 00:18 UTC. Queries were read-only against `studiobrain_postgres`.
+Snapshot time: 2026-05-06 07:01 UTC. Queries were read-only against `studiobrain_postgres`.
 
 ## Version And Config Facts
 
@@ -23,7 +23,7 @@ Snapshot time: 2026-05-06 00:18 UTC. Queries were read-only against `studiobrain
 
 | Database | Size |
 | --- | ---: |
-| `monsoonfire_studio_os` | 8285 MB |
+| `monsoonfire_studio_os` | 8333 MB |
 | `template1` | 7425 kB |
 | `postgres` | 7361 kB |
 | `template0` | 7361 kB |
@@ -34,11 +34,11 @@ Largest table families:
 
 | Relation | Total | Table | Indexes | Live tuples | Dead tuples |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `public.swarm_memory` | 3142 MB | 1235 MB | 946 MB | 180,229 | 6,149 |
-| `public.memory_relation_edge` | 2287 MB | 771 MB | 1515 MB | 2,566,505 | 7,441 |
-| `public.memory_pattern_index` | 1318 MB | 315 MB | 1002 MB | 1,995,185 | 34,824 |
-| `public.memory_entity_index` | 1035 MB | 272 MB | 763 MB | 1,762,855 | 7,930 |
-| `public.memory_ingest_event` | 287 MB | 226 MB | 61 MB | 498,977 | 0 |
+| `public.swarm_memory` | 3164 MB | 1235 MB | 947 MB | 178,474 | 7,181 |
+| `public.memory_relation_edge` | 2290 MB | 771 MB | 1519 MB | 2,574,887 | 9,913 |
+| `public.memory_pattern_index` | 1318 MB | 315 MB | 1003 MB | 1,997,316 | 37,308 |
+| `public.memory_entity_index` | 1038 MB | 273 MB | 765 MB | 1,770,581 | 8,768 |
+| `public.memory_ingest_event` | 288 MB | 226 MB | 61 MB | 500,022 | 0 |
 
 Largest indexes:
 
@@ -65,9 +65,9 @@ Largest indexes:
 ## Connection Count And Pooling Status
 
 - Activity state snapshot:
-  - `<null>`: 5 background processes.
-  - `idle`: 2.
-  - `active`: 1, the inspection query itself.
+  - 7 total sessions.
+  - 0 idle-in-transaction sessions.
+  - 0 ungranted locks.
 - No evidence of connection saturation was observed.
 - No external connection pooler was discovered in Docker inventory.
 

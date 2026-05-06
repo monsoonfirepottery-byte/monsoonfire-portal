@@ -98,6 +98,22 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Suggested branch name: `codex/ops-host-drift-inventory`
 - Suggested PR title: `[ops] Add live host drift inventory workflow`
 
+### [capacity] Add import growth pressure report
+
+- Type: capacity, cleanup, app
+- Priority: P1
+- Effort: S
+- Risk: low for diagnostics, medium for any cleanup
+- Acceptance criteria:
+  - `/home/wuff/imports` subdirectories are listed by size and age without printing imported content.
+  - Cleanup candidates are classified as safe to automate, safe with backup, service-window, approval-only, or do not touch.
+  - The report captures growth deltas when prior snapshots exist.
+  - No files are deleted, compressed, moved, or modified.
+- Status: current evidence shows `/home/wuff/imports` grew from 23G to 45G between the 00:16 UTC and 07:00 UTC snapshots on 2026-05-06.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-import-pressure-report`
+- Suggested PR title: `[ops] Add import growth pressure report`
+
 ## Next
 
 ### [systemd] Source-control idle-worker timers

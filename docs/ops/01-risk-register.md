@@ -1,6 +1,6 @@
 # Studio Brain Risk Register
 
-Snapshot time: 2026-05-06 00:16-00:20 UTC. Findings are separated from fixes. No destructive action was taken.
+Snapshot time: 2026-05-06 07:00 UTC refresh. Findings are separated from fixes. No destructive action was taken.
 
 ## Critical
 
@@ -38,12 +38,12 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Rollback/undo notes: changing bind address is reversible but can break remote clients; requires service window and approval.
 - PR can address it: yes, detection and documentation. Actual bind/firewall change needs human approval.
 
-### Unattended Upgrade Failed Due OOM While Security Updates Are Pending
+### Unattended Upgrade OOM History And Reboot-Required State Need Maintenance Window
 
 - Affected component: Ubuntu patching and package hygiene.
-- Evidence: `apt-daily-upgrade.service` failed with `Result=oom-kill`; kernel log shows `unattended-upgr` killed after about 29GB RSS. Pending upgrades include kernel, Docker, curl, systemd, nodejs, snapd, and containerd.
+- Evidence: the earlier 2026-05-06 pass showed `apt-daily-upgrade.service` failed with `Result=oom-kill`; kernel log showed `unattended-upgr` killed after about 29GB RSS. The 07:00 UTC refresh showed `apt-daily-upgrade.service` no longer failed (`Result=success`, `ExecMainStatus=0`), but `/var/run/reboot-required` is now present for `linux-image-6.17.0-23-generic` and `linux-base`. Pending upgrades still include Docker, systemd, nodejs, snapd, containerd, cloud-init, and Ubuntu Pro client packages.
 - Likely impact: security updates may not apply reliably; unattended upgrade can create memory pressure or fail silently between admin reviews.
-- Recommended action: inspect apt logs, determine why unattended upgrade consumed excessive memory, then run updates in a supervised maintenance window.
+- Recommended action: inspect apt logs, determine why unattended upgrade consumed excessive memory, then run remaining updates/reboot in a supervised maintenance window.
 - Safe next step: capture apt/unattended-upgrades logs and create a maintenance checklist.
 - Rollback/undo notes: package upgrades need normal apt rollback planning; do not upgrade automatically from this PR.
 - PR can address it: yes, runbook and diagnostic script. Host update execution needs approval.
@@ -79,6 +79,16 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Safe next step: run `make ops-portal-bridge-review` or `bash scripts/ops/portal_bridge_review.sh --ssh-host studiobrain` and compare the tunnel restart count to the prior snapshot before considering any service action.
 - Rollback/undo notes: documentation/script changes can be reverted; do not restart or rekey the tunnel just to reset counters.
 - PR can address it: yes, for monitoring/reporting and runbook coverage. Tunnel endpoint, key, or service changes require approval.
+
+### Import Directory Growth Accelerated
+
+- Affected component: host storage, mail/import pipelines, retention hygiene.
+- Evidence: `/home/wuff/imports` was 23G in the 2026-05-06 00:16 UTC inventory and 45G in the 2026-05-06 07:00 UTC refresh. Root filesystem pressure is still low at 15% used, but the import path is now the largest observed directory under `/home/wuff`.
+- Likely impact: a runaway or repeated import can consume disk faster than weekly capacity checks notice, and cleanup is risky without knowing which import artifacts are evidence, replayable cache, or source-of-truth data.
+- Recommended action: add import growth reporting by subdirectory/run, define retention classes, and tie cleanup candidates to an approval queue.
+- Safe next step: add a read-only import pressure script that prints sizes, age buckets, and cleanup classifications without deleting files or printing imported content.
+- Rollback/undo notes: reporting/docs can be reverted. Any import deletion, compression, or archival action requires owner approval and a backup/restore note.
+- PR can address it: yes, for reporting and documentation. Cleanup requires human approval.
 
 ### Several System Units Are Failed
 

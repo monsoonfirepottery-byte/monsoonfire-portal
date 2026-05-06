@@ -1,27 +1,29 @@
 # Studio Brain Capacity Plan
 
-Snapshot time: 2026-05-06 00:16-00:20 UTC.
+Snapshot time: 2026-05-06 07:00-07:02 UTC.
 
 ## Current Observed Capacity Constraints
 
-- Root filesystem is healthy at 15% used: 124G of 914G.
+- Root filesystem is healthy at 15% used: 126G of 914G.
 - Inodes are healthy at 2% used on `/`.
-- RAM is healthy at rest: 30Gi total, 25Gi available at collection.
-- Swap has light current use: 448Mi of 8Gi.
-- Docker uses about 12G on disk and reports 9.303GB in local volumes.
-- PostgreSQL database `monsoonfire_studio_os` is about 8.3GB.
-- The largest single growth area under `/home/wuff` is `/home/wuff/monsoonfire-portal` at 44G, followed by `/home/wuff/imports` at 23G.
+- RAM is healthy at rest: 30Gi total, 26Gi available at collection.
+- Swap has light current use: 445Mi of 8Gi.
+- Docker reports 4.397GB in images, 8.984GB in local volumes, and 300.3MB in build cache.
+- PostgreSQL database `monsoonfire_studio_os` is 8333MB.
+- The largest growth areas under `/home/wuff` are `/home/wuff/imports` at 45G and `/home/wuff/monsoonfire-portal` at 44G.
+- `/home/wuff/imports` increased from 23G in the 00:16 UTC snapshot to 45G at 07:00 UTC, so import growth should be treated as an active watch item even though total disk pressure is still low.
 
 ## Disk Growth Concerns
 
 | Path | Observed size | Concern |
 | --- | ---: | --- |
+| `/home/wuff/imports` | 45G | mail/import pipelines need retention policy and growth trend; growth accelerated in the latest same-day snapshot |
 | `/home/wuff/monsoonfire-portal` | 44G | repo artifacts, imports, build output, generated state, and dirty host checkout can grow invisibly |
-| `/home/wuff/imports` | 23G | mail/import pipelines need retention policy and growth trend |
-| `/var/lib/docker` | 12G | volumes/images currently manageable but should be trended |
+| Docker volumes/images | 8.984G volumes, 4.397G images | volumes/images currently manageable but should be trended |
 | `/home/wuff/.npm` | 4.2G | package cache cleanup candidate |
 | `/home/wuff/.cache` | 3.8G | cache cleanup candidate |
-| `/home/wuff/studio-brain-mission-control` | 2.8G | deployment/archive retention needs policy |
+| `/home/wuff/studio-brain-mission-control` | 4.0G | deployment/archive retention needs policy |
+| `/home/wuff/backups` | 3.5G | backup retention and restore evidence should be tied to the backup manifest |
 
 Warning threshold: root filesystem above 70% or any growth area increasing by more than 10G/week.
 
@@ -29,13 +31,13 @@ Critical threshold: root filesystem above 85%, `/boot` above 80%, or free space 
 
 ## Database Growth Concerns
 
-- Database size: 8.3GB.
+- Database size: 8333MB.
 - Largest relations:
   - `public.swarm_memory`: 3.1GB.
   - `public.memory_relation_edge`: 2.3GB.
   - `public.memory_pattern_index`: 1.3GB.
   - `public.memory_entity_index`: 1.0GB.
-  - `public.memory_ingest_event`: 287MB.
+  - `public.memory_ingest_event`: 288MB.
 - Largest indexes are memory retrieval/search indexes, several over 240MB and up to 591MB.
 - Dead tuple percentages are mostly low on large tables, but small operational tables show high dead percentages and should not be over-interpreted without row counts.
 
@@ -47,7 +49,7 @@ Critical threshold: database grows above 50GB without a tested restore process.
 
 - Images: 4.397GB.
 - Containers: 4.112MB writable layer total.
-- Volumes: 9.303GB.
+- Volumes: 8.984GB.
 - Build cache: 300.3MB reclaimable.
 - No dangling images or exited containers were observed.
 - Docker reports 8 local volumes but only 5 active, so anonymous volume ownership should be classified before cleanup.
@@ -58,9 +60,9 @@ Critical threshold: Docker root above 80G or unknown inactive volumes containing
 
 ## Log Growth
 
-- `/var/log`: 84M.
+- `/var/log`: 93M.
 - systemd journal: 48M.
-- `/tmp`: 28M.
+- `/tmp`: 55M.
 - Current log pressure is low.
 
 Warning threshold: `/var/log` above 2G, journal above 1G, or any single Docker json log above 512M.
@@ -69,9 +71,9 @@ Critical threshold: logs consume more than 10% of root filesystem.
 
 ## CPU And Memory Pressure
 
-- CPU load was low relative to typical desktop/server capacity.
+- CPU load was low at the 07:00 UTC observation: `0.23, 0.37, 0.49`.
 - RAM was healthy during observation, but unattended upgrades triggered an OOM kill on 2026-05-05.
-- `studio-brain-mission-control.service` was using about 980M and `studio-brain.service` about 286M.
+- `studio-brain-mission-control.service` was using about 481M and `studio-brain.service` about 244M.
 - Docker resource limits exist in tracked Compose for core dependencies, but user-scoped app services are not capped at the systemd level in this pass.
 
 Warning threshold: sustained load above CPU count for 15 minutes, swap above 25%, or Mission Control above 1.5GB.
@@ -82,7 +84,7 @@ Critical threshold: OOM event, swap above 75%, or repeated service restarts.
 
 - Root-owned config archives under `/var/backups/studio-brain/daily` are tiny and current through 2026-05-05.
 - App-level backup evidence under `output/backups/latest.json` points to 2026-04-28.
-- PostgreSQL is 8.3GB; full database backups and restore drills need explicit storage and retention modeling.
+- PostgreSQL is 8333MB; full database backups and restore drills need explicit storage and retention modeling.
 - MinIO and Redis backup posture should be proven in the same manifest as PostgreSQL.
 
 Minimum recommendation:
@@ -97,6 +99,7 @@ Minimum recommendation:
 
 - Fix backup evidence split and prove a current PostgreSQL restore drill.
 - Triage apt OOM and pending updates.
+- Investigate `/home/wuff/imports` growth and define retention for import artifacts.
 - Snapshot Postgres relation sizes weekly.
 - Classify anonymous Docker volumes.
 
@@ -115,6 +118,7 @@ Minimum recommendation:
 ## Metrics Missing Or Not Yet Collected
 
 - Historical disk growth by path.
+- Per-import-run size deltas and retention policy for `/home/wuff/imports`.
 - Historical database table/index growth.
 - pg_stat_statements top queries by total time and mean time.
 - Backup restore duration and verified restore target size.

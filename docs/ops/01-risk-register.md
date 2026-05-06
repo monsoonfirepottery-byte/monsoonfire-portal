@@ -63,10 +63,10 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### Live Idle-Worker Timers Are Host-Only Drift
 
 - Affected component: systemd timer source of truth.
-- Evidence: host has `studio-brain-idle-worker.timer` and `studio-brain-idle-worker-overnight.timer`, but clean `origin/main` lacks matching files under `config/studiobrain/systemd`.
+- Evidence: host has `studio-brain-idle-worker.timer` and `studio-brain-idle-worker-overnight.timer`; the ops-doctor branch now tracks matching unit and wrapper files under `config/studiobrain/systemd`.
 - Likely impact: reinstall or reconcile paths may drop or fail to recreate important scheduled work.
-- Recommended action: import these unit files into source control after review.
-- Safe next step: add a PR with the timer/service definitions and install script coverage.
+- Recommended action: review and merge the source-controlled unit files, then run the install/reconcile path only in an approved host maintenance window.
+- Safe next step: verify the PR diff against live unit contents and confirm timer state with `systemctl list-timers 'studio-brain-idle-worker*' --all --no-pager`.
 - Rollback/undo notes: source-controlled units can be reverted; do not remove live timers until replacement is verified.
 - PR can address it: yes.
 

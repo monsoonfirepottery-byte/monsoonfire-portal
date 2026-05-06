@@ -73,6 +73,7 @@ Each item is issue-ready and intentionally separates investigation from changes 
   - `studio-brain-idle-worker` and overnight unit files are tracked under `config/studiobrain/systemd`.
   - Install/reconcile scripts include them.
   - Docs list cadence and safety mode.
+- Status: PR prepared; live installation remains approval-gated.
 - Recommended owner: Codex
 - Suggested branch name: `codex/ops-idle-worker-systemd`
 - Suggested PR title: `[ops] Track Studio Brain idle-worker systemd timers`

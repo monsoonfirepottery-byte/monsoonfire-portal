@@ -82,7 +82,7 @@ System services/timers:
 | `studio-brain-idle-worker.timer` | active/waiting | every 4 hours after inactive, randomized delay |
 | `studio-brain-idle-worker-overnight.timer` | active/waiting | nightly around 02:30 UTC |
 
-The idle-worker timers are present on the host, but the clean `origin/main` checkout used for this PR does not contain corresponding tracked unit files under `config/studiobrain/systemd`.
+The idle-worker timers are present on the host. This branch adds matching tracked unit and wrapper files under `config/studiobrain/systemd`; applying them on the host remains an explicit install/reconcile action, not part of read-only discovery.
 
 ## Failed Units
 

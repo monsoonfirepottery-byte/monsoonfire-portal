@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic Studio Brain idle worker
+
+[Timer]
+OnBootSec=15m
+OnUnitInactiveSec=4h
+RandomizedDelaySec=20m
+Persistent=true
+Unit=studio-brain-idle-worker.service
+
+[Install]
+WantedBy=timers.target

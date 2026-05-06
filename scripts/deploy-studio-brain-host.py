@@ -88,6 +88,11 @@ STATIC_SUPPORT_PATHS = (
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.service",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.timer",
     REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-discord-relay.sh",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.timer",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker-overnight.service",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker-overnight.timer",
+    REPO_ROOT / "config" / "studiobrain" / "systemd" / "studio-brain-idle-worker.sh",
 )
 HOST_DRIFT_ALLOWLIST_PATH = REPO_ROOT / "studio-brain" / "host-drift-allowlist.json"
 DISCORD_ENV_PATH = REPO_ROOT / "secrets" / "studio-brain" / "discord-mcp.env"

@@ -131,6 +131,21 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
    - rerun `make ops-host-drift`
    - verify Studio Brain health after any approved cleanup
 
+## Idle-Worker Timer Reconcile
+
+1. Review the tracked timer notes:
+   - `docs/ops/11-idle-worker-systemd.md`
+2. Confirm current host state before changing anything:
+   - `systemctl list-timers 'studio-brain-idle-worker*' --all --no-pager`
+   - `systemctl status studio-brain-idle-worker.timer studio-brain-idle-worker-overnight.timer --no-pager`
+3. Confirm no worker service is already running.
+4. During an approved maintenance window, run the repo-backed install/reconcile path.
+5. Verify the timers are active and note the next scheduled run.
+6. Rollback:
+   - restore the previous unit files from Git or host backup
+   - run `systemctl daemon-reload`
+   - restart only the affected timers after approval
+
 ## High Memory / OOM Response
 
 1. Capture evidence:

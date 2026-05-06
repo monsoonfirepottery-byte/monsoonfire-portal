@@ -42,6 +42,7 @@ const DEFAULT_TARGET_FILES = [
   "scripts/ops/systemd_drift_review.sh",
   "scripts/ops/portal_bridge_review.sh",
   "scripts/ops/import_pressure.sh",
+  "scripts/ops/cleanup_candidates.sh",
   "scripts/test-studio-brain-auth.mjs",
   "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",

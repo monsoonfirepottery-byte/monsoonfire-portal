@@ -31,6 +31,8 @@ Critical threshold: root filesystem above 85%, `/boot` above 80%, or free space 
 
 Use `make ops-import-pressure` or `bash scripts/ops/import_pressure.sh --target /home/wuff/imports` for the read-only import-specific pressure report. It reports size, age buckets, and cleanup classifications without reading imported content or modifying files.
 
+Use `make ops-cleanup-candidates` for the broader cleanup candidate packet. It inventories Docker artifacts, log pressure, temp files, import artifacts, and backup candidates, then classifies each cleanup family as safe to automate, safe with backup, service-window, approval-only, or do not touch.
+
 ## Database Growth Concerns
 
 - Database size: 8333MB.

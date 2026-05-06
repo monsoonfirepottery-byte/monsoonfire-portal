@@ -122,15 +122,13 @@ Observed listeners:
 - `192.168.1.226:18080` and `192.168.1.226:18081`: monitoring proxy.
 - `127.0.0.1:8080`: SearXNG.
 
-`ufw` is inactive. `fail2ban` is active for `sshd` with 0 current bans and 2 total failed attempts.
+Follow-up network exposure capture on 2026-05-06 01:10 UTC shows `ufw` enabled and active by systemd, but non-root `ufw status`, `nft`, and `iptables` rule visibility required a privileged read. Treat firewall rule coverage as unknown until `sudo ufw status numbered verbose` or equivalent is captured. `fail2ban` is active, but jail details also required a privileged read in the follow-up.
 
-SSH posture from `sshd -T`:
+SSH posture requires effective-config confirmation. Readable config fragments and prior diagnostics show password-based settings need review:
 
-- `permitrootlogin without-password`
-- `pubkeyauthentication yes`
 - `passwordauthentication yes`
 - `kbdinteractiveauthentication yes`
-- `x11forwarding yes`
+- `AuthenticationMethods any`
 
 ## Docker Version And Compose Files
 

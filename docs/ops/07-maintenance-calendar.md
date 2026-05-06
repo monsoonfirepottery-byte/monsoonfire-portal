@@ -34,6 +34,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 - Review Docker image pins and available updates.
 - Review SSH/fail2ban status.
 - Review open ports and firewall posture.
+  - `make ops-network-review`
 - Classify anonymous Docker volumes.
 - Review host checkout drift against source control.
 

@@ -97,6 +97,24 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 5. Rollback:
    - restore prior Compose/image if a recent deploy caused the issue.
 
+## Network Exposure Review And Hardening
+
+1. Capture the read-only report:
+   - `make ops-network-review`
+   - or `bash scripts/ops/network_exposure_review.sh`
+2. Capture privileged read-only firewall and SSH facts before changing anything:
+   - `sudo ufw status numbered verbose`
+   - `sudo nft list ruleset`
+   - `sudo sshd -T`
+   - `sudo fail2ban-client status sshd`
+3. Identify every legitimate PostgreSQL client before changing Docker port binds, firewall rules, or `pg_hba.conf`.
+4. Verify a second SSH session, a second key, or console access before SSH hardening.
+5. Do not reload SSH, restart Docker containers, edit firewall rules, or change PostgreSQL config without approval.
+6. Rollback:
+   - restore prior Compose port mapping, SSH config, firewall rule, or PostgreSQL config
+   - keep the original admin session open until post-checks pass
+   - rerun `make ops-network-review` and app health checks after rollback
+
 ## High Memory / OOM Response
 
 1. Capture evidence:

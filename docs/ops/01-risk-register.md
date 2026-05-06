@@ -28,13 +28,13 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Rollback/undo notes: do not reset the host checkout until the diff manifest is reviewed and backed up.
 - PR can address it: yes, for the audit/reporting tool. Cleanup requires human approval.
 
-### PostgreSQL Is Bound To All Interfaces While UFW Is Inactive
+### PostgreSQL Is Bound To All Interfaces While Firewall Rule Coverage Is Unverified
 
 - Affected component: PostgreSQL network exposure.
-- Evidence: `ss` shows `0.0.0.0:5433` and `[::]:5433` listening via Docker; `ufw` reports inactive. Compose default is `"${PGPORT:-5433}:5432"`.
+- Evidence: `make ops-network-review` on 2026-05-06 shows `0.0.0.0:5433` and `[::]:5433` listening via Docker, PostgreSQL `listen_addresses='*'`, and `pg_hba_file_rules` allowing `host all all all scram-sha-256`. `systemctl` reports `ufw` enabled and active, but non-root `ufw status`, `nft`, and `iptables` rules required a privileged read. Compose default is `"${PGPORT:-5433}:5432"`.
 - Likely impact: the database is reachable from more than localhost. If credentials or LAN trust assumptions are weak, this increases blast radius.
-- Recommended action: confirm all legitimate clients, then bind Postgres to `127.0.0.1:5433` or add a host firewall rule.
-- Safe next step: add a docs/task item and a Compose validation check that reports non-loopback DB binds.
+- Recommended action: confirm all legitimate clients and privileged firewall rules, then bind Postgres to `127.0.0.1:5433` or add an explicit host firewall allowlist.
+- Safe next step: run `make ops-network-review`, capture `sudo ufw status numbered verbose`, and identify every direct PostgreSQL client before hardening.
 - Rollback/undo notes: changing bind address is reversible but can break remote clients; requires service window and approval.
 - PR can address it: yes, detection and documentation. Actual bind/firewall change needs human approval.
 
@@ -53,10 +53,10 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### SSH Password And Keyboard-Interactive Auth Are Enabled
 
 - Affected component: SSH access posture.
-- Evidence: `sshd -T` reports `passwordauthentication yes`, `kbdinteractiveauthentication yes`, `permitrootlogin without-password`; `fail2ban` is active and currently has no bans.
+- Evidence: SSH listens on `0.0.0.0:22` and `[::]:22`. Readable config fragments include `PasswordAuthentication yes`, `KbdInteractiveAuthentication yes`, `AuthenticationMethods any`, and `UsePAM yes`; the 2026-05-06 non-root run could not obtain effective `sshd -T` output. `fail2ban` is active, but jail details required a privileged read.
 - Likely impact: password auth increases remote brute-force exposure, especially with `ssh` listening on all interfaces.
 - Recommended action: confirm any legitimate password-based access, then plan key-only SSH with fail2ban retained.
-- Safe next step: add a key-only SSH migration checklist and current-posture diagnostic.
+- Safe next step: run `make ops-network-review`, capture privileged effective SSH config with `sudo sshd -T`, verify at least two key-based access paths, and then prepare a key-only SSH migration checklist.
 - Rollback/undo notes: keep an out-of-band console or verified second key before changing SSH auth.
 - PR can address it: documentation only; host SSH changes require approval.
 

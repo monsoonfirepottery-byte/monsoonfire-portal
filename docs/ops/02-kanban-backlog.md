@@ -203,6 +203,22 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Suggested branch name: `codex/ops-app-status-review`
 - Suggested PR title: `[ops] Add Studio Brain app status review`
 
+### [app] Inventory Node dependency audit posture
+
+- Type: app, security, cleanup, documentation
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - A read-only command inventories npm workspaces, package-lock coverage, dependency counts, declared engines, overrides, and npm audit severity totals.
+  - Workspaces without lockfiles are classified as skipped instead of failing noisily.
+  - The command does not install packages, update lockfiles, run `npm audit fix`, or print environment values.
+  - Non-clean findings are treated as issue evidence for small dependency PRs with package-specific tests.
+- Status: read-only script prepared as `scripts/ops/npm_audit_inventory.sh` and wrapped by `make ops-dependency-review`.
+- Recommended owner: Codex, security review
+- Suggested branch name: `codex/ops-npm-audit-inventory`
+- Suggested PR title: `[ops] Add npm audit inventory report`
+
 ### [mission-control] Manage laptop watcher lifecycle safely
 
 - Type: reliability, app, documentation

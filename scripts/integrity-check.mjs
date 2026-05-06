@@ -50,6 +50,7 @@ const DEFAULT_TARGET_FILES = [
   "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",
   "scripts/integrity-check.mjs",
+  "scripts/studiobrain-ops.py",
   "scripts/deploy-studio-brain-host.py",
   "scripts/pr-gate.mjs",
   "scripts/portal-playwright-smoke.mjs",

@@ -40,6 +40,7 @@ const DEFAULT_TARGET_FILES = [
   "scripts/studiobrain-backup-drill.mjs",
   "scripts/studiobrain-incident-bundle.mjs",
   "scripts/ops/systemd_drift_review.sh",
+  "scripts/ops/portal_bridge_review.sh",
   "scripts/test-studio-brain-auth.mjs",
   "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",

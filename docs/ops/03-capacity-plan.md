@@ -1,15 +1,16 @@
 # Studio Brain Capacity Plan
 
-Snapshot time: 2026-05-06 07:00-07:02 UTC.
+Snapshot time: 2026-05-06 18:32 UTC.
 
 ## Current Observed Capacity Constraints
 
 - Root filesystem is healthy at 15% used: 126G of 914G.
 - Inodes are healthy at 2% used on `/`.
 - RAM is healthy at rest: 30Gi total, 26Gi available at collection.
-- Swap has light current use: 445Mi of 8Gi.
-- Docker reports 4.397GB in images, 8.984GB in local volumes, and 300.3MB in build cache.
-- PostgreSQL database `monsoonfire_studio_os` is 8333MB.
+- Swap has light current use: 321Mi of 8Gi.
+- Load average was low relative to host size: `0.94, 0.67, 0.59`.
+- Docker reports 4.397GB in images, 8.866GB in local volumes, and 300.3MB in build cache.
+- PostgreSQL database `monsoonfire_studio_os` is 8348MB.
 - The largest observed areas under `/home/wuff` are `/home/wuff/imports` at 45G and `/home/wuff/monsoonfire-portal` at 44G.
 - `/home/wuff/imports` measured 23G in the 00:16 UTC snapshot and 45G at 07:00 UTC. A targeted import pressure report showed the largest files were about 63 days old, so treat this as an observed measurement discrepancy or untrended capacity concern until historical deltas are proven.
 
@@ -19,7 +20,7 @@ Snapshot time: 2026-05-06 07:00-07:02 UTC.
 | --- | ---: | --- |
 | `/home/wuff/imports` | 45G | mail/import artifacts need retention policy and growth trend; current largest items are two 22G PST files classified approval-only |
 | `/home/wuff/monsoonfire-portal` | 44G | repo artifacts, imports, build output, generated state, and dirty host checkout can grow invisibly |
-| Docker volumes/images | 8.984G volumes, 4.397G images | volumes/images currently manageable but should be trended |
+| Docker volumes/images | 8.866G volumes, 4.397G images | volumes/images currently manageable but should be trended |
 | `/home/wuff/.npm` | 4.2G | package cache cleanup candidate |
 | `/home/wuff/.cache` | 3.8G | cache cleanup candidate |
 | `/home/wuff/studio-brain-mission-control` | 4.0G | deployment/archive retention needs policy |
@@ -35,7 +36,7 @@ Use `make ops-cleanup-candidates` for the broader cleanup candidate packet. It i
 
 ## Database Growth Concerns
 
-- Database size: 8333MB.
+- Database size: 8348MB.
 - Largest relations:
   - `public.swarm_memory`: 3.1GB.
   - `public.memory_relation_edge`: 2.3GB.
@@ -53,10 +54,10 @@ Critical threshold: database grows above 50GB without a tested restore process.
 
 - Images: 4.397GB.
 - Containers: 4.112MB writable layer total.
-- Volumes: 8.984GB.
+- Volumes: 8.866GB.
 - Build cache: 300.3MB reclaimable.
 - No dangling images or exited containers were observed.
-- Docker reports 8 local volumes but only 5 active, so anonymous volume ownership should be classified before cleanup.
+- Docker reports 8 local volumes but only 5 active, so the 3 inactive anonymous volumes should be classified before cleanup.
 
 Warning threshold: Docker root above 30G or more than 5 inactive volumes.
 
@@ -75,10 +76,11 @@ Critical threshold: logs consume more than 10% of root filesystem.
 
 ## CPU And Memory Pressure
 
-- CPU load was low at the 07:00 UTC observation: `0.23, 0.37, 0.49`.
+- CPU load was low at the 18:32 UTC observation: `0.94, 0.67, 0.59`.
 - RAM was healthy during observation, but unattended upgrades triggered an OOM kill on 2026-05-05.
-- `studio-brain-mission-control.service` was using about 481M and `studio-brain.service` about 244M.
-- Docker resource limits exist in tracked Compose for core dependencies, but user-scoped app services are not capped at the systemd level in this pass.
+- `studio-brain-mission-control.service` was active with `NRestarts=0` and about 492M `MemoryCurrent`.
+- `studio-brain.service` was active with `NRestarts=0` and about 368M `MemoryCurrent`.
+- Docker resource limits are visible on the live containers, but user-scoped Node app services are not capped at the systemd level in this pass.
 
 Warning threshold: sustained load above CPU count for 15 minutes, swap above 25%, or Mission Control above 1.5GB.
 
@@ -87,7 +89,7 @@ Critical threshold: OOM event, swap above 75%, or repeated service restarts.
 ## Backup Storage Needs
 
 - Root-owned config archives under `/var/backups/studio-brain/daily` are tiny and current through 2026-05-05.
-- App-level backup evidence under `output/backups/latest.json` points to 2026-04-28.
+- Root-owned backup metadata now proves a 2026-05-06 18:11 UTC config/archive manifest, but app/data backup evidence remains split.
 - PostgreSQL is 8333MB; full database backups and restore drills need explicit storage and retention modeling.
 - MinIO and Redis backup posture should be proven in the same manifest as PostgreSQL.
 
@@ -125,6 +127,7 @@ Minimum recommendation:
 - Per-import-run size deltas and retention policy for `/home/wuff/imports`.
 - Historical database table/index growth.
 - pg_stat_statements top queries by total time and mean time.
+- Docker json-log sizes; privileged read required.
 - Backup restore duration and verified restore target size.
 - Docker per-volume ownership and growth.
 - App service memory trend over time.

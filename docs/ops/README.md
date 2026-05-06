@@ -38,6 +38,7 @@ make ops-systemd-drift
 make ops-portal-bridge-review
 make ops-app-review
 make ops-dependency-review
+make ops-idle-worker-effectivity
 make ops-incident-bundle
 make ops-report
 ```

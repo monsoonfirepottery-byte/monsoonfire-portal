@@ -1,6 +1,6 @@
 # Studio Brain PostgreSQL DBA Review
 
-Snapshot time: 2026-05-06 07:01 UTC. Queries were read-only against `studiobrain_postgres`.
+Snapshot time: 2026-05-06 18:32 UTC. Queries were read-only against `studiobrain_postgres`.
 
 ## Version And Config Facts
 
@@ -23,9 +23,9 @@ Snapshot time: 2026-05-06 07:01 UTC. Queries were read-only against `studiobrain
 
 | Database | Size |
 | --- | ---: |
-| `monsoonfire_studio_os` | 8333 MB |
+| `monsoonfire_studio_os` | 8348 MB |
+| `postgres` | 7519 kB |
 | `template1` | 7425 kB |
-| `postgres` | 7361 kB |
 | `template0` | 7361 kB |
 
 ## Largest Tables And Indexes
@@ -34,11 +34,11 @@ Largest table families:
 
 | Relation | Total | Table | Indexes | Live tuples | Dead tuples |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `public.swarm_memory` | 3164 MB | 1235 MB | 947 MB | 178,474 | 7,181 |
-| `public.memory_relation_edge` | 2290 MB | 771 MB | 1519 MB | 2,574,887 | 9,913 |
-| `public.memory_pattern_index` | 1318 MB | 315 MB | 1003 MB | 1,997,316 | 37,308 |
-| `public.memory_entity_index` | 1038 MB | 273 MB | 765 MB | 1,770,581 | 8,768 |
-| `public.memory_ingest_event` | 288 MB | 226 MB | 61 MB | 500,022 | 0 |
+| `public.swarm_memory` | 3167 MB | 1235 MB | 948 MB | 178,790 | 7,551 |
+| `public.memory_relation_edge` | 2292 MB | 771 MB | 1520 MB | 2,577,843 | 10,881 |
+| `public.memory_pattern_index` | 1318 MB | 315 MB | 1003 MB | 1,998,083 | 37,503 |
+| `public.memory_entity_index` | 1040 MB | 273 MB | 766 MB | 1,773,624 | 9,224 |
+| `public.memory_ingest_event` | 288 MB | 227 MB | 61 MB | 500,379 | 0 |
 
 Largest indexes:
 
@@ -52,20 +52,23 @@ Largest indexes:
 ## Bloat And Dead Tuple Concerns
 
 - Large tables have relatively low dead tuple ratios in this snapshot.
-- `public.swarm_memory` has about 3.30% dead tuples.
-- `public.memory_pattern_index` has about 1.72% dead tuples.
+- `public.swarm_memory` has about 4.05% dead tuples.
+- `public.memory_pattern_index` has about 1.84% dead tuples.
 - Smaller operational tables such as `mission_control.agents`, `public.brain_ops_cases`, and `public.memory_stats_rollup` show high dead percentages, but their absolute sizes are small.
 - No index bloat estimator was run in this first pass. Use the read-only scripts in `scripts/ops/` before considering `REINDEX`, `VACUUM FULL`, or schema changes.
 
 ## Slow Query Visibility
 
 - `pg_stat_statements` is installed and preloaded, so slow-query review is possible.
-- This first pass did not query pg_stat_statements output because query text may include sensitive literals depending on application behavior. Add a redacted top-query report before making index recommendations.
+- The read-only review now includes a top-total-time query with single-line, length-limited query text. It showed several memory retrieval/statistics families dominating total execution time.
+- Highest-cost families in the 18:32 UTC snapshot included memory pattern/entity lookups, `refresh_memory_stats_rollup`, row-count snapshots for memory tables, and repeated `mission_control.task_events order by occurred_at desc limit $1`.
+- Treat these as workload leads, not index-change approval. Before schema changes, capture approved `EXPLAIN (ANALYZE, BUFFERS)` output with literal scrubbing and rollback SQL.
 
 ## Connection Count And Pooling Status
 
 - Activity state snapshot:
-  - 7 total sessions.
+  - 10 total sessions.
+  - 10% of `max_connections=100`.
   - 0 idle-in-transaction sessions.
   - 0 ungranted locks.
 - No evidence of connection saturation was observed.
@@ -87,14 +90,14 @@ Largest indexes:
 
 ## WAL And Checkpoint Observations
 
-- `pg_stat_wal` reported about 149.8GB cumulative `wal_bytes`.
-- `pg_stat_bgwriter` showed 17,399 timed checkpoints and 171 requested checkpoints.
+- `pg_stat_wal` reported about 150.3GB cumulative `wal_bytes`.
+- `pg_stat_bgwriter` showed 17,617 timed checkpoints and 171 requested checkpoints.
 - This is a point-in-time cumulative counter, not a rate. Trend it before tuning WAL/checkpoints.
 
 ## Backup And Restore Posture
 
 - Systemd backup archives are current but appear config-focused.
-- App backup metadata in `output/backups/latest.json` points to 2026-04-28.
+- Root-owned backup metadata now exists at `/var/backups/studio-brain/latest-metadata.json`; the 2026-05-06 18:11 UTC manifest proves archive metadata without exposing secrets.
 - A database restore drill should be treated as unproven until a current artifact explicitly shows PostgreSQL dump/restore verification.
 
 ## Recommended SQL Inspection Queries
@@ -107,13 +110,13 @@ The repo now includes:
 Recommended cadence:
 
 - Weekly: size report, dead tuples, active sessions, locks, and settings snapshot.
-- Monthly: pg_stat_statements redacted top-query report and restore drill.
+- Monthly: pg_stat_statements redacted top-query review and restore drill.
 - Before schema/index PRs: capture `EXPLAIN (ANALYZE, BUFFERS)` only on approved queries and scrub literals from shared artifacts.
 
 ## Safe Improvement Candidates
 
 - Add weekly read-only DBA snapshots.
-- Add a redacted pg_stat_statements report.
+- Keep the redacted pg_stat_statements report in the weekly DBA packet.
 - Add backup manifest fields that prove PostgreSQL dump and restore-prerequisite status.
 - Add a DB network-bind check to Compose validation.
 - Avoid schema/index changes until workload evidence exists.

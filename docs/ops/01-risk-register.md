@@ -1,6 +1,6 @@
 # Studio Brain Risk Register
 
-Snapshot time: 2026-05-06 07:00 UTC refresh. Findings are separated from fixes. No destructive action was taken.
+Snapshot time: 2026-05-06 18:32 UTC refresh. Findings are separated from fixes. No destructive action was taken.
 
 ## Critical
 
@@ -11,10 +11,10 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### Backup Evidence Is Split And Restore Confidence Is Incomplete
 
 - Affected component: backups, restore posture, PostgreSQL/Redis/MinIO data.
-- Evidence: `studio-brain-backup.timer` runs daily and root-owned config archives exist through 2026-05-05 under `/var/backups/studio-brain/daily`, but `/home/wuff/monsoonfire-portal/output/backups/latest.json` still points to 2026-04-28. The tracked system backup script archives host and Studio Brain config, not an obvious PostgreSQL dump, Redis snapshot, or MinIO object backup.
+- Evidence: `studio-brain-backup.timer` runs daily and root-owned config archives exist under `/var/backups/studio-brain/daily`. The deployed backup script now writes `/var/backups/studio-brain/latest-metadata.json`; the 2026-05-06 18:11 UTC manifest proves archive metadata without exposing secrets. That still does not prove PostgreSQL dump, Redis snapshot, MinIO object backup, or restore correctness.
 - Likely impact: operators may believe full service backups are fresh while only config-level archives are demonstrably current; restore time and data-loss exposure are unknown.
 - Recommended action: unify backup evidence into one current manifest that distinguishes config archive, PostgreSQL dump, Redis state, MinIO data, and restore-drill status.
-- Safe next step: add a read-only backup evidence script and run a non-destructive restore-prerequisite drill.
+- Safe next step: rerun `make ops-backup-evidence`, then run a non-destructive restore-prerequisite drill against a disposable target.
 - Rollback/undo notes: documentation/script additions can be reverted; do not delete existing backups.
 - PR can address it: yes, for documentation and read-only verification scripts. Full backup changes require approval.
 
@@ -93,10 +93,10 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### Several System Units Are Failed
 
 - Affected component: base OS hygiene.
-- Evidence: failed units include `dailyaidecheck.service`, `snap.canonical-livepatch.canonical-livepatchd.service`, and `systemd-networkd-wait-online.service`.
+- Evidence: the failed-unit classifier now separates completed one-shots from true failures. Current true failed units include `dailyaidecheck.service`, `snap.canonical-livepatch.canonical-livepatchd.service`, and `systemd-networkd-wait-online.service`; `apt-daily-upgrade.service` is classified as a completed one-shot with `Result=success`.
 - Likely impact: integrity scanning, livepatch reporting, and network-online semantics may be unreliable or noisy.
 - Recommended action: inspect each unit's journal and decide whether to repair, disable intentionally, or document as irrelevant.
-- Safe next step: add failed-unit triage to maintenance runbook.
+- Safe next step: run `bash scripts/ops/ubuntu_failed_units.sh` and inspect journals for the three true failed units under a privileged read.
 - Rollback/undo notes: unit resets are reversible; do not disable security/integrity services without approval.
 - PR can address it: documentation and diagnostics only.
 
@@ -135,10 +135,10 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### Docker Cleanup Candidates Exist But Are Not Urgent
 
 - Affected component: Docker storage.
-- Evidence: Docker reports 8 local volumes but only 5 active; build cache has 300.3MB reclaimable. No exited containers or dangling images were observed.
+- Evidence: Docker reports 8 local volumes but only 5 active; build cache has 300.3MB reclaimable. No exited containers or dangling images were observed. `studio-brain_postgres_data` accounts for about 8.866GB and must not be touched without a verified backup.
 - Likely impact: small storage waste today; can grow if left unmanaged.
 - Recommended action: document volume ownership before pruning anything.
-- Safe next step: run `docker volume inspect` and map anonymous volumes to prior Compose projects.
+- Safe next step: keep `docker volume inspect` output in the cleanup packet and map anonymous volumes to prior Compose projects.
 - Rollback/undo notes: volume deletion is not safely reversible unless backed up.
 - PR can address it: documentation only.
 

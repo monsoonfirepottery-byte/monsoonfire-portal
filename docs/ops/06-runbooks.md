@@ -40,6 +40,7 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 2. Capture unified evidence before changing anything:
    - `make ops-backup-evidence`
    - or `bash scripts/ops/backup_evidence.sh`
+   - Check the `Root-Owned Backup Metadata` section first; it is a root-generated metadata-only manifest designed to prove archive presence without exposing archive contents.
 3. Use the tracked backup tooling when available:
    - `npm run backup:verify`
 4. For a manual approved dump, write outside the repo and restrict permissions:
@@ -49,6 +50,15 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 5. Record checksum and manifest.
 6. Rerun `make ops-backup-evidence` and confirm the report separates config archives, PostgreSQL dump evidence, Redis evidence, MinIO evidence, freshness, and restore-drill status.
 7. Never paste credentials or dump contents into chat or tickets.
+
+### Root-Owned Backup Metadata
+
+The system backup job writes `/var/backups/studio-brain/latest-metadata.json` with mode `0644`. This manifest is intentionally metadata-only: archive names, paths, sizes, mtimes, data-backup directory status, app backup manifest presence, and restore-drill artifact status.
+
+- It proves root-owned backup archive presence without requiring interactive sudo.
+- It does not prove archive content correctness.
+- It does not prove PostgreSQL, Redis, or MinIO restore confidence unless corresponding artifacts and restore-drill summaries are present.
+- If `make ops-backup-evidence` reports `metadata_status: missing_or_permission_denied`, run the backup timer or inspect the root-owned backup job before trusting backup freshness.
 
 ## PostgreSQL Restore Drill
 

@@ -38,6 +38,7 @@ for path in \
   "${CONFIG_ROOT}/studio-brain-idle-worker.timer" \
   "${CONFIG_ROOT}/studio-brain-idle-worker.timer.d/10-cadence.conf" \
   "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.service" \
+  "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.service.d/20-clean-lane.conf" \
   "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.timer"; do
   if [[ ! -f "${path}" ]]; then
     echo "Missing source file: ${path}" >&2
@@ -65,6 +66,7 @@ if [[ "${HOST_ROOT}" == "/" ]]; then
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker.timer" /etc/systemd/system/studio-brain-idle-worker.timer
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker.timer.d/10-cadence.conf" /etc/systemd/system/studio-brain-idle-worker.timer.d/10-cadence.conf
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.service" /etc/systemd/system/studio-brain-idle-worker-overnight.service
+  install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.service.d/20-clean-lane.conf" /etc/systemd/system/studio-brain-idle-worker-overnight.service.d/20-clean-lane.conf
   install -D -m 0644 "${CONFIG_ROOT}/studio-brain-idle-worker-overnight.timer" /etc/systemd/system/studio-brain-idle-worker-overnight.timer
   systemctl disable --now "${LEGACY_SYSTEMD_UNITS[@]}" >/dev/null 2>&1 || true
   rm -f "${LEGACY_BINARIES[@]}" /etc/systemd/system/studiobrain-maintenance.service /etc/systemd/system/studiobrain-maintenance.timer /etc/systemd/system/studiobrain-fan-guardian.service
@@ -142,6 +144,7 @@ docker run --rm \
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker.timer /host/etc/systemd/system/studio-brain-idle-worker.timer
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker.timer.d/10-cadence.conf /host/etc/systemd/system/studio-brain-idle-worker.timer.d/10-cadence.conf
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker-overnight.service /host/etc/systemd/system/studio-brain-idle-worker-overnight.service
+    install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker-overnight.service.d/20-clean-lane.conf /host/etc/systemd/system/studio-brain-idle-worker-overnight.service.d/20-clean-lane.conf
     install -D -m 0644 /tmp/studiobrain-systemd/studio-brain-idle-worker-overnight.timer /host/etc/systemd/system/studio-brain-idle-worker-overnight.timer
     chroot /host systemctl disable --now studiobrain-maintenance.service studiobrain-maintenance.timer studiobrain-fan-guardian.service >/dev/null 2>&1 || true
     rm -f \

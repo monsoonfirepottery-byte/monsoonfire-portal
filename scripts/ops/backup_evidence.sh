@@ -13,6 +13,7 @@ REPO_ROOT="${REPO_ROOT:-${DEFAULT_REPO_ROOT}}"
 APP_BACKUP_ROOT="${APP_BACKUP_ROOT:-${REPO_ROOT}/output/backups}"
 SYSTEM_BACKUP_ROOT="${SYSTEM_BACKUP_ROOT:-/var/backups/studio-brain}"
 SYSTEM_DAILY_ROOT="${SYSTEM_DAILY_ROOT:-${SYSTEM_BACKUP_ROOT}/daily}"
+SYSTEM_METADATA_PATH="${SYSTEM_METADATA_PATH:-${SYSTEM_BACKUP_ROOT}/latest-metadata.json}"
 POSTGRES_BACKUP_ROOT="${POSTGRES_BACKUP_ROOT:-${SYSTEM_BACKUP_ROOT}/postgres}"
 HOST_BACKUP_ROOT="${HOST_BACKUP_ROOT:-/home/wuff/backups}"
 
@@ -168,6 +169,65 @@ container_summary() {
   docker inspect -f 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} image={{.Config.Image}} mounts={{len .Mounts}}' "${container}" 2>&1 || true
 }
 
+system_metadata_summary() {
+  local metadata_path="$1"
+
+  printf 'metadata_path: %s\n' "${metadata_path}"
+  if [ ! -f "${metadata_path}" ]; then
+    printf 'metadata_status: missing_or_permission_denied\n'
+    return 0
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    warn "node is unavailable; cannot parse ${metadata_path}"
+    return 0
+  fi
+
+  node - "${metadata_path}" <<'NODE'
+const fs = require("fs");
+const metadataPath = process.argv[2];
+
+function print(key, value) {
+  console.log(`${key}: ${value === undefined || value === null || value === "" ? "<missing>" : value}`);
+}
+
+let payload;
+try {
+  payload = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+} catch (error) {
+  console.log("metadata_status: unreadable");
+  console.log(`metadata_error: ${String(error.message || error).replace(/\s+/g, " ").slice(0, 160)}`);
+  process.exit(0);
+}
+
+print("metadata_status", "present");
+print("metadata_schema", payload.schema);
+print("metadata_generated_at", payload.generatedAt);
+print("metadata_redaction", payload.redaction);
+print("metadata_daily_root", payload.dailyRoot);
+
+const archives = Array.isArray(payload.configArchives) ? payload.configArchives : [];
+print("config_archive_count_listed", archives.length);
+for (const archive of archives.slice(0, 5)) {
+  print(`config_archive_${archive.name || "unknown"}`, `${archive.mtime || "unknown"} bytes=${archive.sizeBytes ?? "unknown"} path=${archive.path || ""}`);
+}
+
+for (const service of ["postgres", "redis", "minio"]) {
+  const evidence = payload.dataEvidence?.[service] || {};
+  print(`${service}_metadata_path`, evidence.path);
+  print(`${service}_metadata_exists`, evidence.exists);
+  print(`${service}_metadata_file_count`, evidence.fileCount);
+  const newest = evidence.newestFile;
+  print(`${service}_metadata_newest`, newest ? `${newest.mtime} bytes=${newest.sizeBytes} path=${newest.path}` : "none");
+}
+
+print("app_backup_manifest_path", payload.appBackupManifest?.path);
+print("app_backup_manifest_exists", payload.appBackupManifest?.exists);
+print("restore_drill_file_count", payload.restoreDrill?.fileCount);
+print("restore_drill_newest", payload.restoreDrill?.newestFile ? `${payload.restoreDrill.newestFile.mtime} path=${payload.restoreDrill.newestFile.path}` : "none");
+NODE
+}
+
 section "Report Metadata"
 printf 'generated_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'host: %s\n' "$(hostname 2>/dev/null || printf unknown)"
@@ -188,6 +248,9 @@ printf '| restore drill | manifest search + tool checks | restore-prerequisite s
 section "Application Backup Manifest"
 printf 'latest_path: %s\n' "${APP_BACKUP_ROOT}/latest.json"
 json_summary "${APP_BACKUP_ROOT}/latest.json" "${FRESHNESS_HOURS}"
+
+section "Root-Owned Backup Metadata"
+system_metadata_summary "${SYSTEM_METADATA_PATH}"
 
 section "Config Archive Evidence"
 list_latest_files "system host config archives" "${SYSTEM_DAILY_ROOT}" "host-config-*.tgz" 5

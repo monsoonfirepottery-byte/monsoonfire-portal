@@ -47,6 +47,20 @@ Get-CimInstance Win32_Process |
 | Mission Control health unreachable through tunnel but host health is OK | Laptop gateway issue, not necessarily host outage. | Restart/pause only the gateway after approval. |
 | Host Node CPU high and watcher ingest active | Possible ingest storm. | Use `docs/ops/06-runbooks.md` Mission Control CPU response before any kill/restart. |
 
+## Effectivity Snapshot
+
+Live read-only snapshot from 2026-05-06 18:18 UTC after the ingest/backpressure and ticketing remediation:
+
+| Signal | Observed value | Operator reading |
+| --- | --- | --- |
+| Mission Control health through laptop tunnel | `ok=true` at `http://127.0.0.1:14100/api/mission-control/health` | Tunnel and host app are reachable. |
+| Codex ingest pressure | `acceptedRequests=5`, `acceptedEvents=23`, `rateLimitedRequests=0`, `emptyPayloadRequests=0`, `skipRatio=0` in the fresh process window | No current ingest storm or empty-broadcast loop was visible. |
+| Request pressure | `POST /api/mission-control/codex/ingest` average about 294ms; `GET /api/mission-control/state` average about 1300ms | State payload is large enough to watch, but current ingest is bounded. |
+| Harness failure learning | 20,000 events sampled; 662 failure events; 10 proposals | Failure clustering still finds real work items. |
+| Ticket coverage | `missingTickets=0`, `openTickets=1`, `closedTickets=9` | The previous missing-ticket gap has been closed; keep rerunning after watcher or ingest changes. |
+
+The harness ticket opened for the previous gap was `Stabilize exec_command tool-output failures: logs.1.error=ENOENT`, task id `eb95eb7b-a055-4b2e-9535-09e7a1b2fc79`. This is a tracking artifact only; it does not approve process stops, watcher restarts, or cleanup.
+
 ## Approval-Gated Actions
 
 These actions are reversible, but still change operational behavior and should be approved during an incident or service window:

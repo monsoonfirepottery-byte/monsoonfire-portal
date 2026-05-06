@@ -1,6 +1,6 @@
 # Studio Brain Ubuntu Failed Unit Triage
 
-Snapshot: 2026-05-06 07:00 UTC.
+Snapshot: 2026-05-06 18:17 UTC.
 
 This note is evidence and disposition only. It does not approve package upgrades, service disables, unit resets, reboots, firewall changes, or SSH changes.
 
@@ -12,9 +12,27 @@ This note is evidence and disposition only. It does not approve package upgrades
 - `snap.canonical-livepatch.canonical-livepatchd.service`
 - `systemd-networkd-wait-online.service`
 
-Host memory was healthy at capture time: 30Gi total, 26Gi available, 445Mi swap used. The apt OOM failure from 2026-05-05 no longer appears in the failed-unit list, but the host now reports a reboot requirement for kernel packages.
+Host memory was healthy at the latest capture time: 30Gi total, about 26Gi available, and light swap use. The apt OOM failure from 2026-05-05 no longer appears in the failed-unit list, but the host still reports a reboot requirement for kernel packages.
 
-`make ops-ubuntu-review` now prints a top-level `Reboot And Update Posture` section before the longer unit journals. Use that section for the quick go/no-go maintenance signal, then attach the deeper unit and apt log evidence to any package/reboot ticket.
+`make ops-ubuntu-review` now prints a top-level `Reboot And Update Posture` section and a `Failed Unit Classifier` section before the longer unit journals. Use those sections for the quick go/no-go maintenance signal, then attach the deeper unit and apt log evidence to any package/reboot ticket.
+
+## Current Classifier Summary
+
+Live read-only classifier output from 2026-05-06 18:17 UTC:
+
+| Unit | Classification | State | Result | Exec status | Disposition | Approval gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| `apt-daily-upgrade.service` | `completed_oneshot_ok` | `inactive/dead` | `success` | `0` | `observe_only` | `none_for_read_only_observation` |
+| `unattended-upgrades.service` | `running_ok` | `active/running` | `success` | `0` | `observe_only` | `none_for_read_only_observation` |
+| `dailyaidecheck.service` | `failed_requires_triage` | `failed/failed` | `exit-code` | `1` | `repair_or_document_aide_posture` | `disable_or_reconfigure_integrity_checks_requires_approval` |
+| `snap.canonical-livepatch.canonical-livepatchd.service` | `failed_requires_triage` | `failed/failed` | `exit-code` | `1` | `privileged_livepatch_read_needed` | `livepatch_registration_or_disable_requires_approval` |
+| `systemd-networkd-wait-online.service` | `failed_requires_triage` | `failed/failed` | `exit-code` | `1` | `network_online_dependency_review` | `network_manager_or_dependency_changes_require_approval` |
+
+Operator interpretation:
+
+- Completed one-shot services with `Result=success` are not incidents, even when their normal state is `inactive/dead`.
+- Running services with `Result=success` are not incidents.
+- Failed services remain visible until the cause is repaired or explicitly documented; do not run `systemctl reset-failed` merely to make a dashboard green.
 
 ## Apt Daily Upgrade OOM
 

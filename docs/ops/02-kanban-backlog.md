@@ -1,0 +1,205 @@
+# Studio Brain Ops Kanban Backlog
+
+Each item is issue-ready and intentionally separates investigation from changes that need a service window or approval.
+
+## Now
+
+### [backup] Unify backup evidence and restore confidence
+
+- Type: reliability, database, capacity
+- Priority: P0
+- Effort: M
+- Risk: low for diagnostics, high for any backup-path change
+- Acceptance criteria:
+  - Backup report distinguishes config archives, PostgreSQL dump, Redis state, MinIO data, and restore drill status.
+  - Latest backup evidence is current within the documented threshold.
+  - Restore-prerequisite drill is documented and can run without exposing secrets.
+- Recommended owner: Codex, DBA review
+- Suggested branch name: `codex/ops-backup-evidence`
+- Suggested PR title: `[ops] Add Studio Brain backup evidence and restore drill report`
+
+### [ubuntu] Triage apt OOM and failed system units
+
+- Type: ubuntu, security, reliability
+- Priority: P1
+- Effort: M
+- Risk: low for diagnostics, medium for package changes
+- Acceptance criteria:
+  - `apt-daily-upgrade.service` OOM root cause is documented.
+  - Failed `dailyaidecheck`, livepatch, and network-wait units have disposition: repair, disable intentionally, or ignore with reason.
+  - Maintenance-window checklist exists for pending updates.
+- Recommended owner: human, Codex
+- Suggested branch name: `codex/ops-apt-failed-units-runbook`
+- Suggested PR title: `[ops] Document apt OOM and failed-unit maintenance workflow`
+
+### [security] Review DB and SSH network exposure
+
+- Type: security, ubuntu, database
+- Priority: P1
+- Effort: M
+- Risk: medium
+- Acceptance criteria:
+  - Current listeners are captured in a redacted report.
+  - Legitimate PostgreSQL clients are identified.
+  - SSH password-auth usage is confirmed before any config change.
+  - Any proposed bind/firewall/SSH change includes rollback and console access notes.
+- Recommended owner: human, security review
+- Suggested branch name: `codex/ops-network-exposure-review`
+- Suggested PR title: `[ops] Add network exposure review and hardening checklist`
+
+### [drift] Inventory live host checkout drift
+
+- Type: reliability, cleanup, app
+- Priority: P1
+- Effort: M
+- Risk: low for inventory, high for cleanup
+- Acceptance criteria:
+  - Live dirty-file manifest exists with generated/artifact/source classifications.
+  - Gone branch status is documented.
+  - No host reset is performed without explicit approval.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-host-drift-inventory`
+- Suggested PR title: `[ops] Add live host drift inventory workflow`
+
+## Next
+
+### [systemd] Source-control idle-worker timers
+
+- Type: reliability, documentation
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - `studio-brain-idle-worker` and overnight unit files are tracked under `config/studiobrain/systemd`.
+  - Install/reconcile scripts include them.
+  - Docs list cadence and safety mode.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-idle-worker-systemd`
+- Suggested PR title: `[ops] Track Studio Brain idle-worker systemd timers`
+
+### [docker] Add missing container healthchecks
+
+- Type: docker, reliability
+- Priority: P2
+- Effort: M
+- Risk: medium
+- Acceptance criteria:
+  - Monitoring proxy and SearXNG healthchecks use stable local endpoints.
+  - Compose validation passes.
+  - Rollback is removing the healthcheck stanzas.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-docker-healthchecks`
+- Suggested PR title: `[ops] Add non-invasive Docker healthchecks`
+
+### [database] Schedule weekly PostgreSQL size and activity snapshots
+
+- Type: database, capacity, performance
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - Read-only SQL scripts capture database sizes, largest tables/indexes, dead tuples, locks, active sessions, and key settings.
+  - Output avoids secrets and query parameter values where practical.
+  - Runbook explains how to store snapshots.
+- Recommended owner: Codex, DBA review
+- Suggested branch name: `codex/ops-postgres-readonly-review`
+- Suggested PR title: `[ops] Add read-only PostgreSQL DBA review scripts`
+
+### [docker] Pin floating image tags
+
+- Type: docker, security, reliability
+- Priority: P2
+- Effort: M
+- Risk: medium
+- Acceptance criteria:
+  - Floating tags are listed.
+  - Update policy and rollback command are documented.
+  - Image pin changes, if made, are one service group per PR.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-docker-image-pinning`
+- Suggested PR title: `[ops] Document Docker image pinning plan`
+
+## Later
+
+### [capacity] Add growth trend reporting
+
+- Type: capacity, database, docker
+- Priority: P3
+- Effort: M
+- Risk: low
+- Acceptance criteria:
+  - Weekly snapshots include `/home/wuff`, Docker, Postgres relation sizes, logs, and backup sizes.
+  - 30/60/90 day projections are generated from at least 4 samples.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-capacity-trends`
+- Suggested PR title: `[ops] Add capacity trend snapshot format`
+
+### [observability] Convert overseer critical gaps into tickets
+
+- Type: app, reliability, documentation
+- Priority: P3
+- Effort: M
+- Risk: low
+- Acceptance criteria:
+  - Current overseer gaps are exported into issue-ready markdown.
+  - Stale/accepted gaps can be acknowledged with reason.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-overseer-gap-backlog`
+- Suggested PR title: `[ops] Export overseer gaps into reviewable backlog`
+
+### [cleanup] Classify Docker anonymous volumes
+
+- Type: docker, cleanup, capacity
+- Priority: P3
+- Effort: S
+- Risk: low for classification, high for deletion
+- Acceptance criteria:
+  - Anonymous volumes are mapped to containers/projects or marked unknown.
+  - Cleanup candidates are classified as safe to automate, safe with backup, requires service window, requires human approval, or do not touch.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-docker-volume-inventory`
+- Suggested PR title: `[ops] Add Docker volume cleanup inventory`
+
+## Waiting / Needs Human Approval
+
+### [security] Bind PostgreSQL to loopback or add firewall rules
+
+- Type: security, database, ubuntu
+- Priority: P1
+- Effort: M
+- Risk: high
+- Acceptance criteria:
+  - Approved client list exists.
+  - Rollback and service-window plan exists.
+  - App, backups, and DBA probes still connect after the change.
+- Recommended owner: human, DBA review, security review
+- Suggested branch name: `codex/ops-postgres-bind-hardening`
+- Suggested PR title: `[ops] Harden PostgreSQL host binding`
+
+### [security] Move SSH to key-only auth
+
+- Type: security, ubuntu
+- Priority: P2
+- Effort: M
+- Risk: high
+- Acceptance criteria:
+  - At least two working keys or an out-of-band console path are verified.
+  - Password and keyboard-interactive auth are disabled.
+  - Fail2ban remains active.
+- Recommended owner: human, security review
+- Suggested branch name: `codex/ops-ssh-key-only-plan`
+- Suggested PR title: `[ops] Plan Studio Brain SSH key-only hardening`
+
+### [ubuntu] Apply pending package updates
+
+- Type: ubuntu, security
+- Priority: P1
+- Effort: M
+- Risk: medium
+- Acceptance criteria:
+  - Maintenance window is approved.
+  - Pre-checks and rollback notes are captured.
+  - Post-checks include Studio Brain health, Docker health, Mission Control health, and backup evidence.
+- Recommended owner: human
+- Suggested branch name: `codex/ops-package-update-window`
+- Suggested PR title: `[ops] Prepare Studio Brain package update window`

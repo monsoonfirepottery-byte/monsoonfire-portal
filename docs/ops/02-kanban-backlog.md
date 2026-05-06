@@ -172,6 +172,21 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Suggested branch name: `codex/ops-mission-control-watcher-plan`
 - Suggested PR title: `[ops] Document Mission Control watcher lifecycle`
 
+### [ops] Watch portal bridge tunnel restart history
+
+- Type: reliability, app, ubuntu
+- Priority: P2
+- Effort: S
+- Risk: low for diagnostics, medium for service changes
+- Acceptance criteria:
+  - Portal bridge review reports proxy/tunnel active state, restart count, and localhost listener posture without dumping env or key material.
+  - A restart-count increase is classified as a watch item with safe next steps before any service action.
+  - Maintenance calendar or weekly ops checks include the portal bridge review command.
+- Status: review script/docs prepared; runtime restart/rekey remains approval-gated.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-portal-bridge-review`
+- Suggested PR title: `[ops] Add portal bridge review`
+
 ### [docker] Pin floating image tags
 
 - Type: docker, security, reliability

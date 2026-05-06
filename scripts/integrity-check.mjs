@@ -105,6 +105,7 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".py",
   ".schema",
   ".sh",
+  ".sql",
   ".service",
   ".timer",
   ".yml",

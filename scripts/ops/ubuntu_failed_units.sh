@@ -13,6 +13,172 @@ run_shell() {
   bash -lc "$1" 2>&1 || printf 'WARN: command failed: %s\n' "$1"
 }
 
+unit_property() {
+  local unit="$1"
+  local property="$2"
+
+  systemctl show "${unit}" --no-pager -p "${property}" 2>/dev/null | sed -n "s/^${property}=//p" | head -n 1
+}
+
+classify_unit() {
+  local unit="$1"
+  local type="$2"
+  local active="$3"
+  local sub="$4"
+  local result="$5"
+  local exec_status="$6"
+
+  if [[ -z "${active}" ]]; then
+    printf 'unknown_missing_or_unreadable'
+    return 0
+  fi
+
+  if [[ "${active}" == "failed" || "${result}" == "failed" || "${result}" == "exit-code" || "${result}" == "oom-kill" ]]; then
+    printf 'failed_requires_triage'
+    return 0
+  fi
+
+  if [[ "${exec_status}" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'nonzero_exit_requires_triage'
+    return 0
+  fi
+
+  if [[ "${active}" == "active" ]]; then
+    printf 'running_ok'
+    return 0
+  fi
+
+  if [[ "${type}" == "oneshot" && "${active}" == "inactive" && "${sub}" == "dead" && ( -z "${result}" || "${result}" == "success" ) ]]; then
+    printf 'completed_oneshot_ok'
+    return 0
+  fi
+
+  if [[ "${active}" == "inactive" && ( -z "${result}" || "${result}" == "success" ) ]]; then
+    printf 'inactive_ok'
+    return 0
+  fi
+
+  printf 'review_unknown_state'
+  printf '' >/dev/null # keep shellcheck-style linters from treating unit as unused in older shells
+}
+
+unit_disposition() {
+  local unit="$1"
+  local classification="$2"
+
+  case "${classification}" in
+    completed_oneshot_ok|inactive_ok|running_ok)
+      printf 'observe_only'
+      ;;
+    failed_requires_triage|nonzero_exit_requires_triage)
+      case "${unit}" in
+        apt-daily-upgrade.service|unattended-upgrades.service)
+          printf 'supervised_update_window'
+          ;;
+        dailyaidecheck.service)
+          printf 'repair_or_document_aide_posture'
+          ;;
+        snap.canonical-livepatch.canonical-livepatchd.service)
+          printf 'privileged_livepatch_read_needed'
+          ;;
+        systemd-networkd-wait-online.service)
+          printf 'network_online_dependency_review'
+          ;;
+        *)
+          printf 'operator_triage_needed'
+          ;;
+      esac
+      ;;
+    *)
+      printf 'operator_review_needed'
+      ;;
+  esac
+}
+
+unit_approval_gate() {
+  local unit="$1"
+  local classification="$2"
+
+  if [[ "${classification}" == "completed_oneshot_ok" || "${classification}" == "inactive_ok" || "${classification}" == "running_ok" ]]; then
+    printf 'none_for_read_only_observation'
+    return 0
+  fi
+
+  case "${unit}" in
+    apt-daily-upgrade.service|unattended-upgrades.service)
+      printf 'package_changes_or_reboot_require_approval'
+      ;;
+    dailyaidecheck.service)
+      printf 'disable_or_reconfigure_integrity_checks_requires_approval'
+      ;;
+    snap.canonical-livepatch.canonical-livepatchd.service)
+      printf 'livepatch_registration_or_disable_requires_approval'
+      ;;
+    systemd-networkd-wait-online.service)
+      printf 'network_manager_or_dependency_changes_require_approval'
+      ;;
+    *)
+      printf 'service_changes_require_approval'
+      ;;
+  esac
+}
+
+classifier_row() {
+  local unit="$1"
+  local type active sub result exec_status classification disposition gate
+
+  type="$(unit_property "${unit}" Type)"
+  active="$(unit_property "${unit}" ActiveState)"
+  sub="$(unit_property "${unit}" SubState)"
+  result="$(unit_property "${unit}" Result)"
+  exec_status="$(unit_property "${unit}" ExecMainStatus)"
+  classification="$(classify_unit "${unit}" "${type}" "${active}" "${sub}" "${result}" "${exec_status}")"
+  disposition="$(unit_disposition "${unit}" "${classification}")"
+  gate="$(unit_approval_gate "${unit}" "${classification}")"
+
+  printf '| `%s` | `%s` | `%s/%s` | `%s` | `%s` | `%s` | `%s` |\n' \
+    "${unit}" \
+    "${classification}" \
+    "${active:-unknown}" \
+    "${sub:-unknown}" \
+    "${result:-none}" \
+    "${exec_status:-none}" \
+    "${disposition}" \
+    "${gate}"
+}
+
+classifier_summary() {
+  local units=(
+    "apt-daily-upgrade.service"
+    "unattended-upgrades.service"
+    "dailyaidecheck.service"
+    "snap.canonical-livepatch.canonical-livepatchd.service"
+    "systemd-networkd-wait-online.service"
+  )
+  local unit
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    printf 'systemctl unavailable\n'
+    return 0
+  fi
+
+  while IFS= read -r unit; do
+    [[ -n "${unit}" ]] && units+=("${unit}")
+  done < <(systemctl list-units --type=service --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}')
+
+  printf '| Unit | Classification | State | Result | Exec status | Disposition | Approval gate |\n'
+  printf '| --- | --- | --- | --- | --- | --- | --- |\n'
+
+  declare -A seen=()
+  for unit in "${units[@]}"; do
+    if [[ -n "${seen[${unit}]+x}" ]]; then
+      continue
+    fi
+    seen["${unit}"]=1
+    classifier_row "${unit}"
+  done
+}
+
 unit_report() {
   local unit="$1"
 
@@ -52,6 +218,9 @@ if command -v systemctl >/dev/null 2>&1; then
 else
   printf 'systemctl unavailable\n'
 fi
+
+section "Failed Unit Classifier"
+classifier_summary
 
 section "Known Studio Brain Ops Units"
 unit_report "apt-daily-upgrade.service"

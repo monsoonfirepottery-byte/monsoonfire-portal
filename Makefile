@@ -3,7 +3,7 @@ SHELL := /bin/bash
 PG_CONTAINER ?= studiobrain_postgres
 PGDATABASE ?= monsoonfire_studio_os
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-docker-review ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-incident-bundle ops-docs ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-work-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
 
 ops-check: ops-inventory ops-docker-review ops-capacity ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review
 
@@ -19,8 +19,38 @@ ops-postgres-review:
 		echo "No local psql connection or $(PG_CONTAINER) container found. Set PG* env vars or run on the Studio Brain host."; \
 	fi
 
+ops-postgres-sql:
+	@if [ -z "$(SQL)" ]; then \
+		echo "Set SQL=scripts/ops/<review>.sql"; \
+		exit 1; \
+	elif command -v psql >/dev/null 2>&1; then \
+		psql -X -v ON_ERROR_STOP=1 -f "$(SQL)"; \
+	elif command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -qx '$(PG_CONTAINER)'; then \
+		docker exec -i -u postgres $(PG_CONTAINER) psql -d $(PGDATABASE) -X -v ON_ERROR_STOP=1 < "$(SQL)"; \
+	else \
+		echo "No local psql connection or $(PG_CONTAINER) container found. Set PG* env vars or run on the Studio Brain host."; \
+	fi
+
+ops-postgres-top-queries:
+	$(MAKE) ops-postgres-sql SQL=scripts/ops/postgres_pg_stat_statements_rollup.sql
+
+ops-postgres-query-tasks:
+	$(MAKE) ops-postgres-sql SQL=scripts/ops/postgres_query_hotspot_issue_generator.sql
+
+ops-postgres-growth-snapshot:
+	$(MAKE) ops-postgres-sql SQL=scripts/ops/postgres_db_growth_trend_snapshot.sql
+
+ops-postgres-autovacuum-stats:
+	$(MAKE) ops-postgres-sql SQL=scripts/ops/postgres_autovacuum_stale_stats_report.sql
+
+ops-postgres-roles-extensions:
+	$(MAKE) ops-postgres-sql SQL=scripts/ops/postgres_roles_extensions_security_packet.sql
+
 ops-docker-review:
 	bash scripts/ops/docker_inventory.sh
+
+ops-docker-posture:
+	bash scripts/ops/docker_posture_review.sh
 
 ops-capacity:
 	bash scripts/ops/disk_pressure.sh
@@ -36,8 +66,26 @@ ops-cleanup-candidates:
 ops-backup-evidence:
 	bash scripts/ops/backup_evidence.sh
 
+ops-postgres-backup-artifacts:
+	bash scripts/ops/backup_postgres_artifact_verifier.sh
+
+ops-restore-prereq:
+	bash scripts/ops/backup_restore_prerequisite_drill.sh
+
+ops-redis-minio-backup-evidence:
+	bash scripts/ops/redis_minio_evidence_verifier.sh
+
 ops-ubuntu-review:
 	bash scripts/ops/ubuntu_failed_units.sh
+
+ops-host-failed-unit-trends:
+	bash scripts/ops/host_failed_unit_trends.sh
+
+ops-package-posture:
+	bash scripts/ops/host_package_posture.sh
+
+ops-time-sync:
+	bash scripts/ops/time_sync_posture.sh
 
 ops-network-review:
 	bash scripts/ops/network_exposure_review.sh
@@ -60,8 +108,23 @@ ops-dependency-review:
 ops-idle-worker-effectivity:
 	node ./scripts/studiobrain-idle-worker-effectivity-audit.mjs --json
 
+ops-effectivity-report:
+	bash scripts/ops/effectivity_report.sh
+
+ops-work-packet:
+	node ./scripts/studiobrain-ops-work-packet.mjs --write
+
 ops-incident-bundle:
 	bash scripts/ops/incident_bundle.sh
+
+ops-incident-bundle-v2:
+	bash scripts/ops/incident_bundle_v2.sh
+
+ops-ci-validate:
+	bash scripts/ops/ops_ci_validate.sh
+
+ops-post-deploy-verify:
+	bash scripts/ops/post_deploy_verify.sh
 
 ops-docs:
 	@sed -n '1,220p' docs/ops/README.md

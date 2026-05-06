@@ -115,6 +115,22 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
    - keep the original admin session open until post-checks pass
    - rerun `make ops-network-review` and app health checks after rollback
 
+## Live Host Checkout Drift Review
+
+1. Capture the read-only drift report:
+   - `make ops-host-drift`
+   - or `TARGET_REPO=/home/wuff/monsoonfire-portal bash scripts/ops/host_drift_inventory.sh`
+2. Do not run `git reset`, `git clean`, `git checkout`, or `git stash` on the live host without approval.
+3. Create a backup branch or patch bundle before cleanup:
+   - `git -C /home/wuff/monsoonfire-portal branch backup/live-drift-<date>`
+   - `git -C /home/wuff/monsoonfire-portal diff > /restricted/path/live-drift-<date>.patch`
+4. Classify paths as generated artifact, source/config/docs, sensitive path name, or unknown.
+5. Review source/config diffs locally; do not paste secret values into tickets.
+6. Rollback:
+   - restore the backup branch or patch bundle
+   - rerun `make ops-host-drift`
+   - verify Studio Brain health after any approved cleanup
+
 ## High Memory / OOM Response
 
 1. Capture evidence:

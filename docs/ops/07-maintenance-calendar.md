@@ -37,6 +37,8 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
   - `make ops-network-review`
 - Classify anonymous Docker volumes.
 - Review host checkout drift against source control.
+  - `make ops-host-drift`
+  - keep a restricted backup branch/patch bundle before cleanup
 
 ## Quarterly Checks
 

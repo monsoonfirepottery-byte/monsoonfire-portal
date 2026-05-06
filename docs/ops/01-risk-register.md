@@ -18,13 +18,13 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Rollback/undo notes: documentation/script additions can be reverted; do not delete existing backups.
 - PR can address it: yes, for documentation and read-only verification scripts. Full backup changes require approval.
 
-### Live Host Checkout Is On A Gone Branch With 211 Dirty Tracked Files
+### Live Host Checkout Is On A Gone Branch With 512 Dirty Or Untracked Paths
 
 - Affected component: deployment source of truth and drift control.
-- Evidence: `/home/wuff/monsoonfire-portal` reports `codex/next-fix-20260312...origin/codex/next-fix-20260312 [gone]` and 211 dirty tracked files, including package, migrations, Studio Brain runtime, scripts, and docs.
+- Evidence: `make ops-host-drift` on 2026-05-06 reports `/home/wuff/monsoonfire-portal` on `codex/next-fix-20260312...origin/codex/next-fix-20260312 [gone]` with 512 dirty or untracked paths: 211 modified tracked paths and 301 untracked paths. Path-name classification found 486 source/config paths, 10 sensitive-looking path names, and 16 unknown paths.
 - Likely impact: deploys and reconciliations may package host-only drift, hide unreviewed runtime changes, or make rollback hard to reason about.
 - Recommended action: inventory dirty host changes, classify them as accepted source changes, generated artifacts, or discardable runtime drift, then reconcile through PRs.
-- Safe next step: generate a redacted diff manifest and compare against `host-drift-allowlist.json`.
+- Safe next step: create a host backup branch and restricted patch bundle, then compare the manifest against `host-drift-allowlist.json`.
 - Rollback/undo notes: do not reset the host checkout until the diff manifest is reviewed and backed up.
 - PR can address it: yes, for the audit/reporting tool. Cleanup requires human approval.
 

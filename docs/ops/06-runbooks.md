@@ -196,6 +196,8 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 
 Use this when the Studio Brain host shows sustained Node CPU pressure, Mission Control feels slow, SSE clients pile up, or Codex/laptop watcher ingest traffic appears to be noisy. Treat this as an evidence-capture workflow first; do not kill watcher processes, restart Mission Control, or tune ingest limits unless an active incident owner approves it.
 
+For laptop watcher lifecycle details, see `docs/ops/12-mission-control-watcher-management.md`.
+
 1. Capture a baseline before mitigation:
    - `make ops-app-review`
    - `make ops-incident-bundle`

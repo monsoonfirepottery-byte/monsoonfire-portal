@@ -134,6 +134,22 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Suggested branch name: `codex/ops-app-status-review`
 - Suggested PR title: `[ops] Add Studio Brain app status review`
 
+### [mission-control] Manage laptop watcher lifecycle safely
+
+- Type: reliability, app, documentation
+- Priority: P2
+- Effort: S
+- Risk: low for documentation, medium for pause/restart actions
+- Acceptance criteria:
+  - The laptop Mission Control gateway, SSH tunnel, and `mission:codex-laptop-watch` process roles are documented.
+  - Read-only status commands show scheduled task state, tunnel listener state, process identity, and recent logs.
+  - Pause, resume, disable, enable, and process stop actions are clearly marked approval-gated.
+  - Rollback and post-checks include tunnel health, Mission Control UI reachability, and duplicate watcher checks.
+- Status: documentation prepared; runtime pause/restart remains approval-gated.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-mission-control-watcher-plan`
+- Suggested PR title: `[ops] Document Mission Control watcher lifecycle`
+
 ### [docker] Pin floating image tags
 
 - Type: docker, security, reliability

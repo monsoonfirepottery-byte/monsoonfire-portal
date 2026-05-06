@@ -17,6 +17,11 @@ This directory is the durable operations surface for Studio Brain. It separates 
 | `13-ops-pr-stack-audit.md` | Historical PR stack audit for the merged ops-doctor stack. |
 | `14-post-merge-verification.md` | Post-merge evidence, safe smoke checks, and remaining approval gates. |
 | `15-portal-bridge-review.md` | Portal bridge proxy/tunnel service evidence and watch items. |
+| `17-swarm-slice-01-baseline-handoff.md` | Wave 1 baseline from merged PR #596 and Mission Control `9583f7f`. |
+| `18-swarm-slice-02-operating-contract.md` | Swarm roles, write ownership, branch naming, safety gates, and verification packet rules. |
+| `19-swarm-slice-03-clean-worktree-lanes.md` | Clean worktree lane setup plan for multi-worker ops slices. |
+| `20-swarm-slice-48-approval-backlog.md` | Issue-ready backlog entries for remaining approval gates. |
+| `21-swarm-slice-49-roadmap-30-60-90.md` | Refreshed 30/60/90 Studio Brain ops roadmap. |
 
 ## Safe Commands
 
@@ -31,7 +36,13 @@ make ops-capacity
 make ops-import-pressure
 make ops-cleanup-candidates
 make ops-backup-evidence
+make ops-postgres-backup-artifacts
+make ops-restore-prereq
+make ops-redis-minio-backup-evidence
 make ops-ubuntu-review
+make ops-host-failed-unit-trends
+make ops-package-posture
+make ops-time-sync
 make ops-network-review
 make ops-host-drift
 make ops-systemd-drift
@@ -39,7 +50,12 @@ make ops-portal-bridge-review
 make ops-app-review
 make ops-dependency-review
 make ops-idle-worker-effectivity
+make ops-effectivity-report
+make ops-work-packet
 make ops-incident-bundle
+make ops-incident-bundle-v2
+make ops-ci-validate
+make ops-post-deploy-verify
 make ops-report
 ```
 
@@ -55,6 +71,9 @@ bash scripts/ops/portal_bridge_review.sh --ssh-host studiobrain
 bash scripts/ops/import_pressure.sh --target /home/wuff/imports
 bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports
 bash scripts/ops/npm_audit_inventory.sh
+bash scripts/ops/effectivity_report.sh
+node scripts/studiobrain-ops-work-packet.mjs --write
+bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 ```
 
 ## Approval Boundaries

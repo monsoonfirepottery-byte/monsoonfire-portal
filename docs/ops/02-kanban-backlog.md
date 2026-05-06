@@ -4,6 +4,22 @@ Each item is issue-ready and intentionally separates investigation from changes 
 
 ## Now
 
+### [ops] Review and merge ops-doctor PR stack
+
+- Type: reliability, documentation
+- Priority: P1
+- Effort: M
+- Risk: low for review, medium for stacked merge conflict resolution
+- Acceptance criteria:
+  - PR stack order is documented from root PR to top PR.
+  - Draft/ready state, merge state, and check status are captured.
+  - Runtime deploy/install actions are separated from merge approval.
+  - Old ops-adjacent draft PRs have an owner decision: refresh, supersede, or close.
+- Status: stack audit prepared in `docs/ops/13-ops-pr-stack-audit.md`.
+- Recommended owner: human, Codex
+- Suggested branch name: `codex/ops-pr-stack-audit`
+- Suggested PR title: `[ops] Audit Studio Brain ops PR stack`
+
 ### [backup] Unify backup evidence and restore confidence
 
 - Type: reliability, database, capacity

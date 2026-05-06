@@ -51,7 +51,7 @@ Inodes are healthy: `/` has about 59M inodes with 2% used.
 - `/tmp`: 55M.
 - `/var/backups/studio-brain`: 8.0K observed through the non-root read.
 
-Disk pressure is not immediate, but import growth is now the clearest near-term capacity watch item: `/home/wuff/imports` increased from 23G in the earlier 2026-05-06 snapshot to 45G at 07:00 UTC.
+Disk pressure is not immediate, but imports are now the clearest near-term capacity watch item. The 07:11 UTC import pressure report measured `/home/wuff/imports` at 45G with two 22G PST files and two smaller zip archives; all were last modified about 63 days earlier and classified `requires_human_approval`. Because the earlier 2026-05-06 snapshot reported 23G, treat this as an observed size discrepancy until growth history is proven.
 
 ## Memory And Swap
 

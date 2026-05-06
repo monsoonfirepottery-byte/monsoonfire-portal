@@ -65,11 +65,11 @@ Do not treat a report as permission to mutate the host. These actions still requ
 
 ## Current Merged State
 
-The first ops-doctor stack is merged into `main`. Runtime installation and deploy work remain separate:
+The first ops-doctor stack is merged into `main`, including post-merge verification, machine-readable report summaries, systemd drift review, and portal bridge review coverage. Runtime installation and future host mutation work remain separate:
 
-- Mission Control final deploy is approval-gated.
+- Mission Control CPU/backpressure and deploy-ref guard work is merged and deployed; future deploys should use the guarded deploy helper.
 - idle-worker systemd timer installation is approval-gated.
 - package update remediation is approval-gated.
 - network/SSH/PostgreSQL hardening is approval-gated.
 
-Use `02-kanban-backlog.md` for the next issue-ready slices.
+Use `02-kanban-backlog.md` for the next issue-ready slices, and `13-ops-pr-stack-audit.md` for current open PR triage.

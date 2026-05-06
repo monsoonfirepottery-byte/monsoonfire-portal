@@ -47,7 +47,7 @@ const generatedPolicy = [
   },
 ];
 
-const packageDirs = [".", "web", "functions", "studio-brain", "codex-agents"];
+const packageDirs = [".", "web", "functions", "studio-brain", "studio-brain-mcp", "codex-agents"];
 const workflowDir = resolve(repoRoot, ".github", "workflows");
 
 function parseArgs(argv) {

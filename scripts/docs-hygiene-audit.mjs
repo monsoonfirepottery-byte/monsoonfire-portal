@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, "..");
 
-const DEFAULT_TARGET_DIRS = ["docs", "web", "functions", "ios", "android", "codex-agents"];
+const DEFAULT_TARGET_DIRS = ["docs", "web", "functions", "ios", "android", "studio-brain-mcp", "codex-agents"];
 const EXCLUDED_PATH_PREFIXES = new Set([
   "automation",
   "artifacts",
@@ -82,7 +82,7 @@ function isExcluded(pathRelativeToRoot) {
 
 function loadPackageScriptMap() {
   const map = new Map();
-  const packageDirs = [".", "web", "functions", "studio-brain"];
+  const packageDirs = [".", "web", "functions", "studio-brain", "studio-brain-mcp"];
   for (const dir of packageDirs) {
     const absolutePackagePath = resolve(ROOT, dir, "package.json");
     if (!existsSync(absolutePackagePath)) continue;

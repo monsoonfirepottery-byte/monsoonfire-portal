@@ -6,7 +6,7 @@ This runbook keeps Markdown guidance aligned with live scripts, paths, and gener
 
 ## What It Checks
 
-`npm run docs:hygiene` scans selected Markdown surfaces and reports:
+`npm run docs:hygiene` scans selected Markdown surfaces (`docs`, app packages, `studio-brain-mcp`, and agent coordination docs) and reports:
 
 - broken local markdown links
 - invalid `npm run` script references for the expected package

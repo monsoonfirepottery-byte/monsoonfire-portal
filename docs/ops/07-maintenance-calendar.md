@@ -6,14 +6,16 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 
 - `curl -fsS http://192.168.1.226:8787/healthz`
 - `curl -fsS http://192.168.1.226:8787/readyz`
+- `make ops-app-review` when working from the host or through the local Mission Control tunnel.
 - `npm run studio:ops:status`
 - `systemctl --failed --no-pager`
-- Confirm `studio-brain-healthcheck.timer`, `studio-brain-disk-alert.timer`, and `studio-brain-reboot-watch.timer` are active.
+- Confirm `studio-brain-healthcheck.timer`, `studio-brain-disk-alert.timer`, `studio-brain-reboot-watch.timer`, `studio-brain-idle-worker.timer`, and `studio-brain-idle-worker-overnight.timer` are active.
 - Review backup freshness evidence.
 
 ## Weekly Checks
 
 - Run `make ops-check` on the host or a comparable Ubuntu shell.
+- Run `make ops-incident-bundle` before any non-trivial incident cleanup or service restart, then review the generated bundle before sharing it.
 - Attach `make ops-backup-evidence` output to any backup/restore-confidence ticket before changing backup paths.
 - Run PostgreSQL size report:
   - `make ops-postgres-review`
@@ -34,8 +36,13 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 - Review Docker image pins and available updates.
 - Review SSH/fail2ban status.
 - Review open ports and firewall posture.
+  - `make ops-network-review`
 - Classify anonymous Docker volumes.
 - Review host checkout drift against source control.
+  - `make ops-host-drift`
+  - keep a restricted backup branch/patch bundle before cleanup
+- Review idle-worker cadence, latest artifact, and warning/failure trend.
+  - `node ./scripts/studiobrain-idle-worker-effectivity-audit.mjs --current-only --json`
 
 ## Quarterly Checks
 

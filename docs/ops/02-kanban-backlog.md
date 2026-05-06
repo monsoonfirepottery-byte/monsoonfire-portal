@@ -4,6 +4,22 @@ Each item is issue-ready and intentionally separates investigation from changes 
 
 ## Now
 
+### [ops] Review and merge ops-doctor PR stack
+
+- Type: reliability, documentation
+- Priority: P1
+- Effort: M
+- Risk: low for review, medium for stacked merge conflict resolution
+- Acceptance criteria:
+  - PR stack order is documented from root PR to top PR.
+  - Draft/ready state, merge state, and check status are captured.
+  - Runtime deploy/install actions are separated from merge approval.
+  - Old ops-adjacent draft PRs have an owner decision: refresh, supersede, or close.
+- Status: stack audit prepared in `docs/ops/13-ops-pr-stack-audit.md`.
+- Recommended owner: human, Codex
+- Suggested branch name: `codex/ops-pr-stack-audit`
+- Suggested PR title: `[ops] Audit Studio Brain ops PR stack`
+
 ### [backup] Unify backup evidence and restore confidence
 
 - Type: reliability, database, capacity
@@ -73,6 +89,7 @@ Each item is issue-ready and intentionally separates investigation from changes 
   - `studio-brain-idle-worker` and overnight unit files are tracked under `config/studiobrain/systemd`.
   - Install/reconcile scripts include them.
   - Docs list cadence and safety mode.
+- Status: PR prepared; live installation remains approval-gated.
 - Recommended owner: Codex
 - Suggested branch name: `codex/ops-idle-worker-systemd`
 - Suggested PR title: `[ops] Track Studio Brain idle-worker systemd timers`
@@ -104,6 +121,50 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Recommended owner: Codex, DBA review
 - Suggested branch name: `codex/ops-postgres-readonly-review`
 - Suggested PR title: `[ops] Add read-only PostgreSQL DBA review scripts`
+
+### [sre] Capture redacted incident evidence bundles
+
+- Type: reliability, documentation, app, ubuntu, docker, database
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - One command captures read-only app status, process pressure, socket pressure, Docker, PostgreSQL, backup, network, and host drift evidence.
+  - Raw journals are skipped by default or redacted when explicitly requested.
+  - Runbook tells operators to capture evidence before restarts or cleanup.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-incident-bundle`
+- Suggested PR title: `[ops] Add Studio Brain incident evidence bundle`
+
+### [app] Review app status beyond liveness checks
+
+- Type: reliability, app, documentation
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - Read-only app review checks `/healthz`, `/api/status`, and Mission Control health/pressure.
+  - Output redacts token-like keys and avoids environment dumps.
+  - Maintenance calendar includes the check in daily or incident workflows.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-app-status-review`
+- Suggested PR title: `[ops] Add Studio Brain app status review`
+
+### [mission-control] Manage laptop watcher lifecycle safely
+
+- Type: reliability, app, documentation
+- Priority: P2
+- Effort: S
+- Risk: low for documentation, medium for pause/restart actions
+- Acceptance criteria:
+  - The laptop Mission Control gateway, SSH tunnel, and `mission:codex-laptop-watch` process roles are documented.
+  - Read-only status commands show scheduled task state, tunnel listener state, process identity, and recent logs.
+  - Pause, resume, disable, enable, and process stop actions are clearly marked approval-gated.
+  - Rollback and post-checks include tunnel health, Mission Control UI reachability, and duplicate watcher checks.
+- Status: documentation prepared; runtime pause/restart remains approval-gated.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-mission-control-watcher-plan`
+- Suggested PR title: `[ops] Document Mission Control watcher lifecycle`
 
 ### [docker] Pin floating image tags
 

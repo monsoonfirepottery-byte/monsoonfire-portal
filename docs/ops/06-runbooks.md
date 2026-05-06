@@ -97,6 +97,55 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 5. Rollback:
    - restore prior Compose/image if a recent deploy caused the issue.
 
+## Network Exposure Review And Hardening
+
+1. Capture the read-only report:
+   - `make ops-network-review`
+   - or `bash scripts/ops/network_exposure_review.sh`
+2. Capture privileged read-only firewall and SSH facts before changing anything:
+   - `sudo ufw status numbered verbose`
+   - `sudo nft list ruleset`
+   - `sudo sshd -T`
+   - `sudo fail2ban-client status sshd`
+3. Identify every legitimate PostgreSQL client before changing Docker port binds, firewall rules, or `pg_hba.conf`.
+4. Verify a second SSH session, a second key, or console access before SSH hardening.
+5. Do not reload SSH, restart Docker containers, edit firewall rules, or change PostgreSQL config without approval.
+6. Rollback:
+   - restore prior Compose port mapping, SSH config, firewall rule, or PostgreSQL config
+   - keep the original admin session open until post-checks pass
+   - rerun `make ops-network-review` and app health checks after rollback
+
+## Live Host Checkout Drift Review
+
+1. Capture the read-only drift report:
+   - `make ops-host-drift`
+   - or `TARGET_REPO=/home/wuff/monsoonfire-portal bash scripts/ops/host_drift_inventory.sh`
+2. Do not run `git reset`, `git clean`, `git checkout`, or `git stash` on the live host without approval.
+3. Create a backup branch or patch bundle before cleanup:
+   - `git -C /home/wuff/monsoonfire-portal branch backup/live-drift-<date>`
+   - `git -C /home/wuff/monsoonfire-portal diff > /restricted/path/live-drift-<date>.patch`
+4. Classify paths as generated artifact, source/config/docs, sensitive path name, or unknown.
+5. Review source/config diffs locally; do not paste secret values into tickets.
+6. Rollback:
+   - restore the backup branch or patch bundle
+   - rerun `make ops-host-drift`
+   - verify Studio Brain health after any approved cleanup
+
+## Idle-Worker Timer Reconcile
+
+1. Review the tracked timer notes:
+   - `docs/ops/11-idle-worker-systemd.md`
+2. Confirm current host state before changing anything:
+   - `systemctl list-timers 'studio-brain-idle-worker*' --all --no-pager`
+   - `systemctl status studio-brain-idle-worker.timer studio-brain-idle-worker-overnight.timer --no-pager`
+3. Confirm no worker service is already running.
+4. During an approved maintenance window, run the repo-backed install/reconcile path.
+5. Verify the timers are active and note the next scheduled run.
+6. Rollback:
+   - restore the previous unit files from Git or host backup
+   - run `systemctl daemon-reload`
+   - restart only the affected timers after approval
+
 ## High Memory / OOM Response
 
 1. Capture evidence:
@@ -135,12 +184,77 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
    - `/readyz`
    - `/health/dependencies`
    - `/api/status`
+   - `make ops-app-review`
 2. Check Postgres activity:
    - `scripts/ops/postgres_readonly_review.sql`
 3. Check CPU/memory:
    - `top`, `free -h`, service memory from `systemctl show`.
 4. Check Docker health.
 5. Escalate only after identifying whether the bottleneck is app, database, storage, or network.
+
+## Mission Control Node CPU / Ingest Storm Response
+
+Use this when the Studio Brain host shows sustained Node CPU pressure, Mission Control feels slow, SSE clients pile up, or Codex/laptop watcher ingest traffic appears to be noisy. Treat this as an evidence-capture workflow first; do not kill watcher processes, restart Mission Control, or tune ingest limits unless an active incident owner approves it.
+
+For laptop watcher lifecycle details, see `docs/ops/12-mission-control-watcher-management.md`.
+
+1. Capture a baseline before mitigation:
+   - `make ops-app-review`
+   - `make ops-incident-bundle`
+   - `ps -eo pid,ppid,pcpu,pmem,etime,cmd --sort=-pcpu | head -20`
+   - `ss -tanp 2>/dev/null | grep -E ':(4100|8787|14100)\\b' || true`
+2. Check Mission Control pressure:
+   - from the host: `curl -fsS http://127.0.0.1:4100/api/mission-control/health`
+   - from the laptop tunnel: `curl -fsS http://127.0.0.1:14100/api/mission-control/health`
+   - review request pressure, socket counts, state-cache size, and `codexIngest` counters.
+3. Classify the pressure:
+   - High `codexIngest.acceptedRequests` with rising CPU means the ingest stream is still heavy.
+   - Rising `codexIngest.rateLimitedRequests` or skipped ingest with stable CPU usually means the governor is protecting the host.
+   - High active requests or slow request timings with low ingest counters points to a broader app or dependency issue.
+   - Many sockets with little useful traffic points to SSE client churn or a stale watcher loop.
+4. Capture logs only when needed:
+   - `journalctl -u studio-brain-mission-control.service --since "30 minutes ago" --no-pager`
+   - Avoid pasting raw logs into tickets until they are reviewed for secrets or private payloads.
+5. Safe first responses:
+   - Stop new manual ingest/replay jobs.
+   - Leave the ingest governor enabled.
+   - Prefer reducing watcher noise or increasing batching in a PR over killing processes.
+   - If a laptop-side watcher is suspected, record its task/process identity and current logs; do not auto-kill it.
+6. Approval-required responses:
+   - Restarting `studio-brain-mission-control.service`.
+   - Killing Node, watcher, SSH tunnel, or gateway processes.
+   - Changing `MISSION_CONTROL_CODEX_INGEST_MIN_INTERVAL_MS` or related runtime configuration.
+   - Deploying a new Mission Control artifact.
+7. Verification after mitigation:
+   - Node CPU stays below the warning threshold for at least 10 minutes.
+   - `/api/mission-control/health` remains reachable locally and through the laptop tunnel.
+   - Request active counts and socket queues stop growing.
+   - `codexIngest` counters show accepted work plus expected throttling, not runaway retries.
+   - Mission Control UI loads the operator surface and pressure panel.
+8. Rollback:
+   - Revert the Mission Control PR or redeploy the last known-good artifact.
+   - Restore the prior ingest throttle setting if a tuning change blocks legitimate events.
+   - Restart services only during an approved service window or active incident.
+
+## Incident Evidence Bundle
+
+1. Capture a read-only bundle before restarting, pruning, upgrading, or deleting anything:
+   - `make ops-incident-bundle`
+   - or `bash scripts/ops/incident_bundle.sh`
+2. Read the bundle in this order:
+   - `app_status_review.txt`
+   - `process_pressure.txt`
+   - `socket_pressure.txt`
+   - `ubuntu_failed_units.txt`
+   - `docker_inventory.txt`
+   - `postgres_readonly_review.txt`
+   - `backup_evidence.txt`
+3. Journals are skipped by default because logs may contain sensitive details. If an active incident needs them, rerun with:
+   - `INCIDENT_INCLUDE_LOGS=1 bash scripts/ops/incident_bundle.sh`
+4. Review the bundle before attaching it to tickets or PRs.
+5. Rollback:
+   - delete only the local generated bundle if it contains sensitive local paths
+   - do not use bundle output as permission to restart services or clean data
 
 ## Failed Migration Response
 

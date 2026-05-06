@@ -1,0 +1,15 @@
+[Unit]
+Description=Studio Brain idle worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=STUDIO_BRAIN_IDLE_WORKER_PROFILE=idle
+Environment=STUDIO_BRAIN_IDLE_WORKER_JOBS=memory,repo,harness,wiki
+Environment=STUDIO_BRAIN_IDLE_WORKER_WIKI_MODE=check
+Environment=STUDIO_BRAIN_IDLE_WORKER_RUN_USER=wuff
+ExecStart=/bin/bash /usr/local/bin/studio-brain-idle-worker.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

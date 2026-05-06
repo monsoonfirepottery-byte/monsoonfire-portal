@@ -18,23 +18,23 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Rollback/undo notes: documentation/script additions can be reverted; do not delete existing backups.
 - PR can address it: yes, for documentation and read-only verification scripts. Full backup changes require approval.
 
-### Live Host Checkout Is On A Gone Branch With 211 Dirty Tracked Files
+### Live Host Checkout Is On A Gone Branch With 512 Dirty Or Untracked Paths
 
 - Affected component: deployment source of truth and drift control.
-- Evidence: `/home/wuff/monsoonfire-portal` reports `codex/next-fix-20260312...origin/codex/next-fix-20260312 [gone]` and 211 dirty tracked files, including package, migrations, Studio Brain runtime, scripts, and docs.
+- Evidence: `make ops-host-drift` on 2026-05-06 reports `/home/wuff/monsoonfire-portal` on `codex/next-fix-20260312...origin/codex/next-fix-20260312 [gone]` with 512 dirty or untracked paths: 211 modified tracked paths and 301 untracked paths. Path-name classification found 486 source/config paths, 10 sensitive-looking path names, and 16 unknown paths.
 - Likely impact: deploys and reconciliations may package host-only drift, hide unreviewed runtime changes, or make rollback hard to reason about.
 - Recommended action: inventory dirty host changes, classify them as accepted source changes, generated artifacts, or discardable runtime drift, then reconcile through PRs.
-- Safe next step: generate a redacted diff manifest and compare against `host-drift-allowlist.json`.
+- Safe next step: create a host backup branch and restricted patch bundle, then compare the manifest against `host-drift-allowlist.json`.
 - Rollback/undo notes: do not reset the host checkout until the diff manifest is reviewed and backed up.
 - PR can address it: yes, for the audit/reporting tool. Cleanup requires human approval.
 
-### PostgreSQL Is Bound To All Interfaces While UFW Is Inactive
+### PostgreSQL Is Bound To All Interfaces While Firewall Rule Coverage Is Unverified
 
 - Affected component: PostgreSQL network exposure.
-- Evidence: `ss` shows `0.0.0.0:5433` and `[::]:5433` listening via Docker; `ufw` reports inactive. Compose default is `"${PGPORT:-5433}:5432"`.
+- Evidence: `make ops-network-review` on 2026-05-06 shows `0.0.0.0:5433` and `[::]:5433` listening via Docker, PostgreSQL `listen_addresses='*'`, and `pg_hba_file_rules` allowing `host all all all scram-sha-256`. `systemctl` reports `ufw` enabled and active, but non-root `ufw status`, `nft`, and `iptables` rules required a privileged read. Compose default is `"${PGPORT:-5433}:5432"`.
 - Likely impact: the database is reachable from more than localhost. If credentials or LAN trust assumptions are weak, this increases blast radius.
-- Recommended action: confirm all legitimate clients, then bind Postgres to `127.0.0.1:5433` or add a host firewall rule.
-- Safe next step: add a docs/task item and a Compose validation check that reports non-loopback DB binds.
+- Recommended action: confirm all legitimate clients and privileged firewall rules, then bind Postgres to `127.0.0.1:5433` or add an explicit host firewall allowlist.
+- Safe next step: run `make ops-network-review`, capture `sudo ufw status numbered verbose`, and identify every direct PostgreSQL client before hardening.
 - Rollback/undo notes: changing bind address is reversible but can break remote clients; requires service window and approval.
 - PR can address it: yes, detection and documentation. Actual bind/firewall change needs human approval.
 
@@ -53,20 +53,20 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 ### SSH Password And Keyboard-Interactive Auth Are Enabled
 
 - Affected component: SSH access posture.
-- Evidence: `sshd -T` reports `passwordauthentication yes`, `kbdinteractiveauthentication yes`, `permitrootlogin without-password`; `fail2ban` is active and currently has no bans.
+- Evidence: SSH listens on `0.0.0.0:22` and `[::]:22`. Readable config fragments include `PasswordAuthentication yes`, `KbdInteractiveAuthentication yes`, `AuthenticationMethods any`, and `UsePAM yes`; the 2026-05-06 non-root run could not obtain effective `sshd -T` output. `fail2ban` is active, but jail details required a privileged read.
 - Likely impact: password auth increases remote brute-force exposure, especially with `ssh` listening on all interfaces.
 - Recommended action: confirm any legitimate password-based access, then plan key-only SSH with fail2ban retained.
-- Safe next step: add a key-only SSH migration checklist and current-posture diagnostic.
+- Safe next step: run `make ops-network-review`, capture privileged effective SSH config with `sudo sshd -T`, verify at least two key-based access paths, and then prepare a key-only SSH migration checklist.
 - Rollback/undo notes: keep an out-of-band console or verified second key before changing SSH auth.
 - PR can address it: documentation only; host SSH changes require approval.
 
 ### Live Idle-Worker Timers Are Host-Only Drift
 
 - Affected component: systemd timer source of truth.
-- Evidence: host has `studio-brain-idle-worker.timer` and `studio-brain-idle-worker-overnight.timer`, but clean `origin/main` lacks matching files under `config/studiobrain/systemd`.
+- Evidence: host has `studio-brain-idle-worker.timer` and `studio-brain-idle-worker-overnight.timer`; the ops-doctor branch now tracks matching unit and wrapper files under `config/studiobrain/systemd`.
 - Likely impact: reinstall or reconcile paths may drop or fail to recreate important scheduled work.
-- Recommended action: import these unit files into source control after review.
-- Safe next step: add a PR with the timer/service definitions and install script coverage.
+- Recommended action: review and merge the source-controlled unit files, then run the install/reconcile path only in an approved host maintenance window.
+- Safe next step: verify the PR diff against live unit contents and confirm timer state with `systemctl list-timers 'studio-brain-idle-worker*' --all --no-pager`.
 - Rollback/undo notes: source-controlled units can be reverted; do not remove live timers until replacement is verified.
 - PR can address it: yes.
 

@@ -31,6 +31,7 @@ make ops-backup-evidence
 make ops-ubuntu-review
 make ops-network-review
 make ops-host-drift
+make ops-systemd-drift
 make ops-app-review
 make ops-incident-bundle
 make ops-report
@@ -43,6 +44,7 @@ On Windows shells without `make`, run the script directly with Bash, for example
 ```bash
 bash scripts/ops/app_status_review.sh
 bash scripts/ops/incident_bundle.sh output/ops/incidents/manual-smoke
+bash scripts/ops/systemd_drift_review.sh --ssh-host studiobrain
 ```
 
 ## Approval Boundaries

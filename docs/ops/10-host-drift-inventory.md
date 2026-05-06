@@ -96,3 +96,26 @@ Likely impacts:
 ## PR Boundary
 
 This slice adds drift inventory tooling and documents current evidence. It intentionally does not reconcile, delete, reset, stash, or move any live host files.
+
+## Systemd Drift Follow-Up
+
+Use `scripts/ops/systemd_drift_review.sh` or `make ops-systemd-drift` for the narrower host-unit check added after the idle-worker drop-in reconciliation. It compares tracked files under `config/studiobrain/systemd/` with installed paths on the host by normalized text checksum only:
+
+- `.service`, `.timer`, and drop-in `.conf` files map to `/etc/systemd/system/...`.
+- tracked `.sh` helper scripts map to `/usr/local/bin/...`.
+- CRLF/LF line-ending differences are normalized so Windows checkout metadata does not create false drift.
+- output classifies `matched`, `drift`, `missing_remote`, `unreadable_remote`, and `untracked_remote` candidates.
+- strict mode exits non-zero on drift, but default mode is report-only.
+
+This is still evidence only. It does not run `systemctl daemon-reload`, restart timers, install files, remove stale files, or decide whether the repo or host copy should win.
+
+Read-only live check on 2026-05-06 after normalizing line endings:
+
+- 23 tracked unit/script/drop-in files matched the installed host copies.
+- 0 tracked files showed content drift.
+- 0 tracked files were missing or unreadable.
+- 2 installed unit files were untracked by `config/studiobrain/systemd/`:
+  - `/etc/systemd/system/studio-brain-control-tower-proxy.service`
+  - `/etc/systemd/system/studio-brain-namecheap-tunnel.service`
+
+Safe next step: capture those two untracked unit definitions into a follow-up source-control PR or explicitly classify them as host-local exceptions. Do not overwrite or remove either service from this report alone.

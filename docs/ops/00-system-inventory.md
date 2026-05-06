@@ -1,6 +1,6 @@
 # Studio Brain System Inventory
 
-Snapshot time: 2026-05-06 00:16-00:20 UTC, from `D:\monsoonfire-portal-ops-doctor` against SSH alias `studiobrain` and LAN API `http://192.168.1.226:8787`.
+Snapshot time: 2026-05-06 07:00-07:02 UTC, from `D:\monsoonfire-portal-idle-reconcile` against SSH alias `studiobrain` and LAN API `http://192.168.1.226:8787`.
 
 ## Host Assumptions And Known Facts
 
@@ -9,55 +9,55 @@ Snapshot time: 2026-05-06 00:16-00:20 UTC, from `D:\monsoonfire-portal-ops-docto
 - Live repo path: `/home/wuff/monsoonfire-portal`.
 - Windows repo path for reviewable changes: `D:\monsoonfire-portal`.
 - This inventory is read-only. No services were restarted, no packages were upgraded, no Docker objects were pruned, and no database writes were made.
-- The live host checkout is not currently clean: it is on `codex/next-fix-20260312...origin/codex/next-fix-20260312 [gone]` with 211 tracked dirty files.
+- The live host checkout is not currently clean: it is on `codex/next-fix-20260312...origin/codex/next-fix-20260312 [gone]` with 512 dirty or untracked paths.
 
 ## OS And Kernel
 
 - OS: Ubuntu 25.10 (`PRETTY_NAME="Ubuntu 25.10"`).
 - Kernel: `6.17.0-22-generic`.
-- Uptime: 19 days, 1 hour at collection time.
+- Uptime: 19 days, 8 hours at collection time.
 - Hostname: `studiobrain`.
 - Primary operator user: `wuff` (`uid=1000`), member of `sudo`, `docker`, and `adm`.
 
 ## Package Manager State
 
-- Reboot required: no `/var/run/reboot-required` file at collection time.
+- Reboot required: yes. `/var/run/reboot-required.pkgs` listed `linux-image-6.17.0-23-generic` and `linux-base`.
 - `unattended-upgrades.service`: enabled and active.
-- Pending upgrades include kernel packages (`linux-generic` 6.17.0-23), Docker Engine/Compose (`29.4.2`, compose `5.1.3`), `curl`, `systemd`, `nodejs` 25.9.0, `containerd.io`, `rsyslog`, `sed`, and `snapd`.
-- Failed units include `apt-daily-upgrade.service`; systemd reports `Result=oom-kill`, and the kernel log shows `unattended-upgr` was killed by the OOM killer on 2026-05-05 06:56 UTC.
+- Pending upgrades include cloud-init, Docker Engine/Compose (`29.4.2`, compose `5.1.3`), `containerd.io`, `systemd`, `nodejs` 25.9.0, `rsyslog`, `snapd`, Ubuntu Pro client, release upgrader, and kernel-related packages.
+- `apt-daily-upgrade.service` no longer appears in `systemctl --failed`; `systemctl show` reported `Result=success`, `ExecMainStatus=0`, `ActiveState=inactive`, and `SubState=dead`. The prior OOM event remains operational evidence because the kernel log showed `unattended-upgr` killed on 2026-05-05 06:56 UTC.
 
 ## Mounted Filesystems
 
 | Mount | Type | Size | Used | Available | Use |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `/` | ext4 on LVM | 914G | 124G | 753G | 15% |
+| `/` | ext4 on LVM | 914G | 126G | 751G | 15% |
 | `/boot` | ext4 | 2.0G | 240M | 1.6G | 14% |
 | `/boot/efi` | vfat | 1.1G | 6.3M | 1.1G | 1% |
-| `/tmp` | tmpfs | 16G | 28M | 16G | 1% |
+| `/tmp` | tmpfs | 16G | 55M | 16G | 1% |
 
 Inodes are healthy: `/` has about 59M inodes with 2% used.
 
 ## Disk Usage Risks
 
-- `/home/wuff`: 89G.
+- `/home/wuff`: 91G.
 - `/home/wuff/monsoonfire-portal`: 44G.
-- `/home/wuff/imports`: 23G.
-- `/var/lib/docker`: 12G.
-- `/home/wuff/backups`: 2.4G.
-- `/home/wuff/studio-brain-mission-control`: 2.8G.
+- `/home/wuff/imports`: 45G.
+- Docker system data: 8.984GB in local volumes, 4.397GB in images, and 300.3MB build cache. Non-root `du` against `/var/lib/docker` is not reliable.
+- `/home/wuff/backups`: 3.5G.
+- `/home/wuff/studio-brain-mission-control`: 4.0G.
 - `/home/wuff/.npm`: 4.2G.
 - `/home/wuff/.cache`: 3.8G.
-- `/var/log`: 84M.
-- `/tmp`: 28M.
-- `/var/backups/studio-brain`: 756K.
+- `/var/log`: 93M.
+- `/tmp`: 55M.
+- `/var/backups/studio-brain`: 8.0K observed through the non-root read.
 
-Disk pressure is not immediate, but repository/import/cache growth is the largest long-term storage concern.
+Disk pressure is not immediate, but import growth is now the clearest near-term capacity watch item: `/home/wuff/imports` increased from 23G in the earlier 2026-05-06 snapshot to 45G at 07:00 UTC.
 
 ## Memory And Swap
 
-- RAM: 30Gi total, 4.5Gi used, 19Gi free, 25Gi available.
-- Swap: 8.0Gi total, 448Mi used.
-- Load average at collection: about `1.36, 1.28, 1.11`.
+- RAM: 30Gi total, 3.9Gi used, 15Gi free, 26Gi available.
+- Swap: 8.0Gi total, 445Mi used.
+- Load average at collection: about `0.23, 0.37, 0.49`.
 - One OOM event was observed in the last 14 days: `apt-daily-upgrade.service` caused an OOM kill of `unattended-upgr`.
 
 ## Systemd Services Relevant To Studio Brain
@@ -66,8 +66,8 @@ User-scoped services under `wuff`:
 
 | Unit | State | Restart | PID | Memory |
 | --- | --- | --- | ---: | ---: |
-| `studio-brain.service` | active/running | always | 525535 | ~286M |
-| `studio-brain-mission-control.service` | active/running | on-failure | 3552280 | ~980M |
+| `studio-brain.service` | active/running | always | 525535 | ~244M |
+| `studio-brain-mission-control.service` | active/running | on-failure | 3983284 | ~481M |
 
 System services/timers:
 
@@ -86,10 +86,11 @@ The idle-worker timers are present on the host. This branch adds matching tracke
 
 ## Failed Units
 
-- `apt-daily-upgrade.service`: failed, `Result=oom-kill`.
 - `dailyaidecheck.service`: failed, `ExecMainStatus=1`.
 - `snap.canonical-livepatch.canonical-livepatchd.service`: failed, 5 restarts.
 - `systemd-networkd-wait-online.service`: failed, `ExecMainStatus=1`.
+
+`apt-daily-upgrade.service` was no longer failed in the 07:00 UTC snapshot, but the host now requires a reboot for kernel packages.
 
 ## Cron And Timer Inventory
 
@@ -117,10 +118,13 @@ Observed listeners:
 - `0.0.0.0:5433` and `[::]:5433`: PostgreSQL container host port.
 - `127.0.0.1:6379`: Redis.
 - `127.0.0.1:9010` and `127.0.0.1:9011`: MinIO API/console.
+- `127.0.0.1:8889`: Docker-published local service, role to confirm.
+- `127.0.0.1:4317` and `127.0.0.1:4318`: OpenTelemetry collector.
 - `127.0.0.1:19999`: Netdata.
 - `127.0.0.1:3001`: Uptime Kuma.
 - `192.168.1.226:18080` and `192.168.1.226:18081`: monitoring proxy.
 - `127.0.0.1:8080`: SearXNG.
+- `127.0.0.1:631` and `[::1]:631`: CUPS.
 
 Follow-up network exposure capture on 2026-05-06 01:10 UTC shows `ufw` enabled and active by systemd, but non-root `ufw status`, `nft`, and `iptables` rule visibility required a privileged read. Treat firewall rule coverage as unknown until `sudo ufw status numbered verbose` or equivalent is captured. `fail2ban` is active, but jail details also required a privileged read in the follow-up.
 
@@ -133,7 +137,7 @@ SSH posture requires effective-config confirmation. Readable config fragments an
 ## Docker Version And Compose Files
 
 - Docker Engine: 29.4.0.
-- Docker Compose: v5.1.2.
+- Docker Compose: v5.1.2. Package updates are available for Docker Engine 29.4.2 and Compose 5.1.3.
 - Compose projects reported by `docker compose ls`:
   - `studio-brain`: `/home/wuff/monsoonfire-portal/studio-brain/docker-compose.yml`
   - `monitoring`: `/home/wuff/monitoring/docker-compose.yml`
@@ -161,7 +165,7 @@ Docker space summary:
 
 - Images: 9 total, 4.397GB.
 - Containers: 9 total, all active.
-- Local volumes: 8 total, 5 active, 9.303GB.
+- Local volumes: 8 total, 5 active, 8.984GB.
 - Build cache: 300.3MB, all reclaimable.
 
 ## PostgreSQL Version And Connection Method
@@ -170,7 +174,9 @@ Docker space summary:
 - Image: `pgvector/pgvector:pg16`.
 - Host port: `5433 -> 5432`, bound to all interfaces by current Compose default.
 - Database: `monsoonfire_studio_os`.
+- Database size: 8333MB (`8738126871` bytes).
 - Extensions: `pg_stat_statements`, `pg_trgm`, `pgcrypto`, `plpgsql`, `vector`.
+- Connection snapshot: 7 sessions, 0 idle-in-transaction sessions, and 0 ungranted locks.
 - App health reports PostgreSQL connected with low single-digit millisecond latency.
 
 ## Application Components And Dependency Map
@@ -192,6 +198,7 @@ flowchart LR
 ## Current Live API Health
 
 - `/healthz`: `ok=true`.
-- `/readyz`: `ok=true`, PostgreSQL connected, state snapshot age 13 minutes.
+- `/readyz`: previously `ok=true`, PostgreSQL connected, state snapshot age 13 minutes; not re-sampled in this refresh.
 - `/health/dependencies`: PostgreSQL, artifact store, vector store, skill registry, and skill sandbox OK; Redis/event bus/kilnaid provider disabled.
-- `/api/status`: scheduler healthy, `computeStudioState` has 210 successes and 0 failures since runtime start on 2026-05-03; overseer status remains `critical` with 6 signal gaps and 8 actions.
+- `/api/status`: overseer status remains `critical` with 6 signal gaps and 8 actions.
+- Mission Control `/api/mission-control/health`: `ok=true`; `codexIngest` reported 246 accepted requests, 1041 accepted events, 0 empty payload requests, 0 rate-limited requests, and `skipRatio=0`.

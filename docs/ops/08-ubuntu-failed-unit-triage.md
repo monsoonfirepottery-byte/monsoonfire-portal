@@ -1,19 +1,18 @@
 # Studio Brain Ubuntu Failed Unit Triage
 
-Snapshot: 2026-05-06 00:57 UTC.
+Snapshot: 2026-05-06 07:00 UTC.
 
 This note is evidence and disposition only. It does not approve package upgrades, service disables, unit resets, reboots, firewall changes, or SSH changes.
 
 ## Summary
 
-`make ops-ubuntu-review` captured four failed units:
+`systemctl --failed --no-pager` captured three failed units:
 
-- `apt-daily-upgrade.service`
 - `dailyaidecheck.service`
 - `snap.canonical-livepatch.canonical-livepatchd.service`
 - `systemd-networkd-wait-online.service`
 
-Host memory was healthy at capture time: 30Gi total, 25Gi available, 447Mi swap used. The apt failure was a prior spike, not current steady pressure.
+Host memory was healthy at capture time: 30Gi total, 26Gi available, 445Mi swap used. The apt OOM failure from 2026-05-05 no longer appears in the failed-unit list, but the host now reports a reboot requirement for kernel packages.
 
 ## Apt Daily Upgrade OOM
 
@@ -25,14 +24,16 @@ Evidence:
 - `systemd-networkd-wait-online` timed out before the apt run.
 - Unattended upgrade logs repeatedly warn: `Could not figure out development release: Distribution data outdated`.
 - Pending packages include kernel, Docker, containerd, curl, systemd, snapd, Node.js, rsyslog, sed, and Ubuntu release upgrader packages.
-- `/var/run/reboot-required` was absent at capture time.
+- At 07:00 UTC, `systemctl show apt-daily-upgrade.service` reported `Result=success`, `ExecMainStatus=0`, `ActiveState=inactive`, and `SubState=dead`.
+- `/var/run/reboot-required` is now present and lists `linux-image-6.17.0-23-generic` and `linux-base`.
 
 Disposition:
 
-- Treat the exact OOM root cause as unresolved but bounded: unattended upgrade/install path caused an extreme memory spike while package metadata and network-online warnings were already noisy.
+- Treat the exact OOM root cause as unresolved but bounded: a later apt run succeeded, but unattended upgrade/install previously caused an extreme memory spike while package metadata and network-online warnings were already noisy.
 - Do not rerun unattended upgrades blindly.
 - Run updates only in a supervised maintenance window with pre-checks and post-checks.
 - Include `distro-info-data`/release metadata freshness in the apt investigation even if it is not currently listed in `apt list --upgradable`.
+- Plan a supervised reboot window because kernel packages now require it.
 
 Safe next step:
 

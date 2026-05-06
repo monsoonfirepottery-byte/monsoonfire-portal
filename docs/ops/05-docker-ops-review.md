@@ -1,6 +1,6 @@
 # Studio Brain Docker Ops Review
 
-Snapshot time: 2026-05-06 00:17 UTC.
+Snapshot time: 2026-05-06 07:00 UTC.
 
 ## Compose Files Discovered
 
@@ -68,6 +68,7 @@ Anonymous/local volumes:
 
 - Six hash-named local volumes were observed.
 - Docker reports 8 total local volumes and 5 active volumes.
+- Local volume size is 8.984GB in the latest `docker system df` snapshot.
 
 Do not delete anonymous volumes until they are mapped to containers or backed up.
 
@@ -85,6 +86,7 @@ Monitoring Compose attaches Uptime Kuma to `studio-brain_default` and `searxng_d
 ## Image Sprawl And Dangling Artifact Concerns
 
 - Images: 9 total, 4.397GB.
+- Containers: 9 total, all active.
 - Dangling images: none observed.
 - Build cache: 300.3MB reclaimable.
 - No exited containers observed.

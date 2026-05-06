@@ -4,6 +4,8 @@ Captured: 2026-05-06
 
 This audit inventories currently open Studio Brain / ops-adjacent PRs and separates merge order from runtime approval. It is read-only evidence gathered from GitHub metadata.
 
+Post-merge note: this audit is historical. The ops-doctor stack has since landed; see `docs/ops/14-post-merge-verification.md` for the merged state.
+
 ## Primary Ops-Doctor Stack
 
 Merge from the bottom upward. Each PR currently reports a clean merge state, but stacked branches should still be refreshed after the PR below lands.

@@ -2,23 +2,25 @@
 
 Each item is issue-ready and intentionally separates investigation from changes that need a service window or approval.
 
+Post-merge note: the first ops-doctor stack has landed in `main`. The items below now emphasize verification, approval-gated runtime work, and the next safe operational surfaces instead of merge sequencing.
+
 ## Now
 
-### [ops] Review and merge ops-doctor PR stack
+### [ops] Verify merged ops-doctor stack from main
 
 - Type: reliability, documentation
 - Priority: P1
-- Effort: M
-- Risk: low for review, medium for stacked merge conflict resolution
+- Effort: S
+- Risk: low
 - Acceptance criteria:
-  - PR stack order is documented from root PR to top PR.
-  - Draft/ready state, merge state, and check status are captured.
-  - Runtime deploy/install actions are separated from merge approval.
-  - Old ops-adjacent draft PRs have an owner decision: refresh, supersede, or close.
-- Status: stack audit prepared in `docs/ops/13-ops-pr-stack-audit.md`.
-- Recommended owner: human, Codex
-- Suggested branch name: `codex/ops-pr-stack-audit`
-- Suggested PR title: `[ops] Audit Studio Brain ops PR stack`
+  - Post-merge evidence lists merged PRs, merge commits, and superseded PR disposition.
+  - Safe command smoke checks pass or have documented local-tool limitations.
+  - Runtime deploy/install actions remain separated from repo merge work.
+  - The ops docs index points operators to the current post-merge handoff.
+- Status: follow-up prepared in `docs/ops/14-post-merge-verification.md`.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-admin-next`
+- Suggested PR title: `[ops] Add post-merge ops doctor handoff`
 
 ### [backup] Unify backup evidence and restore confidence
 
@@ -26,6 +28,7 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Priority: P0
 - Effort: M
 - Risk: low for diagnostics, high for any backup-path change
+- Status: backup evidence scripts and docs are merged; restore confidence still needs an approval-gated drill.
 - Acceptance criteria:
   - Backup report distinguishes config archives, PostgreSQL dump, Redis state, MinIO data, and restore drill status.
   - Latest backup evidence is current within the documented threshold.
@@ -40,6 +43,7 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Priority: P1
 - Effort: M
 - Risk: low for diagnostics, medium for package changes
+- Status: diagnostic scripts and maintenance workflow are merged; package remediation remains approval-gated.
 - Acceptance criteria:
   - `apt-daily-upgrade.service` OOM root cause is documented.
   - Failed `dailyaidecheck`, livepatch, and network-wait units have disposition: repair, disable intentionally, or ignore with reason.
@@ -54,6 +58,7 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Priority: P1
 - Effort: M
 - Risk: medium
+- Status: network exposure review is merged; any firewall, bind-address, or SSH hardening remains approval-gated.
 - Acceptance criteria:
   - Current listeners are captured in a redacted report.
   - Legitimate PostgreSQL clients are identified.
@@ -69,6 +74,7 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Priority: P1
 - Effort: M
 - Risk: low for inventory, high for cleanup
+- Status: host drift inventory workflow is merged; cleanup/reset actions remain approval-gated.
 - Acceptance criteria:
   - Live dirty-file manifest exists with generated/artifact/source classifications.
   - Gone branch status is documented.

@@ -3,7 +3,7 @@ SHELL := /bin/bash
 PG_CONTAINER ?= studiobrain_postgres
 PGDATABASE ?= monsoonfire_studio_os
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-work-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
 
 ops-check: ops-inventory ops-docker-review ops-capacity ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review
 
@@ -110,6 +110,15 @@ ops-idle-worker-effectivity:
 
 ops-effectivity-report:
 	bash scripts/ops/effectivity_report.sh
+
+ops-privileged-evidence-read:
+	bash scripts/ops/privileged_evidence_read.sh
+
+ops-privileged-evidence-capture:
+	bash scripts/ops/privileged_evidence_capture.sh --output-dir output/ops/privileged-evidence
+
+ops-privileged-evidence-capture-smoke:
+	bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 
 ops-work-packet:
 	node ./scripts/studiobrain-ops-work-packet.mjs --write

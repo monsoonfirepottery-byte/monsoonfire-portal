@@ -22,6 +22,7 @@ This directory is the durable operations surface for Studio Brain. It separates 
 | `19-swarm-slice-03-clean-worktree-lanes.md` | Clean worktree lane setup plan for multi-worker ops slices. |
 | `20-swarm-slice-48-approval-backlog.md` | Issue-ready backlog entries for remaining approval gates. |
 | `21-swarm-slice-49-roadmap-30-60-90.md` | Refreshed 30/60/90 Studio Brain ops roadmap. |
+| `22-privileged-evidence-capture.md` | Approval-gated workaround for sudo-unavailable agents: a narrow root capture job plus read-only agent reader. |
 
 ## Safe Commands
 
@@ -51,6 +52,8 @@ make ops-app-review
 make ops-dependency-review
 make ops-idle-worker-effectivity
 make ops-effectivity-report
+make ops-privileged-evidence-read
+make ops-privileged-evidence-capture-smoke
 make ops-work-packet
 make ops-incident-bundle
 make ops-incident-bundle-v2
@@ -72,9 +75,13 @@ bash scripts/ops/import_pressure.sh --target /home/wuff/imports
 bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports
 bash scripts/ops/npm_audit_inventory.sh
 bash scripts/ops/effectivity_report.sh
+bash scripts/ops/privileged_evidence_read.sh
+bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 node scripts/studiobrain-ops-work-packet.mjs --write
 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 ```
+
+`ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.
 
 ## Approval Boundaries
 

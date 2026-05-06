@@ -114,6 +114,22 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Suggested branch name: `codex/ops-import-pressure-report`
 - Suggested PR title: `[ops] Add import growth pressure report`
 
+### [cleanup] Generate approval-gated cleanup candidate packets
+
+- Type: cleanup, capacity, docker, ubuntu, documentation
+- Priority: P1
+- Effort: S
+- Risk: low for diagnostics, high for any cleanup action
+- Acceptance criteria:
+  - A read-only command inventories Docker artifacts, large logs, old temp files, imports, and backup candidates.
+  - Each cleanup family is classified as safe to automate, safe with backup, requires service window, requires human approval, or do not touch.
+  - The report does not delete, prune, truncate, move, compress, restart, or expose environment values.
+  - The maintenance calendar requires this packet before cleanup proposals.
+- Status: read-only generator prepared as `scripts/ops/cleanup_candidates.sh` and wrapped by `make ops-cleanup-candidates`.
+- Recommended owner: Codex, human
+- Suggested branch name: `codex/ops-cleanup-candidates`
+- Suggested PR title: `[ops] Add cleanup candidate generator`
+
 ## Next
 
 ### [systemd] Source-control idle-worker timers

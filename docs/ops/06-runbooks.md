@@ -110,6 +110,24 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 5. Rollback:
    - Remove experimental caps or scheduler changes if they cause service instability.
 
+## Apt OOM And Failed Unit Triage
+
+1. Capture the read-only triage report:
+   - `make ops-ubuntu-review`
+   - or `bash scripts/ops/ubuntu_failed_units.sh`
+2. For `apt-daily-upgrade.service`, confirm whether the OOM happened during unattended upgrades and attach:
+   - kernel OOM lines
+   - apt/unattended-upgrades logs
+   - pending package list
+   - reboot-required state
+3. For each failed unit, write one disposition:
+   - repair
+   - disable intentionally with reason
+   - ignore as harmless with reason
+4. Do not reset failed units merely to make the dashboard green; keep the failure until the cause is understood or documented.
+5. Do not run upgrades, disable AIDE/livepatch, or change network-online behavior without approval.
+6. Use the maintenance-window checklist from `scripts/ops/ubuntu_failed_units.sh` before package changes.
+
 ## Slow App Response Triage
 
 1. Check app endpoints:

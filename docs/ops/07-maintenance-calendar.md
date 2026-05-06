@@ -22,6 +22,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
   - `docker system df`
   - `docker volume ls`
 - Review failed units and apt state:
+  - `make ops-ubuntu-review`
   - `apt list --upgradable`
   - `journalctl -u apt-daily-upgrade.service -n 100 --no-pager`
 - Review `/home/wuff/imports`, repo artifact growth, Docker growth, and `/var/log`.

@@ -37,29 +37,36 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 
 1. Confirm live database and size:
    - `docker exec -u postgres studiobrain_postgres psql -d monsoonfire_studio_os -c "select pg_size_pretty(pg_database_size(current_database()));"`
-2. Use the tracked backup tooling when available:
+2. Capture unified evidence before changing anything:
+   - `make ops-backup-evidence`
+   - or `bash scripts/ops/backup_evidence.sh`
+3. Use the tracked backup tooling when available:
    - `npm run backup:verify`
-3. For a manual approved dump, write outside the repo and restrict permissions:
+4. For a manual approved dump, write outside the repo and restrict permissions:
    - `install -d -m 700 /var/backups/studio-brain/postgres`
    - `docker exec -u postgres studiobrain_postgres pg_dump -Fc monsoonfire_studio_os > /var/backups/studio-brain/postgres/<stamp>.dump`
    - `chmod 600 /var/backups/studio-brain/postgres/<stamp>.dump`
-4. Record checksum and manifest.
-5. Never paste credentials or dump contents into chat or tickets.
+5. Record checksum and manifest.
+6. Rerun `make ops-backup-evidence` and confirm the report separates config archives, PostgreSQL dump evidence, Redis evidence, MinIO evidence, freshness, and restore-drill status.
+7. Never paste credentials or dump contents into chat or tickets.
 
 ## PostgreSQL Restore Drill
 
-1. Use a disposable target database/container.
-2. Do not restore over production.
-3. Verify dump metadata:
+1. Capture restore-prerequisite evidence:
+   - `make ops-backup-evidence`
+2. Use a disposable target database/container.
+3. Do not restore over production.
+4. Verify dump metadata:
    - `pg_restore --list <dump>`
-4. Restore into disposable target.
-5. Run smoke queries:
+5. Restore into disposable target.
+6. Run smoke queries:
    - database size
    - table count
    - key relation row counts
    - app migration table status
-6. Record restore duration and result.
-7. Rollback:
+7. Record restore duration and result.
+8. Rerun `make ops-backup-evidence` so the latest restore-drill summary is visible in the unified report.
+9. Rollback:
    - Drop only the disposable target after approval.
 
 ## Disk Pressure Emergency Response

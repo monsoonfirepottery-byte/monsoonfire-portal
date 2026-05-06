@@ -14,6 +14,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 ## Weekly Checks
 
 - Run `make ops-check` on the host or a comparable Ubuntu shell.
+- Attach `make ops-backup-evidence` output to any backup/restore-confidence ticket before changing backup paths.
 - Run PostgreSQL size report:
   - `make ops-postgres-review`
 - Review Docker:

@@ -29,6 +29,7 @@ make ops-postgres-review
 make ops-docker-review
 make ops-capacity
 make ops-import-pressure
+make ops-cleanup-candidates
 make ops-backup-evidence
 make ops-ubuntu-review
 make ops-network-review
@@ -50,6 +51,7 @@ bash scripts/ops/incident_bundle.sh output/ops/incidents/manual-smoke
 bash scripts/ops/systemd_drift_review.sh --ssh-host studiobrain
 bash scripts/ops/portal_bridge_review.sh --ssh-host studiobrain
 bash scripts/ops/import_pressure.sh --target /home/wuff/imports
+bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports
 ```
 
 ## Approval Boundaries

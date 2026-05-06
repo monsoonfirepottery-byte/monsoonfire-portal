@@ -100,6 +100,8 @@ Monitoring Compose attaches Uptime Kuma to `studio-brain_default` and `searxng_d
 
 ## Safe Cleanup Checklist
 
+Use `make ops-cleanup-candidates` or `bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports` to prepare a read-only cleanup packet before any prune, delete, truncate, or restart proposal.
+
 Safe to automate:
 
 - Report `docker system df`.

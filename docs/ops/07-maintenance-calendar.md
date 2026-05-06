@@ -19,6 +19,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 - Attach `make ops-backup-evidence` output to any backup/restore-confidence ticket before changing backup paths.
 - Run `make ops-portal-bridge-review` and compare the tunnel restart count against the prior snapshot.
 - Run `make ops-import-pressure` and compare `/home/wuff/imports` size, age buckets, and approval-only candidates against the prior snapshot.
+- Run `make ops-cleanup-candidates` and attach the read-only candidate packet before any prune, deletion, truncation, or import/archive cleanup discussion.
 - Run PostgreSQL size report:
   - `make ops-postgres-review`
 - Review Docker:
@@ -40,6 +41,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 - Review open ports and firewall posture.
   - `make ops-network-review`
 - Classify anonymous Docker volumes.
+- Review cleanup candidate classifications and close any stale approval-only cleanup proposals that lack backup or rollback evidence.
 - Review host checkout drift against source control.
   - `make ops-host-drift`
   - keep a restricted backup branch/patch bundle before cleanup

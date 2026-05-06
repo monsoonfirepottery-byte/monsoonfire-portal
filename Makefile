@@ -3,9 +3,9 @@ SHELL := /bin/bash
 PG_CONTAINER ?= studiobrain_postgres
 PGDATABASE ?= monsoonfire_studio_os
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-docker-review ops-capacity ops-backup-evidence ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-docker-review ops-capacity ops-backup-evidence ops-ubuntu-review ops-backlog ops-report
 
-ops-check: ops-inventory ops-docker-review ops-capacity ops-backup-evidence
+ops-check: ops-inventory ops-docker-review ops-capacity ops-backup-evidence ops-ubuntu-review
 
 ops-inventory:
 	bash scripts/ops/system_inventory.sh
@@ -28,6 +28,9 @@ ops-capacity:
 
 ops-backup-evidence:
 	bash scripts/ops/backup_evidence.sh
+
+ops-ubuntu-review:
+	bash scripts/ops/ubuntu_failed_units.sh
 
 ops-backlog:
 	@sed -n '1,260p' docs/ops/02-kanban-backlog.md

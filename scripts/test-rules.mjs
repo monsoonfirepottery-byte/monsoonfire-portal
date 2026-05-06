@@ -93,7 +93,7 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const { javaHome } = ensureJavaRuntime();
   const rulesTests = resolveRulesTestFiles();
-  const testCommand = `node --test ${rulesTests.join(" ")}`;
+  const testCommand = `${process.execPath} --test ${rulesTests.join(" ")}`;
   const javaEnv = prependPathEntries([resolve(javaHome, "bin")], {
     ...process.env,
     JAVA_HOME: javaHome,

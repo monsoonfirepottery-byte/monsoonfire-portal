@@ -256,6 +256,22 @@ For laptop watcher lifecycle details, see `docs/ops/12-mission-control-watcher-m
    - delete only the local generated bundle if it contains sensitive local paths
    - do not use bundle output as permission to restart services or clean data
 
+## Ops Evidence Report
+
+1. Capture the read-only report:
+   - `make ops-report`
+   - or `bash scripts/ops/generate_ops_report.sh output/ops/<name>`
+2. Start with `summary.json`:
+   - confirm every report has `status: "ok"` or an intentional `status: "skipped"`
+   - review any `status: "check_failed"` text file before trusting the bundle
+   - use `bytes` to spot empty or unexpectedly tiny reports
+3. Review `README.md` and then the individual text reports.
+4. Treat `postgres_readonly_review` as skipped when the local Docker container is unavailable; run the SQL on the Studio Brain host or with a safe read-only `psql` connection if database evidence is needed.
+5. Do not attach generated output to tickets until local paths and log snippets have been reviewed for sensitivity.
+6. Rollback:
+   - delete only the local generated report directory
+   - do not use report output as permission to restart services, prune Docker, delete data, or mutate PostgreSQL
+
 ## Failed Migration Response
 
 1. Do not rerun migrations blindly.

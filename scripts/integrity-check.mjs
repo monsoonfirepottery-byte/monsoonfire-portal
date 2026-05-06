@@ -40,6 +40,8 @@ const DEFAULT_TARGET_FILES = [
   "scripts/studiobrain-backup-drill.mjs",
   "scripts/studiobrain-incident-bundle.mjs",
   "scripts/ops/backup_evidence.sh",
+  "scripts/ops/docker_inventory.sh",
+  "scripts/ops/postgres_readonly_review.sql",
   "scripts/ops/ubuntu_failed_units.sh",
   "scripts/ops/systemd_drift_review.sh",
   "scripts/ops/portal_bridge_review.sh",

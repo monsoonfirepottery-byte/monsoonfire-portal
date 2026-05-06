@@ -1,6 +1,11 @@
 # Studio Brain Docker Ops Review
 
-Snapshot time: 2026-05-06 07:00 UTC.
+Snapshot time: 2026-05-06 18:32 UTC.
+
+## Runtime Versions
+
+- Docker Engine: 29.4.0.
+- Docker Compose: v5.1.2.
 
 ## Compose Files Discovered
 
@@ -49,13 +54,19 @@ Missing:
 
 ## Restart Policy Coverage
 
-All observed containers use `restart=unless-stopped`.
+All observed containers use `restart=unless-stopped`. No restart loops or exited containers were visible in the 18:32 UTC snapshot.
 
 ## Resource Limit Coverage
 
-Tracked `studio-brain/docker-compose.yml` includes `deploy.resources` for Postgres, Redis, MinIO, and otel collector. Tracked monitoring Compose uses `cpus`, `mem_limit`, and `mem_reservation` for Netdata, Uptime Kuma, and monitoring proxy.
+Live `docker inspect` now reports CPU and memory limits for all observed containers:
 
-Note: Compose `deploy.resources` is not enforced by plain Docker Compose in all modes. For local Docker Compose, prefer `cpus` and `mem_limit` if hard limits are needed, but only after evidence supports caps.
+- `studiobrain_postgres`: 2 CPUs, 2GB memory, 1GB reservation.
+- `studiobrain_minio`: 1 CPU, 768MB memory, 384MB reservation.
+- `studiobrain_redis`: 0.5 CPU, 384MB memory, 192MB reservation.
+- `studiobrain_otel_collector`: 0.5 CPU, 256MB memory, 128MB reservation.
+- Monitoring/search sidecars also report CPU and memory limits.
+
+No hard systemd caps were observed for the user-scoped Node app services in this Docker review.
 
 ## Volume Inventory
 
@@ -67,10 +78,18 @@ Named data volumes:
 Anonymous/local volumes:
 
 - Six hash-named local volumes were observed.
-- Docker reports 8 total local volumes and 5 active volumes.
-- Local volume size is 8.984GB in the latest `docker system df` snapshot.
+- Docker reports 8 total local volumes and 5 active volumes, leaving 3 inactive anonymous volumes to classify before cleanup.
+- Local volume size is 8.866GB in the latest `docker system df` snapshot.
+- `studio-brain_postgres_data` accounts for essentially all observed Docker volume size at 8.866GB.
+- `studio-brain_minio_data` is tiny in this snapshot at about 30KB.
 
 Do not delete anonymous volumes until they are mapped to containers or backed up.
+
+## Docker Log Posture
+
+- Containers use the `json-file` log driver.
+- Non-root Docker inventory could not read `/var/lib/docker/containers/*-json.log`; sudo is required to prove per-container log sizes.
+- Host-level `/var/log` and journal pressure were low in the paired capacity snapshot, but Docker json-log size remains an evidence gap until a privileged read is captured.
 
 ## Network Inventory
 
@@ -119,7 +138,7 @@ Requires service window:
 
 - Change port binds.
 - Change image tags.
-- Add hard resource caps.
+- Add or alter hard resource caps.
 - Restart or recreate containers.
 
 Requires human approval:

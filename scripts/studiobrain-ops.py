@@ -55,6 +55,8 @@ SUPPORT_PATHS = (
     REPO_ROOT / "scripts" / "studiobrain-idle-worker-effectivity-audit.mjs",
     REPO_ROOT / "scripts" / "studiobrain-tmux-session.sh",
     REPO_ROOT / "scripts" / "ops" / "backup_evidence.sh",
+    REPO_ROOT / "scripts" / "ops" / "docker_inventory.sh",
+    REPO_ROOT / "scripts" / "ops" / "postgres_readonly_review.sql",
     REPO_ROOT / "scripts" / "ops" / "ubuntu_failed_units.sh",
     REPO_ROOT / "scripts" / "lib" / "studiobrain_host_access.py",
     REPO_ROOT / "studio-brain" / "lib" / "controlTower",

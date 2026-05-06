@@ -37,6 +37,7 @@ make ops-host-drift
 make ops-systemd-drift
 make ops-portal-bridge-review
 make ops-app-review
+make ops-dependency-review
 make ops-incident-bundle
 make ops-report
 ```
@@ -52,6 +53,7 @@ bash scripts/ops/systemd_drift_review.sh --ssh-host studiobrain
 bash scripts/ops/portal_bridge_review.sh --ssh-host studiobrain
 bash scripts/ops/import_pressure.sh --target /home/wuff/imports
 bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports
+bash scripts/ops/npm_audit_inventory.sh
 ```
 
 ## Approval Boundaries
@@ -74,6 +76,7 @@ The first ops-doctor stack is merged into `main`, including post-merge verificat
 - Mission Control CPU/backpressure and deploy-ref guard work is merged and deployed; future deploys should use the guarded deploy helper.
 - idle-worker systemd timer installation is approval-gated.
 - package update remediation is approval-gated.
+- Node/npm audit inventory is available with `make ops-dependency-review`; findings are evidence for small dependency PRs, not approval to run `npm audit fix`.
 - network/SSH/PostgreSQL hardening is approval-gated.
 
 Use `02-kanban-backlog.md` for the next issue-ready slices, and `13-ops-pr-stack-audit.md` for current open PR triage.

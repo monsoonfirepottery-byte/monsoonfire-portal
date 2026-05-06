@@ -43,6 +43,7 @@ const DEFAULT_TARGET_FILES = [
   "scripts/ops/portal_bridge_review.sh",
   "scripts/ops/import_pressure.sh",
   "scripts/ops/cleanup_candidates.sh",
+  "scripts/ops/npm_audit_inventory.sh",
   "scripts/test-studio-brain-auth.mjs",
   "scripts/ops-cockpit.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",

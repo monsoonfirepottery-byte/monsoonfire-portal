@@ -3,7 +3,7 @@ SHELL := /bin/bash
 PG_CONTAINER ?= studiobrain_postgres
 PGDATABASE ?= monsoonfire_studio_os
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-docker-review ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-incident-bundle ops-docs ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-docker-review ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-incident-bundle ops-docs ops-backlog ops-report
 
 ops-check: ops-inventory ops-docker-review ops-capacity ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review
 
@@ -53,6 +53,9 @@ ops-portal-bridge-review:
 
 ops-app-review:
 	bash scripts/ops/app_status_review.sh
+
+ops-dependency-review:
+	bash scripts/ops/npm_audit_inventory.sh
 
 ops-incident-bundle:
 	bash scripts/ops/incident_bundle.sh

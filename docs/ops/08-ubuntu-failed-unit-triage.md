@@ -14,6 +14,8 @@ This note is evidence and disposition only. It does not approve package upgrades
 
 Host memory was healthy at capture time: 30Gi total, 26Gi available, 445Mi swap used. The apt OOM failure from 2026-05-05 no longer appears in the failed-unit list, but the host now reports a reboot requirement for kernel packages.
 
+`make ops-ubuntu-review` now prints a top-level `Reboot And Update Posture` section before the longer unit journals. Use that section for the quick go/no-go maintenance signal, then attach the deeper unit and apt log evidence to any package/reboot ticket.
+
 ## Apt Daily Upgrade OOM
 
 Evidence:

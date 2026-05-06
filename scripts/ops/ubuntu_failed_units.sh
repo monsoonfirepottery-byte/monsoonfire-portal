@@ -39,6 +39,12 @@ run_shell "free -h"
 run_shell "swapon --show"
 run_shell "ps -eo pid,ppid,user,stat,pcpu,pmem,rss,comm,args --sort=-rss | head -n 25"
 
+section "Reboot And Update Posture"
+run_shell "test -f /var/run/reboot-required && { echo reboot_required=yes; cat /var/run/reboot-required.pkgs 2>/dev/null || true; } || echo reboot_required=no"
+run_shell "apt list --upgradable 2>/dev/null | awk 'NR>1 && /upgradable from:/ {count++; split(\$1, parts, \"/\"); packages[parts[1]]=1} END {print \"upgradable_count=\" count+0; for (name in packages) print \"upgradable_package=\" name}' | sort"
+run_shell "systemctl show apt-daily-upgrade.service --no-pager -p ActiveState -p SubState -p Result -p ExecMainStatus -p NRestarts"
+run_shell "systemctl show unattended-upgrades.service --no-pager -p ActiveState -p SubState -p Result -p ExecMainStatus -p NRestarts"
+
 section "Failed Units"
 if command -v systemctl >/dev/null 2>&1; then
   run_shell "systemctl --failed --no-pager"

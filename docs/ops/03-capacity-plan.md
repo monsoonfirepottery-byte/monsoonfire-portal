@@ -10,14 +10,14 @@ Snapshot time: 2026-05-06 07:00-07:02 UTC.
 - Swap has light current use: 445Mi of 8Gi.
 - Docker reports 4.397GB in images, 8.984GB in local volumes, and 300.3MB in build cache.
 - PostgreSQL database `monsoonfire_studio_os` is 8333MB.
-- The largest growth areas under `/home/wuff` are `/home/wuff/imports` at 45G and `/home/wuff/monsoonfire-portal` at 44G.
-- `/home/wuff/imports` increased from 23G in the 00:16 UTC snapshot to 45G at 07:00 UTC, so import growth should be treated as an active watch item even though total disk pressure is still low.
+- The largest observed areas under `/home/wuff` are `/home/wuff/imports` at 45G and `/home/wuff/monsoonfire-portal` at 44G.
+- `/home/wuff/imports` measured 23G in the 00:16 UTC snapshot and 45G at 07:00 UTC. A targeted import pressure report showed the largest files were about 63 days old, so treat this as an observed measurement discrepancy or untrended capacity concern until historical deltas are proven.
 
 ## Disk Growth Concerns
 
 | Path | Observed size | Concern |
 | --- | ---: | --- |
-| `/home/wuff/imports` | 45G | mail/import pipelines need retention policy and growth trend; growth accelerated in the latest same-day snapshot |
+| `/home/wuff/imports` | 45G | mail/import artifacts need retention policy and growth trend; current largest items are two 22G PST files classified approval-only |
 | `/home/wuff/monsoonfire-portal` | 44G | repo artifacts, imports, build output, generated state, and dirty host checkout can grow invisibly |
 | Docker volumes/images | 8.984G volumes, 4.397G images | volumes/images currently manageable but should be trended |
 | `/home/wuff/.npm` | 4.2G | package cache cleanup candidate |
@@ -28,6 +28,8 @@ Snapshot time: 2026-05-06 07:00-07:02 UTC.
 Warning threshold: root filesystem above 70% or any growth area increasing by more than 10G/week.
 
 Critical threshold: root filesystem above 85%, `/boot` above 80%, or free space below 50G.
+
+Use `make ops-import-pressure` or `bash scripts/ops/import_pressure.sh --target /home/wuff/imports` for the read-only import-specific pressure report. It reports size, age buckets, and cleanup classifications without reading imported content or modifying files.
 
 ## Database Growth Concerns
 
@@ -99,7 +101,7 @@ Minimum recommendation:
 
 - Fix backup evidence split and prove a current PostgreSQL restore drill.
 - Triage apt OOM and pending updates.
-- Investigate `/home/wuff/imports` growth and define retention for import artifacts.
+- Classify `/home/wuff/imports` PST/zip artifacts and define retention for import data.
 - Snapshot Postgres relation sizes weekly.
 - Classify anonymous Docker volumes.
 

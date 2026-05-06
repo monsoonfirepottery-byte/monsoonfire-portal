@@ -80,13 +80,13 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Rollback/undo notes: documentation/script changes can be reverted; do not restart or rekey the tunnel just to reset counters.
 - PR can address it: yes, for monitoring/reporting and runbook coverage. Tunnel endpoint, key, or service changes require approval.
 
-### Import Directory Growth Accelerated
+### Import Directory Size Needs Retention Classification
 
 - Affected component: host storage, mail/import pipelines, retention hygiene.
-- Evidence: `/home/wuff/imports` was 23G in the 2026-05-06 00:16 UTC inventory and 45G in the 2026-05-06 07:00 UTC refresh. Root filesystem pressure is still low at 15% used, but the import path is now the largest observed directory under `/home/wuff`.
-- Likely impact: a runaway or repeated import can consume disk faster than weekly capacity checks notice, and cleanup is risky without knowing which import artifacts are evidence, replayable cache, or source-of-truth data.
+- Evidence: `/home/wuff/imports` was 23G in the 2026-05-06 00:16 UTC inventory and 45G in the 2026-05-06 07:00 UTC refresh. A live import pressure run at 07:11 UTC showed two 22G PST files plus 522M and 935M zip archives, all about 63 days old and classified `requires_human_approval`. Root filesystem pressure is still low at 15% used. Because the largest files are not newly modified, this may be an earlier measurement gap rather than same-day growth.
+- Likely impact: import/archive data can consume disk faster than weekly capacity checks notice, and cleanup is risky without knowing which import artifacts are evidence, replayable cache, or source-of-truth data.
 - Recommended action: add import growth reporting by subdirectory/run, define retention classes, and tie cleanup candidates to an approval queue.
-- Safe next step: add a read-only import pressure script that prints sizes, age buckets, and cleanup classifications without deleting files or printing imported content.
+- Safe next step: review `scripts/ops/import_pressure.sh --target /home/wuff/imports` output with the owner and decide which PST/zip artifacts are source data, replayable imports, or backup-first cleanup candidates.
 - Rollback/undo notes: reporting/docs can be reverted. Any import deletion, compression, or archival action requires owner approval and a backup/restore note.
 - PR can address it: yes, for reporting and documentation. Cleanup requires human approval.
 

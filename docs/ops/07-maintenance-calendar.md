@@ -6,6 +6,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 
 - `curl -fsS http://192.168.1.226:8787/healthz`
 - `curl -fsS http://192.168.1.226:8787/readyz`
+- `make ops-app-review` when working from the host or through the local Mission Control tunnel.
 - `npm run studio:ops:status`
 - `systemctl --failed --no-pager`
 - Confirm `studio-brain-healthcheck.timer`, `studio-brain-disk-alert.timer`, `studio-brain-reboot-watch.timer`, `studio-brain-idle-worker.timer`, and `studio-brain-idle-worker-overnight.timer` are active.
@@ -14,6 +15,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 ## Weekly Checks
 
 - Run `make ops-check` on the host or a comparable Ubuntu shell.
+- Run `make ops-incident-bundle` before any non-trivial incident cleanup or service restart, then review the generated bundle before sharing it.
 - Attach `make ops-backup-evidence` output to any backup/restore-confidence ticket before changing backup paths.
 - Run PostgreSQL size report:
   - `make ops-postgres-review`

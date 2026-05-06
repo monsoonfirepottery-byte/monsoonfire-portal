@@ -106,6 +106,34 @@ Each item is issue-ready and intentionally separates investigation from changes 
 - Suggested branch name: `codex/ops-postgres-readonly-review`
 - Suggested PR title: `[ops] Add read-only PostgreSQL DBA review scripts`
 
+### [sre] Capture redacted incident evidence bundles
+
+- Type: reliability, documentation, app, ubuntu, docker, database
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - One command captures read-only app status, process pressure, socket pressure, Docker, PostgreSQL, backup, network, and host drift evidence.
+  - Raw journals are skipped by default or redacted when explicitly requested.
+  - Runbook tells operators to capture evidence before restarts or cleanup.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-incident-bundle`
+- Suggested PR title: `[ops] Add Studio Brain incident evidence bundle`
+
+### [app] Review app status beyond liveness checks
+
+- Type: reliability, app, documentation
+- Priority: P2
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - Read-only app review checks `/healthz`, `/api/status`, and Mission Control health/pressure.
+  - Output redacts token-like keys and avoids environment dumps.
+  - Maintenance calendar includes the check in daily or incident workflows.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-app-status-review`
+- Suggested PR title: `[ops] Add Studio Brain app status review`
+
 ### [docker] Pin floating image tags
 
 - Type: docker, security, reliability

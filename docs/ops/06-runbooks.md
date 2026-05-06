@@ -184,12 +184,33 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
    - `/readyz`
    - `/health/dependencies`
    - `/api/status`
+   - `make ops-app-review`
 2. Check Postgres activity:
    - `scripts/ops/postgres_readonly_review.sql`
 3. Check CPU/memory:
    - `top`, `free -h`, service memory from `systemctl show`.
 4. Check Docker health.
 5. Escalate only after identifying whether the bottleneck is app, database, storage, or network.
+
+## Incident Evidence Bundle
+
+1. Capture a read-only bundle before restarting, pruning, upgrading, or deleting anything:
+   - `make ops-incident-bundle`
+   - or `bash scripts/ops/incident_bundle.sh`
+2. Read the bundle in this order:
+   - `app_status_review.txt`
+   - `process_pressure.txt`
+   - `socket_pressure.txt`
+   - `ubuntu_failed_units.txt`
+   - `docker_inventory.txt`
+   - `postgres_readonly_review.txt`
+   - `backup_evidence.txt`
+3. Journals are skipped by default because logs may contain sensitive details. If an active incident needs them, rerun with:
+   - `INCIDENT_INCLUDE_LOGS=1 bash scripts/ops/incident_bundle.sh`
+4. Review the bundle before attaching it to tickets or PRs.
+5. Rollback:
+   - delete only the local generated bundle if it contains sensitive local paths
+   - do not use bundle output as permission to restart services or clean data
 
 ## Failed Migration Response
 

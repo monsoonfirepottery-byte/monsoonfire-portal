@@ -108,6 +108,7 @@ run_to_file ubuntu_failed_units bash "${SCRIPT_DIR}/ubuntu_failed_units.sh"
 run_to_file network_exposure_review bash "${SCRIPT_DIR}/network_exposure_review.sh"
 run_to_file host_drift_inventory bash "${SCRIPT_DIR}/host_drift_inventory.sh"
 run_to_file app_status_review bash "${SCRIPT_DIR}/app_status_review.sh"
+run_to_file npm_audit_inventory bash "${SCRIPT_DIR}/npm_audit_inventory.sh"
 
 if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -qx "${PG_CONTAINER}"; then
   run_to_file postgres_readonly_review docker exec -i -u postgres "${PG_CONTAINER}" psql -d "${PGDATABASE}" -X -v ON_ERROR_STOP=1 -f - <"${SCRIPT_DIR}/postgres_readonly_review.sql"

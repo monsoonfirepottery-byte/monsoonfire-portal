@@ -70,6 +70,16 @@ No immediate critical data-loss or outage condition was observed in the read-onl
 - Rollback/undo notes: source-controlled units can be reverted; do not remove live timers until replacement is verified.
 - PR can address it: yes.
 
+### Portal Bridge Tunnel Has High Restart History
+
+- Affected component: Studio Brain portal bridge, reverse SSH tunnel, admin reachability.
+- Evidence: `scripts/ops/portal_bridge_review.sh --ssh-host studiobrain` on 2026-05-06 showed `studio-brain-control-tower-proxy.service` active with `NRestarts=0`, and `studio-brain-namecheap-tunnel.service` active with `NRestarts=354`. The proxy was listening on `127.0.0.1:18788`.
+- Likely impact: the bridge can appear healthy at a point in time while historical restart churn hides transient tunnel instability, remote port conflicts, network interruption, SSH keepalive issues, or key permission problems.
+- Recommended action: keep the portal bridge review in weekly checks and inspect journal/remote endpoint evidence if the restart counter continues increasing.
+- Safe next step: run `make ops-portal-bridge-review` or `bash scripts/ops/portal_bridge_review.sh --ssh-host studiobrain` and compare the tunnel restart count to the prior snapshot before considering any service action.
+- Rollback/undo notes: documentation/script changes can be reverted; do not restart or rekey the tunnel just to reset counters.
+- PR can address it: yes, for monitoring/reporting and runbook coverage. Tunnel endpoint, key, or service changes require approval.
+
 ### Several System Units Are Failed
 
 - Affected component: base OS hygiene.

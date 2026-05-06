@@ -17,6 +17,7 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 - Run `make ops-check` on the host or a comparable Ubuntu shell.
 - Run `make ops-incident-bundle` before any non-trivial incident cleanup or service restart, then review the generated bundle before sharing it.
 - Attach `make ops-backup-evidence` output to any backup/restore-confidence ticket before changing backup paths.
+- Run `make ops-portal-bridge-review` and compare the tunnel restart count against the prior snapshot.
 - Run PostgreSQL size report:
   - `make ops-postgres-review`
 - Review Docker:

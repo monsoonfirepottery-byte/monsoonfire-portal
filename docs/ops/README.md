@@ -16,6 +16,7 @@ This directory is the durable operations surface for Studio Brain. It separates 
 | `07-maintenance-calendar.md` | Daily, weekly, monthly, and quarterly checks. |
 | `13-ops-pr-stack-audit.md` | Historical PR stack audit for the merged ops-doctor stack. |
 | `14-post-merge-verification.md` | Post-merge evidence, safe smoke checks, and remaining approval gates. |
+| `15-portal-bridge-review.md` | Portal bridge proxy/tunnel service evidence and watch items. |
 
 ## Safe Commands
 
@@ -32,6 +33,7 @@ make ops-ubuntu-review
 make ops-network-review
 make ops-host-drift
 make ops-systemd-drift
+make ops-portal-bridge-review
 make ops-app-review
 make ops-incident-bundle
 make ops-report
@@ -45,6 +47,7 @@ On Windows shells without `make`, run the script directly with Bash, for example
 bash scripts/ops/app_status_review.sh
 bash scripts/ops/incident_bundle.sh output/ops/incidents/manual-smoke
 bash scripts/ops/systemd_drift_review.sh --ssh-host studiobrain
+bash scripts/ops/portal_bridge_review.sh --ssh-host studiobrain
 ```
 
 ## Approval Boundaries

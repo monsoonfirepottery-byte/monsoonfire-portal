@@ -15,6 +15,28 @@ This note records the merged state after the first Studio Brain ops-doctor stack
 | [#570](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/570) | closed | landed via #573 | network exposure review |
 | [#571](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/571) | closed | landed via #573 | live host drift inventory |
 | [#572](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/572) | closed | landed via #573 | idle-worker timer files; runtime installation still approval-gated |
+| [#574 `[ops] Add post-merge ops doctor handoff`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/574) | merged | `73fb3b944bdc0a4f91175b046743a97c6319c055` | post-merge verification packet |
+| [#575 `[ops] Add machine-readable ops report summary`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/575) | merged | `cfaf8f652950b971a621c1fe6c4cba8ecbebada7` | summary JSON for generated ops reports |
+| [#576 `[ops] Track idle-worker live systemd drop-ins`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/576) | merged | `a0b4b86c41ea23caa88246e11e3148fc7794eb69` | source-controls live idle-worker drop-ins; install remains approval-gated |
+| [#577 `[ops] Add systemd drift review`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/577) | merged | `2d6ef800c40783c89c3f31c2ff849113a2c4b993` | read-only systemd tracked-vs-installed drift check |
+| [#578 `[ops] Classify portal bridge systemd services`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/578) | merged | `d3eb3823c4f6be4744634c1377ee029bb963472c` | generated portal bridge units classified in drift review |
+| [#579 `[ops] Add portal bridge review`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/579) | merged | `38f6c3d9f548f7bc428b6db55a3683f8432d6ce2` | read-only portal bridge service and listener review |
+| [#580 `[ops] Add portal bridge restart watch item`](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/580) | merged | `d1aa553138a0fd66e71e525d3116d68156663ff9` | risk/backlog/calendar coverage for tunnel restart history |
+
+## Mission Control Deploy State
+
+The Mission Control CPU/backpressure and deploy-guard stack is merged through PR #5 in `studio-brain-mission-control`. The live host was redeployed from main after a stale branch package briefly overwrote the verified release.
+
+Observed live release after repair:
+
+- Git commit: `baadf0777fb31c2d8eb6b2ede88e101548e25a9e`
+- Release id: `mission-control-20260506-main-baadf07`
+- Package SHA256: `9a1a82c87553d7add51706ba828fc85f5b720056a0ef4fdd90f6ab3375567bbe`
+- Service target: user unit `studio-brain-mission-control.service`
+- Restart command used: `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart studio-brain-mission-control.service`
+- Health evidence: `/api/mission-control/health` reported `ok: true` with `codexIngest` counters present and Node CPU no longer pegged.
+
+Future production deploys should still use the guarded Mission Control deploy helper and avoid non-main branch deploys unless the owner explicitly passes the branch override.
 
 ## Verification Commands
 
@@ -63,7 +85,7 @@ From the clean `codex/ops-admin-next` worktree:
 
 | Gate | Why approval is needed | Pre-check |
 | --- | --- | --- |
-| Mission Control final deploy | changes host files and may restart service | use Mission Control deploy packet |
+| Future Mission Control deploys | changes host files and may restart the user service | use the guarded deploy helper and verify branch/ref metadata |
 | idle-worker timer installation | changes systemd runtime behavior | review `11-idle-worker-systemd.md` |
 | package update remediation | touches kernel/Docker/system packages and may require reboot | review `08-ubuntu-failed-unit-triage.md` |
 | network/SSH/PostgreSQL hardening | can lock out access or break clients | review `09-network-exposure-review.md` |
@@ -71,8 +93,8 @@ From the clean `codex/ops-admin-next` worktree:
 
 ## Next Safe Slices
 
-1. Run post-merge read-only command smoke from `main`.
-2. Refresh host inventory from current `.226` evidence.
-3. Add machine-readable ops report summary.
-4. Add Mission Control import/display for redacted incident summaries.
-5. Prepare approval packets for Mission Control deploy and idle-worker timer install.
+1. Refresh host inventory from current `.226` evidence.
+2. Triage the currently open dependency PR stack, starting with #552.
+3. Add Mission Control import/display for redacted incident summaries.
+4. Prepare an approval packet for idle-worker timer installation.
+5. Add a weekly comparison note for portal bridge tunnel restart counts.

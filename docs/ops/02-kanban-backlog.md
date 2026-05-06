@@ -6,6 +6,21 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 
 ## Now
 
+### [ops] Keep open PR stack audit current
+
+- Type: reliability, cleanup, documentation
+- Priority: P1
+- Effort: S
+- Risk: low
+- Acceptance criteria:
+  - Open portal and Mission Control PRs are listed with merge state, draft state, and recommended disposition.
+  - Recently merged ops/admin PRs are recorded with merge commits.
+  - Dirty or preview-only branches are separated from dependency updates and ops-doctor work.
+- Status: current snapshot captured in `docs/ops/13-ops-pr-stack-audit.md`.
+- Recommended owner: Codex
+- Suggested branch name: `codex/ops-pr-stack-refresh`
+- Suggested PR title: `[ops] Refresh ops PR stack audit`
+
 ### [ops] Verify merged ops-doctor stack from main
 
 - Type: reliability, documentation
@@ -95,7 +110,7 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
   - `studio-brain-idle-worker` and overnight unit files are tracked under `config/studiobrain/systemd`.
   - Install/reconcile scripts include them.
   - Docs list cadence and safety mode.
-- Status: PR prepared; live installation remains approval-gated.
+- Status: source-controlled timer and drop-in files are merged; live installation remains approval-gated.
 - Recommended owner: Codex
 - Suggested branch name: `codex/ops-idle-worker-systemd`
 - Suggested PR title: `[ops] Track Studio Brain idle-worker systemd timers`

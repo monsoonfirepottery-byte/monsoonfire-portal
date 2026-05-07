@@ -121,7 +121,7 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/post_merge_verification_packet.mjs --json --write",
     producerStep: "post-merge-verification",
     safeWriteRoot: "output/ops/post-merge",
-    consumers: ["operator-handoff", "post-merge-issue"],
+    consumers: ["pr-readiness-packet", "operator-handoff", "post-merge-issue"],
     requiredFor: ["post-merge-verification"],
   },
   "incident-bundle-v2-summary": {

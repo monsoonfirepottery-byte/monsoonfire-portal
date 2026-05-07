@@ -18,6 +18,7 @@ const DEFAULT_PACKET_OUTCOME_REPORT = resolve(REPO_ROOT, "output", "ops", "swarm
 const DEFAULT_INCIDENT_BUNDLE = resolve(REPO_ROOT, "output", "ops", "incidents-v2", "incident-bundle-v2-latest.json");
 const DEFAULT_PR_STACK_AUDIT = resolve(REPO_ROOT, "output", "ops", "pr-stack", "pr-stack-audit-latest.json");
 const DEFAULT_STALE_BACKLOG_REPORT = resolve(REPO_ROOT, "output", "ops", "swarm", "stale-backlog-packets-latest.json");
+const DEFAULT_POST_MERGE_VERIFICATION = resolve(REPO_ROOT, "output", "ops", "post-merge", "post-merge-verification-latest.json");
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -394,6 +395,50 @@ function summarizeStaleBacklogReport(report) {
   };
 }
 
+function summarizePostMergeVerification(report) {
+  if (!report) {
+    return {
+      status: "missing",
+      generatedAt: "",
+      approvalGates: 0,
+      dirtyFiles: 0,
+      workPacketQualityFindings: 0,
+      staleBacklogCandidates: 0,
+      prStackOpenLowerBound: 0,
+      prStackMergeReady: 0,
+      recommendedSteering: "",
+      warnings: [],
+    };
+  }
+  if (report.status === "invalid_json") {
+    return {
+      status: "invalid_json",
+      generatedAt: "",
+      approvalGates: 0,
+      dirtyFiles: 0,
+      workPacketQualityFindings: 0,
+      staleBacklogCandidates: 0,
+      prStackOpenLowerBound: 0,
+      prStackMergeReady: 0,
+      recommendedSteering: "",
+      warnings: [report.parseError || "post-merge verification packet JSON is invalid"],
+      parseError: report.parseError || "",
+    };
+  }
+  return {
+    status: clean(report.status) || "unknown",
+    generatedAt: clean(report.generatedAt),
+    approvalGates: Number(report.summary?.approvalGates) || 0,
+    dirtyFiles: Number(report.summary?.dirtyFiles) || 0,
+    workPacketQualityFindings: Number(report.summary?.workPacketQualityFindings) || 0,
+    staleBacklogCandidates: Number(report.summary?.staleBacklogCandidates) || 0,
+    prStackOpenLowerBound: Number(report.summary?.prStackOpenLowerBound) || 0,
+    prStackMergeReady: Number(report.summary?.prStackMergeReady) || 0,
+    recommendedSteering: clean(report.summary?.recommendedSteering),
+    warnings: Array.isArray(report.warnings) ? report.warnings.map(clean).filter(Boolean).slice(0, 5) : [],
+  };
+}
+
 function buildOutcomeLedger(options = {}, evidence = {}) {
   const packetId = clean(options.packetId);
   const pr = clean(options.pr);
@@ -555,6 +600,13 @@ function buildWarnings({ gitState, evidence, outcomeLedger }) {
   if (evidence.staleBacklog.status === "missing") warnings.push("stale backlog packet report is missing");
   else if (evidence.staleBacklog.status === "invalid_json") warnings.push("stale backlog packet report is invalid");
   else if (evidence.staleBacklog.candidates > 0) warnings.push(`${evidence.staleBacklog.candidates} stale or missing-status backlog packet(s) need refresh or retirement`);
+  if (evidence.postMergeVerification.status === "missing") warnings.push("post-merge verification packet is missing");
+  else if (evidence.postMergeVerification.status === "invalid_json") warnings.push("post-merge verification packet is invalid");
+  else if (evidence.postMergeVerification.status === "warn") warnings.push("post-merge verification packet has warnings");
+  else if (evidence.postMergeVerification.status !== "pass") warnings.push(`post-merge verification packet status is ${evidence.postMergeVerification.status}`);
+  for (const warning of evidence.postMergeVerification.warnings.slice(0, 2)) {
+    warnings.push(`post-merge verification warning: ${warning}`);
+  }
   if (evidence.sliceLedger.requestedCoverage.status === "outside_window") {
     warnings.push(`slice ids outside latest slice-ledger window: ${evidence.sliceLedger.requestedCoverage.missing.join(", ")}`);
   } else if (evidence.sliceLedger.requestedCoverage.status === "unknown") {
@@ -582,6 +634,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     workPacketQuality: summarizeWorkPacketQuality(inputs.workPacketQuality),
     prStack: summarizePrStackAudit(inputs.prStackAudit),
     staleBacklog: summarizeStaleBacklogReport(inputs.staleBacklogReport),
+    postMergeVerification: summarizePostMergeVerification(inputs.postMergeVerification),
     packetOutcome: summarizePacketOutcome(inputs.packetOutcomeReport),
     sliceLedger: summarizeSliceLedger(inputs.sliceLedger),
     toolInstall: summarizeToolInstall(inputs.toolInstallRecommendations),
@@ -668,6 +721,7 @@ ${dirtyFiles}
 | Work packet quality | ${packet.evidence.workPacketQuality.status} | findings=${packet.evidence.workPacketQuality.findings}, warnings=${packet.evidence.workPacketQuality.warnings}, failures=${packet.evidence.workPacketQuality.failures}, staleBacklog=${packet.evidence.workPacketQuality.staleBacklogPackets}, missingBacklogStatus=${packet.evidence.workPacketQuality.missingBacklogStatusPackets}, sourceSignalAudit=${packet.evidence.workPacketQuality.sourceSignalAuditStatus || ""} |
 | PR stack | ${packet.evidence.prStack.status} | openExact=${packet.evidence.prStack.openCountExact}, openLowerBound=${packet.evidence.prStack.openLowerBound}, ready=${packet.evidence.prStack.mergeReady}, blocked=${packet.evidence.prStack.mergeBlocked}, steering=${packet.evidence.prStack.recommendedSteering}, stackLanes=${packet.evidence.prStack.blockedStackLanes.length} |
 | Stale backlog packets | ${packet.evidence.staleBacklog.status} | candidates=${packet.evidence.staleBacklog.candidates}, stale=${packet.evidence.staleBacklog.staleBacklogPackets}, missingStatus=${packet.evidence.staleBacklog.missingBacklogStatusPackets}, ready=${packet.evidence.staleBacklog.readyPackets}, approvalGated=${packet.evidence.staleBacklog.approvalGatedPackets}, next=${packet.evidence.staleBacklog.nextExecutableStatus || ""} |
+| Post-merge verification | ${packet.evidence.postMergeVerification.status} | approvalGates=${packet.evidence.postMergeVerification.approvalGates}, dirty=${packet.evidence.postMergeVerification.dirtyFiles}, qualityFindings=${packet.evidence.postMergeVerification.workPacketQualityFindings}, staleBacklog=${packet.evidence.postMergeVerification.staleBacklogCandidates}, openLowerBound=${packet.evidence.postMergeVerification.prStackOpenLowerBound}, steering=${packet.evidence.postMergeVerification.recommendedSteering || ""} |
 | Packet outcomes | ${packet.evidence.packetOutcome.status} | total=${packet.evidence.packetOutcome.total}, maturity=${packet.evidence.packetOutcome.maturity}, score=${packet.evidence.packetOutcome.score ?? ""}, orphanedRate=${packet.evidence.packetOutcome.orphanedRate ?? ""}, resetRecommended=${packet.evidence.packetOutcome.resetRecommended} |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |
 
@@ -737,6 +791,7 @@ function parseArgs(argv) {
     incidentBundle: DEFAULT_INCIDENT_BUNDLE,
     prStackAudit: DEFAULT_PR_STACK_AUDIT,
     staleBacklogReport: DEFAULT_STALE_BACKLOG_REPORT,
+    postMergeVerification: DEFAULT_POST_MERGE_VERIFICATION,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
   };
@@ -780,6 +835,7 @@ function parseArgs(argv) {
       "--incident-bundle": "incidentBundle",
       "--pr-stack-audit": "prStackAudit",
       "--stale-backlog-report": "staleBacklogReport",
+      "--post-merge-verification": "postMergeVerification",
       "--slice-ledger": "sliceLedger",
       "--tool-install-recommendations": "toolInstallRecommendations",
     };
@@ -787,7 +843,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(flags)) {
       const value = read(flag);
       if (value === null) continue;
-      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "prStackAudit", "staleBacklogReport", "sliceLedger", "toolInstallRecommendations"].includes(key)
+      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "prStackAudit", "staleBacklogReport", "postMergeVerification", "sliceLedger", "toolInstallRecommendations"].includes(key)
         ? resolve(REPO_ROOT, value)
         : value;
       matched = true;
@@ -818,6 +874,7 @@ Options:
   --incident-bundle <path>             Default: output/ops/incidents-v2/incident-bundle-v2-latest.json.
   --pr-stack-audit <path>              Default: output/ops/pr-stack/pr-stack-audit-latest.json.
   --stale-backlog-report <path>        Default: output/ops/swarm/stale-backlog-packets-latest.json.
+  --post-merge-verification <path>     Default: output/ops/post-merge/post-merge-verification-latest.json.
   --slice-ledger <path>                Default: output/ops/effectivity/slice-ledger-latest.json.
   --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.
 `);
@@ -853,6 +910,7 @@ function run(rawArgs = process.argv.slice(2)) {
     incidentBundle: readJsonIfExists(options.incidentBundle),
     prStackAudit: readJsonIfExists(options.prStackAudit),
     staleBacklogReport: readJsonIfExists(options.staleBacklogReport),
+    postMergeVerification: readJsonIfExists(options.postMergeVerification),
     sliceLedger: readJsonIfExists(options.sliceLedger),
     toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
   }, options);

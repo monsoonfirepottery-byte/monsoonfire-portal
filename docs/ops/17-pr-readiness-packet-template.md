@@ -23,6 +23,7 @@ Use this packet before opening or merging ops PRs that touch Studio Brain eviden
 | Ops script validation | `bash scripts/ops/ops_ci_validate.sh` | passes and writes `output/ops/ci-validate` | |
 | PR stack steering digest | `node scripts/ops/pr_stack_audit.mjs --json --write` | writes `output/ops/pr-stack/pr-stack-audit-latest.md`; capped open counts are labeled as lower bounds | |
 | Stale backlog packet report | `node scripts/ops/stale_backlog_packet_report.mjs --json --write` | writes `output/ops/swarm/stale-backlog-packets-latest.md` with refresh/retire candidates | |
+| Post-merge verification packet | `node scripts/ops/post_merge_verification_packet.mjs --json --write` | writes `output/ops/post-merge/post-merge-verification-latest.md` with approval gates and current artifact health | |
 | Generated readiness packet | `node scripts/ops/pr_readiness_packet.mjs --json --write` | writes `output/ops/pr-readiness/pr-readiness-latest.md` and omits install commands | |
 | Redacted incident bundle v2 | `INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_LOGS=0 INCIDENT_INCLUDE_POST_DEPLOY=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/pr-smoke` | writes `summary.json`, redacted reports, and `output/ops/incidents-v2/incident-bundle-v2-latest.json` for PR readiness | |
 | Post-deploy verification help | `bash scripts/ops/post_deploy_verify.sh --help` | documents safe flags and env vars | |

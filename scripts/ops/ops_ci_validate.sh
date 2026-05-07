@@ -319,18 +319,18 @@ else
   fail "stale_backlog_packet_report smoke"
 fi
 
-section "PR Readiness Packet Smoke"
-if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OUT_DIR}/pr-readiness-packet.json"; then
-  pass "pr_readiness_packet smoke"
-else
-  fail "pr_readiness_packet smoke"
-fi
-
 section "Post-Merge Verification Packet Smoke"
 if node "${REPO_ROOT}/scripts/ops/post_merge_verification_packet.mjs" --json --write >"${OUT_DIR}/post-merge-verification-packet.json"; then
   pass "post_merge_verification_packet smoke"
 else
   fail "post_merge_verification_packet smoke"
+fi
+
+section "PR Readiness Packet Smoke"
+if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OUT_DIR}/pr-readiness-packet.json"; then
+  pass "pr_readiness_packet smoke"
+else
+  fail "pr_readiness_packet smoke"
 fi
 
 section "Admin Effectivity Trend Smoke"

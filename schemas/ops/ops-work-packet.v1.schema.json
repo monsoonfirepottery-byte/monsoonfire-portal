@@ -115,6 +115,26 @@
       },
       "additionalProperties": true
     },
+    "nextExecutablePacket": {
+      "type": "object",
+      "required": ["status", "totalPackets", "approvalGatedCount", "packetId", "title", "priority", "risk", "recommendedOwner", "safeNextStep", "suggestedBranchName", "suggestedPrTitle", "verification", "sourceSignalCount"],
+      "properties": {
+        "status": { "enum": ["ready", "none_ready"] },
+        "totalPackets": { "type": "number", "minimum": 0 },
+        "approvalGatedCount": { "type": "number", "minimum": 0 },
+        "packetId": { "type": "string" },
+        "title": { "type": "string" },
+        "priority": { "type": "string" },
+        "risk": { "type": "string" },
+        "recommendedOwner": { "type": "string" },
+        "safeNextStep": { "type": "string" },
+        "suggestedBranchName": { "type": "string" },
+        "suggestedPrTitle": { "type": "string" },
+        "verification": { "type": "array", "items": { "type": "string" } },
+        "sourceSignalCount": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "packets": {
       "type": "array",
       "items": {

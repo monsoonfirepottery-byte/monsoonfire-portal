@@ -51,7 +51,7 @@
     },
     "evidence": {
       "type": "object",
-      "required": ["artifactValidation", "waveRunner", "workPacket", "packetOutcome", "sliceLedger", "toolInstall"],
+      "required": ["artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcome", "sliceLedger", "toolInstall"],
       "properties": {
         "artifactValidation": {
           "type": "object",
@@ -133,6 +133,36 @@
             "effectivityEvidenceLanes": { "type": ["number", "null"], "minimum": 0 },
             "effectivityApprovalRequiredLanes": { "type": ["number", "null"], "minimum": 0 },
             "effectivityHighSeverityLanes": { "type": ["number", "null"], "minimum": 0 },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "workPacketQuality": {
+          "type": "object",
+          "required": ["status", "generatedAt", "runId", "findings", "warnings", "failures", "sourceSignalAuditStatus", "topFindings"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "runId": { "type": "string" },
+            "findings": { "type": "number", "minimum": 0 },
+            "warnings": { "type": "number", "minimum": 0 },
+            "failures": { "type": "number", "minimum": 0 },
+            "sourceSignalAuditStatus": { "type": "string" },
+            "topFindings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["severity", "code", "packetId", "title", "message"],
+                "properties": {
+                  "severity": { "type": "string" },
+                  "code": { "type": "string" },
+                  "packetId": { "type": "string" },
+                  "title": { "type": "string" },
+                  "message": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
             "parseError": { "type": "string" }
           },
           "additionalProperties": false

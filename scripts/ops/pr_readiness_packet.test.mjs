@@ -85,6 +85,25 @@ const packetOutcomeReport = {
   packetChurn: { orphanedRate: 0, resetRecommended: false },
 };
 
+const workPacketQuality = {
+  schema: "studiobrain-work-packet-quality-lint.v1",
+  generatedAt: "2026-05-07T12:02:45.000Z",
+  runId: "work-packet-quality-test",
+  status: "pass",
+  readOnly: true,
+  sources: { workPacket: "output/ops/swarm/latest-work-packet.json", generatedAt: "2026-05-07T12:01:00.000Z" },
+  summary: {
+    packets: 2,
+    readyPackets: 1,
+    approvalGatedPackets: 1,
+    findings: 0,
+    warnings: 0,
+    failures: 0,
+    sourceSignalAuditStatus: "pass",
+  },
+  findings: [],
+};
+
 const toolInstallRecommendations = {
   schema: "studiobrain-ops-tool-install-recommendations.v1",
   generatedAt: "2026-05-07T12:03:00.000Z",
@@ -112,7 +131,7 @@ const toolInstallRecommendations = {
 
 test("buildPrReadinessPacket summarizes current evidence without executable install commands", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
 
@@ -139,6 +158,8 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.effectivityEvidenceLanes, 4);
   assert.equal(packet.evidence.workPacket.effectivityApprovalRequiredLanes, 1);
   assert.equal(packet.evidence.workPacket.effectivityHighSeverityLanes, 1);
+  assert.equal(packet.evidence.workPacketQuality.status, "pass");
+  assert.equal(packet.evidence.workPacketQuality.findings, 0);
   assert.equal(packet.evidence.toolInstall.installNowCandidates, 2);
   assert.equal(packet.evidence.toolInstall.approvalRequired, 1);
   assert.ok(packet.warnings.some((warning) => warning.includes("require approval")));
@@ -149,6 +170,8 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /Next Executable Packet/);
   assert.match(markdown, /Outcome Ledger/);
   assert.match(markdown, /Packet outcomes/);
+  assert.match(markdown, /Work packet quality/);
+  assert.match(markdown, /sourceSignalAudit=pass/);
   assert.match(markdown, /ops-wp-ready/);
   assert.match(markdown, /Run the evidence refresh/);
   assert.match(markdown, /codex\/ops-refresh-evidence/);
@@ -166,7 +189,7 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
 
 test("buildPrReadinessPacket warns when requested packet id is outside the latest window", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", packetId: "ops-wp-stale" },
   );
 
@@ -180,7 +203,7 @@ test("buildPrReadinessPacket warns when requested packet id is outside the lates
 
 test("buildPrReadinessPacket warns when requested slice ids are outside the latest slice-ledger window", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", sliceIds: "slice-20260507-076,slice-20260507-077" },
   );
 
@@ -198,6 +221,7 @@ test("buildPrReadinessPacket surfaces degraded packet outcome churn", () => {
     artifactValidation,
     waveRunner,
     workPacket,
+    workPacketQuality,
     packetOutcomeReport: {
       ...packetOutcomeReport,
       status: "warn",
@@ -219,6 +243,38 @@ test("buildPrReadinessPacket surfaces degraded packet outcome churn", () => {
   assert.match(renderMarkdown(packet), /orphanedRate=0.75/);
 });
 
+test("buildPrReadinessPacket fails when work-packet quality lint fails", () => {
+  const packet = buildPrReadinessPacket({
+    gitState,
+    artifactValidation,
+    waveRunner,
+    workPacket,
+    workPacketQuality: {
+      ...workPacketQuality,
+      status: "fail",
+      summary: { ...workPacketQuality.summary, findings: 1, warnings: 0, failures: 1 },
+      findings: [
+        {
+          severity: "fail",
+          code: "unsafe-constraints",
+          packetId: "ops-wp-ready",
+          title: "[ops] Refresh evidence",
+          message: "Packet constraints must preserve read-only-first defaults.",
+        },
+      ],
+    },
+    packetOutcomeReport,
+    sliceLedger,
+    toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
+  });
+
+  assert.equal(packet.status, "fail");
+  assert.equal(packet.evidence.workPacketQuality.failures, 1);
+  assert.ok(packet.warnings.some((warning) => warning.includes("work-packet quality lint status is fail")));
+  assert.ok(packet.warnings.some((warning) => warning.includes("unsafe-constraints")));
+  assert.match(renderMarkdown(packet), /Work packet quality \| fail/);
+});
+
 test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet count", () => {
   const packet = buildPrReadinessPacket({
     gitState,
@@ -229,6 +285,7 @@ test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet 
       plan: [{ id: "work-packet", command: "node scripts/studiobrain-ops-work-packet.mjs --json --write --max-packets 1" }],
     },
     workPacket,
+    workPacketQuality,
     packetOutcomeReport,
     sliceLedger,
     toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
@@ -241,7 +298,7 @@ test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet 
 
 test("buildPrReadinessPacket stays compatible with its JSON schema", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
   const schema = JSON.parse(readFileSync("schemas/ops/pr-readiness-packet.v1.schema.json", "utf8"));
@@ -260,6 +317,7 @@ test("buildPrReadinessPacket fails on failing artifact validation", () => {
     },
     waveRunner,
     workPacket,
+    workPacketQuality,
     packetOutcomeReport,
     sliceLedger,
     toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
@@ -275,6 +333,7 @@ test("buildPrReadinessPacket warns on dirty local state", () => {
     artifactValidation,
     waveRunner,
     workPacket,
+    workPacketQuality,
     packetOutcomeReport,
     sliceLedger,
     toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/ops-wave-runner.v1.schema.json",
+  "title": "Studio Brain Ops Wave Runner v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "readOnly",
+    "dryRun",
+    "safeWriteRoots",
+    "plan",
+    "receipts",
+    "nextRecommendedAction"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-wave-runner.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["planned", "pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "dryRun": { "type": "boolean" },
+    "safeWriteRoots": { "type": "array", "items": { "type": "string" } },
+    "plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "order", "command", "expectedArtifacts"],
+        "properties": {
+          "id": { "type": "string" },
+          "order": { "type": "number", "minimum": 1 },
+          "command": { "type": "string" },
+          "expectedArtifacts": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "order", "status", "code", "command", "expectedArtifacts", "stdoutBytes", "stderrBytes"],
+        "properties": {
+          "id": { "type": "string" },
+          "order": { "type": "number", "minimum": 1 },
+          "status": { "enum": ["skipped", "pass", "warn", "fail"] },
+          "code": { "type": ["number", "null"] },
+          "command": { "type": "string" },
+          "expectedArtifacts": { "type": "array", "items": { "type": "string" } },
+          "parsedStatus": { "type": "string" },
+          "stdoutBytes": { "type": "number", "minimum": 0 },
+          "stderrBytes": { "type": "number", "minimum": 0 },
+          "stderrPreview": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "nextRecommendedAction": { "type": "string" }
+  },
+  "additionalProperties": false
+}

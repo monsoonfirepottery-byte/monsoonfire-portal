@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/packet-outcome-report.v1.schema.json",
+  "title": "Studio Brain Ops Packet Outcome Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "readOnly",
+    "sources",
+    "currentPacketWindow",
+    "outcomeSummary",
+    "outcomeHealth",
+    "latestByPacket",
+    "orphanedLatestOutcomes",
+    "operatorNotes"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-packet-outcome-report.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "sources": {
+      "type": "object",
+      "required": ["outcomes", "workPacket"],
+      "properties": {
+        "outcomes": { "type": "string" },
+        "workPacket": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "currentPacketWindow": {
+      "type": "object",
+      "required": ["generatedAt", "packets", "packetIds", "topPackets", "readStatus", "parseError"],
+      "properties": {
+        "generatedAt": { "type": "string" },
+        "packets": { "type": "number", "minimum": 0 },
+        "packetIds": { "type": "array", "items": { "type": "string" } },
+        "topPackets": { "type": "array" },
+        "readStatus": { "type": "string" },
+        "parseError": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "outcomeSummary": { "type": "object" },
+    "outcomeHealth": { "type": "object" },
+    "latestByPacket": { "type": "array" },
+    "orphanedLatestOutcomes": { "type": "array" },
+    "operatorNotes": { "type": "array", "items": { "type": "string" } },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" }
+  },
+  "additionalProperties": false
+}

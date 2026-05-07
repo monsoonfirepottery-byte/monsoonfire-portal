@@ -12,6 +12,7 @@ const DEFAULT_ARTIFACT_VALIDATION = resolve(REPO_ROOT, "output", "ops", "artifac
 const DEFAULT_WORK_PACKET = resolve(REPO_ROOT, "output", "ops", "swarm", "latest-work-packet.json");
 const DEFAULT_SLICE_LEDGER = resolve(REPO_ROOT, "output", "ops", "effectivity", "slice-ledger-latest.json");
 const DEFAULT_TOOL_INSTALL_RECOMMENDATIONS = resolve(REPO_ROOT, "output", "ops", "effectivity", "tool-install-recommendations-latest.json");
+const DEFAULT_WAVE_RUNNER = resolve(REPO_ROOT, "output", "ops", "waves", "ops-wave-runner-latest.json");
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -86,8 +87,8 @@ function summarizeArtifactValidation(report) {
 }
 
 function summarizeWorkPacket(packet) {
-  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null };
-  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, parseError: packet.parseError || "" };
+  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null };
+  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, parseError: packet.parseError || "" };
   const packets = Array.isArray(packet.packets) ? packet.packets : [];
   return {
     status: packets.length > 0 ? "present" : "empty",
@@ -96,12 +97,39 @@ function summarizeWorkPacket(packet) {
     freshSources: packet.evidenceSummary?.freshSources ?? null,
     staleSources: packet.evidenceSummary?.staleSources ?? null,
     topPacket: clean(packets[0]?.title),
+    readyPackets: packets.filter((entry) => clean(entry.status) === "ready").length,
+    approvalGatedPackets: packets.filter((entry) => clean(entry.status) === "approval_gated").length,
+    topPackets: packets.slice(0, 5).map((entry) => ({
+      title: clean(entry.title),
+      status: clean(entry.status),
+      priority: clean(entry.priority),
+    })),
     humanGates: packets.filter((entry) => clean(entry.humanGate)).length,
     toolInstallNowCandidates: packet.evidenceSummary?.toolInstallNowCandidates ?? null,
     toolInstallApprovalRequired: packet.evidenceSummary?.toolInstallApprovalRequired ?? null,
     effectivityEvidenceLanes: packet.evidenceSummary?.effectivityEvidenceLanes ?? null,
     effectivityApprovalRequiredLanes: packet.evidenceSummary?.effectivityApprovalRequiredLanes ?? null,
     effectivityHighSeverityLanes: packet.evidenceSummary?.effectivityHighSeverityLanes ?? null,
+  };
+}
+
+function parseMaxPackets(command) {
+  const match = clean(command).match(/--max-packets\s+(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function summarizeWaveRunner(report) {
+  if (!report) return { status: "missing", generatedAt: "", runId: "", workPacketMaxPackets: null, workPacketCommand: "" };
+  if (report.status === "invalid_json") return { status: "invalid_json", generatedAt: "", runId: "", workPacketMaxPackets: null, workPacketCommand: "", parseError: report.parseError || "" };
+  const workPacketStep = [...(Array.isArray(report.plan) ? report.plan : []), ...(Array.isArray(report.receipts) ? report.receipts : [])]
+    .find((step) => clean(step.id) === "work-packet");
+  const command = clean(workPacketStep?.command);
+  return {
+    status: clean(report.status) || "unknown",
+    generatedAt: clean(report.generatedAt),
+    runId: clean(report.runId),
+    workPacketMaxPackets: parseMaxPackets(command),
+    workPacketCommand: command,
   };
 }
 
@@ -151,6 +179,15 @@ function buildWarnings({ gitState, evidence }) {
   if (gitState.dirtyFiles.length > 0) warnings.push(`${gitState.dirtyFiles.length} dirty file(s) in local worktree`);
   if (evidence.artifactValidation.status === "missing") warnings.push("artifact validation report is missing");
   if (evidence.artifactValidation.warned > 0 || evidence.artifactValidation.missing > 0) warnings.push("artifact validation has warnings or missing artifacts");
+  if (evidence.waveRunner.status === "missing") warnings.push("wave runner latest artifact is missing");
+  if (evidence.waveRunner.status === "planned") warnings.push("wave runner latest artifact is a dry-run plan, not executable wave evidence");
+  if (evidence.waveRunner.workPacketMaxPackets === null) warnings.push("wave runner packet window is unknown");
+  if (
+    evidence.waveRunner.workPacketMaxPackets !== null &&
+    evidence.workPacket.packets > evidence.waveRunner.workPacketMaxPackets
+  ) {
+    warnings.push("latest work packet contains more packets than the wave runner packet window; refresh executable wave evidence");
+  }
   if (evidence.workPacket.status === "missing") warnings.push("work-packet latest artifact is missing");
   if ((evidence.workPacket.staleSources ?? 0) > 0) warnings.push("work packet has stale evidence sources");
   if ((evidence.toolInstall.approvalRequired ?? 0) > 0) warnings.push(`${evidence.toolInstall.approvalRequired} tool recommendation(s) require approval before use`);
@@ -162,6 +199,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
   const gitState = inputs.gitState || collectGitState(options);
   const evidence = {
     artifactValidation: summarizeArtifactValidation(inputs.artifactValidation),
+    waveRunner: summarizeWaveRunner(inputs.waveRunner),
     workPacket: summarizeWorkPacket(inputs.workPacket),
     sliceLedger: summarizeSliceLedger(inputs.sliceLedger),
     toolInstall: summarizeToolInstall(inputs.toolInstallRecommendations),
@@ -200,6 +238,9 @@ function renderMarkdown(packet) {
   const topRecommendations = packet.evidence.toolInstall.topRecommendations
     .map((item) => `- ${item.priority} ${item.tool}: ${item.acquisitionClass}; validate with \`${item.validationCommand}\`; approvalRequired=${item.approvalRequired}`)
     .join("\n") || "- None recorded.";
+  const topPackets = packet.evidence.workPacket.topPackets
+    .map((item) => `- ${item.priority || "P?"} ${item.status || "unknown"}: ${item.title}`)
+    .join("\n") || "- None recorded.";
   const warnings = packet.warnings.map((warning) => `- ${warning}`).join("\n") || "- None.";
   const changedFiles = packet.scope.changedFiles.slice(0, 20).map((file) => `- ${file}`).join("\n") || "- None detected from base.";
   const dirtyFiles = packet.scope.dirtyFiles.map((file) => `- ${file}`).join("\n") || "- Clean.";
@@ -230,9 +271,14 @@ ${dirtyFiles}
 | Check | Status | Detail |
 | --- | --- | --- |
 | Artifact validation | ${packet.evidence.artifactValidation.status} | checks=${packet.evidence.artifactValidation.checks}, warned=${packet.evidence.artifactValidation.warned}, missing=${packet.evidence.artifactValidation.missing}, failed=${packet.evidence.artifactValidation.failed} |
+| Wave runner | ${packet.evidence.waveRunner.status} | run=${packet.evidence.waveRunner.runId}, workPacketMaxPackets=${packet.evidence.waveRunner.workPacketMaxPackets ?? ""} |
 | Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
-| Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
+| Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |
+
+## Work Packet Window
+
+${topPackets}
 
 ## Tool Recommendation Summary
 
@@ -265,6 +311,7 @@ function parseArgs(argv) {
     owner: "Codex",
     sliceIds: "",
     artifactValidation: DEFAULT_ARTIFACT_VALIDATION,
+    waveRunner: DEFAULT_WAVE_RUNNER,
     workPacket: DEFAULT_WORK_PACKET,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
@@ -301,6 +348,7 @@ function parseArgs(argv) {
       "--owner": "owner",
       "--slice-ids": "sliceIds",
       "--artifact-validation": "artifactValidation",
+      "--wave-runner": "waveRunner",
       "--work-packet": "workPacket",
       "--slice-ledger": "sliceLedger",
       "--tool-install-recommendations": "toolInstallRecommendations",
@@ -309,7 +357,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(flags)) {
       const value = read(flag);
       if (value === null) continue;
-      options[key] = ["outputDir", "artifactValidation", "workPacket", "sliceLedger", "toolInstallRecommendations"].includes(key)
+      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "sliceLedger", "toolInstallRecommendations"].includes(key)
         ? resolve(REPO_ROOT, value)
         : value;
       matched = true;
@@ -332,6 +380,7 @@ Options:
   --pr <id-or-url>                     Optional PR number or URL.
   --slice-ids <ids>                    Optional slice id list.
   --artifact-validation <path>         Default: output/ops/artifact-validation/artifact-schema-validation-latest.json.
+  --wave-runner <path>                 Default: output/ops/waves/ops-wave-runner-latest.json.
   --work-packet <path>                 Default: output/ops/swarm/latest-work-packet.json.
   --slice-ledger <path>                Default: output/ops/effectivity/slice-ledger-latest.json.
   --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.
@@ -360,8 +409,9 @@ function writeOutputs(packet, outputDir) {
 function run(rawArgs = process.argv.slice(2)) {
   const options = parseArgs(rawArgs);
   const packet = buildPrReadinessPacket({
-    artifactValidation: readJsonIfExists(options.artifactValidation),
-    workPacket: readJsonIfExists(options.workPacket),
+      artifactValidation: readJsonIfExists(options.artifactValidation),
+      waveRunner: readJsonIfExists(options.waveRunner),
+      workPacket: readJsonIfExists(options.workPacket),
     sliceLedger: readJsonIfExists(options.sliceLedger),
     toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
   }, options);

@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { buildWavePlan, runWave } from "./ops_wave_runner.mjs";
 
@@ -70,6 +74,34 @@ test("runWave dry-run records skipped receipts without executing", () => {
   assert.equal(manifest.status, "planned");
   assert.equal(manifest.dryRun, true);
   assert.deepEqual(manifest.receipts.map((receipt) => receipt.status), ["skipped", "skipped"]);
+});
+
+test("dry-run write does not replace the latest executable wave artifact", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-wave-runner-"));
+  try {
+    const output = execFileSync(
+      process.execPath,
+      [
+        resolve("scripts/ops/ops_wave_runner.mjs"),
+        "--dry-run",
+        "--json",
+        "--write",
+        "--output-dir",
+        dir,
+        "--steps",
+        "swarm-preflight,work-packet",
+      ],
+      { encoding: "utf8" },
+    );
+    const report = JSON.parse(output);
+
+    assert.equal(report.status, "planned");
+    assert.equal(report.artifacts.latestUpdated, false);
+    assert.equal(report.artifacts.latestPath, "");
+    assert.equal(existsSync(join(dir, "ops-wave-runner-latest.json")), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("runWave stops on failed step and keeps downstream artifacts untouched", () => {

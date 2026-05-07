@@ -38,7 +38,7 @@
     },
     "evidence": {
       "type": "object",
-      "required": ["artifactValidation", "workPacket", "sliceLedger", "toolInstall"],
+      "required": ["artifactValidation", "waveRunner", "workPacket", "sliceLedger", "toolInstall"],
       "properties": {
         "artifactValidation": {
           "type": "object",
@@ -55,9 +55,22 @@
           },
           "additionalProperties": false
         },
+        "waveRunner": {
+          "type": "object",
+          "required": ["status", "generatedAt", "runId", "workPacketMaxPackets", "workPacketCommand"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "runId": { "type": "string" },
+            "workPacketMaxPackets": { "type": ["number", "null"], "minimum": 0 },
+            "workPacketCommand": { "type": "string" },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
         "workPacket": {
           "type": "object",
-          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "humanGates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes"],
+          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "readyPackets", "approvalGatedPackets", "topPackets", "humanGates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes"],
           "properties": {
             "status": { "type": "string" },
             "generatedAt": { "type": "string" },
@@ -65,6 +78,21 @@
             "freshSources": { "type": ["number", "null"], "minimum": 0 },
             "staleSources": { "type": ["number", "null"], "minimum": 0 },
             "topPacket": { "type": "string" },
+            "readyPackets": { "type": "number", "minimum": 0 },
+            "approvalGatedPackets": { "type": "number", "minimum": 0 },
+            "topPackets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["title", "status", "priority"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "status": { "type": "string" },
+                  "priority": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
             "humanGates": { "type": "number", "minimum": 0 },
             "toolInstallNowCandidates": { "type": ["number", "null"], "minimum": 0 },
             "toolInstallApprovalRequired": { "type": ["number", "null"], "minimum": 0 },

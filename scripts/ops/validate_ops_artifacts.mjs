@@ -44,6 +44,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/ops-work-packet.v1.schema.json",
   },
   {
+    id: "packet-outcome-report",
+    artifact: "output/ops/swarm/packet-outcome-report-latest.json",
+    schema: "schemas/ops/packet-outcome-report.v1.schema.json",
+  },
+  {
     id: "swarm-lane-preflight",
     artifact: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
     schema: "schemas/ops/swarm-lane-preflight.v1.schema.json",

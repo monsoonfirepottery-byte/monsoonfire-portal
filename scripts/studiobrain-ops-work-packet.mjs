@@ -1092,7 +1092,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   return report;
 }
 
-export { comparePackets, outcomeHealthFromSummary, summarizeFreshEvidence, workPacketReportStatus };
+export { buildOutcomeSummary, comparePackets, outcomeHealthFromSummary, summarizeFreshEvidence, workPacketReportStatus };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

@@ -45,6 +45,7 @@ check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "scripts/ops/slice_ledger.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
+check_file "scripts/ops/tool_install_recommendations.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -67,7 +68,8 @@ for script in \
   "scripts/ops/ops_wave_runner.mjs" \
   "scripts/ops/slice_ledger.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
-  "scripts/ops/installed_tool_inventory.mjs"; do
+  "scripts/ops/installed_tool_inventory.mjs" \
+  "scripts/ops/tool_install_recommendations.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
     pass "node --check ${script}"
   else
@@ -112,6 +114,12 @@ else
   fail "node --test scripts/ops/installed_tool_inventory.test.mjs"
 fi
 
+if node --test "${REPO_ROOT}/scripts/ops/tool_install_recommendations.test.mjs" >"${OUT_DIR}/tool-install-recommendations.test.out" 2>&1; then
+  pass "node --test scripts/ops/tool_install_recommendations.test.mjs"
+else
+  fail "node --test scripts/ops/tool_install_recommendations.test.mjs"
+fi
+
 section "Swarm Lane Preflight Smoke"
 if node "${REPO_ROOT}/scripts/ops/swarm_lane_preflight.mjs" --lane tooling --base origin/main --json --write >"${OUT_DIR}/swarm-lane-preflight.json"; then
   pass "swarm_lane_preflight tooling smoke"
@@ -124,6 +132,19 @@ if node "${REPO_ROOT}/scripts/ops/ops_wave_runner.mjs" --dry-run --json --write 
   pass "ops_wave_runner dry-run smoke"
 else
   fail "ops_wave_runner dry-run smoke"
+fi
+
+section "Tool Install Recommendation Smoke"
+if node "${REPO_ROOT}/scripts/ops/installed_tool_inventory.mjs" --json --write >"${OUT_DIR}/installed-tool-inventory.json"; then
+  pass "installed_tool_inventory smoke"
+else
+  fail "installed_tool_inventory smoke"
+fi
+
+if node "${REPO_ROOT}/scripts/ops/tool_install_recommendations.mjs" --json --write >"${OUT_DIR}/tool-install-recommendations.json"; then
+  pass "tool_install_recommendations smoke"
+else
+  fail "tool_install_recommendations smoke"
 fi
 
 section "Artifact Schema Smoke"

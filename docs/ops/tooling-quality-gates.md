@@ -6,9 +6,12 @@ This packet turns the research swarm recommendations into read-only, auditable t
 
 ```bash
 node scripts/ops/tooling_quality_report.mjs --mode all --json --write
+node scripts/ops/installed_tool_inventory.mjs --json --write
+node scripts/ops/tool_install_recommendations.mjs --json --write
 ```
 
 The report writes ignored artifacts under `output/ops/tooling-quality/`.
+The inventory and install recommendation reports write ignored artifacts under `output/ops/effectivity/`.
 Optional validators can be exercised explicitly after a tool usefulness audit:
 
 ```bash
@@ -41,3 +44,5 @@ Keep new validators report-only until they prove useful over about five slices:
 The first local inventory found required tools present, but optional Docker, make, ShellCheck, gitleaks, sqlfluff, actionlint, and shfmt were missing. The tooling quality report should therefore treat missing Docker/Compose, ShellCheck, SQLFluff, or actionlint as `skipped` unless a useful local install path is explicit.
 
 The first useful signal from this gate was not theoretical: ShellCheck and the LF guard both surfaced CRLF bytes in Ubuntu-targeted shell scripts. Treat that as a follow-up cleanup slice with reviewable line-ending policy, not as an automatic broad rewrite.
+
+Use `tool-install-recommendations-latest.json` as the install decision surface. It can recommend ephemeral report-only runs for tools such as ShellCheck or SQLFluff, while classifying Docker as a host/remote-lane gap and unmodeled tools such as gitleaks or shfmt as not yet justified.

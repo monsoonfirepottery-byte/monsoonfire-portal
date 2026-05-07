@@ -141,6 +141,15 @@
           },
           "referencedArtifact": {
             "type": "string"
+          },
+          "gitHeadField": {
+            "type": "string"
+          },
+          "artifactGitHead": {
+            "type": "string"
+          },
+          "currentGitHead": {
+            "type": "string"
           }
         },
         "additionalProperties": false

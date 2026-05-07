@@ -42,3 +42,10 @@ test("defaultArtifactRegistry includes producer and consumer metadata", () => {
     assert.ok(entry.requiredFor.length > 0);
   }
 });
+
+test("defaultArtifactRegistry marks PR readiness as git-head scoped", () => {
+  const registry = defaultArtifactRegistry();
+  const readiness = registry.find((entry) => entry.id === "pr-readiness-packet");
+
+  assert.equal(readiness.gitHeadField, "scope.head");
+});

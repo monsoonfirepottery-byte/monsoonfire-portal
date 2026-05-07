@@ -70,7 +70,7 @@ Validate generated ops artifacts against their committed schemas:
 node scripts/ops/validate_ops_artifacts.mjs --json --write
 ```
 
-Missing ignored artifacts are warnings. Schema mismatches are failures because they mean a dashboard, swarm packet consumer, or future automation would be reading a contract it cannot trust.
+Missing ignored artifacts are warnings. Schema mismatches are failures because they mean a dashboard, swarm packet consumer, or future automation would be reading a contract it cannot trust. Some artifacts also carry Git-head freshness checks; for example PR readiness packets warn when their recorded `scope.head` no longer matches the current checkout, even if the JSON schema and timestamp are still valid.
 
 Preflight a swarm worker lane before delegation:
 

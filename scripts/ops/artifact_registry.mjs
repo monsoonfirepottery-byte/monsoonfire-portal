@@ -229,6 +229,7 @@ const OPS_ARTIFACT_REGISTRY = [
     artifact: "output/ops/pr-readiness/pr-readiness-latest.json",
     schema: "schemas/ops/pr-readiness-packet.v1.schema.json",
     freshnessTier: "loop",
+    gitHeadField: "scope.head",
   },
   {
     id: "incident-bundle-v2-summary",

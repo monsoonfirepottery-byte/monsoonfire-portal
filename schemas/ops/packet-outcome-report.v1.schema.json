@@ -13,6 +13,7 @@
     "currentPacketWindow",
     "outcomeSummary",
     "outcomeHealth",
+    "ledgerRetention",
     "packetChurn",
     "latestByPacket",
     "orphanedLatestOutcomes",
@@ -48,6 +49,38 @@
     },
     "outcomeSummary": { "type": "object" },
     "outcomeHealth": { "type": "object" },
+    "ledgerRetention": {
+      "type": "object",
+      "required": [
+        "status",
+        "exists",
+        "bytes",
+        "lineCount",
+        "totalOutcomes",
+        "uniquePackets",
+        "latestOutcomePackets",
+        "historicalEntries",
+        "oldestRecordedAt",
+        "newestRecordedAt",
+        "compactionRecommended",
+        "guidance"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "exists": { "type": "boolean" },
+        "bytes": { "type": ["number", "null"], "minimum": 0 },
+        "lineCount": { "type": "number", "minimum": 0 },
+        "totalOutcomes": { "type": "number", "minimum": 0 },
+        "uniquePackets": { "type": "number", "minimum": 0 },
+        "latestOutcomePackets": { "type": "number", "minimum": 0 },
+        "historicalEntries": { "type": "number", "minimum": 0 },
+        "oldestRecordedAt": { "type": "string" },
+        "newestRecordedAt": { "type": "string" },
+        "compactionRecommended": { "type": "boolean" },
+        "guidance": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "packetChurn": {
       "type": "object",
       "required": ["status", "latestOutcomePackets", "orphanedLatestOutcomes", "orphanedRate", "resetRecommended", "guidance"],

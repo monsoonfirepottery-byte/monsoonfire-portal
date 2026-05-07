@@ -37,6 +37,8 @@ test("buildPacketOutcomeReport summarizes outcome health and orphaned packets", 
   assert.equal(report.readOnly, true);
   assert.equal(report.outcomeSummary.total, 3);
   assert.equal(report.outcomeHealth.status, "warn");
+  assert.equal(report.ledgerRetention.status, "pass");
+  assert.equal(report.ledgerRetention.historicalEntries, 0);
   assert.equal(report.currentPacketWindow.packets, 2);
   assert.deepEqual(report.currentPacketWindow.packetIds, ["ops-wp-current", "ops-wp-blocked"]);
   assert.equal(report.orphanedLatestOutcomes.length, 1);
@@ -44,6 +46,7 @@ test("buildPacketOutcomeReport summarizes outcome health and orphaned packets", 
   assert.equal(report.packetChurn.status, "pass");
   assert.equal(report.packetChurn.orphanedRate, 0.333);
   assert.match(renderMarkdown(report), /Orphaned Latest Outcomes/);
+  assert.match(renderMarkdown(report), /Ledger Retention/);
 });
 
 test("buildPacketOutcomeReport warns when latest outcomes mostly reference old packet ids", () => {
@@ -65,6 +68,32 @@ test("buildPacketOutcomeReport warns when latest outcomes mostly reference old p
   assert.equal(report.packetChurn.resetRecommended, true);
   assert.equal(report.packetChurn.orphanedRate, 0.75);
   assert.match(renderMarkdown(report), /Reset recommended: true/);
+});
+
+test("buildPacketOutcomeReport reports retention pressure without deleting outcomes", () => {
+  const report = buildPacketOutcomeReport(
+    {
+      workPacket,
+      outcomeMetadata: { exists: true, bytes: 1024 * 1024 + 1, lineCount: 4 },
+      outcomes: [
+        { packetId: "ops-wp-current", outcome: "helpful", recordedAt: "2026-05-07T12:01:00.000Z" },
+        { packetId: "ops-wp-current", outcome: "stale", recordedAt: "2026-05-07T12:02:00.000Z" },
+        { packetId: "ops-wp-blocked", outcome: "blocked", recordedAt: "2026-05-07T12:03:00.000Z" },
+        { packetId: "ops-wp-blocked", outcome: "helpful", recordedAt: "2026-05-07T12:04:00.000Z" },
+      ],
+    },
+    { generatedAt: "2026-05-07T12:10:00.000Z", runId: "packet-retention-test" },
+  );
+
+  assert.equal(report.status, "warn");
+  assert.equal(report.ledgerRetention.status, "warn");
+  assert.equal(report.ledgerRetention.exists, true);
+  assert.equal(report.ledgerRetention.lineCount, 4);
+  assert.equal(report.ledgerRetention.historicalEntries, 2);
+  assert.equal(report.ledgerRetention.oldestRecordedAt, "2026-05-07T12:01:00.000Z");
+  assert.equal(report.ledgerRetention.newestRecordedAt, "2026-05-07T12:04:00.000Z");
+  assert.equal(report.ledgerRetention.compactionRecommended, true);
+  assert.match(renderMarkdown(report), /Compaction recommended: true/);
 });
 
 test("buildPacketOutcomeReport stays compatible with schema", () => {

@@ -44,6 +44,18 @@ test("buildWavePlan lets callers widen the work-packet window", () => {
   assert.match(widenedPlan[0].commandText, /--max-packets 12$/);
 });
 
+test("buildWavePlan resumes from a named step and keeps downstream order", () => {
+  const plan = buildWavePlan({ fromStep: "packet-outcome-report" });
+
+  assert.deepEqual(plan.slice(0, 4).map((step) => step.id), [
+    "packet-outcome-report",
+    "artifact-validation-pre",
+    "pr-readiness",
+    "artifact-validation",
+  ]);
+  assert.equal(plan[0].order, 1);
+});
+
 test("buildWavePlan refreshes packet outcome report after work packets", () => {
   const plan = buildWavePlan();
   const workPacketIndex = plan.findIndex((step) => step.id === "work-packet");
@@ -129,6 +141,8 @@ test("runWave stops on failed step and keeps downstream artifacts untouched", ()
   assert.equal(manifest.status, "fail");
   assert.deepEqual(manifest.receipts.map((receipt) => receipt.id), ["swarm-preflight", "work-packet"]);
   assert.equal(manifest.receipts[1].stderrPreview, "packet failed");
+  assert.match(manifest.resumeCommand, /--from-step work-packet/);
+  assert.match(manifest.nextRecommendedAction, /Resume with:/);
 });
 
 test("runWave reports warn when a read-only step warns", () => {
@@ -143,4 +157,28 @@ test("runWave reports warn when a read-only step warns", () => {
 
   assert.equal(manifest.status, "warn");
   assert.deepEqual(manifest.receipts.map((receipt) => receipt.status), ["warn", "pass"]);
+  assert.equal(manifest.resumeCommand, "");
+});
+
+test("runWave resume command preserves material runner options", () => {
+  const manifest = runWave(
+    {
+      runId: "unit-wave",
+      steps: ["tooling-quality", "work-packet"],
+      skip: ["tool-inventory"],
+      allowToolInstall: true,
+      maxPackets: 8,
+    },
+    (step) => ({
+      code: step.id === "work-packet" ? 1 : 0,
+      stdout: JSON.stringify({ status: step.id === "work-packet" ? "fail" : "pass" }),
+      stderr: "",
+    }),
+  );
+
+  assert.match(manifest.resumeCommand, /--from-step work-packet/);
+  assert.match(manifest.resumeCommand, /--steps "tooling-quality,work-packet"/);
+  assert.match(manifest.resumeCommand, /--skip tool-inventory/);
+  assert.match(manifest.resumeCommand, /--allow-tool-install/);
+  assert.match(manifest.resumeCommand, /--max-packets 8/);
 });

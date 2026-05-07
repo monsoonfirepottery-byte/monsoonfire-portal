@@ -44,13 +44,19 @@ Covered:
 - `studiobrain_minio`
 - `netdata`
 - `uptime-kuma`
+- `monitoring-proxy` in tracked monitoring Compose, via local `/healthz` Caddy probe
+- `studiobrain_proxy` in tracked optional proxy Compose, via local `/healthz` Caddy probe
 
 Missing:
 
 - `studiobrain_otel_collector`
-- `monitoring-proxy`
 - `searxng-searxng-1`
 - `searxng-redis-1`
+
+Notes:
+
+- The live SearXNG Compose path is `/home/wuff/searxng/docker-compose.yml`, outside this tracked repo. Add its healthchecks through an approval-gated host patch or by importing the compose source into a tracked operations lane first.
+- Healthcheck changes require container recreate to take effect; do not restart or recreate containers without explicit approval and a service-window plan.
 
 ## Restart Policy Coverage
 
@@ -139,6 +145,7 @@ Requires service window:
 - Change port binds.
 - Change image tags.
 - Add or alter hard resource caps.
+- Apply healthcheck stanza changes to already-running containers, because Docker Compose must recreate the affected container for the new healthcheck to appear.
 - Restart or recreate containers.
 
 Requires human approval:

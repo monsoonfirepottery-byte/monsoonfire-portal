@@ -416,6 +416,21 @@ function statusFromSections(sections) {
   return "pass";
 }
 
+function findingCounts(findings = []) {
+  const rows = Array.isArray(findings) ? findings : [];
+  const coverageGaps = rows.filter((finding) => finding?.code === "tool_missing").length;
+  return {
+    rawFindings: rows.length,
+    coverageGaps,
+    actionableFindings: rows.length - coverageGaps
+  };
+}
+
+function annotateSection(section) {
+  const counts = findingCounts(section.findings);
+  return { ...section, ...counts };
+}
+
 function markdown(report) {
   const lines = [
     "# Studio Brain Ops Tooling Quality Report",
@@ -428,12 +443,24 @@ function markdown(report) {
     "## Summary",
     "",
     `- Checked files: ${report.summary.checkedFiles}`,
-    `- Findings: ${report.summary.findings}`,
+    `- Actionable findings: ${report.summary.actionableFindings}`,
+    `- Coverage gaps: ${report.summary.coverageGaps}`,
+    `- Raw finding rows: ${report.summary.rawFindings}`,
     `- Skipped sections: ${report.summary.skipped}`,
     ""
   ];
   for (const section of report.sections) {
-    lines.push(`## ${section.id}`, "", `- Status: ${section.status}`, `- Tool: ${section.tool}`, `- Checked files: ${section.checkedFiles}`, `- Findings: ${section.findings.length}`, "");
+    lines.push(
+      `## ${section.id}`,
+      "",
+      `- Status: ${section.status}`,
+      `- Tool: ${section.tool}`,
+      `- Checked files: ${section.checkedFiles}`,
+      `- Actionable findings: ${section.actionableFindings}`,
+      `- Coverage gaps: ${section.coverageGaps}`,
+      `- Raw finding rows: ${section.rawFindings}`,
+      ""
+    );
     for (const finding of section.findings.slice(0, 20)) {
       lines.push(`- ${finding.file ? `${finding.file}: ` : ""}${finding.code}: ${clean(finding.message)}`);
     }
@@ -462,19 +489,23 @@ function buildReport(options) {
   if (options.mode === "all" || options.mode === "sqlfluff") sections.push(sqlfluffReport(options));
   if (options.mode === "all" || options.mode === "actionlint") sections.push(actionlintReport(options));
   if (options.mode === "all" || options.mode === "compose-config") sections.push(composeConfigReport(options));
+  const annotatedSections = sections.map(annotateSection);
   const summary = {
-    checkedFiles: sections.reduce((sum, section) => sum + section.checkedFiles, 0),
-    findings: sections.reduce((sum, section) => sum + section.findings.length, 0),
-    skipped: sections.filter((section) => section.status === "skipped").length
+    checkedFiles: annotatedSections.reduce((sum, section) => sum + section.checkedFiles, 0),
+    findings: annotatedSections.reduce((sum, section) => sum + section.actionableFindings, 0),
+    actionableFindings: annotatedSections.reduce((sum, section) => sum + section.actionableFindings, 0),
+    coverageGaps: annotatedSections.reduce((sum, section) => sum + section.coverageGaps, 0),
+    rawFindings: annotatedSections.reduce((sum, section) => sum + section.rawFindings, 0),
+    skipped: annotatedSections.filter((section) => section.status === "skipped").length
   };
   return {
     schema: "studiobrain-ops-tooling-quality-report.v1",
     generatedAt: nowIso(),
     mode: options.mode,
     allowInstall: options.allowInstall,
-    status: statusFromSections(sections),
+    status: statusFromSections(annotatedSections),
     summary,
-    sections
+    sections: annotatedSections
   };
 }
 
@@ -495,7 +526,9 @@ function main(argv = process.argv.slice(2)) {
 }
 
 export {
+  annotateSection,
   buildReport,
+  findingCounts,
   main,
   parseArgs,
   parseActionlintOutput,

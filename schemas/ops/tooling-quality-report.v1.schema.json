@@ -12,10 +12,13 @@
     "status": { "enum": ["pass", "warn", "fail"] },
     "summary": {
       "type": "object",
-      "required": ["checkedFiles", "findings", "skipped"],
+      "required": ["checkedFiles", "findings", "actionableFindings", "coverageGaps", "rawFindings", "skipped"],
       "properties": {
         "checkedFiles": { "type": "integer", "minimum": 0 },
         "findings": { "type": "integer", "minimum": 0 },
+        "actionableFindings": { "type": "integer", "minimum": 0 },
+        "coverageGaps": { "type": "integer", "minimum": 0 },
+        "rawFindings": { "type": "integer", "minimum": 0 },
         "skipped": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
@@ -24,12 +27,15 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "status", "tool", "checkedFiles", "findings"],
+        "required": ["id", "status", "tool", "checkedFiles", "findings", "actionableFindings", "coverageGaps", "rawFindings"],
         "properties": {
           "id": { "enum": ["shell-lf", "shellcheck", "powershell", "sqlfluff", "actionlint", "compose-config"] },
           "status": { "enum": ["pass", "warn", "fail", "skipped"] },
           "tool": { "type": "string" },
           "checkedFiles": { "type": "integer", "minimum": 0 },
+          "actionableFindings": { "type": "integer", "minimum": 0 },
+          "coverageGaps": { "type": "integer", "minimum": 0 },
+          "rawFindings": { "type": "integer", "minimum": 0 },
           "command": { "type": "string" },
           "outputPreview": { "type": "string" },
           "findings": {

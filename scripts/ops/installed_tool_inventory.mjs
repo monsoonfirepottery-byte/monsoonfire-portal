@@ -215,8 +215,12 @@ function effectivityFromToolingReport(report) {
   const assign = (toolName, section) => {
     if (!section) return;
     const findings = Array.isArray(section.findings) ? section.findings : [];
-    const coverageGaps = findings.filter((finding) => finding?.code === "tool_missing").length;
-    const actionableFindings = findings.length - coverageGaps;
+    const coverageGaps = Number.isInteger(section.coverageGaps)
+      ? section.coverageGaps
+      : findings.filter((finding) => finding?.code === "tool_missing").length;
+    const actionableFindings = Number.isInteger(section.actionableFindings)
+      ? section.actionableFindings
+      : findings.length - coverageGaps;
     byTool[toolName] = {
       observed: true,
       actionableFindings,

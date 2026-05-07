@@ -388,7 +388,38 @@ function buildOutcomeSummary(outcomes) {
   };
 }
 
-function summarizeFreshEvidence(inputs = {}) {
+function freshness(generatedAt, options = {}) {
+  const maxAgeHours = Number(options.maxAgeHours ?? 24);
+  const now = options.now || nowIso();
+  const generatedMs = Date.parse(clean(generatedAt));
+  const nowMs = Date.parse(clean(now));
+  if (!clean(generatedAt)) return { status: "", ageHours: null, maxAgeHours, stale: false };
+  if (Number.isNaN(generatedMs) || Number.isNaN(nowMs)) {
+    return { status: "invalid_timestamp", ageHours: null, maxAgeHours, stale: true };
+  }
+  const ageHours = Number(Math.max(0, (nowMs - generatedMs) / 3_600_000).toFixed(2));
+  const stale = maxAgeHours > 0 && ageHours > maxAgeHours;
+  return { status: stale ? "stale" : "", ageHours, maxAgeHours, stale };
+}
+
+function applyFreshness(source, options = {}) {
+  const result = freshness(source.generatedAt, options);
+  if (!result.status) {
+    return {
+      ...source,
+      sourceStatus: source.status,
+      freshness: result,
+    };
+  }
+  return {
+    ...source,
+    sourceStatus: source.status,
+    status: result.status,
+    freshness: result,
+  };
+}
+
+function summarizeFreshEvidence(inputs = {}, options = {}) {
   const adminAudit = inputs.adminAudit || null;
   const sliceLedger = inputs.sliceLedger || null;
   const toolInventory = inputs.toolInventory || null;
@@ -401,7 +432,7 @@ function summarizeFreshEvidence(inputs = {}) {
   });
   return {
     adminAudit: adminAudit && adminAudit.status !== "invalid_json"
-      ? {
+      ? applyFreshness({
           source: "fresh-admin-audit",
           path: inputs.adminAuditPath || "output/ops/effectivity/admin-effectivity-audit-latest.json",
           status: clean(adminAudit.status) || "unknown",
@@ -411,7 +442,7 @@ function summarizeFreshEvidence(inputs = {}) {
             scores: adminAudit.scores || null,
             privilegedEvidence: adminAudit.sections?.effectivityReport?.report?.sections?.privilegedEvidence?.status || "",
           },
-        }
+        }, options)
       : unavailable(
           "fresh-admin-audit",
           inputs.adminAuditPath || "output/ops/effectivity/admin-effectivity-audit-latest.json",
@@ -419,7 +450,7 @@ function summarizeFreshEvidence(inputs = {}) {
           adminAudit?.parseError ? { parseError: adminAudit.parseError } : {},
         ),
     sliceLedger: sliceLedger && sliceLedger.status !== "invalid_json"
-      ? {
+      ? applyFreshness({
           source: "fresh-slice-ledger",
           path: inputs.sliceLedgerPath || "output/ops/effectivity/slice-ledger-latest.json",
           status: sliceLedger.counts?.failed > 0 ? "fail" : sliceLedger.counts?.blocked > 0 || sliceLedger.counts?.noop > 0 ? "warn" : "pass",
@@ -429,7 +460,7 @@ function summarizeFreshEvidence(inputs = {}) {
             counts: sliceLedger.counts || null,
             scores: sliceLedger.scores || null,
           },
-        }
+        }, options)
       : unavailable(
           "fresh-slice-ledger",
           inputs.sliceLedgerPath || "output/ops/effectivity/slice-ledger-latest.json",
@@ -437,7 +468,7 @@ function summarizeFreshEvidence(inputs = {}) {
           sliceLedger?.parseError ? { parseError: sliceLedger.parseError } : {},
         ),
     toolInventory: toolInventory && toolInventory.status !== "invalid_json"
-      ? {
+      ? applyFreshness({
           source: "fresh-tool-inventory",
           path: inputs.toolInventoryPath || "output/ops/effectivity/installed-tool-inventory-latest.json",
           status: clean(toolInventory.status) || "unknown",
@@ -449,7 +480,7 @@ function summarizeFreshEvidence(inputs = {}) {
             actionableFindings: toolInventory.summary?.actionableFindings ?? null,
             promotionCandidates: toolInventory.summary?.promotionCandidates ?? null,
           },
-        }
+        }, options)
       : unavailable(
           "fresh-tool-inventory",
           inputs.toolInventoryPath || "output/ops/effectivity/installed-tool-inventory-latest.json",
@@ -463,7 +494,13 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
   const risks = parseRiskRegister(inputs.riskMarkdown || "");
   const backlog = parseBacklog(inputs.backlogMarkdown || "");
   const effectivity = parseEffectivity(inputs.effectivityMarkdown || "");
-  const freshEvidence = summarizeFreshEvidence(inputs);
+  const freshEvidence = summarizeFreshEvidence(inputs, {
+    maxAgeHours: options.maxAgeHours,
+    now: options.now || options.generatedAt,
+  });
+  const freshEvidenceSources = [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory];
+  const freshSources = freshEvidenceSources.filter((source) => !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status));
+  const staleSources = freshEvidenceSources.filter((source) => ["invalid_timestamp", "stale"].includes(source.status));
   const packets = backlog
     .filter((item) => priorityRank(item.priority) <= 2)
     .map((item) => makePacket(item, matchingRisk(item, risks), effectivity, freshEvidence))
@@ -495,7 +532,8 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       backlogItems: backlog.length,
       effectivityNextSafeSlices: effectivity.nextSafeSlices.length,
       remainingApprovalGates: effectivity.remainingApprovalGates.length,
-      freshSources: [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory].filter((source) => !["missing", "invalid_json"].includes(source.status)).length,
+      freshSources: freshSources.length,
+      staleSources: staleSources.length,
       toolPromotionCandidates: freshEvidence.toolInventory.summary.promotionCandidates ?? null,
       toolActionableFindings: freshEvidence.toolInventory.summary.actionableFindings ?? null,
     },
@@ -516,6 +554,7 @@ function parseArgs(argv) {
     adminAudit: DEFAULT_ADMIN_AUDIT,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInventory: DEFAULT_TOOL_INVENTORY,
+    maxAgeHours: 24,
     maxPackets: 8,
     recordOutcome: "",
     outcome: "",
@@ -579,6 +618,11 @@ function parseArgs(argv) {
       args.maxPackets = Math.max(1, Number(maxPackets) || args.maxPackets);
       continue;
     }
+    const maxAgeHours = read("--max-age-hours");
+    if (maxAgeHours !== null) {
+      args.maxAgeHours = Math.max(0, Number(maxAgeHours) || 0);
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
   args.runId ||= `ops-work-packet-${new Date().toISOString().replace(/[:.]/g, "-")}`;
@@ -604,6 +648,7 @@ function printUsage() {
       "  --admin-audit <path>    Default: output/ops/effectivity/admin-effectivity-audit-latest.json.",
       "  --slice-ledger <path>   Default: output/ops/effectivity/slice-ledger-latest.json.",
       "  --tool-inventory <path> Default: output/ops/effectivity/installed-tool-inventory-latest.json.",
+      "  --max-age-hours <n>     Warn when fresh-input artifacts are older than this. Default: 24.",
       "  --max-packets <n>       Default: 8.",
       "  --record-outcome <id>   Append an outcome ledger entry.",
       "  --outcome <value>       used | helpful | resolved | not_used | stale | misleading | blocked | superseded",
@@ -637,6 +682,7 @@ function recordOutcome(options) {
 
 function workPacketReportStatus(packet) {
   if (packet.packets.length === 0) return "warn";
+  if ((packet.evidenceSummary?.staleSources ?? 0) > 0) return "warn";
   if ((packet.evidenceSummary?.freshSources ?? 0) === 0) return "warn";
   return "pass";
 }
@@ -665,6 +711,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
     {
       runId: options.runId,
       maxPackets: options.maxPackets,
+      maxAgeHours: options.maxAgeHours,
     },
   );
   const outcomes = readJsonl(options.outcomes);

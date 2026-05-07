@@ -36,13 +36,14 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "toolPromotionCandidates", "toolActionableFindings"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
         "effectivityNextSafeSlices": { "type": "number", "minimum": 0 },
         "remainingApprovalGates": { "type": "number", "minimum": 0 },
         "freshSources": { "type": "number", "minimum": 0 },
+        "staleSources": { "type": "number", "minimum": 0 },
         "toolPromotionCandidates": { "type": ["number", "null"], "minimum": 0 },
         "toolActionableFindings": { "type": ["number", "null"], "minimum": 0 }
       },

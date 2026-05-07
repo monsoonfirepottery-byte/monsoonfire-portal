@@ -174,8 +174,10 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.risks, 2);
   assert.equal(report.evidenceSummary.backlogItems, 2);
   assert.equal(report.evidenceSummary.freshSources, 3);
+  assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.evidenceSummary.toolPromotionCandidates, 2);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
+  assert.equal(report.freshEvidence.adminAudit.freshness.stale, false);
   assert.ok(report.packets.length >= 2);
   assert.ok(report.packets.every((packet) => packet.packetId.startsWith("ops-wp-")));
   assert.ok(report.packets.every((packet) => packet.constraints.readOnlyFirst));
@@ -208,6 +210,7 @@ test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
   );
 
   assert.equal(report.evidenceSummary.freshSources, 1);
+  assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "invalid_json");
   assert.equal(report.freshEvidence.toolInventory.summary.parseError, "bad tools");
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"), true);
@@ -234,6 +237,29 @@ test("workPacketReportStatus warns when falling back to static docs only", () =>
 
   assert.equal(workPacketReportStatus(staticOnly), "warn");
   assert.equal(workPacketReportStatus(fresh), "pass");
+});
+
+test("workPacketReportStatus warns when fresh evidence is stale", () => {
+  const stale = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+    },
+    {
+      maxPackets: 1,
+      maxAgeHours: 1,
+      now: "2026-05-07T12:00:00.000Z",
+    },
+  );
+
+  assert.equal(stale.evidenceSummary.freshSources, 0);
+  assert.equal(stale.evidenceSummary.staleSources, 3);
+  assert.equal(stale.freshEvidence.adminAudit.status, "stale");
+  assert.equal(stale.freshEvidence.adminAudit.sourceStatus, "pass");
+  assert.equal(stale.freshEvidence.adminAudit.freshness.stale, true);
+  assert.equal(workPacketReportStatus(stale), "warn");
 });
 
 test("runOpsWorkPacket returns a schema-compatible CLI report", () => {

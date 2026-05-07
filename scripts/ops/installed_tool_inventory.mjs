@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "effectivity");
 const DEFAULT_LATEST = resolve(DEFAULT_OUTPUT_DIR, "installed-tool-inventory-latest.json");
+const DEFAULT_TOOLING_QUALITY_REPORT = resolve(REPO_ROOT, "output", "ops", "tooling-quality", "tooling-quality-latest.json");
 
 const TOOL_PROBES = [
   { name: "node", required: true, versionArgs: ["--version"], note: "Node scripts power the admin harness." },
@@ -44,6 +45,8 @@ Options:
   --write             Write timestamped and latest JSON artifacts. Default: no write.
   --output-dir <path> Artifact directory. Default: output/ops/effectivity.
   --output <path>     Exact JSON output path.
+  --tooling-report <path>
+                      Optional tooling-quality report for effectivity scoring.
 `;
 }
 
@@ -84,14 +87,39 @@ function shellQuote(value) {
 }
 
 function commandVersion(command, args) {
-  const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 5000 });
+  const invocation = commandInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, { encoding: "utf8", windowsHide: true, timeout: 5000 });
   if (result.error || result.status !== 0) return null;
   return clean(`${result.stdout || ""}${result.stderr || ""}`.split(/\r?\n/).find(Boolean) || "");
 }
 
-function probeTool(tool) {
+function commandInvocation(command, args) {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", ["call", cmdQuote(command), ...args.map(cmdQuote)].join(" ")]
+    };
+  }
+  return { command, args };
+}
+
+function cmdQuote(value) {
+  const raw = String(value);
+  if (/^[A-Za-z0-9_./:\\=+-]+$/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function preferredExecutable(paths) {
+  if (process.platform === "win32") {
+    return paths.find((path) => /\.(exe|cmd|bat)$/i.test(path)) || paths[0] || null;
+  }
+  return paths[0] || null;
+}
+
+function probeTool(tool, effectivityByTool) {
   const paths = whereCommand(tool.name);
   const installed = paths.length > 0;
+  const executable = installed ? preferredExecutable(paths) : null;
   const status = !installed
     ? (tool.required ? "missing_required" : "missing_optional")
     : paths.length > 1
@@ -101,10 +129,11 @@ function probeTool(tool) {
     name: tool.name,
     status,
     required: tool.required,
-    path: paths[0] ?? null,
+    path: executable,
     allPaths: paths,
-    version: installed ? commandVersion(tool.name, tool.versionArgs) : null,
-    note: tool.note
+    version: installed && executable ? commandVersion(executable, tool.versionArgs) : null,
+    note: tool.note,
+    effectivity: effectivityByTool[tool.name] || defaultToolEffectivity(status, tool.required)
   };
 }
 
@@ -113,7 +142,8 @@ function parseArgs(argv) {
     json: false,
     write: false,
     outputDir: DEFAULT_OUTPUT_DIR,
-    output: ""
+    output: "",
+    toolingReport: DEFAULT_TOOLING_QUALITY_REPORT
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -145,6 +175,14 @@ function parseArgs(argv) {
       options.output = resolveRepoPath(arg.slice("--output=".length));
       continue;
     }
+    if (arg === "--tooling-report") {
+      options.toolingReport = resolveRepoPath(argv[++index]);
+      continue;
+    }
+    if (arg.startsWith("--tooling-report=")) {
+      options.toolingReport = resolveRepoPath(arg.slice("--tooling-report=".length));
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
   return options;
@@ -159,13 +197,72 @@ function declaredRegistrySummary() {
   };
 }
 
-function buildInventory() {
-  const tools = TOOL_PROBES.map(probeTool);
+function defaultToolEffectivity(status, required) {
+  return {
+    observed: false,
+    actionableFindings: 0,
+    falsePositiveCount: 0,
+    minutesSaved: 0,
+    promotionState: required ? "required" : status === "missing_optional" ? "optional_missing" : "not_observed",
+    evidence: []
+  };
+}
+
+function effectivityFromToolingReport(report) {
+  const sections = Array.isArray(report?.sections) ? report.sections : [];
+  const byTool = {};
+  const assign = (toolName, section) => {
+    if (!section) return;
+    const actionableFindings = Array.isArray(section.findings) ? section.findings.length : 0;
+    byTool[toolName] = {
+      observed: true,
+      actionableFindings,
+      falsePositiveCount: 0,
+      minutesSaved: actionableFindings > 0 ? Math.min(30, actionableFindings) : 0,
+      promotionState: section.status === "skipped"
+        ? "optional_missing"
+        : actionableFindings > 0
+          ? "candidate"
+          : "report_only",
+      evidence: [`tooling-quality:${section.id}:${section.status}`]
+    };
+  };
+
+  assign("node", sections.find((section) => section.id === "shell-lf"));
+  assign("shellcheck", sections.find((section) => section.id === "shellcheck"));
+  assign("pwsh", sections.find((section) => section.id === "powershell"));
+  assign("powershell", sections.find((section) => section.id === "powershell"));
+  assign("sqlfluff", sections.find((section) => section.id === "sqlfluff"));
+  byTool.uv = runnerEffectivity("uv", sections.find((section) => section.id === "sqlfluff"));
+  byTool.npx = runnerEffectivity("npx", sections.find((section) => section.id === "shellcheck"));
+  return byTool;
+}
+
+function runnerEffectivity(toolName, section) {
+  if (!section) return undefined;
+  return {
+    observed: true,
+    actionableFindings: 0,
+    falsePositiveCount: 0,
+    minutesSaved: 0,
+    promotionState: section.status === "skipped" ? "optional_missing" : "report_only",
+    evidence: [`tooling-quality:${section.id}:${section.status}:runner:${toolName}`]
+  };
+}
+
+function buildInventory(options = {}) {
+  const toolingReport = readJson(options.toolingReport || DEFAULT_TOOLING_QUALITY_REPORT);
+  const effectivityByTool = effectivityFromToolingReport(toolingReport);
+  const tools = TOOL_PROBES.map((tool) => probeTool(tool, effectivityByTool));
   const summary = {
     installed: tools.filter((tool) => tool.status === "installed" || tool.status === "shadowed").length,
     missingRequired: tools.filter((tool) => tool.status === "missing_required").length,
     missingOptional: tools.filter((tool) => tool.status === "missing_optional").length,
-    shadowed: tools.filter((tool) => tool.status === "shadowed").length
+    shadowed: tools.filter((tool) => tool.status === "shadowed").length,
+    actionableFindings: tools.reduce((sum, tool) => sum + (tool.effectivity?.actionableFindings || 0), 0),
+    falsePositiveCount: tools.reduce((sum, tool) => sum + (tool.effectivity?.falsePositiveCount || 0), 0),
+    minutesSaved: tools.reduce((sum, tool) => sum + (tool.effectivity?.minutesSaved || 0), 0),
+    promotionCandidates: tools.filter((tool) => tool.effectivity?.promotionState === "candidate").length
   };
   return {
     schema: "studiobrain-installed-tool-inventory.v1",
@@ -173,6 +270,17 @@ function buildInventory() {
     status: summary.missingRequired > 0 ? "fail" : summary.shadowed > 0 ? "warn" : "pass",
     summary,
     declaredRegistry: declaredRegistrySummary(),
+    effectivitySource: toolingReport?.schema === "studiobrain-ops-tooling-quality-report.v1"
+      ? {
+          path: relative(REPO_ROOT, options.toolingReport || DEFAULT_TOOLING_QUALITY_REPORT).replace(/\\/g, "/"),
+          generatedAt: toolingReport.generatedAt || null,
+          status: toolingReport.status || "unknown"
+        }
+      : {
+          path: relative(REPO_ROOT, options.toolingReport || DEFAULT_TOOLING_QUALITY_REPORT).replace(/\\/g, "/"),
+          generatedAt: null,
+          status: "unavailable"
+        },
     tools
   };
 }
@@ -182,21 +290,35 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  const inventory = buildInventory();
-  if (options.write || options.output) {
-    const timestamp = inventory.generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-    const outputPath = options.output || resolve(options.outputDir, `installed-tool-inventory-${timestamp}.json`);
-    writeJson(outputPath, inventory);
-    writeJson(resolve(dirname(outputPath), "installed-tool-inventory-latest.json"), { ...inventory, artifactPath: relative(REPO_ROOT, outputPath).replace(/\\/g, "/") });
+function main(argv = process.argv.slice(2)) {
+  try {
+    const options = parseArgs(argv);
+    const inventory = buildInventory(options);
+    if (options.write || options.output) {
+      const timestamp = inventory.generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+      const outputPath = options.output || resolve(options.outputDir, `installed-tool-inventory-${timestamp}.json`);
+      writeJson(outputPath, inventory);
+      writeJson(resolve(dirname(outputPath), "installed-tool-inventory-latest.json"), { ...inventory, artifactPath: relative(REPO_ROOT, outputPath).replace(/\\/g, "/") });
+    }
+    if (options.json || !options.write) {
+      process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
+    } else {
+      process.stdout.write(`installed tool inventory: ${inventory.status}, installed=${inventory.summary.installed}, missingRequired=${inventory.summary.missingRequired}\n`);
+    }
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
   }
-  if (options.json || !options.write) {
-    process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
-  } else {
-    process.stdout.write(`installed tool inventory: ${inventory.status}, installed=${inventory.summary.installed}, missingRequired=${inventory.summary.missingRequired}\n`);
-  }
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+}
+
+export {
+  buildInventory,
+  effectivityFromToolingReport,
+  main,
+  parseArgs,
+  probeTool
+};
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main();
 }

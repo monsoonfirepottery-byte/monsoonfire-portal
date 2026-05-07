@@ -91,6 +91,23 @@
           "freshnessTier": {
             "type": "string"
           },
+          "producerCommand": {
+            "type": "string"
+          },
+          "producerStep": {
+            "type": "string"
+          },
+          "safeWriteRoot": {
+            "type": "string"
+          },
+          "consumers": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "requiredFor": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "status": {
             "enum": [
               "pass",

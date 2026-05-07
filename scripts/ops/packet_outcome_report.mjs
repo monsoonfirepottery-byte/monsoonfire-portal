@@ -154,9 +154,19 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
   const health = outcomeHealthFromSummary(summary);
   const latestByPacket = annotateOutcomes(summary.latestByPacket || [], currentPacketIds);
   const orphanedLatestOutcomes = latestByPacket.filter((entry) => entry.packetId && !entry.inCurrentWindow);
+  const latestOutcomePackets = latestByPacket.length;
+  const orphanedRate = latestOutcomePackets > 0 ? Number((orphanedLatestOutcomes.length / latestOutcomePackets).toFixed(3)) : 0;
+  const packetChurn = {
+    status: latestOutcomePackets >= 3 && orphanedRate > 0.5 ? "warn" : "pass",
+    latestOutcomePackets,
+    orphanedLatestOutcomes: orphanedLatestOutcomes.length,
+    orphanedRate,
+    resetRecommended: latestOutcomePackets >= 3 && orphanedRate > 0.5,
+    guidance: "When most latest outcomes refer to packet ids outside the current window, keep the ledger for history but record new outcomes against current packet ids before using rates for steering.",
+  };
   const status = workPacket?.status === "invalid_json"
     ? "fail"
-    : health.status === "warn"
+    : health.status === "warn" || packetChurn.status === "warn"
       ? "warn"
       : "pass";
 
@@ -180,6 +190,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
     },
     outcomeSummary: summary,
     outcomeHealth: health,
+    packetChurn,
     latestByPacket,
     orphanedLatestOutcomes,
     operatorNotes: [
@@ -211,6 +222,8 @@ Run ID: ${report.runId}
 - Stale/misleading rate: ${report.outcomeSummary.staleOrMisleadingRate}
 - Maturity: ${report.outcomeHealth.maturity}
 - Score: ${report.outcomeHealth.score}
+- Packet churn: ${report.packetChurn.status} (${report.packetChurn.orphanedLatestOutcomes}/${report.packetChurn.latestOutcomePackets} latest outcomes orphaned)
+- Reset recommended: ${report.packetChurn.resetRecommended}
 
 ### Warnings
 

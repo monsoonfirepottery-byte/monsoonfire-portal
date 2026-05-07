@@ -16,6 +16,7 @@
         "missingOptional": { "type": "integer", "minimum": 0 },
         "shadowed": { "type": "integer", "minimum": 0 },
         "actionableFindings": { "type": "integer", "minimum": 0 },
+        "coverageGaps": { "type": "integer", "minimum": 0 },
         "falsePositiveCount": { "type": "integer", "minimum": 0 },
         "minutesSaved": { "type": "integer", "minimum": 0 },
         "promotionCandidates": { "type": "integer", "minimum": 0 }
@@ -59,9 +60,10 @@
             "properties": {
               "observed": { "type": "boolean" },
               "actionableFindings": { "type": "integer", "minimum": 0 },
+              "coverageGaps": { "type": "integer", "minimum": 0 },
               "falsePositiveCount": { "type": "integer", "minimum": 0 },
               "minutesSaved": { "type": "integer", "minimum": 0 },
-              "promotionState": { "enum": ["required", "optional_missing", "not_observed", "candidate", "report_only"] },
+              "promotionState": { "enum": ["required", "optional_missing", "not_observed", "candidate", "report_only", "coverage_gap"] },
               "evidence": { "type": "array", "items": { "type": "string" } }
             },
             "additionalProperties": false

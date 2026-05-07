@@ -29,6 +29,7 @@ test("effectivityFromToolingReport maps findings to tool usefulness", () => {
   });
 
   assert.equal(effectivity.node.actionableFindings, 2);
+  assert.equal(effectivity.node.coverageGaps, 0);
   assert.equal(effectivity.node.promotionState, "candidate");
   assert.equal(effectivity.shellcheck.actionableFindings, 1);
   assert.equal(effectivity.sqlfluff.promotionState, "report_only");
@@ -41,11 +42,33 @@ test("effectivityFromToolingReport maps findings to tool usefulness", () => {
   assert.equal(effectivity.npx.actionableFindings, 0);
 });
 
+test("effectivityFromToolingReport treats missing tools as coverage gaps, not findings", () => {
+  const effectivity = effectivityFromToolingReport({
+    schema: "studiobrain-ops-tooling-quality-report.v1",
+    generatedAt: "2026-05-07T08:00:00.000Z",
+    status: "warn",
+    sections: [
+      { id: "shellcheck", status: "skipped", findings: [{ code: "tool_missing" }] },
+      { id: "compose-config", status: "skipped", findings: [{ code: "tool_missing" }] }
+    ]
+  });
+
+  assert.equal(effectivity.shellcheck.actionableFindings, 0);
+  assert.equal(effectivity.shellcheck.coverageGaps, 1);
+  assert.equal(effectivity.shellcheck.minutesSaved, 0);
+  assert.equal(effectivity.shellcheck.promotionState, "coverage_gap");
+  assert.equal(effectivity.docker.actionableFindings, 0);
+  assert.equal(effectivity.docker.coverageGaps, 1);
+  assert.equal(effectivity.docker.minutesSaved, 0);
+  assert.equal(effectivity.docker.promotionState, "coverage_gap");
+});
+
 test("buildInventory includes effectivity summary even when tooling report is missing", () => {
   const inventory = buildInventory({ toolingReport: "output/ops/tooling-quality/missing.json" });
 
   assert.equal(inventory.schema, "studiobrain-installed-tool-inventory.v1");
   assert.equal(inventory.effectivitySource.status, "unavailable");
   assert.equal(typeof inventory.summary.actionableFindings, "number");
+  assert.equal(typeof inventory.summary.coverageGaps, "number");
   assert.ok(inventory.tools.every((tool) => tool.effectivity));
 });

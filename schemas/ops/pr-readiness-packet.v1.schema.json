@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/pr-readiness-packet.v1.schema.json",
+  "title": "Studio Brain Ops PR Readiness Packet v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "readOnly",
+    "pr",
+    "owner",
+    "sliceIds",
+    "scope",
+    "evidence",
+    "warnings",
+    "status",
+    "rollback"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-pr-readiness-packet.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "readOnly": { "const": true },
+    "pr": { "type": "string" },
+    "owner": { "type": "string" },
+    "sliceIds": { "type": "string" },
+    "scope": {
+      "type": "object",
+      "required": ["branch", "base", "head", "changedFiles", "dirtyFiles", "nonScope"],
+      "properties": {
+        "branch": { "type": "string" },
+        "base": { "type": "string" },
+        "head": { "type": "string" },
+        "changedFiles": { "type": "array", "items": { "type": "string" } },
+        "dirtyFiles": { "type": "array", "items": { "type": "string" } },
+        "nonScope": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["artifactValidation", "workPacket", "sliceLedger", "toolInstall"],
+      "properties": {
+        "artifactValidation": {
+          "type": "object",
+          "required": ["status", "generatedAt", "checks", "passed", "warned", "failed", "missing", "problems"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "checks": { "type": "number", "minimum": 0 },
+            "passed": { "type": "number", "minimum": 0 },
+            "warned": { "type": "number", "minimum": 0 },
+            "failed": { "type": "number", "minimum": 0 },
+            "missing": { "type": "number", "minimum": 0 },
+            "problems": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        },
+        "workPacket": {
+          "type": "object",
+          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "humanGates"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "packets": { "type": "number", "minimum": 0 },
+            "freshSources": { "type": ["number", "null"], "minimum": 0 },
+            "staleSources": { "type": ["number", "null"], "minimum": 0 },
+            "topPacket": { "type": "string" },
+            "humanGates": { "type": "number", "minimum": 0 },
+            "toolInstallNowCandidates": { "type": ["number", "null"], "minimum": 0 },
+            "toolInstallApprovalRequired": { "type": ["number", "null"], "minimum": 0 },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "sliceLedger": {
+          "type": "object",
+          "required": ["status", "generatedAt", "window", "verification", "usefulness", "commandFailures"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "window": {
+              "type": ["object", "null"],
+              "required": ["count", "from", "to"],
+              "properties": {
+                "count": { "type": "number", "minimum": 0 },
+                "from": { "type": "string" },
+                "to": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            "verification": { "type": ["number", "null"], "minimum": 0 },
+            "usefulness": { "type": ["number", "null"], "minimum": 0 },
+            "commandFailures": { "type": ["number", "null"], "minimum": 0 },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "toolInstall": {
+          "type": "object",
+          "required": ["status", "generatedAt", "recommendations", "installNowCandidates", "approvalRequired", "topRecommendations"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "recommendations": { "type": "number", "minimum": 0 },
+            "installNowCandidates": { "type": "number", "minimum": 0 },
+            "approvalRequired": { "type": "number", "minimum": 0 },
+            "topRecommendations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["tool", "priority", "acquisitionClass", "validationCommand", "approvalRequired"],
+                "properties": {
+                  "tool": { "type": "string" },
+                  "priority": { "type": "string" },
+                  "acquisitionClass": { "type": "string" },
+                  "validationCommand": { "type": "string" },
+                  "approvalRequired": { "type": "boolean" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "rollback": { "type": "string" },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" }
+  },
+  "additionalProperties": false
+}

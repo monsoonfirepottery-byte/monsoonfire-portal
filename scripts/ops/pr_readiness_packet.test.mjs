@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { buildPrReadinessPacket, renderMarkdown } from "./pr_readiness_packet.mjs";
+import { validateJsonSchema } from "./validate_ops_artifacts.mjs";
 
 const gitState = {
   base: "origin/main",
@@ -84,6 +86,16 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /shellcheck/);
   assert.doesNotMatch(markdown, /do not copy this/);
   assert.doesNotMatch(markdown, /do not install Docker/);
+});
+
+test("buildPrReadinessPacket stays compatible with its JSON schema", () => {
+  const packet = buildPrReadinessPacket(
+    { gitState, artifactValidation, workPacket, sliceLedger, toolInstallRecommendations },
+    { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047" },
+  );
+  const schema = JSON.parse(readFileSync("schemas/ops/pr-readiness-packet.v1.schema.json", "utf8"));
+
+  assert.deepEqual(validateJsonSchema(packet, schema), []);
 });
 
 test("buildPrReadinessPacket fails on failing artifact validation", () => {

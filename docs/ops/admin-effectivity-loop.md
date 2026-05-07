@@ -86,6 +86,15 @@ node scripts/studiobrain-ops-work-packet.mjs --json --write --swarm-preflight ou
 
 Missing preflight evidence downgrades the packet report to `warn`; failed preflight evidence makes the report `fail` and marks packets `approval_gated` until the lane scope problem is fixed.
 
+Run the ordered safe wave when refreshing dependent latest artifacts:
+
+```bash
+node scripts/ops/ops_wave_runner.mjs --json --write
+node scripts/ops/ops_wave_runner.mjs --dry-run --json --write
+```
+
+The wave runner executes read-only checks in dependency order: preflight, tooling quality, tool inventory, admin effectivity audit, work packet generation, then artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
+
 ## Scoring
 
 - `usefulness`: average slice usefulness score, 0 to 1.

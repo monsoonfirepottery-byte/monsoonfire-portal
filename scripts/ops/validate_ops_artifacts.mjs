@@ -34,6 +34,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/swarm-lane-preflight.v1.schema.json",
   },
   {
+    id: "ops-wave-runner",
+    artifact: "output/ops/waves/ops-wave-runner-latest.json",
+    schema: "schemas/ops/ops-wave-runner.v1.schema.json",
+  },
+  {
     id: "artifact-schema-validation",
     artifact: "output/ops/artifact-validation/artifact-schema-validation-latest.json",
     schema: "schemas/ops/artifact-schema-validation.v1.schema.json",

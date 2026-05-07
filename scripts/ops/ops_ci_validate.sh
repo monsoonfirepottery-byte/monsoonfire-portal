@@ -41,6 +41,7 @@ check_file "scripts/ops/ops_ci_validate.sh"
 check_file "scripts/ops/post_deploy_verify.sh"
 check_file "scripts/ops/validate_ops_artifacts.mjs"
 check_file "scripts/ops/swarm_lane_preflight.mjs"
+check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -59,7 +60,8 @@ done
 section "Node Syntax"
 for script in \
   "scripts/ops/validate_ops_artifacts.mjs" \
-  "scripts/ops/swarm_lane_preflight.mjs"; do
+  "scripts/ops/swarm_lane_preflight.mjs" \
+  "scripts/ops/ops_wave_runner.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
     pass "node --check ${script}"
   else
@@ -80,11 +82,24 @@ else
   fail "node --test scripts/ops/validate_ops_artifacts.test.mjs"
 fi
 
+if node --test "${REPO_ROOT}/scripts/ops/ops_wave_runner.test.mjs" >"${OUT_DIR}/ops-wave-runner.test.out" 2>&1; then
+  pass "node --test scripts/ops/ops_wave_runner.test.mjs"
+else
+  fail "node --test scripts/ops/ops_wave_runner.test.mjs"
+fi
+
 section "Swarm Lane Preflight Smoke"
 if node "${REPO_ROOT}/scripts/ops/swarm_lane_preflight.mjs" --lane tooling --base origin/main --json --write >"${OUT_DIR}/swarm-lane-preflight.json"; then
   pass "swarm_lane_preflight tooling smoke"
 else
   fail "swarm_lane_preflight tooling smoke"
+fi
+
+section "Ops Wave Runner Dry Run"
+if node "${REPO_ROOT}/scripts/ops/ops_wave_runner.mjs" --dry-run --json --write --steps swarm-preflight,work-packet,artifact-validation >"${OUT_DIR}/ops-wave-runner-dry-run.json"; then
+  pass "ops_wave_runner dry-run smoke"
+else
+  fail "ops_wave_runner dry-run smoke"
 fi
 
 section "Artifact Schema Smoke"

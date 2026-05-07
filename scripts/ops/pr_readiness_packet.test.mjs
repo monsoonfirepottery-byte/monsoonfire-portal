@@ -32,6 +32,13 @@ const workPacket = {
     effectivityEvidenceLanes: 4,
     effectivityApprovalRequiredLanes: 1,
     effectivityHighSeverityLanes: 1,
+    hostDriftStatus: "warn",
+    hostDriftDirtyPaths: 3,
+    hostDriftRequiresHumanApproval: 2,
+    hostDriftDoNotTouchSecurityReview: 0,
+    hostDriftSensitivePathNames: 0,
+    hostDriftAllowlistStatus: "present",
+    hostDriftExpiredAllowlistMatches: 0,
   },
   packets: [
     { packetId: "ops-wp-ready", title: "[ops] Refresh evidence", status: "ready", priority: "P1", humanGate: "" },
@@ -158,6 +165,10 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.effectivityEvidenceLanes, 4);
   assert.equal(packet.evidence.workPacket.effectivityApprovalRequiredLanes, 1);
   assert.equal(packet.evidence.workPacket.effectivityHighSeverityLanes, 1);
+  assert.equal(packet.evidence.workPacket.hostDriftStatus, "warn");
+  assert.equal(packet.evidence.workPacket.hostDriftDirtyPaths, 3);
+  assert.equal(packet.evidence.workPacket.hostDriftRequiresHumanApproval, 2);
+  assert.equal(packet.evidence.workPacket.hostDriftAllowlistStatus, "present");
   assert.equal(packet.evidence.workPacketQuality.status, "pass");
   assert.equal(packet.evidence.workPacketQuality.findings, 0);
   assert.equal(packet.evidence.toolInstall.installNowCandidates, 2);
@@ -182,6 +193,9 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /requestedCoverage=covered/);
   assert.match(markdown, /lanes=4/);
   assert.match(markdown, /approvalLanes=1/);
+  assert.match(markdown, /hostDrift=warn/);
+  assert.match(markdown, /hostDriftDirty=3/);
+  assert.match(markdown, /hostDriftApproval=2/);
   assert.match(markdown, /shellcheck/);
   assert.doesNotMatch(markdown, /do not copy this/);
   assert.doesNotMatch(markdown, /do not install Docker/);
@@ -241,6 +255,33 @@ test("buildPrReadinessPacket surfaces degraded packet outcome churn", () => {
   assert.ok(packet.warnings.some((warning) => warning.includes("blockedPackets=1")));
   assert.ok(packet.warnings.some((warning) => warning.includes("recording fresh current packet outcomes")));
   assert.match(renderMarkdown(packet), /orphanedRate=0.75/);
+});
+
+test("buildPrReadinessPacket warns on host drift security review gates", () => {
+  const packet = buildPrReadinessPacket({
+    gitState,
+    artifactValidation,
+    waveRunner,
+    workPacket: {
+      ...workPacket,
+      evidenceSummary: {
+        ...workPacket.evidenceSummary,
+        hostDriftDoNotTouchSecurityReview: 1,
+        hostDriftExpiredAllowlistMatches: 2,
+      },
+    },
+    workPacketQuality,
+    packetOutcomeReport,
+    sliceLedger,
+    toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
+  });
+
+  assert.equal(packet.status, "warn");
+  assert.equal(packet.evidence.workPacket.hostDriftDoNotTouchSecurityReview, 1);
+  assert.equal(packet.evidence.workPacket.hostDriftExpiredAllowlistMatches, 2);
+  assert.ok(packet.warnings.some((warning) => warning.includes("host-drift allowlist")));
+  assert.ok(packet.warnings.some((warning) => warning.includes("security review")));
+  assert.match(renderMarkdown(packet), /hostDriftSecurity=1/);
 });
 
 test("buildPrReadinessPacket fails when work-packet quality lint fails", () => {

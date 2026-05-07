@@ -127,8 +127,17 @@ function summarizeNextExecutablePacket(packet) {
 }
 
 function summarizeWorkPacket(packet) {
-  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], nextExecutablePacket: emptyNextExecutablePacket(), humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null };
-  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], nextExecutablePacket: emptyNextExecutablePacket(), humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, parseError: packet.parseError || "" };
+  const emptyHostDrift = {
+    hostDriftStatus: "",
+    hostDriftDirtyPaths: null,
+    hostDriftRequiresHumanApproval: null,
+    hostDriftDoNotTouchSecurityReview: null,
+    hostDriftSensitivePathNames: null,
+    hostDriftAllowlistStatus: "",
+    hostDriftExpiredAllowlistMatches: null,
+  };
+  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], nextExecutablePacket: emptyNextExecutablePacket(), humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, ...emptyHostDrift };
+  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], nextExecutablePacket: emptyNextExecutablePacket(), humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, ...emptyHostDrift, parseError: packet.parseError || "" };
   const packets = Array.isArray(packet.packets) ? packet.packets : [];
   return {
     status: packets.length > 0 ? "present" : "empty",
@@ -152,6 +161,13 @@ function summarizeWorkPacket(packet) {
     effectivityEvidenceLanes: packet.evidenceSummary?.effectivityEvidenceLanes ?? null,
     effectivityApprovalRequiredLanes: packet.evidenceSummary?.effectivityApprovalRequiredLanes ?? null,
     effectivityHighSeverityLanes: packet.evidenceSummary?.effectivityHighSeverityLanes ?? null,
+    hostDriftStatus: clean(packet.evidenceSummary?.hostDriftStatus),
+    hostDriftDirtyPaths: packet.evidenceSummary?.hostDriftDirtyPaths ?? null,
+    hostDriftRequiresHumanApproval: packet.evidenceSummary?.hostDriftRequiresHumanApproval ?? null,
+    hostDriftDoNotTouchSecurityReview: packet.evidenceSummary?.hostDriftDoNotTouchSecurityReview ?? null,
+    hostDriftSensitivePathNames: packet.evidenceSummary?.hostDriftSensitivePathNames ?? null,
+    hostDriftAllowlistStatus: clean(packet.evidenceSummary?.hostDriftAllowlistStatus),
+    hostDriftExpiredAllowlistMatches: packet.evidenceSummary?.hostDriftExpiredAllowlistMatches ?? null,
   };
 }
 
@@ -345,6 +361,8 @@ function buildWarnings({ gitState, evidence, outcomeLedger }) {
   }
   if (evidence.workPacket.status === "missing") warnings.push("work-packet latest artifact is missing");
   if ((evidence.workPacket.staleSources ?? 0) > 0) warnings.push("work packet has stale evidence sources");
+  if ((evidence.workPacket.hostDriftExpiredAllowlistMatches ?? 0) > 0) warnings.push(`${evidence.workPacket.hostDriftExpiredAllowlistMatches} host-drift allowlist match(es) are expired`);
+  if ((evidence.workPacket.hostDriftDoNotTouchSecurityReview ?? 0) > 0) warnings.push(`${evidence.workPacket.hostDriftDoNotTouchSecurityReview} host-drift path(s) need security review before cleanup`);
   if (evidence.workPacketQuality.status === "missing") warnings.push("work-packet quality latest artifact is missing");
   else if (evidence.workPacketQuality.status === "warn") warnings.push("work-packet quality lint has warnings");
   else if (evidence.workPacketQuality.status !== "pass") warnings.push(`work-packet quality lint status is ${evidence.workPacketQuality.status}`);
@@ -456,7 +474,7 @@ ${dirtyFiles}
 | Artifact validation | ${packet.evidence.artifactValidation.status} | checks=${packet.evidence.artifactValidation.checks}, warned=${packet.evidence.artifactValidation.warned}, missing=${packet.evidence.artifactValidation.missing}, failed=${packet.evidence.artifactValidation.failed} |
 | Wave runner | ${packet.evidence.waveRunner.status} | run=${packet.evidence.waveRunner.runId}, workPacketMaxPackets=${packet.evidence.waveRunner.workPacketMaxPackets ?? ""} |
 | Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, requestedCoverage=${packet.evidence.sliceLedger.requestedCoverage.status}, missing=${packet.evidence.sliceLedger.requestedCoverage.missing.join(", ")}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
-| Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
+| Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, hostDrift=${packet.evidence.workPacket.hostDriftStatus || ""}, hostDriftDirty=${packet.evidence.workPacket.hostDriftDirtyPaths ?? ""}, hostDriftApproval=${packet.evidence.workPacket.hostDriftRequiresHumanApproval ?? ""}, hostDriftSecurity=${packet.evidence.workPacket.hostDriftDoNotTouchSecurityReview ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
 | Work packet quality | ${packet.evidence.workPacketQuality.status} | findings=${packet.evidence.workPacketQuality.findings}, warnings=${packet.evidence.workPacketQuality.warnings}, failures=${packet.evidence.workPacketQuality.failures}, sourceSignalAudit=${packet.evidence.workPacketQuality.sourceSignalAuditStatus || ""} |
 | Packet outcomes | ${packet.evidence.packetOutcome.status} | total=${packet.evidence.packetOutcome.total}, maturity=${packet.evidence.packetOutcome.maturity}, score=${packet.evidence.packetOutcome.score ?? ""}, orphanedRate=${packet.evidence.packetOutcome.orphanedRate ?? ""}, resetRecommended=${packet.evidence.packetOutcome.resetRecommended} |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |

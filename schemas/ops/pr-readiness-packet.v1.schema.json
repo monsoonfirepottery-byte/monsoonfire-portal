@@ -83,7 +83,7 @@
         },
         "workPacket": {
           "type": "object",
-          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "readyPackets", "approvalGatedPackets", "topPackets", "humanGates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes"],
+          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "readyPackets", "approvalGatedPackets", "topPackets", "humanGates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftSensitivePathNames", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches"],
           "properties": {
             "status": { "type": "string" },
             "generatedAt": { "type": "string" },
@@ -133,6 +133,13 @@
             "effectivityEvidenceLanes": { "type": ["number", "null"], "minimum": 0 },
             "effectivityApprovalRequiredLanes": { "type": ["number", "null"], "minimum": 0 },
             "effectivityHighSeverityLanes": { "type": ["number", "null"], "minimum": 0 },
+            "hostDriftStatus": { "type": "string" },
+            "hostDriftDirtyPaths": { "type": ["number", "null"], "minimum": 0 },
+            "hostDriftRequiresHumanApproval": { "type": ["number", "null"], "minimum": 0 },
+            "hostDriftDoNotTouchSecurityReview": { "type": ["number", "null"], "minimum": 0 },
+            "hostDriftSensitivePathNames": { "type": ["number", "null"], "minimum": 0 },
+            "hostDriftAllowlistStatus": { "type": "string" },
+            "hostDriftExpiredAllowlistMatches": { "type": ["number", "null"], "minimum": 0 },
             "parseError": { "type": "string" }
           },
           "additionalProperties": false

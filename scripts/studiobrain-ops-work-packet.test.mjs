@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { buildOpsWorkPacket, comparePackets, runOpsWorkPacket, summarizeFreshEvidence, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { buildOpsWorkPacket, comparePackets, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
 import { validateJsonSchema } from "./ops/validate_ops_artifacts.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
@@ -32,6 +32,9 @@ function assertWorkPacketReportContract(report) {
   assertWorkPacketContract(report.packet);
   for (const key of reportSchema.properties.outcomeSummary.required) {
     assert.ok(Object.hasOwn(report.outcomeSummary, key), `missing outcomeSummary.${key}`);
+  }
+  for (const key of reportSchema.properties.outcomeHealth.required) {
+    assert.ok(Object.hasOwn(report.outcomeHealth, key), `missing outcomeHealth.${key}`);
   }
 }
 
@@ -493,6 +496,34 @@ test("workPacketReportStatus warns when fresh evidence is stale", () => {
   assert.equal(workPacketReportStatus(stale), "warn");
 });
 
+test("outcomeHealthFromSummary warns on mature stale or blocked packet outcomes", () => {
+  const health = outcomeHealthFromSummary({
+    total: 4,
+    staleOrMisleadingRate: 0.5,
+    staleOrMisleadingPackets: [{ packetId: "ops-wp-stale", outcome: "stale" }],
+    blockedPackets: [{ packetId: "ops-wp-blocked", outcome: "blocked" }],
+  });
+
+  assert.equal(health.status, "warn");
+  assert.equal(health.maturity, "evidence_ready");
+  assert.equal(health.score, 0.4);
+  assert.deepEqual(health.warnings, ["staleOrMisleadingRate=0.5", "blockedPackets=1"]);
+});
+
+test("workPacketReportStatus warns when outcome health is degraded", () => {
+  const fresh = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+    },
+    { maxPackets: 1 },
+  );
+
+  assert.equal(workPacketReportStatus(fresh, { status: "warn" }), "warn");
+});
+
 test("runOpsWorkPacket returns a schema-compatible CLI report", () => {
   const report = silenceStdout(() => runOpsWorkPacket([
     "--max-packets",
@@ -558,6 +589,8 @@ test("outcome ledger summaries expose by-outcome and recent receipts", () => {
     assert.equal(report.outcomeSummary.helpfulRate, 0.333);
     assert.equal(report.outcomeSummary.staleOrMisleading, 1);
     assert.equal(report.outcomeSummary.staleOrMisleadingRate, 0.333);
+    assert.equal(report.outcomeHealth.status, "warn");
+    assert.equal(report.outcomeHealth.maturity, "evidence_ready");
     assert.equal(report.outcomeSummary.staleOrMisleadingPackets[0].packetId, "ops-wp-test");
     assert.equal(report.outcomeSummary.blockedPackets[0].packetId, "ops-wp-other");
     assert.equal(report.outcomeSummary.latestByPacket.length, 2);

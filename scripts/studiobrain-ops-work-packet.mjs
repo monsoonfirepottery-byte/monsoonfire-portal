@@ -521,6 +521,29 @@ function buildOutcomeSummary(outcomes) {
   };
 }
 
+function outcomeHealthFromSummary(summary) {
+  const total = Number(summary?.total) || 0;
+  const staleOrMisleadingRate = Number(summary?.staleOrMisleadingRate) || 0;
+  const staleOrMisleadingPackets = Array.isArray(summary?.staleOrMisleadingPackets) ? summary.staleOrMisleadingPackets : [];
+  const blockedPackets = Array.isArray(summary?.blockedPackets) ? summary.blockedPackets : [];
+  const warnings = [];
+  if (total >= 3 && staleOrMisleadingRate > 0.25) warnings.push(`staleOrMisleadingRate=${staleOrMisleadingRate}`);
+  if (blockedPackets.length > 0) warnings.push(`blockedPackets=${blockedPackets.length}`);
+  return {
+    status: warnings.length > 0 ? "warn" : "pass",
+    maturity: total >= 3 ? "evidence_ready" : "warming_up",
+    score: warnings.length === 0 ? 1 : total >= 3 && staleOrMisleadingRate > 0.25 ? 0.4 : 0.6,
+    warnings,
+    thresholds: {
+      matureOutcomeCount: 3,
+      staleOrMisleadingRateWarn: 0.25,
+      blockedPacketWarn: 1,
+    },
+    staleOrMisleadingPackets,
+    blockedPackets,
+  };
+}
+
 function freshness(generatedAt, options = {}) {
   const maxAgeHours = Number(options.maxAgeHours ?? 24);
   const now = options.now || nowIso();
@@ -977,16 +1000,18 @@ function recordOutcome(options) {
     notes: options.notes,
   };
   appendJsonl(options.outcomes, entry);
+  const outcomeSummary = buildOutcomeSummary(readJsonl(options.outcomes));
   return {
     schema: "studiobrain-ops-work-packet-outcome-report.v1",
     generatedAt: nowIso(),
     appended: toRepoRelative(options.outcomes),
     entry,
-    outcomeSummary: buildOutcomeSummary(readJsonl(options.outcomes)),
+    outcomeSummary,
+    outcomeHealth: outcomeHealthFromSummary(outcomeSummary),
   };
 }
 
-function workPacketReportStatus(packet) {
+function workPacketReportStatus(packet, outcomeHealth = { status: "pass" }) {
   if (packet.packets.length === 0) return "warn";
   const preflightStatus = packet.freshEvidence?.swarmPreflight?.status;
   if (preflightStatus === "fail") return "fail";
@@ -995,6 +1020,7 @@ function workPacketReportStatus(packet) {
   if (["missing", "invalid_json", "invalid_timestamp", "stale"].includes(toolInstallStatus)) return "warn";
   if ((packet.evidenceSummary?.staleSources ?? 0) > 0) return "warn";
   if ((packet.evidenceSummary?.freshSources ?? 0) === 0) return "warn";
+  if (outcomeHealth.status === "warn") return "warn";
   return "pass";
 }
 
@@ -1032,11 +1058,13 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
     },
   );
   const outcomes = readJsonl(options.outcomes);
+  const outcomeSummary = buildOutcomeSummary(outcomes);
+  const outcomeHealth = outcomeHealthFromSummary(outcomeSummary);
   const report = {
     schema: "studiobrain-ops-work-packet-report.v1",
     generatedAt: packet.generatedAt,
     runId: options.runId,
-    status: workPacketReportStatus(packet),
+    status: workPacketReportStatus(packet, outcomeHealth),
     written: options.write
       ? {
           artifact: toRepoRelative(options.artifact),
@@ -1045,7 +1073,8 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
         }
       : null,
     packet,
-    outcomeSummary: buildOutcomeSummary(outcomes),
+    outcomeSummary,
+    outcomeHealth,
   };
 
   if (options.write) {
@@ -1063,7 +1092,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   return report;
 }
 
-export { comparePackets, summarizeFreshEvidence, workPacketReportStatus };
+export { comparePackets, outcomeHealthFromSummary, summarizeFreshEvidence, workPacketReportStatus };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

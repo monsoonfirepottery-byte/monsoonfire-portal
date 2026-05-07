@@ -114,7 +114,7 @@
         },
         "workPacket": {
           "type": "object",
-          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "readyPackets", "approvalGatedPackets", "topPackets", "humanGates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftSensitivePathNames", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches"],
+          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "readyPackets", "approvalGatedPackets", "topPackets", "humanGates", "staleBacklogPackets", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftSensitivePathNames", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches"],
           "properties": {
             "status": { "type": "string" },
             "generatedAt": { "type": "string" },
@@ -159,6 +159,7 @@
               "additionalProperties": false
             },
             "humanGates": { "type": "number", "minimum": 0 },
+            "staleBacklogPackets": { "type": ["number", "null"], "minimum": 0 },
             "toolInstallNowCandidates": { "type": ["number", "null"], "minimum": 0 },
             "toolInstallApprovalRequired": { "type": ["number", "null"], "minimum": 0 },
             "effectivityEvidenceLanes": { "type": ["number", "null"], "minimum": 0 },

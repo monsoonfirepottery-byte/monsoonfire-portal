@@ -353,6 +353,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.hostDriftDirtyPaths, 3);
   assert.equal(report.evidenceSummary.hostDriftRequiresHumanApproval, 2);
   assert.equal(report.evidenceSummary.hostDriftAllowlistStatus, "present");
+  assert.equal(report.evidenceSummary.staleBacklogPackets, 2);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
   assert.equal(report.freshEvidence.adminAudit.freshness.stale, false);
   assert.ok(report.packets.length >= 2);
@@ -392,6 +393,8 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(hostDriftSignal.summary.sensitivePathNamesRedacted, true);
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
+  assert.ok(report.packets[0].humanGate.includes("refresh or retire"));
+  assert.equal(report.packets[0].sourceSignals.find((signal) => signal.source === "backlog").staleBacklogStatus, true);
   assert.ok(report.packets[0].safeNextStep.includes("restore-prerequisite"));
   const toolingPacket = report.packets.find((packet) => packet.title === "[ops-tooling] Review shellcheck findings");
   assert.equal(toolingPacket.status, "ready");

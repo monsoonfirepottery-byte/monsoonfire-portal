@@ -47,6 +47,7 @@ const SOURCE_SIGNAL_CLASSES = new Set([
   "risk",
   "tool_install_recommendation",
 ]);
+const STALE_BACKLOG_STATUS_TERMS = /\b(merged|prepared|completed|complete|done|shipped|superseded|already)\b/i;
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -296,6 +297,10 @@ function matchingRisk(backlogItem, risks) {
   return match && match.score >= 2 ? match.risk : null;
 }
 
+function staleBacklogStatus(status) {
+  return STALE_BACKLOG_STATUS_TERMS.test(clean(status));
+}
+
 function makePacket(backlogItem, risk, effectivity, freshEvidence) {
   const title = backlogItem.title;
   const acceptanceCriteria =
@@ -307,7 +312,10 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
   const preflightGate = freshEvidence?.swarmPreflight?.status === "fail"
     ? freshEvidence.swarmPreflight.summary?.recommendation || "Fix failed swarm lane preflight before delegating this packet."
     : "";
-  const humanGate = [approvalGate, preflightGate].filter(Boolean).join(" / ");
+  const staleBacklogGate = staleBacklogStatus(backlogItem.status)
+    ? "Backlog status suggests this work is already merged, prepared, completed, or superseded; refresh or retire the item before execution."
+    : "";
+  const humanGate = [approvalGate, preflightGate, staleBacklogGate].filter(Boolean).join(" / ");
   return {
     packetId: `ops-wp-${stableHash(packetKey)}`,
     title,
@@ -323,6 +331,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
         path: backlogItem.sourcePath,
         id: backlogItem.id,
         status: backlogItem.status,
+        staleBacklogStatus: Boolean(staleBacklogGate),
         acceptanceCriteria,
       },
       risk
@@ -1182,6 +1191,9 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       hostDriftDoNotTouchSecurityReview: freshEvidence.hostDriftManifest.summary.doNotTouchSecurityReview ?? null,
       hostDriftAllowlistStatus: freshEvidence.hostDriftManifest.summary.allowlistStatus ?? "",
       hostDriftExpiredAllowlistMatches: freshEvidence.hostDriftManifest.summary.expiredAllowlistMatches ?? null,
+      staleBacklogPackets: normalized.packets.filter((packet) =>
+        packet.sourceSignals?.some((signal) => signal.source === "backlog" && signal.staleBacklogStatus),
+      ).length,
     },
     freshEvidence,
     nextExecutablePacket: summarizeNextExecutablePacket(normalized.packets),

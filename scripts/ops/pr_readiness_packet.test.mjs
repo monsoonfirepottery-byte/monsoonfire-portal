@@ -32,6 +32,7 @@ const workPacket = {
     effectivityEvidenceLanes: 4,
     effectivityApprovalRequiredLanes: 1,
     effectivityHighSeverityLanes: 1,
+    staleBacklogPackets: 0,
     hostDriftStatus: "warn",
     hostDriftDirtyPaths: 3,
     hostDriftRequiresHumanApproval: 2,
@@ -216,6 +217,7 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.ok(packet.outcomeLedger.suggestedPacketIds.includes("ops-wp-gated"));
   assert.match(packet.outcomeLedger.recordCommand, /--record-outcome ops-wp-ready/);
   assert.equal(packet.evidence.workPacket.effectivityEvidenceLanes, 4);
+  assert.equal(packet.evidence.workPacket.staleBacklogPackets, 0);
   assert.equal(packet.evidence.workPacket.effectivityApprovalRequiredLanes, 1);
   assert.equal(packet.evidence.workPacket.effectivityHighSeverityLanes, 1);
   assert.equal(packet.evidence.workPacket.hostDriftStatus, "warn");
@@ -253,6 +255,7 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /workPacketMaxPackets=8/);
   assert.match(markdown, /ready=1/);
   assert.match(markdown, /approvalGated=1/);
+  assert.match(markdown, /staleBacklog=0/);
   assert.match(markdown, /requestedCoverage=covered/);
   assert.match(markdown, /lanes=4/);
   assert.match(markdown, /approvalLanes=1/);

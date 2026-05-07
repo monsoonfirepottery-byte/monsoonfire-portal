@@ -41,7 +41,7 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "toolingFindings", "toolingActionableFindings", "toolingIssueReadyTasks", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "prStackStatus", "prStackOpen", "prStackMergeReady", "prStackMergeBlocked", "inFlightPrSuppressedPackets", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftSensitivePathNames", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "toolingFindings", "toolingActionableFindings", "toolingIssueReadyTasks", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "prStackStatus", "prStackOpen", "prStackMergeReady", "prStackMergeBlocked", "inFlightPrSuppressedPackets", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftSensitivePathNames", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches", "staleBacklogPackets"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
@@ -75,7 +75,8 @@
         "hostDriftRequiresHumanApproval": { "type": ["number", "null"], "minimum": 0 },
         "hostDriftDoNotTouchSecurityReview": { "type": ["number", "null"], "minimum": 0 },
         "hostDriftAllowlistStatus": { "type": "string" },
-        "hostDriftExpiredAllowlistMatches": { "type": ["number", "null"], "minimum": 0 }
+        "hostDriftExpiredAllowlistMatches": { "type": ["number", "null"], "minimum": 0 },
+        "staleBacklogPackets": { "type": "number", "minimum": 0 }
       },
       "additionalProperties": false
     },

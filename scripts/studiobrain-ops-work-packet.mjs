@@ -414,14 +414,32 @@ function freshSourceSignals(freshEvidence) {
     freshEvidence.swarmPreflight,
   ]
     .filter((source) => source && !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status))
-    .map((source) => ({
-      source: source.source,
-      path: source.path,
-      status: source.status,
-      generatedAt: source.generatedAt || "",
-      signalClass: signalClassForSource(source),
-      summary: source.summary,
-    }));
+    .flatMap(sourceSignalsForFreshSource);
+}
+
+function sourceSignalsForFreshSource(source) {
+  const signal = {
+    source: source.source,
+    path: source.path,
+    status: source.status,
+    generatedAt: source.generatedAt || "",
+    signalClass: signalClassForSource(source),
+    summary: source.summary,
+  };
+  if (
+    source.source === "fresh-tool-install-recommendations" &&
+    (source.summary?.installNowCandidates || 0) > 0 &&
+    (source.summary?.approvalRequired || 0) > 0
+  ) {
+    return [
+      signal,
+      {
+        ...signal,
+        signalClass: "approval_gate",
+      },
+    ];
+  }
+  return [signal];
 }
 
 function signalClassForSource(source) {
@@ -519,6 +537,32 @@ function applyFreshness(source, options = {}) {
   };
 }
 
+function applyFreshnessWithUpstream(source, upstreamGeneratedAt, upstreamName, options = {}) {
+  const checked = applyFreshness(source, options);
+  const upstreamFreshness = freshness(upstreamGeneratedAt, options);
+  if (!upstreamFreshness.status) {
+    return {
+      ...checked,
+      upstreamFreshness: {
+        [upstreamName]: upstreamFreshness,
+      },
+    };
+  }
+  return {
+    ...checked,
+    status: upstreamFreshness.status,
+    upstreamFreshness: {
+      [upstreamName]: upstreamFreshness,
+    },
+    freshness: {
+      ...checked.freshness,
+      upstream: {
+        [upstreamName]: upstreamFreshness,
+      },
+    },
+  };
+}
+
 function summarizeFreshEvidence(inputs = {}, options = {}) {
   const adminAudit = inputs.adminAudit || null;
   const sliceLedger = inputs.sliceLedger || null;
@@ -603,7 +647,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
           toolInventory?.parseError ? { parseError: toolInventory.parseError } : {},
       ),
     toolInstallRecommendations: toolInstallRecommendations && toolInstallRecommendations.status !== "invalid_json"
-      ? applyFreshness({
+      ? applyFreshnessWithUpstream({
           source: "fresh-tool-install-recommendations",
           path: inputs.toolInstallRecommendationsPath || "output/ops/effectivity/tool-install-recommendations-latest.json",
           status: clean(toolInstallRecommendations.status) || "unknown",
@@ -613,6 +657,8 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
             coverageGaps: toolInstallRecommendations.summary?.coverageGaps ?? null,
             approvalRequired: toolInstallRecommendations.summary?.approvalRequired ?? null,
             installNowCandidates: toolInstallRecommendations.summary?.installNowCandidates ?? null,
+            inventoryGeneratedAt: clean(toolInstallRecommendations.source?.inventoryGeneratedAt),
+            inventoryStatus: clean(toolInstallRecommendations.source?.inventoryStatus),
             topRecommendations: Array.isArray(toolInstallRecommendations.recommendations)
               ? toolInstallRecommendations.recommendations.slice(0, 3).map((item) => ({
                   tool: clean(item.tool),
@@ -623,12 +669,21 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
                 }))
               : [],
           },
-        }, options)
+        }, toolInstallRecommendations.source?.inventoryGeneratedAt, "inventory", options)
       : unavailable(
           "fresh-tool-install-recommendations",
           inputs.toolInstallRecommendationsPath || "output/ops/effectivity/tool-install-recommendations-latest.json",
           toolInstallRecommendations?.status || "missing",
-          toolInstallRecommendations?.parseError ? { parseError: toolInstallRecommendations.parseError } : {},
+          {
+            recommendations: null,
+            coverageGaps: null,
+            approvalRequired: null,
+            installNowCandidates: null,
+            inventoryGeneratedAt: "",
+            inventoryStatus: "",
+            topRecommendations: [],
+            ...(toolInstallRecommendations?.parseError ? { parseError: toolInstallRecommendations.parseError } : {}),
+          },
         ),
     toolingFindings: toolingFindings && toolingFindings.status !== "invalid_json"
       ? applyFreshness({
@@ -921,6 +976,8 @@ function workPacketReportStatus(packet) {
   const preflightStatus = packet.freshEvidence?.swarmPreflight?.status;
   if (preflightStatus === "fail") return "fail";
   if (["missing", "invalid_json", "warn"].includes(preflightStatus)) return "warn";
+  const toolInstallStatus = packet.freshEvidence?.toolInstallRecommendations?.status;
+  if (["missing", "invalid_json", "invalid_timestamp", "stale"].includes(toolInstallStatus)) return "warn";
   if ((packet.evidenceSummary?.staleSources ?? 0) > 0) return "warn";
   if ((packet.evidenceSummary?.freshSources ?? 0) === 0) return "warn";
   return "pass";

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { buildOpsWorkPacket, comparePackets, runOpsWorkPacket, summarizeFreshEvidence, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { validateJsonSchema } from "./ops/validate_ops_artifacts.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
 const reportSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet-report.v1.schema.json"), "utf8"));
@@ -253,6 +254,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   );
 
   assert.equal(report.schema, "studiobrain-ops-work-packet.v1");
+  assert.deepEqual(validateJsonSchema(report, packetSchema), []);
   assertWorkPacketContract(report);
   assert.equal(report.constraints.noSecrets, true);
   assert.equal(report.constraints.noServiceRestart, true);
@@ -285,9 +287,11 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(adminSignal.summary.topEvidenceLanes.length, 2);
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory" && signal.signalClass === "coverage_gap"));
-  assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations"));
-  assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations" && signal.signalClass === "tool_install_recommendation"));
-  const installSignal = report.packets[0].sourceSignals.find((signal) => signal.source === "fresh-tool-install-recommendations");
+  const installSignals = report.packets[0].sourceSignals.filter((signal) => signal.source === "fresh-tool-install-recommendations");
+  assert.ok(installSignals.length >= 2);
+  assert.ok(installSignals.some((signal) => signal.signalClass === "tool_install_recommendation"));
+  assert.ok(installSignals.some((signal) => signal.signalClass === "approval_gate"));
+  const installSignal = installSignals.find((signal) => signal.signalClass === "tool_install_recommendation");
   assert.equal(installSignal.summary.approvalRequired, 1);
   assert.equal(installSignal.summary.topRecommendations.some((item) => Object.hasOwn(item, "installCommand")), false);
   const toolingFindingsSignal = report.packets[0].sourceSignals.find((signal) => signal.source === "fresh-tooling-findings");
@@ -301,6 +305,10 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(toolingPacket.status, "ready");
   assert.ok(toolingPacket.sourceSignals.some((signal) => signal.source === "tooling-findings-task"));
   assert.equal(toolingPacket.suggestedBranchName, "codex/ops-tooling-shellcheck-findings");
+
+  const leaked = structuredClone(report);
+  leaked.freshEvidence.toolInstallRecommendations.summary.topRecommendations[0].installCommand = "do not execute from work packets";
+  assert.ok(validateJsonSchema(leaked, packetSchema).some((error) => error.includes("installCommand")));
 });
 
 test("summarizeFreshEvidence degrades when ignored artifacts are missing", () => {
@@ -389,6 +397,23 @@ test("workPacketReportStatus warns when swarm preflight is missing", () => {
   assert.equal(workPacketReportStatus(missingPreflight), "warn");
 });
 
+test("workPacketReportStatus warns when tool-install recommendations are missing", () => {
+  const missingRecommendations = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      toolInstallRecommendations: null,
+    },
+    { maxPackets: 1 },
+  );
+
+  assert.equal(missingRecommendations.freshEvidence.toolInstallRecommendations.status, "missing");
+  assert.equal(missingRecommendations.evidenceSummary.freshSources, 5);
+  assert.equal(workPacketReportStatus(missingRecommendations), "warn");
+});
+
 test("failed swarm preflight gates packets and fails the report", () => {
   const failedPreflight = buildOpsWorkPacket(
     {
@@ -412,6 +437,37 @@ test("failed swarm preflight gates packets and fails the report", () => {
   assert.equal(failedPreflight.packets[0].status, "approval_gated");
   assert.ok(failedPreflight.packets[0].humanGate.includes("do not delegate"));
   assert.equal(workPacketReportStatus(failedPreflight), "fail");
+});
+
+test("tool-install recommendations inherit stale upstream inventory freshness", () => {
+  const staleUpstream = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      toolInstallRecommendations: {
+        ...freshInputs.toolInstallRecommendations,
+        generatedAt: "2026-05-07T09:25:00.000Z",
+        source: {
+          inventoryPath: "output/ops/effectivity/installed-tool-inventory-latest.json",
+          inventoryGeneratedAt: "2026-05-07T08:00:00.000Z",
+          inventoryStatus: "warn",
+        },
+      },
+    },
+    {
+      maxPackets: 1,
+      maxAgeHours: 1,
+      now: "2026-05-07T09:30:00.000Z",
+    },
+  );
+
+  assert.equal(staleUpstream.freshEvidence.toolInstallRecommendations.status, "stale");
+  assert.equal(staleUpstream.freshEvidence.toolInstallRecommendations.sourceStatus, "warn");
+  assert.equal(staleUpstream.freshEvidence.toolInstallRecommendations.upstreamFreshness.inventory.stale, true);
+  assert.equal(staleUpstream.evidenceSummary.staleSources, 1);
+  assert.equal(workPacketReportStatus(staleUpstream), "warn");
 });
 
 test("workPacketReportStatus warns when fresh evidence is stale", () => {
@@ -447,6 +503,8 @@ test("runOpsWorkPacket returns a schema-compatible CLI report", () => {
     "output/ops/missing-slice-ledger.json",
     "--tool-inventory",
     "output/ops/missing-tool-inventory.json",
+    "--tool-install-recommendations",
+    "output/ops/missing-tool-install-recommendations.json",
     "--swarm-preflight",
     "output/ops/missing-swarm-preflight.json",
   ]));

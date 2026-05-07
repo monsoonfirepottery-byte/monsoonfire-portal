@@ -55,6 +55,7 @@ make ops-effectivity-report
 make ops-privileged-evidence-read
 make ops-privileged-evidence-capture-smoke
 make ops-work-packet
+make ops-wave-runner
 make ops-pr-stack-audit
 make ops-incident-bundle
 make ops-incident-bundle-v2
@@ -79,8 +80,17 @@ bash scripts/ops/effectivity_report.sh
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 node scripts/studiobrain-ops-work-packet.mjs --write
+node scripts/ops/ops_wave_runner.mjs --write
 node scripts/ops/pr_stack_audit.mjs --write
 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
+```
+
+`make ops-wave-runner` accepts operator pass-through variables for interrupted or widened waves:
+
+```bash
+make ops-wave-runner OPS_WAVE_FROM_STEP=packet-outcome-report
+make ops-wave-runner OPS_WAVE_MAX_PACKETS=8 OPS_WAVE_FLAGS=--json
+make ops-wave-runner OPS_WAVE_STEPS=swarm-preflight,work-packet,artifact-validation OPS_WAVE_SKIP=tooling-quality
 ```
 
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.

@@ -6,6 +6,11 @@ OPS_TOOLING_QUALITY_FLAGS ?=
 OPS_SWARM_LANE ?= tooling
 OPS_SWARM_BASE ?= origin/main
 OPS_SWARM_PREFLIGHT_FLAGS ?=
+OPS_WAVE_FLAGS ?=
+OPS_WAVE_MAX_PACKETS ?=
+OPS_WAVE_STEPS ?=
+OPS_WAVE_SKIP ?=
+OPS_WAVE_FROM_STEP ?=
 
 .PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-slice-ledger ops-tool-inventory ops-tool-install-plan ops-admin-effectivity-audit ops-tooling-quality ops-shell-lf-guard ops-shellcheck-report ops-powershell-syntax ops-sql-parse-report ops-actionlint-report ops-compose-config-report ops-validate-artifacts ops-swarm-lane-preflight ops-wave-runner ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-pr-stack-audit ops-pr-readiness-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
 
@@ -155,7 +160,7 @@ ops-swarm-lane-preflight:
 	node scripts/ops/swarm_lane_preflight.mjs --lane $(OPS_SWARM_LANE) --base $(OPS_SWARM_BASE) --write $(OPS_SWARM_PREFLIGHT_FLAGS)
 
 ops-wave-runner:
-	node scripts/ops/ops_wave_runner.mjs --write
+	node scripts/ops/ops_wave_runner.mjs --write $(OPS_WAVE_FLAGS) $(if $(OPS_WAVE_STEPS),--steps $(OPS_WAVE_STEPS)) $(if $(OPS_WAVE_FROM_STEP),--from-step $(OPS_WAVE_FROM_STEP)) $(if $(OPS_WAVE_MAX_PACKETS),--max-packets $(OPS_WAVE_MAX_PACKETS)) $(foreach step,$(OPS_WAVE_SKIP),--skip $(step))
 
 ops-privileged-evidence-read:
 	bash scripts/ops/privileged_evidence_read.sh

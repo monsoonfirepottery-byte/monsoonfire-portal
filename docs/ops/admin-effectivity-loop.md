@@ -104,6 +104,7 @@ The effectivity audit compares tool inventory sources against the start of the s
 Work packets should steer from fresh evidence only. Missing, invalid, stale, or invalid-timestamp latest artifacts stay visible in `freshEvidence`, but they are excluded from packet `sourceSignals`. Tool inventory coverage gaps are kept as `signalClass=coverage_gap` so missing validators remain visible without being treated as actionable defect evidence. Tool-install recommendations are tracked as a separate fresh source and use `signalClass=tool_install_recommendation` only when the recommendation artifact has install-now candidates; approval-required tools remain evidence for planning, not automatic installation.
 Tooling findings export is included in work-packet evidence as `fresh-tooling-findings`; issue-ready validator tasks are tagged `signalClass=issue_ready_task` so agents can pick them up without scraping terminal output.
 When the export contains task entries, the work-packet generator also emits them as normal `ops-wp-*` packets with scoped write sets and validator-focused acceptance criteria.
+Packets are sorted by priority first, then readiness, so a ready P1 diagnostic/tooling task is visible before an approval-gated P1 cleanup task.
 
 ## Scoring
 

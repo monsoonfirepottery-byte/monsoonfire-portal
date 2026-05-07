@@ -111,6 +111,8 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.approvalGatedPackets, 1);
   assert.equal(packet.evidence.packetOutcome.status, "pass");
   assert.equal(packet.evidence.packetOutcome.total, 2);
+  assert.equal(packet.evidence.sliceLedger.requestedCoverage.status, "covered");
+  assert.deepEqual(packet.evidence.sliceLedger.requestedCoverage.covered, ["slice-046", "slice-047"]);
   assert.equal(packet.outcomeLedger.packetId, "ops-wp-ready");
   assert.equal(packet.outcomeLedger.packetIdInSuggestedWindow, true);
   assert.equal(packet.outcomeLedger.validationStatus, "suggested");
@@ -133,6 +135,7 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /workPacketMaxPackets=8/);
   assert.match(markdown, /ready=1/);
   assert.match(markdown, /approvalGated=1/);
+  assert.match(markdown, /requestedCoverage=covered/);
   assert.match(markdown, /lanes=4/);
   assert.match(markdown, /approvalLanes=1/);
   assert.match(markdown, /shellcheck/);
@@ -152,6 +155,20 @@ test("buildPrReadinessPacket warns when requested packet id is outside the lates
   assert.equal(packet.outcomeLedger.validationStatus, "outside_window");
   assert.ok(packet.warnings.some((warning) => warning.includes("not in the latest suggested packet window")));
   assert.match(renderMarkdown(packet), /Packet ID validation: outside_window/);
+});
+
+test("buildPrReadinessPacket warns when requested slice ids are outside the latest slice-ledger window", () => {
+  const packet = buildPrReadinessPacket(
+    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { generatedAt: "2026-05-07T12:10:00.000Z", sliceIds: "slice-20260507-076,slice-20260507-077" },
+  );
+
+  assert.equal(packet.status, "warn");
+  assert.equal(packet.evidence.sliceLedger.requestedCoverage.status, "outside_window");
+  assert.deepEqual(packet.evidence.sliceLedger.requestedCoverage.missing, ["slice-20260507-076", "slice-20260507-077"]);
+  assert.ok(packet.warnings.some((warning) => warning.includes("slice ids outside latest slice-ledger window")));
+  assert.match(renderMarkdown(packet), /requestedCoverage=outside_window/);
+  assert.match(renderMarkdown(packet), /slice-20260507-076/);
 });
 
 test("buildPrReadinessPacket surfaces degraded packet outcome churn", () => {

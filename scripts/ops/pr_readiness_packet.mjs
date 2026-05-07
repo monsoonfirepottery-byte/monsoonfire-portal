@@ -175,8 +175,9 @@ function summarizeWaveRunner(report) {
 }
 
 function summarizeSliceLedger(summary) {
-  if (!summary) return { status: "missing", generatedAt: "", window: null, verification: null, usefulness: null, commandFailures: null };
-  if (summary.status === "invalid_json") return { status: "invalid_json", generatedAt: "", window: null, verification: null, usefulness: null, commandFailures: null, parseError: summary.parseError || "" };
+  const requestedCoverage = { status: "not_requested", requested: [], covered: [], missing: [], windowFrom: "", windowTo: "" };
+  if (!summary) return { status: "missing", generatedAt: "", window: null, verification: null, usefulness: null, commandFailures: null, requestedCoverage };
+  if (summary.status === "invalid_json") return { status: "invalid_json", generatedAt: "", window: null, verification: null, usefulness: null, commandFailures: null, requestedCoverage, parseError: summary.parseError || "" };
   return {
     status: (summary.counts?.failed ?? 0) > 0 || (summary.counts?.commandFailures ?? 0) > 0 ? "fail" : "present",
     generatedAt: clean(summary.generatedAt),
@@ -184,7 +185,41 @@ function summarizeSliceLedger(summary) {
     verification: summary.scores?.verification ?? null,
     usefulness: summary.scores?.usefulness ?? null,
     commandFailures: summary.counts?.commandFailures ?? null,
+    requestedCoverage,
   };
+}
+
+function parseSliceIds(value) {
+  return clean(value).split(/[\s,]+/).map(clean).filter(Boolean);
+}
+
+function sliceNumber(sliceId) {
+  const match = clean(sliceId).match(/(\d+)$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function summarizeSliceCoverage(sliceIds, sliceLedger) {
+  const requested = parseSliceIds(sliceIds);
+  const windowFrom = clean(sliceLedger.window?.from);
+  const windowTo = clean(sliceLedger.window?.to);
+  const base = { requested, covered: [], missing: [], windowFrom, windowTo };
+  if (requested.length === 0) return { status: "not_requested", ...base };
+  if (!sliceLedger.window) return { status: "unknown", ...base, missing: requested };
+  const from = sliceNumber(windowFrom);
+  const to = sliceNumber(windowTo);
+  if (from === null || to === null) return { status: "unknown", ...base, missing: requested };
+  const low = Math.min(from, to);
+  const high = Math.max(from, to);
+  const covered = [];
+  const missing = [];
+  for (const sliceId of requested) {
+    const number = sliceNumber(sliceId);
+    if (number !== null && number >= low && number <= high) covered.push(sliceId);
+    else missing.push(sliceId);
+  }
+  return { status: missing.length ? "outside_window" : "covered", ...base, covered, missing };
 }
 
 function summarizeToolInstall(report) {
@@ -234,6 +269,11 @@ function buildWarnings({ gitState, evidence, outcomeLedger }) {
   }
   if (evidence.workPacket.status === "missing") warnings.push("work-packet latest artifact is missing");
   if ((evidence.workPacket.staleSources ?? 0) > 0) warnings.push("work packet has stale evidence sources");
+  if (evidence.sliceLedger.requestedCoverage.status === "outside_window") {
+    warnings.push(`slice ids outside latest slice-ledger window: ${evidence.sliceLedger.requestedCoverage.missing.join(", ")}`);
+  } else if (evidence.sliceLedger.requestedCoverage.status === "unknown") {
+    warnings.push("requested slice ids could not be matched to the latest slice-ledger window");
+  }
   if (evidence.packetOutcome.status === "missing") warnings.push("packet outcome report is missing");
   else if (evidence.packetOutcome.status === "warn") warnings.push("packet outcome report has warnings");
   else if (evidence.packetOutcome.status !== "pass") warnings.push(`packet outcome report status is ${evidence.packetOutcome.status}`);
@@ -256,6 +296,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     sliceLedger: summarizeSliceLedger(inputs.sliceLedger),
     toolInstall: summarizeToolInstall(inputs.toolInstallRecommendations),
   };
+  evidence.sliceLedger.requestedCoverage = summarizeSliceCoverage(options.sliceIds, evidence.sliceLedger);
   const outcomeLedger = buildOutcomeLedger(options, evidence);
   const warnings = buildWarnings({ gitState, evidence, outcomeLedger });
   const packet = {
@@ -329,7 +370,7 @@ ${dirtyFiles}
 | --- | --- | --- |
 | Artifact validation | ${packet.evidence.artifactValidation.status} | checks=${packet.evidence.artifactValidation.checks}, warned=${packet.evidence.artifactValidation.warned}, missing=${packet.evidence.artifactValidation.missing}, failed=${packet.evidence.artifactValidation.failed} |
 | Wave runner | ${packet.evidence.waveRunner.status} | run=${packet.evidence.waveRunner.runId}, workPacketMaxPackets=${packet.evidence.waveRunner.workPacketMaxPackets ?? ""} |
-| Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
+| Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, requestedCoverage=${packet.evidence.sliceLedger.requestedCoverage.status}, missing=${packet.evidence.sliceLedger.requestedCoverage.missing.join(", ")}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
 | Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
 | Packet outcomes | ${packet.evidence.packetOutcome.status} | total=${packet.evidence.packetOutcome.total}, maturity=${packet.evidence.packetOutcome.maturity}, score=${packet.evidence.packetOutcome.score ?? ""}, orphanedRate=${packet.evidence.packetOutcome.orphanedRate ?? ""}, resetRecommended=${packet.evidence.packetOutcome.resetRecommended} |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |

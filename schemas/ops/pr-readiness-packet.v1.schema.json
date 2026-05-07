@@ -134,7 +134,7 @@
         },
         "sliceLedger": {
           "type": "object",
-          "required": ["status", "generatedAt", "window", "verification", "usefulness", "commandFailures"],
+          "required": ["status", "generatedAt", "window", "verification", "usefulness", "commandFailures", "requestedCoverage"],
           "properties": {
             "status": { "type": "string" },
             "generatedAt": { "type": "string" },
@@ -151,6 +151,19 @@
             "verification": { "type": ["number", "null"], "minimum": 0 },
             "usefulness": { "type": ["number", "null"], "minimum": 0 },
             "commandFailures": { "type": ["number", "null"], "minimum": 0 },
+            "requestedCoverage": {
+              "type": "object",
+              "required": ["status", "requested", "covered", "missing", "windowFrom", "windowTo"],
+              "properties": {
+                "status": { "enum": ["not_requested", "covered", "outside_window", "unknown"] },
+                "requested": { "type": "array", "items": { "type": "string" } },
+                "covered": { "type": "array", "items": { "type": "string" } },
+                "missing": { "type": "array", "items": { "type": "string" } },
+                "windowFrom": { "type": "string" },
+                "windowTo": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
             "parseError": { "type": "string" }
           },
           "additionalProperties": false

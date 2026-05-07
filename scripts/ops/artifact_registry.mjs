@@ -79,7 +79,7 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/stale_backlog_packet_report.mjs --json --write",
     producerStep: "stale-backlog-packets",
     safeWriteRoot: "output/ops/swarm",
-    consumers: ["operator-handoff", "backlog-refresh"],
+    consumers: ["pr-readiness-packet", "operator-handoff", "backlog-refresh"],
     requiredFor: ["backlog-retirement-steering"],
   },
   "packet-outcome-report": {

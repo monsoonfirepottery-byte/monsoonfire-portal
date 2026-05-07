@@ -17,6 +17,7 @@ const DEFAULT_WAVE_RUNNER = resolve(REPO_ROOT, "output", "ops", "waves", "ops-wa
 const DEFAULT_PACKET_OUTCOME_REPORT = resolve(REPO_ROOT, "output", "ops", "swarm", "packet-outcome-report-latest.json");
 const DEFAULT_INCIDENT_BUNDLE = resolve(REPO_ROOT, "output", "ops", "incidents-v2", "incident-bundle-v2-latest.json");
 const DEFAULT_PR_STACK_AUDIT = resolve(REPO_ROOT, "output", "ops", "pr-stack", "pr-stack-audit-latest.json");
+const DEFAULT_STALE_BACKLOG_REPORT = resolve(REPO_ROOT, "output", "ops", "swarm", "stale-backlog-packets-latest.json");
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -342,6 +343,57 @@ function summarizePrStackAudit(report) {
   };
 }
 
+function summarizeStaleBacklogReport(report) {
+  if (!report) {
+    return {
+      status: "missing",
+      generatedAt: "",
+      candidates: 0,
+      staleBacklogPackets: 0,
+      missingBacklogStatusPackets: 0,
+      readyPackets: 0,
+      approvalGatedPackets: 0,
+      nextExecutableStatus: "",
+      topCandidates: [],
+      sourceWarnings: [],
+    };
+  }
+  if (report.status === "invalid_json") {
+    return {
+      status: "invalid_json",
+      generatedAt: "",
+      candidates: 0,
+      staleBacklogPackets: 0,
+      missingBacklogStatusPackets: 0,
+      readyPackets: 0,
+      approvalGatedPackets: 0,
+      nextExecutableStatus: "",
+      topCandidates: [],
+      sourceWarnings: [report.parseError || "stale backlog packet report JSON is invalid"],
+      parseError: report.parseError || "",
+    };
+  }
+  return {
+    status: clean(report.status) || "unknown",
+    generatedAt: clean(report.generatedAt),
+    candidates: Number(report.summary?.candidates) || 0,
+    staleBacklogPackets: Number(report.summary?.staleBacklogPackets) || 0,
+    missingBacklogStatusPackets: Number(report.summary?.missingBacklogStatusPackets) || 0,
+    readyPackets: Number(report.summary?.readyPackets) || 0,
+    approvalGatedPackets: Number(report.summary?.approvalGatedPackets) || 0,
+    nextExecutableStatus: clean(report.summary?.nextExecutableStatus),
+    topCandidates: Array.isArray(report.candidates)
+      ? report.candidates.slice(0, 5).map((candidate) => ({
+          packetId: clean(candidate.packetId),
+          title: clean(candidate.title),
+          priority: clean(candidate.priority),
+          suggestedAction: clean(candidate.suggestedAction),
+        }))
+      : [],
+    sourceWarnings: Array.isArray(report.sourceWarnings) ? report.sourceWarnings.map(clean).filter(Boolean).slice(0, 5) : [],
+  };
+}
+
 function buildOutcomeLedger(options = {}, evidence = {}) {
   const packetId = clean(options.packetId);
   const pr = clean(options.pr);
@@ -500,6 +552,9 @@ function buildWarnings({ gitState, evidence, outcomeLedger }) {
   else if (evidence.prStack.status === "warn") warnings.push("PR stack audit has warnings");
   if (evidence.prStack.openLowerBound > 0 && !evidence.prStack.openCountExact) warnings.push(`PR stack open count is a lower bound: >=${evidence.prStack.openLowerBound}`);
   if (evidence.prStack.openLowerBound > 0 && evidence.prStack.mergeReady === 0) warnings.push("PR stack has no merge-ready PR; use the steering digest before merge/rebase work");
+  if (evidence.staleBacklog.status === "missing") warnings.push("stale backlog packet report is missing");
+  else if (evidence.staleBacklog.status === "invalid_json") warnings.push("stale backlog packet report is invalid");
+  else if (evidence.staleBacklog.candidates > 0) warnings.push(`${evidence.staleBacklog.candidates} stale or missing-status backlog packet(s) need refresh or retirement`);
   if (evidence.sliceLedger.requestedCoverage.status === "outside_window") {
     warnings.push(`slice ids outside latest slice-ledger window: ${evidence.sliceLedger.requestedCoverage.missing.join(", ")}`);
   } else if (evidence.sliceLedger.requestedCoverage.status === "unknown") {
@@ -526,6 +581,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     workPacket: summarizeWorkPacket(inputs.workPacket),
     workPacketQuality: summarizeWorkPacketQuality(inputs.workPacketQuality),
     prStack: summarizePrStackAudit(inputs.prStackAudit),
+    staleBacklog: summarizeStaleBacklogReport(inputs.staleBacklogReport),
     packetOutcome: summarizePacketOutcome(inputs.packetOutcomeReport),
     sliceLedger: summarizeSliceLedger(inputs.sliceLedger),
     toolInstall: summarizeToolInstall(inputs.toolInstallRecommendations),
@@ -611,6 +667,7 @@ ${dirtyFiles}
 | Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, staleBacklog=${packet.evidence.workPacket.staleBacklogPackets ?? ""}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, hostDrift=${packet.evidence.workPacket.hostDriftStatus || ""}, hostDriftDirty=${packet.evidence.workPacket.hostDriftDirtyPaths ?? ""}, hostDriftApproval=${packet.evidence.workPacket.hostDriftRequiresHumanApproval ?? ""}, hostDriftSecurity=${packet.evidence.workPacket.hostDriftDoNotTouchSecurityReview ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
 | Work packet quality | ${packet.evidence.workPacketQuality.status} | findings=${packet.evidence.workPacketQuality.findings}, warnings=${packet.evidence.workPacketQuality.warnings}, failures=${packet.evidence.workPacketQuality.failures}, staleBacklog=${packet.evidence.workPacketQuality.staleBacklogPackets}, missingBacklogStatus=${packet.evidence.workPacketQuality.missingBacklogStatusPackets}, sourceSignalAudit=${packet.evidence.workPacketQuality.sourceSignalAuditStatus || ""} |
 | PR stack | ${packet.evidence.prStack.status} | openExact=${packet.evidence.prStack.openCountExact}, openLowerBound=${packet.evidence.prStack.openLowerBound}, ready=${packet.evidence.prStack.mergeReady}, blocked=${packet.evidence.prStack.mergeBlocked}, steering=${packet.evidence.prStack.recommendedSteering}, stackLanes=${packet.evidence.prStack.blockedStackLanes.length} |
+| Stale backlog packets | ${packet.evidence.staleBacklog.status} | candidates=${packet.evidence.staleBacklog.candidates}, stale=${packet.evidence.staleBacklog.staleBacklogPackets}, missingStatus=${packet.evidence.staleBacklog.missingBacklogStatusPackets}, ready=${packet.evidence.staleBacklog.readyPackets}, approvalGated=${packet.evidence.staleBacklog.approvalGatedPackets}, next=${packet.evidence.staleBacklog.nextExecutableStatus || ""} |
 | Packet outcomes | ${packet.evidence.packetOutcome.status} | total=${packet.evidence.packetOutcome.total}, maturity=${packet.evidence.packetOutcome.maturity}, score=${packet.evidence.packetOutcome.score ?? ""}, orphanedRate=${packet.evidence.packetOutcome.orphanedRate ?? ""}, resetRecommended=${packet.evidence.packetOutcome.resetRecommended} |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |
 
@@ -679,6 +736,7 @@ function parseArgs(argv) {
     packetOutcomeReport: DEFAULT_PACKET_OUTCOME_REPORT,
     incidentBundle: DEFAULT_INCIDENT_BUNDLE,
     prStackAudit: DEFAULT_PR_STACK_AUDIT,
+    staleBacklogReport: DEFAULT_STALE_BACKLOG_REPORT,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
   };
@@ -721,6 +779,7 @@ function parseArgs(argv) {
       "--packet-outcome-report": "packetOutcomeReport",
       "--incident-bundle": "incidentBundle",
       "--pr-stack-audit": "prStackAudit",
+      "--stale-backlog-report": "staleBacklogReport",
       "--slice-ledger": "sliceLedger",
       "--tool-install-recommendations": "toolInstallRecommendations",
     };
@@ -728,7 +787,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(flags)) {
       const value = read(flag);
       if (value === null) continue;
-      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "prStackAudit", "sliceLedger", "toolInstallRecommendations"].includes(key)
+      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "prStackAudit", "staleBacklogReport", "sliceLedger", "toolInstallRecommendations"].includes(key)
         ? resolve(REPO_ROOT, value)
         : value;
       matched = true;
@@ -758,6 +817,7 @@ Options:
   --packet-outcome-report <path>       Default: output/ops/swarm/packet-outcome-report-latest.json.
   --incident-bundle <path>             Default: output/ops/incidents-v2/incident-bundle-v2-latest.json.
   --pr-stack-audit <path>              Default: output/ops/pr-stack/pr-stack-audit-latest.json.
+  --stale-backlog-report <path>        Default: output/ops/swarm/stale-backlog-packets-latest.json.
   --slice-ledger <path>                Default: output/ops/effectivity/slice-ledger-latest.json.
   --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.
 `);
@@ -792,6 +852,7 @@ function run(rawArgs = process.argv.slice(2)) {
     packetOutcomeReport: readJsonIfExists(options.packetOutcomeReport),
     incidentBundle: readJsonIfExists(options.incidentBundle),
     prStackAudit: readJsonIfExists(options.prStackAudit),
+    staleBacklogReport: readJsonIfExists(options.staleBacklogReport),
     sliceLedger: readJsonIfExists(options.sliceLedger),
     toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
   }, options);

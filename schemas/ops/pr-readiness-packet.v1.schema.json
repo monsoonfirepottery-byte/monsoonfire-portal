@@ -51,7 +51,7 @@
     },
     "evidence": {
       "type": "object",
-      "required": ["artifactValidation", "incidentBundle", "waveRunner", "workPacket", "workPacketQuality", "prStack", "packetOutcome", "sliceLedger", "toolInstall"],
+      "required": ["artifactValidation", "incidentBundle", "waveRunner", "workPacket", "workPacketQuality", "prStack", "staleBacklog", "packetOutcome", "sliceLedger", "toolInstall"],
       "properties": {
         "artifactValidation": {
           "type": "object",
@@ -250,6 +250,37 @@
               }
             },
             "warnings": { "type": "array", "items": { "type": "string" } },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "staleBacklog": {
+          "type": "object",
+          "required": ["status", "generatedAt", "candidates", "staleBacklogPackets", "missingBacklogStatusPackets", "readyPackets", "approvalGatedPackets", "nextExecutableStatus", "topCandidates", "sourceWarnings"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "candidates": { "type": "number", "minimum": 0 },
+            "staleBacklogPackets": { "type": "number", "minimum": 0 },
+            "missingBacklogStatusPackets": { "type": "number", "minimum": 0 },
+            "readyPackets": { "type": "number", "minimum": 0 },
+            "approvalGatedPackets": { "type": "number", "minimum": 0 },
+            "nextExecutableStatus": { "type": "string" },
+            "topCandidates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["packetId", "title", "priority", "suggestedAction"],
+                "properties": {
+                  "packetId": { "type": "string" },
+                  "title": { "type": "string" },
+                  "priority": { "type": "string" },
+                  "suggestedAction": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "sourceWarnings": { "type": "array", "items": { "type": "string" } },
             "parseError": { "type": "string" }
           },
           "additionalProperties": false

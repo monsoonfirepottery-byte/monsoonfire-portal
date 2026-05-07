@@ -273,13 +273,6 @@ else
   fail "pr_stack_audit smoke"
 fi
 
-section "PR Readiness Packet Smoke"
-if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OUT_DIR}/pr-readiness-packet.json"; then
-  pass "pr_readiness_packet smoke"
-else
-  fail "pr_readiness_packet smoke"
-fi
-
 section "Packet Outcome Report Smoke"
 if node "${REPO_ROOT}/scripts/ops/packet_outcome_report.mjs" --json --write >"${OUT_DIR}/packet-outcome-report.json"; then
   pass "packet_outcome_report smoke"
@@ -299,6 +292,13 @@ if node "${REPO_ROOT}/scripts/ops/stale_backlog_packet_report.mjs" --json --writ
   pass "stale_backlog_packet_report smoke"
 else
   fail "stale_backlog_packet_report smoke"
+fi
+
+section "PR Readiness Packet Smoke"
+if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OUT_DIR}/pr-readiness-packet.json"; then
+  pass "pr_readiness_packet smoke"
+else
+  fail "pr_readiness_packet smoke"
 fi
 
 section "Admin Effectivity Trend Smoke"

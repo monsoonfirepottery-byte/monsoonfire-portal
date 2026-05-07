@@ -39,6 +39,7 @@ section "Required Files"
 check_file "scripts/ops/incident_bundle_v2.sh"
 check_file "scripts/ops/ops_ci_validate.sh"
 check_file "scripts/ops/post_deploy_verify.sh"
+check_file "scripts/ops/artifact_registry.mjs"
 check_file "scripts/ops/validate_ops_artifacts.mjs"
 check_file "scripts/ops/swarm_lane_preflight.mjs"
 check_file "scripts/ops/ops_wave_runner.mjs"
@@ -68,6 +69,7 @@ done
 
 section "Node Syntax"
 for script in \
+  "scripts/ops/artifact_registry.mjs" \
   "scripts/ops/validate_ops_artifacts.mjs" \
   "scripts/ops/swarm_lane_preflight.mjs" \
   "scripts/ops/ops_wave_runner.mjs" \
@@ -88,6 +90,12 @@ for script in \
 done
 
 section "Node Tests"
+if node --test "${REPO_ROOT}/scripts/ops/artifact_registry.test.mjs" >"${OUT_DIR}/artifact-registry.test.out" 2>&1; then
+  pass "node --test scripts/ops/artifact_registry.test.mjs"
+else
+  fail "node --test scripts/ops/artifact_registry.test.mjs"
+fi
+
 if node --test "${REPO_ROOT}/scripts/ops/swarm_lane_preflight.test.mjs" >"${OUT_DIR}/swarm-lane-preflight.test.out" 2>&1; then
   pass "node --test scripts/ops/swarm_lane_preflight.test.mjs"
 else

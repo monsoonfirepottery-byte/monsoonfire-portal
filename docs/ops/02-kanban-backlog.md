@@ -44,13 +44,97 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Effort: M
 - Risk: low for diagnostics, high for any backup-path change
 - Status: backup evidence scripts and docs are merged; restore confidence still needs an approval-gated drill.
+- Evidence placeholder / known evidence:
+  - Known: root-owned config/archive metadata was recorded as current on 2026-05-06 18:11 UTC in ops docs.
+  - Known: PostgreSQL dump restore proof, Redis scope, MinIO scope, and current restore-drill evidence remain incomplete unless fresh verifier output is attached.
+  - Placeholder: attach latest `make ops-backup-evidence`, PostgreSQL artifact verifier, Redis/MinIO evidence verifier, and restore drill summary.
+- Safe next step: apply the score semantics and age thresholds in `docs/ops/23-backup-restore-confidence.md`, then open stale or missing evidence issues for any degraded family.
+- Rollback / undo notes: revert docs/backlog/dashboard link changes if evidence is misclassified; do not delete, overwrite, move, or prune existing backups or storage volumes.
+- Approval gate: read-only evidence capture is allowed; manual dumps, restore execution, backup job changes, retention changes, service restarts, production data copies, and privileged host capture require explicit owner approval.
 - Acceptance criteria:
   - Backup report distinguishes config archives, PostgreSQL dump, Redis state, MinIO data, and restore drill status.
   - Latest backup evidence is current within the documented threshold.
   - Restore-prerequisite drill is documented and can run without exposing secrets.
+  - Issue-ready stale and missing backup evidence bodies are present in `docs/ops/23-backup-restore-confidence.md`.
 - Recommended owner: Codex, DBA review
 - Suggested branch name: `codex/ops-backup-evidence`
 - Suggested PR title: `[ops] Add Studio Brain backup evidence and restore drill report`
+
+#### Issue Body: Stale Backup Evidence
+
+Title:
+`[backup] Refresh stale Studio Brain backup evidence`
+
+```markdown
+## Problem
+One or more Studio Brain backup evidence families are older than the documented freshness threshold.
+
+## Evidence
+- Known evidence or placeholder:
+  - Attach latest `make ops-backup-evidence` output.
+  - Attach the affected artifact family, observed mtime, age, and threshold from `docs/ops/23-backup-restore-confidence.md`.
+  - Current known baseline: config/archive metadata was recorded as fresh on 2026-05-06 18:11 UTC; data-family and restore-drill proof still require current attached evidence.
+
+## Risk
+Medium to high. Stale evidence can hide a broken backup job, missed PostgreSQL dump, stale object-store backup, or restore-drill drift.
+
+## Proposed Fix
+Refresh read-only backup evidence, classify each stale family, and update the backup confidence score conservatively.
+
+## Safe Next Step
+Run `make ops-backup-evidence` and the relevant read-only verifier. Review output for secrets or sensitive paths before attaching it.
+
+## Acceptance Criteria
+- Affected artifact family is fresh by the documented threshold, or a missing-evidence follow-up exists.
+- Evidence distinguishes config archive, PostgreSQL, Redis, MinIO, and restore-drill status.
+- The Mission Control/admin gap remains visible until evidence is current.
+
+## Safety Notes
+- Rollback / undo: revert docs/dashboard link changes if the refreshed evidence is wrong; do not delete existing backups.
+- Approval gate: read-only evidence capture does not need approval, but manual dumps, restore execution, backup job changes, retention changes, service restarts, and production data copies require explicit owner approval.
+- Production impact: none for read-only evidence capture.
+
+Labels:
+ops, reliability, backup, database, docs
+```
+
+#### Issue Body: Missing Backup Evidence
+
+Title:
+`[backup] Close missing Studio Brain backup evidence gap`
+
+```markdown
+## Problem
+One or more Studio Brain backup evidence families are missing, unreadable, permission-blocked, or not yet classified as authoritative/regenerable.
+
+## Evidence
+- Known evidence or placeholder:
+  - Attach the `missing`, `unreadable`, `missing_or_permission_denied`, or `authority_unknown` line from the latest backup evidence packet.
+  - Attach expected artifact path, affected service/data family, and whether `sudo_unavailable` or another approval gate blocked verification.
+  - Current known baseline: root-owned config/archive metadata exists in ops docs; PostgreSQL dump restore proof, Redis scope, MinIO scope, and current restore-drill evidence remain incomplete unless fresh verifier output is attached.
+
+## Risk
+High. Missing evidence can mean the data family is not backed up, is inaccessible during an incident, or cannot be restored within expected RPO/RTO.
+
+## Proposed Fix
+Classify the missing family, define the authoritative evidence source, and add the least-invasive read-only proof path. Defer runtime backup or restore changes to a separately approved ticket.
+
+## Safe Next Step
+Use the existing read-only verifier for the affected family. If permissions block verification, use the privileged evidence capture approval path rather than granting broad agent sudo.
+
+## Acceptance Criteria
+- Missing family is classified as backed up, intentionally regenerable/cache-only, or still blocked with an owner-approved next action.
+- Evidence artifact includes timestamp, redacted source/path, age, and reviewer.
+- Backup confidence score is updated conservatively.
+
+## Safety Notes
+- Rollback / undo: revert docs/backlog updates if classification is wrong; do not remove backups, buckets, volumes, dumps, or config archives.
+- Approval gate: enabling backup jobs, changing paths, copying production data, running restores, changing retention, or using privileged host capture requires explicit owner approval.
+- Production impact: none for documentation and read-only verification.
+
+Labels:
+ops, reliability, backup, database, storage, docs
+```
 
 ### [ubuntu] Triage apt OOM and failed system units
 

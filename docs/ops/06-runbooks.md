@@ -64,20 +64,30 @@ The system backup job writes `/var/backups/studio-brain/latest-metadata.json` wi
 
 1. Capture restore-prerequisite evidence:
    - `make ops-backup-evidence`
-2. Use a disposable target database/container.
-3. Do not restore over production.
-4. Verify dump metadata:
+2. Review the confidence semantics and age thresholds:
+   - `docs/ops/23-backup-restore-confidence.md`
+3. Use a disposable target database/container whose name cannot alias production.
+4. Do not restore over production.
+5. Verify dump metadata:
    - `pg_restore --list <dump>`
-5. Restore into disposable target.
-6. Run smoke queries:
+6. Restore into disposable target only after explicit owner approval.
+7. Run smoke queries:
    - database size
    - table count
    - key relation row counts
    - app migration table status
-7. Record restore duration and result.
-8. Rerun `make ops-backup-evidence` so the latest restore-drill summary is visible in the unified report.
-9. Rollback:
+8. Record restore duration, result, confidence score band, and any stale/missing evidence follow-up.
+9. Rerun `make ops-backup-evidence` so the latest restore-drill summary is visible in the unified report.
+10. Rollback:
    - Drop only the disposable target after approval.
+
+### Restore Drill Safety Matrix
+
+| Recommendation | Evidence placeholder / known evidence | Risk | Safe next step | Rollback / undo notes | Approval gate |
+| --- | --- | --- | --- | --- | --- |
+| Keep the restore drill on a disposable target with no production overwrite path. | Placeholder: target database/container/volume name and assertion that it differs from `monsoonfire_studio_os` and live `studiobrain_postgres` storage. | Critical if the target can alias production. | Write the target name into the drill ticket before running restore commands. | Stop before restore if target is ambiguous; drop only the disposable target after approval. | Explicit owner approval required before restoring production-derived data anywhere. |
+| Treat `pg_restore --list` as a prerequisite, not a restore success. | Placeholder: command exit status and summary count, not dump contents. | High if metadata is mistaken for recoverability. | Follow with an approved disposable-target restore and aggregate smoke queries. | Delete only local generated list output if sensitive; no production state changed. | Read-only list check is allowed when dump access is already approved; restore requires owner approval. |
+| Record stale or missing evidence as issue-ready follow-up. | Known evidence: ops docs record 2026-05-06 18:11 UTC config/archive metadata, while PostgreSQL/Redis/MinIO/restore proof remains incomplete unless fresh verifier output is attached. | Medium to high because stale gaps can age out silently. | Use the stale/missing issue bodies in `docs/ops/23-backup-restore-confidence.md`. | Revert docs/backlog links if evidence is misclassified; do not remove backup artifacts. | Approval required for backup job changes, retention changes, privileged capture, or service actions. |
 
 ## Disk Pressure Emergency Response
 

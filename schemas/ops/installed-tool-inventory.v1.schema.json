@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/installed-tool-inventory.v1.schema.json",
+  "title": "Studio Brain Administrator Installed Tool Inventory",
+  "type": "object",
+  "required": ["schema", "generatedAt", "status", "tools"],
+  "properties": {
+    "schema": { "const": "studiobrain-installed-tool-inventory.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "installed": { "type": "integer", "minimum": 0 },
+        "missingRequired": { "type": "integer", "minimum": 0 },
+        "missingOptional": { "type": "integer", "minimum": 0 },
+        "shadowed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "declaredRegistry": {
+      "type": "object",
+      "properties": {
+        "contractToolCount": { "type": "integer", "minimum": 0 },
+        "primitiveFamilyCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "required"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "enum": ["installed", "missing_required", "missing_optional", "shadowed"] },
+          "required": { "type": "boolean" },
+          "path": { "type": ["string", "null"] },
+          "allPaths": { "type": "array", "items": { "type": "string" } },
+          "version": { "type": ["string", "null"] },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

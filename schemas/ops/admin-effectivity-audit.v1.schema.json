@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/admin-effectivity-audit.v1.schema.json",
+  "title": "Studio Brain Administrator Effectivity Audit",
+  "type": "object",
+  "required": ["schema", "generatedAt", "status", "sliceWindow", "scores", "sections"],
+  "properties": {
+    "schema": { "const": "studiobrain-admin-effectivity-audit.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "sliceWindow": {
+      "type": "object",
+      "required": ["count"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] },
+        "count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "scores": {
+      "type": "object",
+      "required": ["usefulness", "verification", "noOpRate", "blockedLaneClarity", "toolInventoryFreshness"],
+      "properties": {
+        "usefulness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "verification": { "type": "number", "minimum": 0, "maximum": 1 },
+        "noOpRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blockedLaneClarity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "toolInventoryFreshness": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "sections": {
+      "type": "object",
+      "properties": {
+        "sliceLedger": { "type": "object" },
+        "installedTools": { "type": "object" },
+        "effectivityReport": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "missionControl": {
+      "type": "object",
+      "properties": {
+        "externalId": { "type": "string" },
+        "taskTitle": { "type": "string" },
+        "events": { "type": "array" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

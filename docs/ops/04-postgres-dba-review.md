@@ -60,7 +60,8 @@ Largest indexes:
 ## Slow Query Visibility
 
 - `pg_stat_statements` is installed and preloaded, so slow-query review is possible.
-- The read-only review now includes a top-total-time query with single-line, length-limited query text. It showed several memory retrieval/statistics families dominating total execution time.
+- The read-only review now includes a visibility check for extension presence, view visibility, preload state, and current-role `SELECT` permission.
+- When visible, `scripts/ops/postgres_pg_stat_statements_rollup.sql` emits a redacted query-family rollup by statement kind and primary relation before listing top total-time and mean-time fingerprints.
 - Highest-cost families in the 18:32 UTC snapshot included memory pattern/entity lookups, `refresh_memory_stats_rollup`, row-count snapshots for memory tables, and repeated `mission_control.task_events order by occurred_at desc limit $1`.
 - Treat these as workload leads, not index-change approval. Before schema changes, capture approved `EXPLAIN (ANALYZE, BUFFERS)` output with literal scrubbing and rollback SQL.
 
@@ -80,12 +81,15 @@ Largest indexes:
 - Lock snapshot showed only granted locks: one `virtualxid` exclusive lock and one relation access-share lock.
 - No waiting locks were observed.
 - No idle-in-transaction session was observed in the captured output.
+- Wave 2 adds `scripts/ops/postgres_long_transaction_lock_packet.sql` for a standalone read-only packet covering long transactions, idle-in-transaction sessions, waiting activity, blocking pairs, lock-mode summaries, relation-lock summaries, and prepared transactions.
+- The packet is evidence only; it does not approve cancelling queries, terminating sessions, changing timeouts, or restarting services.
 
 ## Vacuum And Analyze Posture
 
 - Autovacuum is enabled.
 - Large memory tables show recent autoanalyze and some recent autovacuum activity.
 - Some manual `last_vacuum`/`last_analyze` timestamps are older or null, which is normal if autovacuum is handling the table.
+- Wave 2 expands `scripts/ops/postgres_autovacuum_stale_stats_report.sql` with `n_mod_since_analyze`, estimated analyze/vacuum thresholds from current settings, last-analyze/vacuum age, and custom table reloptions.
 - Recommendation: collect weekly relation stats before changing autovacuum thresholds.
 
 ## WAL And Checkpoint Observations
@@ -104,13 +108,19 @@ Largest indexes:
 
 The repo now includes:
 
+- `scripts/ops/postgres_readonly_snapshot_runner.sh`
 - `scripts/ops/postgres_readonly_review.sql`
 - `scripts/ops/postgres_size_report.sql`
+- `scripts/ops/postgres_db_growth_trend_snapshot.sql`
+- `scripts/ops/postgres_pg_stat_statements_rollup.sql`
+- `scripts/ops/postgres_long_transaction_lock_packet.sql`
+- `scripts/ops/postgres_autovacuum_stale_stats_report.sql`
+- `docs/ops/postgres-readonly-dba-wave2-packet.md`
 
 Recommended cadence:
 
-- Weekly: size report, dead tuples, active sessions, locks, and settings snapshot.
-- Monthly: pg_stat_statements redacted top-query review and restore drill.
+- Weekly: run the snapshot runner or collect growth, stale-stats, and long-transaction/lock packets.
+- Monthly: pg_stat_statements redacted query-family review and restore drill.
 - Before schema/index PRs: capture `EXPLAIN (ANALYZE, BUFFERS)` only on approved queries and scrub literals from shared artifacts.
 
 ## Safe Improvement Candidates

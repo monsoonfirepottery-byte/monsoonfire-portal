@@ -195,6 +195,21 @@ function parseJsonFromOutput(commandResult) {
   }
 }
 
+function parseKeyValueOutput(commandResult) {
+  const fields = {};
+  const text = commandResult?.stdout || "";
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+    if (match) fields[match[1]] = clean(match[2]);
+  }
+  const keys = ["status", "reason", "evidence_root", "safe_next_step", "run_dir", "run"];
+  const pattern = new RegExp(`(?:^|\\s)(${keys.join("|")}):\\s*([\\s\\S]*?)(?=\\s(?:${keys.join("|")}):|$)`, "g");
+  for (const match of text.matchAll(pattern)) {
+    fields[match[1]] = clean(match[2]);
+  }
+  return fields;
+}
+
 function fileRef(label, path, maxAgeMinutes = 24 * 60) {
   const abs = resolve(repoRoot, path);
   const exists = existsSync(abs);
@@ -217,6 +232,41 @@ function fileRef(label, path, maxAgeMinutes = 24 * 60) {
 function statusFromCommand(commandResult) {
   if (commandResult.skipped) return "unavailable";
   return commandResult.ok ? "pass" : "warn";
+}
+
+function privilegedEvidenceSection(commandResult) {
+  const parsed = parseJsonFromOutput(commandResult);
+  const fields = parseKeyValueOutput(commandResult);
+  const rawStatus = clean(fields.status || parsed?.status || "");
+  const absent = commandResult.skipped
+    || rawStatus === "unavailable"
+    || rawStatus === "missing"
+    || rawStatus === "missing_summary"
+    || /no privileged evidence run was found|privileged evidence directory is not readable/i.test(commandResult.stdout || commandResult.error || "");
+
+  if (absent) {
+    return {
+      status: "sudo_unavailable",
+      commandStatus: statusFromCommand(commandResult),
+      evidenceRoot: clean(fields.evidence_root || ""),
+      runDir: clean(fields.run_dir || ""),
+      generatedAt: "",
+      summaryPresent: false,
+      safeNextStep: clean(fields.safe_next_step || "run the approval-gated collector or install the root-owned timer"),
+      note: "Privileged host capture evidence is absent; no sudo attempt was made by this report.",
+    };
+  }
+
+  return {
+    status: parsed ? "pass" : statusFromCommand(commandResult),
+    commandStatus: statusFromCommand(commandResult),
+    evidenceRoot: clean(fields.evidence_root || parsed?.evidenceRoot || ""),
+    runDir: clean(fields.run_dir || parsed?.runDir || ""),
+    generatedAt: clean(parsed?.generatedAt || parsed?.completedAt || parsed?.createdAt || ""),
+    summaryPresent: Boolean(parsed),
+    safeNextStep: "",
+    note: parsed ? "Latest privileged evidence summary was readable." : "Privileged evidence reader returned output but no JSON summary was parsed.",
+  };
 }
 
 function buildSections(commands, refs) {
@@ -283,6 +333,7 @@ function buildSections(commands, refs) {
       commandStatus: statusFromCommand(commands.failedUnits),
       trueFailedUnits,
     },
+    privilegedEvidence: privilegedEvidenceSection(commands.privilegedEvidence),
   };
 }
 
@@ -293,9 +344,10 @@ function rollupStatus(sections) {
     sections.harness.status,
     sections.backup.status,
     sections.failedUnits.status,
+    sections.privilegedEvidence.status,
   ].map((status) => clean(status).toLowerCase());
   if (statuses.includes("fail")) return "fail";
-  if (statuses.includes("warn") || statuses.includes("unavailable")) return "warn";
+  if (statuses.includes("warn") || statuses.includes("unavailable") || statuses.includes("sudo_unavailable")) return "warn";
   return "pass";
 }
 
@@ -315,6 +367,13 @@ function renderMarkdown(report) {
     `- Mission Control harness coverage: ${report.sections.harness.status}, missing tickets ${report.sections.harness.missingTickets}, open tickets ${report.sections.harness.openTickets}`,
     `- Backup confidence: ${report.sections.backup.status}`,
     `- Failed-unit classifier: ${report.sections.failedUnits.status}, true failed units ${report.sections.failedUnits.trueFailedUnits}`,
+    `- Privileged capture: ${report.sections.privilegedEvidence.status}`,
+    "",
+    "## Operator Summary",
+    "",
+    `- Overall effectivity is ${report.status}; warnings and unavailable dependencies are surfaced as follow-up work, not hidden.`,
+    `- The latest report artifacts are timestamped under ${rel(dirname(jsonPath))}; this path is ignored by git.`,
+    `- Privileged evidence status is ${report.sections.privilegedEvidence.status}, so host-only reads remain approval-gated when absent.`,
     "",
     "## Evidence",
     "",
@@ -327,6 +386,21 @@ function renderMarkdown(report) {
     lines.push("- None detected by this report.");
   } else {
     for (const gap of report.sections.backup.gaps) lines.push(`- ${gap}`);
+  }
+  lines.push("", "## Privileged Capture", "");
+  lines.push(`- Status: ${report.sections.privilegedEvidence.status}`);
+  if (report.sections.privilegedEvidence.generatedAt) {
+    lines.push(`- Generated: ${report.sections.privilegedEvidence.generatedAt}`);
+  }
+  if (report.sections.privilegedEvidence.evidenceRoot) {
+    lines.push(`- Evidence root: ${report.sections.privilegedEvidence.evidenceRoot}`);
+  }
+  if (report.sections.privilegedEvidence.runDir) {
+    lines.push(`- Run dir: ${report.sections.privilegedEvidence.runDir}`);
+  }
+  lines.push(`- Note: ${report.sections.privilegedEvidence.note}`);
+  if (report.sections.privilegedEvidence.safeNextStep) {
+    lines.push(`- Safe next step: ${report.sections.privilegedEvidence.safeNextStep}`);
   }
   lines.push("", "## Commands", "");
   for (const command of Object.values(report.commands)) {
@@ -361,6 +435,9 @@ const commands = {
   failedUnits: existsSync(resolve(repoRoot, "scripts/ops/ubuntu_failed_units.sh"))
     ? runCommand("ubuntu-failed-units", "bash", ["scripts/ops/ubuntu_failed_units.sh"], { timeoutMs: 30000, maxOutput: 12000 })
     : skippedCommand("ubuntu-failed-units", "script unavailable"),
+  privilegedEvidence: existsSync(resolve(repoRoot, "scripts/ops/privileged_evidence_read.sh"))
+    ? runCommand("privileged-evidence-read", "bash", ["scripts/ops/privileged_evidence_read.sh", "--summary"], { timeoutMs: 15000, maxOutput: 12000 })
+    : skippedCommand("privileged-evidence-read", "script unavailable"),
 };
 
 const sections = buildSections(commands, sources);

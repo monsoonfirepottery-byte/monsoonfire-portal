@@ -24,6 +24,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/admin-effectivity-audit.v1.schema.json",
   },
   {
+    id: "slice-ledger-summary",
+    artifact: "output/ops/effectivity/slice-ledger-latest.json",
+    schema: "schemas/ops/slice-ledger-summary.v1.schema.json",
+  },
+  {
     id: "ops-work-packet",
     artifact: "output/ops/swarm/latest-work-packet.json",
     schema: "schemas/ops/ops-work-packet.v1.schema.json",

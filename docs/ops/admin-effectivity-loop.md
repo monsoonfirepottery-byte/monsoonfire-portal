@@ -32,6 +32,8 @@ node scripts/ops/slice_ledger.mjs --summary --last 5 --run-id admin-effectivity-
 node scripts/ops/admin_effectivity_audit.mjs --write --slice-run-id admin-effectivity-20260507
 ```
 
+The summary includes `auditCadence.auditDue`, `slicesSinceLastAudit`, and `nextAuditAt`. With the default interval of 5, `auditDue=true` means stop the slice loop long enough to run `admin_effectivity_audit.mjs`, inspect usefulness/no-op rate, and then continue with the next safe infrastructure slice.
+
 Inventory local tool availability:
 
 ```bash

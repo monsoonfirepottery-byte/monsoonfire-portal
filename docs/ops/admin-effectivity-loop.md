@@ -69,6 +69,15 @@ node scripts/ops/validate_ops_artifacts.mjs --json --write
 
 Missing ignored artifacts are warnings. Schema mismatches are failures because they mean a dashboard, swarm packet consumer, or future automation would be reading a contract it cannot trust.
 
+Preflight a swarm worker lane before delegation:
+
+```bash
+node scripts/ops/swarm_lane_preflight.mjs --lane tooling --base origin/main --json --write
+make ops-swarm-lane-preflight OPS_SWARM_LANE=docs OPS_SWARM_BASE=origin/main
+```
+
+The preflight is read-only. It checks the branch, base ref, integration-base diff, dirty files, changed files, and rename sources against a lane-owned write scope so out-of-lane edits are caught before a worker starts. Use `--base origin/main` for delegation unless you are intentionally validating a stacked branch boundary.
+
 ## Scoring
 
 - `usefulness`: average slice usefulness score, 0 to 1.

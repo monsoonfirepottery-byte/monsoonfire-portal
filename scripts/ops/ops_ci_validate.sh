@@ -40,6 +40,7 @@ check_file "scripts/ops/incident_bundle_v2.sh"
 check_file "scripts/ops/ops_ci_validate.sh"
 check_file "scripts/ops/post_deploy_verify.sh"
 check_file "scripts/ops/validate_ops_artifacts.mjs"
+check_file "scripts/ops/swarm_lane_preflight.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -57,13 +58,34 @@ done
 
 section "Node Syntax"
 for script in \
-  "scripts/ops/validate_ops_artifacts.mjs"; do
+  "scripts/ops/validate_ops_artifacts.mjs" \
+  "scripts/ops/swarm_lane_preflight.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
     pass "node --check ${script}"
   else
     fail "node --check ${script}"
   fi
 done
+
+section "Node Tests"
+if node --test "${REPO_ROOT}/scripts/ops/swarm_lane_preflight.test.mjs" >"${OUT_DIR}/swarm-lane-preflight.test.out" 2>&1; then
+  pass "node --test scripts/ops/swarm_lane_preflight.test.mjs"
+else
+  fail "node --test scripts/ops/swarm_lane_preflight.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.test.mjs" >"${OUT_DIR}/validate-ops-artifacts.test.out" 2>&1; then
+  pass "node --test scripts/ops/validate_ops_artifacts.test.mjs"
+else
+  fail "node --test scripts/ops/validate_ops_artifacts.test.mjs"
+fi
+
+section "Swarm Lane Preflight Smoke"
+if node "${REPO_ROOT}/scripts/ops/swarm_lane_preflight.mjs" --lane tooling --base origin/main --json --write >"${OUT_DIR}/swarm-lane-preflight.json"; then
+  pass "swarm_lane_preflight tooling smoke"
+else
+  fail "swarm_lane_preflight tooling smoke"
+fi
 
 section "Artifact Schema Smoke"
 if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"${OUT_DIR}/artifact-schema-validation.json"; then

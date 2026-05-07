@@ -127,6 +127,7 @@ Use `node scripts/ops/packet_outcome_report.mjs --json --write` for a compact op
 - `workPacketOutcomeHealth`: 1 when the latest work-packet report is fresh and its outcome ledger is clean or still warming up; 0.4 when mature outcomes show too many stale/misleading packets; 0.6 when blocked packet outcomes need triage.
 
 The audit fails if required tools are missing or a slice failed. It warns when no slices are recorded, no-op rate is high, the underlying ops effectivity report cannot run, or the latest work-packet outcome health is degraded.
+Use `node scripts/ops/admin_effectivity_trend.mjs --json --write --limit 10` after checkpoint audits to compare recent five-slice windows. The trend report is read-only and highlights usefulness/no-op movement, tool freshness drift, work-packet outcome health drift, and the latest audit status.
 
 ## Blocker Classes
 

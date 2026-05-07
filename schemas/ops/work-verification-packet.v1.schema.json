@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/work-verification-packet.v1.schema.json",
+  "title": "Studio Brain Ops Work Verification Packet",
+  "type": "object",
+  "required": ["schema", "generatedAt", "status", "redaction", "inputs", "sliceWindow", "summary", "commands", "changedFiles", "artifacts", "warnings", "failures"],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-work-verification-packet.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "redaction": { "const": "metadata_only_no_file_contents" },
+    "inputs": {
+      "type": "object",
+      "required": ["ledgerPath", "last"],
+      "properties": {
+        "ledgerPath": { "type": "string" },
+        "last": { "type": "number", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "sliceWindow": {
+      "type": "object",
+      "required": ["from", "to", "rows"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["sliceId", "runId", "lane", "title", "status", "usefulnessScore"],
+            "properties": {
+              "sliceId": { "type": "string" },
+              "runId": { "type": "string" },
+              "lane": { "type": "string" },
+              "title": { "type": "string" },
+              "status": { "enum": ["completed", "blocked", "noop", "failed"] },
+              "usefulnessScore": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["sliceCount", "commandCount", "commandFailures", "commandWarnings", "commandSkipped", "artifactCount", "missingArtifacts", "artifactWarnings", "artifactFailures", "changedFileCount", "sensitivePathCount", "sensitivePathClasses", "noOpRows", "gitDirtyFiles"],
+      "properties": {
+        "sliceCount": { "type": "number", "minimum": 0 },
+        "commandCount": { "type": "number", "minimum": 0 },
+        "commandFailures": { "type": "number", "minimum": 0 },
+        "commandWarnings": { "type": "number", "minimum": 0 },
+        "commandSkipped": { "type": "number", "minimum": 0 },
+        "artifactCount": { "type": "number", "minimum": 0 },
+        "missingArtifacts": { "type": "number", "minimum": 0 },
+        "artifactWarnings": { "type": "number", "minimum": 0 },
+        "artifactFailures": { "type": "number", "minimum": 0 },
+        "changedFileCount": { "type": "number", "minimum": 0 },
+        "sensitivePathCount": { "type": "number", "minimum": 0 },
+        "sensitivePathClasses": { "type": "array", "items": { "type": "string" } },
+        "noOpRows": { "type": "number", "minimum": 0 },
+        "gitDirtyFiles": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sliceId", "command", "status"],
+        "properties": {
+          "sliceId": { "type": "string" },
+          "command": { "type": "string" },
+          "status": { "enum": ["pass", "warn", "fail", "skipped"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "changedFiles": { "type": "array", "items": { "type": "string" } },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "exists", "sizeBytes", "sha256", "schema", "status", "generatedAt", "shareable"],
+        "properties": {
+          "path": { "type": "string" },
+          "exists": { "type": "boolean" },
+          "sizeBytes": { "type": "number", "minimum": 0 },
+          "sha256": { "type": ["string", "null"] },
+          "schema": { "type": ["string", "null"] },
+          "status": { "type": ["string", "null"] },
+          "generatedAt": { "type": ["string", "null"] },
+          "shareable": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "git": {
+      "type": ["object", "null"]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "path": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "sliceId": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

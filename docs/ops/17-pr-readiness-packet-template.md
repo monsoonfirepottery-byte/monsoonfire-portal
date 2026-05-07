@@ -21,6 +21,7 @@ Use this packet before opening or merging ops PRs that touch Studio Brain eviden
 | --- | --- | --- | --- |
 | Shell syntax | `bash -n scripts/ops/incident_bundle_v2.sh scripts/ops/ops_ci_validate.sh scripts/ops/post_deploy_verify.sh` | passes | |
 | Ops script validation | `bash scripts/ops/ops_ci_validate.sh` | passes and writes `output/ops/ci-validate` | |
+| Work verification packet | `node scripts/ops/work_verification_packet.mjs --last 5 --json --write` | writes metadata-only verification packet under `output/ops/work-verification` | |
 | Redacted incident bundle v2 | `INCIDENT_INCLUDE_LOGS=0 INCIDENT_INCLUDE_POST_DEPLOY=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/pr-smoke` | writes `summary.json` and redacted reports | |
 | Post-deploy verification help | `bash scripts/ops/post_deploy_verify.sh --help` | documents safe flags and env vars | |
 | Docs review | Review `docs/ops/18-release-verification.md` | release verifier covers Studio Brain health/ready, Mission Control health/admin DOM, harness, and idle-worker audit | |

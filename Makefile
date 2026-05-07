@@ -4,7 +4,7 @@ PG_CONTAINER ?= studiobrain_postgres
 PGDATABASE ?= monsoonfire_studio_os
 OPS_TOOLING_QUALITY_FLAGS ?=
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-slice-ledger ops-tool-inventory ops-admin-effectivity-audit ops-tooling-quality ops-shell-lf-guard ops-shellcheck-report ops-powershell-syntax ops-sql-parse-report ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-slice-ledger ops-tool-inventory ops-admin-effectivity-audit ops-tooling-quality ops-shell-lf-guard ops-shellcheck-report ops-powershell-syntax ops-sql-parse-report ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-work-verification ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
 
 ops-check: ops-inventory ops-docker-review ops-capacity ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review
 
@@ -147,6 +147,9 @@ ops-privileged-evidence-capture-smoke:
 
 ops-work-packet:
 	node ./scripts/studiobrain-ops-work-packet.mjs --write
+
+ops-work-verification:
+	node scripts/ops/work_verification_packet.mjs --last 5 --write
 
 ops-incident-bundle:
 	bash scripts/ops/incident_bundle.sh

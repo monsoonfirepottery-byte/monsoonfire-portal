@@ -39,6 +39,7 @@ section "Required Files"
 check_file "scripts/ops/incident_bundle_v2.sh"
 check_file "scripts/ops/ops_ci_validate.sh"
 check_file "scripts/ops/post_deploy_verify.sh"
+check_file "scripts/ops/validate_ops_artifacts.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -53,6 +54,23 @@ for script in \
     fail "bash -n ${script}"
   fi
 done
+
+section "Node Syntax"
+for script in \
+  "scripts/ops/validate_ops_artifacts.mjs"; do
+  if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
+    pass "node --check ${script}"
+  else
+    fail "node --check ${script}"
+  fi
+done
+
+section "Artifact Schema Smoke"
+if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"${OUT_DIR}/artifact-schema-validation.json"; then
+  pass "validate_ops_artifacts schema smoke"
+else
+  fail "validate_ops_artifacts schema smoke"
+fi
 
 section "Docs Contract"
 for needle in \

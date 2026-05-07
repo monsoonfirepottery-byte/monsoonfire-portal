@@ -60,6 +60,14 @@ The work-packet generator still uses the durable docs as its baseline, then enri
 
 Missing or invalid fresh artifacts degrade to warnings and docs-only packet generation. The generator should not run the audit itself; run `make ops-admin-effectivity-audit` first when fresh steering is needed.
 
+Validate generated ops artifacts against their committed schemas:
+
+```bash
+node scripts/ops/validate_ops_artifacts.mjs --json --write
+```
+
+Missing ignored artifacts are warnings. Schema mismatches are failures because they mean a dashboard, swarm packet consumer, or future automation would be reading a contract it cannot trust.
+
 ## Scoring
 
 - `usefulness`: average slice usefulness score, 0 to 1.

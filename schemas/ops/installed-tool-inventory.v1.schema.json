@@ -39,6 +39,7 @@
       },
       "additionalProperties": false
     },
+    "artifactPath": { "type": "string" },
     "tools": {
       "type": "array",
       "items": {

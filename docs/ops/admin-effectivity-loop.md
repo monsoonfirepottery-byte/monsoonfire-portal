@@ -105,7 +105,7 @@ Work packets should steer from fresh evidence only. Missing, invalid, stale, or 
 - `verification`: passing command checks divided by total recorded command checks.
 - `noOpRate`: share of rows with no changed file, artifact, command evidence, or an explicit no-op status.
 - `blockedLaneClarity`: blocked slices with a fixed blocker class and safe next step.
-- `toolInventoryFreshness`: 1 when the inventory command can run; 0 when unavailable.
+- `toolInventoryFreshness`: 1 when the inventory command can run and both the inventory and its upstream tooling-quality source are fresh enough for the selected slice window; 0 when unavailable, stale, invalid, or older than the audited slices.
 
 The audit fails if required tools are missing or a slice failed. It warns when no slices are recorded, no-op rate is high, or the underlying ops effectivity report cannot run.
 

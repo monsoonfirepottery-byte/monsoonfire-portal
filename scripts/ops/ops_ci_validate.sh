@@ -43,6 +43,7 @@ check_file "scripts/ops/validate_ops_artifacts.mjs"
 check_file "scripts/ops/swarm_lane_preflight.mjs"
 check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "scripts/ops/slice_ledger.mjs"
+check_file "scripts/ops/admin_effectivity_audit.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
 check_file "scripts/ops/tool_install_recommendations.mjs"
@@ -67,6 +68,7 @@ for script in \
   "scripts/ops/swarm_lane_preflight.mjs" \
   "scripts/ops/ops_wave_runner.mjs" \
   "scripts/ops/slice_ledger.mjs" \
+  "scripts/ops/admin_effectivity_audit.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
   "scripts/ops/installed_tool_inventory.mjs" \
   "scripts/ops/tool_install_recommendations.mjs"; do
@@ -100,6 +102,12 @@ if node --test "${REPO_ROOT}/scripts/ops/slice_ledger.test.mjs" >"${OUT_DIR}/sli
   pass "node --test scripts/ops/slice_ledger.test.mjs"
 else
   fail "node --test scripts/ops/slice_ledger.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/admin_effectivity_audit.test.mjs" >"${OUT_DIR}/admin-effectivity-audit.test.out" 2>&1; then
+  pass "node --test scripts/ops/admin_effectivity_audit.test.mjs"
+else
+  fail "node --test scripts/ops/admin_effectivity_audit.test.mjs"
 fi
 
 if node --test "${REPO_ROOT}/scripts/ops/tooling_quality_report.test.mjs" >"${OUT_DIR}/tooling-quality-report.test.out" 2>&1; then

@@ -36,6 +36,7 @@
       "properties": {
         "sliceLedger": { "type": "object" },
         "installedTools": { "type": "object" },
+        "installedToolsFreshness": { "type": "object" },
         "effectivityReport": { "type": "object" }
       },
       "additionalProperties": true

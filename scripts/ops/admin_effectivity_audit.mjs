@@ -179,6 +179,11 @@ function rowTimestamp(row) {
   return Date.parse(clean(row.completedAt) || clean(row.startedAt)) || 0;
 }
 
+function latestRowIso(rows) {
+  const timestamp = rows.reduce((latest, row) => Math.max(latest, rowTimestamp(row)), 0);
+  return timestamp > 0 ? new Date(timestamp).toISOString() : "";
+}
+
 function sliceSequence(row) {
   const match = clean(row.sliceId).match(/-(\d+)$/);
   return match ? Number(match[1]) : null;
@@ -209,6 +214,47 @@ function tryEffectivityReport() {
   const result = runJson("bash", ["scripts/ops/effectivity_report.sh", "--json", "--no-write"]);
   if (!result.ok) return { ok: false, status: "unavailable", reason: result.error, report: null };
   return { ok: true, status: result.json?.status || "ok", reason: "", report: summarizeEffectivityReport(result.json) };
+}
+
+function sourceFreshness(generatedAt, options = {}) {
+  const generated = Date.parse(clean(generatedAt));
+  const now = Date.parse(clean(options.now) || nowIso());
+  const minGeneratedAt = clean(options.minGeneratedAt);
+  const minGenerated = minGeneratedAt ? Date.parse(minGeneratedAt) : 0;
+  const maxAgeHours = Number(options.maxAgeHours ?? 24);
+  if (!clean(generatedAt)) return { status: "missing", score: 0, generatedAt: "", ageHours: null, minGeneratedAt, maxAgeHours };
+  if (Number.isNaN(generated) || Number.isNaN(now) || (minGeneratedAt && Number.isNaN(minGenerated))) {
+    return { status: "invalid_timestamp", score: 0, generatedAt: clean(generatedAt), ageHours: null, minGeneratedAt, maxAgeHours };
+  }
+  const ageHours = Number(Math.max(0, (now - generated) / 3_600_000).toFixed(2));
+  if (minGenerated && generated < minGenerated) {
+    return { status: "older_than_slice_window", score: 0, generatedAt: clean(generatedAt), ageHours, minGeneratedAt, maxAgeHours };
+  }
+  if (maxAgeHours > 0 && ageHours > maxAgeHours) {
+    return { status: "stale", score: 0, generatedAt: clean(generatedAt), ageHours, minGeneratedAt, maxAgeHours };
+  }
+  return { status: "fresh", score: 1, generatedAt: clean(generatedAt), ageHours, minGeneratedAt, maxAgeHours };
+}
+
+function buildInstalledToolsFreshness(toolInventory, options = {}) {
+  if (!toolInventory?.schema) {
+    return {
+      status: "unavailable",
+      score: 0,
+      inventory: sourceFreshness("", options),
+      toolingQuality: sourceFreshness("", options)
+    };
+  }
+  const inventory = sourceFreshness(toolInventory.generatedAt, options);
+  const toolingQuality = sourceFreshness(toolInventory.effectivitySource?.generatedAt, options);
+  const score = inventory.score === 1 && toolingQuality.score === 1 ? 1 : 0;
+  return {
+    status: score === 1 ? "fresh" : "stale_source",
+    score,
+    inventory,
+    toolingQuality,
+    effectivitySourceStatus: clean(toolInventory.effectivitySource?.status) || "unknown"
+  };
 }
 
 function summarizeEffectivityReport(report) {
@@ -253,7 +299,12 @@ function buildAudit(options) {
   const sliceSummary = summarizeSlices(selectedRows);
   const toolInventory = runJson(process.execPath, ["scripts/ops/installed_tool_inventory.mjs", "--json"]);
   const effectivityReport = tryEffectivityReport();
-  const toolFreshness = toolInventory.ok ? 1 : 0;
+  const installedToolsFreshness = buildInstalledToolsFreshness(toolInventory.json, {
+    now: generatedAt,
+    minGeneratedAt: latestRowIso(selectedRows),
+    maxAgeHours: 24
+  });
+  const toolFreshness = toolInventory.ok ? installedToolsFreshness.score : 0;
   const missingRequired = Number(toolInventory.json?.summary?.missingRequired) || 0;
   const usefulness = sliceSummary.count > 0 ? sliceSummary.usefulness : 0;
   const scores = {
@@ -265,7 +316,7 @@ function buildAudit(options) {
   };
   const status = missingRequired > 0 || sliceSummary.failed > 0
     ? "fail"
-    : sliceSummary.count === 0 || sliceSummary.noOpRate > 0.4 || !effectivityReport.ok
+    : sliceSummary.count === 0 || sliceSummary.noOpRate > 0.4 || !effectivityReport.ok || toolFreshness < 1
       ? "warn"
       : "pass";
   return {
@@ -289,6 +340,7 @@ function buildAudit(options) {
         rows: selectedRows
       },
       installedTools: toolInventory.ok ? toolInventory.json : { status: "unavailable", error: toolInventory.error },
+      installedToolsFreshness,
       effectivityReport
     },
     missionControl: {
@@ -337,6 +389,8 @@ function markdown(audit) {
     `- Missing required: ${audit.sections.installedTools.summary?.missingRequired ?? "unknown"}`,
     `- Missing optional: ${audit.sections.installedTools.summary?.missingOptional ?? "unknown"}`,
     `- Shadowed: ${audit.sections.installedTools.summary?.shadowed ?? "unknown"}`,
+    `- Freshness status: ${audit.sections.installedToolsFreshness?.status ?? "unknown"}`,
+    `- Tooling quality source freshness: ${audit.sections.installedToolsFreshness?.toolingQuality?.status ?? "unknown"}`,
     "",
     "## Slice Rows",
     ""
@@ -360,16 +414,30 @@ function writeArtifacts(options, audit) {
   return { jsonPath, markdownPath };
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  const audit = buildAudit(options);
-  const artifacts = options.write ? writeArtifacts(options, audit) : null;
-  if (options.json || !options.write) {
-    process.stdout.write(`${JSON.stringify(artifacts ? { ...audit, artifacts } : audit, null, 2)}\n`);
-  } else {
-    process.stdout.write(`admin effectivity audit: ${audit.status}, slices=${audit.sliceWindow.count}, usefulness=${audit.scores.usefulness}\n`);
+function main(argv = process.argv.slice(2)) {
+  try {
+    const options = parseArgs(argv);
+    const audit = buildAudit(options);
+    const artifacts = options.write ? writeArtifacts(options, audit) : null;
+    if (options.json || !options.write) {
+      process.stdout.write(`${JSON.stringify(artifacts ? { ...audit, artifacts } : audit, null, 2)}\n`);
+    } else {
+      process.stdout.write(`admin effectivity audit: ${audit.status}, slices=${audit.sliceWindow.count}, usefulness=${audit.scores.usefulness}\n`);
+    }
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
   }
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+}
+
+export {
+  buildAudit,
+  buildInstalledToolsFreshness,
+  main,
+  parseArgs,
+  sourceFreshness
+};
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main();
 }

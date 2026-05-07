@@ -200,7 +200,7 @@ else
 fi
 
 section "Ops Wave Runner Dry Run"
-if node "${REPO_ROOT}/scripts/ops/ops_wave_runner.mjs" --dry-run --json --steps swarm-preflight,work-packet,artifact-validation >"${OUT_DIR}/ops-wave-runner-dry-run.json"; then
+if node "${REPO_ROOT}/scripts/ops/ops_wave_runner.mjs" --dry-run --json --steps swarm-preflight,host-drift-manifest,work-packet,artifact-validation >"${OUT_DIR}/ops-wave-runner-dry-run.json"; then
   pass "ops_wave_runner dry-run smoke"
 else
   fail "ops_wave_runner dry-run smoke"

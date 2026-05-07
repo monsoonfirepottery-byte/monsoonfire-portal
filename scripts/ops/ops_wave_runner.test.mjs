@@ -8,9 +8,9 @@ import { join, resolve } from "node:path";
 import { buildWavePlan, checkRegistryConsistency, runWave } from "./ops_wave_runner.mjs";
 
 test("buildWavePlan keeps dependent ops steps ordered", () => {
-  const plan = buildWavePlan({ steps: ["swarm-preflight", "work-packet", "artifact-validation"] });
+  const plan = buildWavePlan({ steps: ["swarm-preflight", "host-drift-manifest", "work-packet", "artifact-validation"] });
 
-  assert.deepEqual(plan.map((step) => step.id), ["swarm-preflight", "work-packet", "artifact-validation"]);
+  assert.deepEqual(plan.map((step) => step.id), ["swarm-preflight", "host-drift-manifest", "work-packet", "artifact-validation"]);
   assert.equal(plan[0].order, 1);
   assert.ok(plan[0].commandText.includes("swarm_lane_preflight.mjs"));
 });
@@ -90,6 +90,16 @@ test("buildWavePlan refreshes tool-install recommendations before work packets",
   assert.ok(plan[recommendationIndex].commandText.includes("tool_install_recommendations.mjs"));
 });
 
+test("buildWavePlan refreshes host drift manifest before work packets", () => {
+  const plan = buildWavePlan();
+  const hostDriftIndex = plan.findIndex((step) => step.id === "host-drift-manifest");
+  const workPacketIndex = plan.findIndex((step) => step.id === "work-packet");
+
+  assert.ok(hostDriftIndex >= 0);
+  assert.ok(workPacketIndex > hostDriftIndex);
+  assert.ok(plan[hostDriftIndex].commandText.includes("host_drift_manifest.mjs"));
+});
+
 test("checkRegistryConsistency verifies planned artifacts against the shared registry", () => {
   const plan = buildWavePlan();
   const consistency = checkRegistryConsistency(plan);
@@ -118,7 +128,7 @@ test("checkRegistryConsistency treats from-step plans as intentionally restricte
 });
 
 test("runWave dry-run records skipped receipts without executing", () => {
-  const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "work-packet"] }, () => {
+  const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "host-drift-manifest", "work-packet"] }, () => {
     throw new Error("runner should not execute in dry-run mode");
   });
 
@@ -126,7 +136,7 @@ test("runWave dry-run records skipped receipts without executing", () => {
   assert.equal(manifest.dryRun, true);
   assert.equal(manifest.registryConsistency.status, "pass");
   assert.equal(manifest.registryConsistency.restrictedPlan, true);
-  assert.deepEqual(manifest.receipts.map((receipt) => receipt.status), ["skipped", "skipped"]);
+  assert.deepEqual(manifest.receipts.map((receipt) => receipt.status), ["skipped", "skipped", "skipped"]);
 });
 
 test("dry-run write does not replace the latest executable wave artifact", () => {
@@ -142,7 +152,7 @@ test("dry-run write does not replace the latest executable wave artifact", () =>
         "--output-dir",
         dir,
         "--steps",
-        "swarm-preflight,work-packet",
+        "swarm-preflight,host-drift-manifest,work-packet",
       ],
       { encoding: "utf8" },
     );
@@ -159,7 +169,7 @@ test("dry-run write does not replace the latest executable wave artifact", () =>
 
 test("runWave stops on failed step and keeps downstream artifacts untouched", () => {
   const manifest = runWave(
-    { runId: "unit-wave", steps: ["swarm-preflight", "work-packet", "artifact-validation"] },
+    { runId: "unit-wave", steps: ["swarm-preflight", "host-drift-manifest", "work-packet", "artifact-validation"] },
     (step) => ({
       code: step.id === "work-packet" ? 1 : 0,
       stdout: JSON.stringify({ status: step.id === "work-packet" ? "fail" : "pass" }),
@@ -168,8 +178,8 @@ test("runWave stops on failed step and keeps downstream artifacts untouched", ()
   );
 
   assert.equal(manifest.status, "fail");
-  assert.deepEqual(manifest.receipts.map((receipt) => receipt.id), ["swarm-preflight", "work-packet"]);
-  assert.equal(manifest.receipts[1].stderrPreview, "packet failed");
+  assert.deepEqual(manifest.receipts.map((receipt) => receipt.id), ["swarm-preflight", "host-drift-manifest", "work-packet"]);
+  assert.equal(manifest.receipts[2].stderrPreview, "packet failed");
   assert.match(manifest.resumeCommand, /--from-step work-packet/);
   assert.match(manifest.nextRecommendedAction, /Resume with:/);
 });

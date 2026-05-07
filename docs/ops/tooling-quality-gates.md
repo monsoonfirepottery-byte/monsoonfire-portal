@@ -19,7 +19,7 @@ The Makefile wrapper keeps installs off by default. Use `make ops-tooling-qualit
 
 ## Modes
 
-- `shell-lf`: scans tracked `.sh` files for CRLF bytes. This is the first gate to promote because Ubuntu scripts should be LF-only.
+- `shell-lf`: scans tracked `.sh` files plus extensionless `sh`/`bash` shebang scripts for CRLF bytes. This is the first gate to promote because Ubuntu scripts should be LF-only.
 - `shellcheck`: runs `shellcheck -f json -S warning` when installed. With `--allow-install`, it can use `npx --yes shellcheck` and stores structured file/line/code findings.
 - `powershell`: parses tracked `.ps1` files with `pwsh` or Windows PowerShell.
 - `sqlfluff`: runs PostgreSQL parser checks when `sqlfluff` is installed. With `--allow-install`, it can use `uv tool run --from sqlfluff`.

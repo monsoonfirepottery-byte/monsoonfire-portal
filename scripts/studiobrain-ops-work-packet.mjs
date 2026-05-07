@@ -789,6 +789,28 @@ function outcomeHealthFromSummary(summary) {
   };
 }
 
+function summarizeOutcomeSuppressions(packets, outcomeSummary) {
+  const latest = Array.isArray(outcomeSummary?.latestByPacket) ? outcomeSummary.latestByPacket : [];
+  const terminalByPacket = new Map(
+    latest
+      .filter((entry) => ["resolved", "superseded"].includes(clean(entry.outcome)))
+      .map((entry) => [clean(entry.packetId), entry]),
+  );
+  return packets
+    .filter((packet) => terminalByPacket.has(clean(packet.packetId)))
+    .map((packet) => {
+      const outcome = terminalByPacket.get(clean(packet.packetId));
+      return {
+        packetId: clean(packet.packetId),
+        title: clean(packet.title),
+        reason: "latest outcome is terminal",
+        outcome: clean(outcome.outcome),
+        recordedAt: clean(outcome.recordedAt),
+        notes: clean(outcome.notes),
+      };
+    });
+}
+
 function freshness(generatedAt, options = {}) {
   const maxAgeHours = Number(options.maxAgeHours ?? 24);
   const now = options.now || nowIso();
@@ -1125,7 +1147,12 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
   ]
     .sort(comparePackets);
   const inFlightPrSuppressions = summarizeInFlightSuppressions(candidatePackets, freshEvidence.prStackAudit);
-  const suppressedPacketIds = new Set(inFlightPrSuppressions.map((entry) => entry.packetId));
+  const outcomeSummary = inputs.outcomeSummary || buildOutcomeSummary(Array.isArray(inputs.outcomes) ? inputs.outcomes : []);
+  const outcomeSuppressions = summarizeOutcomeSuppressions(candidatePackets, outcomeSummary);
+  const suppressedPacketIds = new Set([
+    ...inFlightPrSuppressions.map((entry) => entry.packetId),
+    ...outcomeSuppressions.map((entry) => entry.packetId),
+  ]);
   const packets = candidatePackets
     .filter((packet) => !suppressedPacketIds.has(packet.packetId))
     .slice(0, Number(options.maxPackets || 8));
@@ -1181,6 +1208,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       prStackMergeReady: freshEvidence.prStackAudit.summary.mergeReady ?? null,
       prStackMergeBlocked: freshEvidence.prStackAudit.summary.mergeBlocked ?? null,
       inFlightPrSuppressedPackets: inFlightPrSuppressions.length,
+      outcomeSuppressedPackets: outcomeSuppressions.length,
       swarmPreflightStatus: freshEvidence.swarmPreflight.status,
       swarmPreflightOutsideScope: freshEvidence.swarmPreflight.summary.outsideScope ?? null,
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,
@@ -1199,6 +1227,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
     nextExecutablePacket: summarizeNextExecutablePacket(normalized.packets),
     sourceSignalAudit,
     inFlightPrSuppressions,
+    outcomeSuppressions,
     packets: normalized.packets,
   };
 }
@@ -1381,6 +1410,9 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
     return outcomeReport;
   }
 
+  const outcomes = readJsonl(options.outcomes);
+  const outcomeSummary = buildOutcomeSummary(outcomes);
+  const outcomeHealth = outcomeHealthFromSummary(outcomeSummary);
   const packet = buildOpsWorkPacket(
     {
       riskMarkdown: readTextIfExists(DEFAULT_RISK_DOC),
@@ -1394,6 +1426,8 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       swarmPreflight: readJsonIfExists(options.swarmPreflight),
       hostDriftManifest: readJsonIfExists(options.hostDriftManifest),
       prStackAudit: readJsonIfExists(options.prStackAudit),
+      outcomes,
+      outcomeSummary,
       adminAuditPath: toRepoRelative(options.adminAudit),
       sliceLedgerPath: toRepoRelative(options.sliceLedger),
       toolInventoryPath: toRepoRelative(options.toolInventory),
@@ -1409,9 +1443,6 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       maxAgeHours: options.maxAgeHours,
     },
   );
-  const outcomes = readJsonl(options.outcomes);
-  const outcomeSummary = buildOutcomeSummary(outcomes);
-  const outcomeHealth = outcomeHealthFromSummary(outcomeSummary);
   const report = {
     schema: "studiobrain-ops-work-packet-report.v1",
     generatedAt: packet.generatedAt,

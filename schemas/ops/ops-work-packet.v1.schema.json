@@ -41,7 +41,7 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "toolingFindings", "toolingActionableFindings", "toolingIssueReadyTasks", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "prStackStatus", "prStackOpen", "prStackMergeReady", "prStackMergeBlocked", "inFlightPrSuppressedPackets", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftSensitivePathNames", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches", "staleBacklogPackets"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "toolingFindings", "toolingActionableFindings", "toolingIssueReadyTasks", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "prStackStatus", "prStackOpen", "prStackMergeReady", "prStackMergeBlocked", "inFlightPrSuppressedPackets", "outcomeSuppressedPackets", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftSensitivePathNames", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches", "staleBacklogPackets"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
@@ -66,6 +66,7 @@
         "prStackMergeReady": { "type": ["number", "null"], "minimum": 0 },
         "prStackMergeBlocked": { "type": ["number", "null"], "minimum": 0 },
         "inFlightPrSuppressedPackets": { "type": "number", "minimum": 0 },
+        "outcomeSuppressedPackets": { "type": "number", "minimum": 0 },
         "swarmPreflightStatus": { "type": "string" },
         "swarmPreflightOutsideScope": { "type": ["number", "null"], "minimum": 0 },
         "swarmPreflightProblems": { "type": ["number", "null"], "minimum": 0 },
@@ -197,6 +198,22 @@
           "prTitle": { "type": "string" },
           "headRefName": { "type": "string" },
           "url": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "outcomeSuppressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packetId", "title", "reason", "outcome", "recordedAt", "notes"],
+        "properties": {
+          "packetId": { "type": "string" },
+          "title": { "type": "string" },
+          "reason": { "type": "string" },
+          "outcome": { "type": "string" },
+          "recordedAt": { "type": "string" },
+          "notes": { "type": "string" }
         },
         "additionalProperties": false
       }

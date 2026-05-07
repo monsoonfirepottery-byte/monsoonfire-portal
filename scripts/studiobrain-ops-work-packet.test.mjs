@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { auditSourceSignals, buildOpsWorkPacket, comparePackets, normalizePacketsSourceSignals, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { auditSourceSignals, buildOpsWorkPacket, buildOutcomeSummary, comparePackets, normalizePacketsSourceSignals, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
 import { validateJsonSchema } from "./ops/validate_ops_artifacts.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
@@ -347,6 +347,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.prStackStatus, "pass");
   assert.equal(report.evidenceSummary.prStackOpen, 1);
   assert.equal(report.evidenceSummary.inFlightPrSuppressedPackets, 0);
+  assert.equal(report.evidenceSummary.outcomeSuppressedPackets, 0);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.evidenceSummary.hostDriftStatus, "warn");
@@ -404,6 +405,45 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   const leaked = structuredClone(report);
   leaked.freshEvidence.toolInstallRecommendations.summary.topRecommendations[0].installCommand = "do not execute from work packets";
   assert.ok(validateJsonSchema(leaked, packetSchema).some((error) => error.includes("installCommand")));
+});
+
+test("buildOpsWorkPacket suppresses packets with terminal latest outcomes", () => {
+  const firstReport = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+    },
+    { runId: "unit-test", generatedAt: "2026-05-06T20:00:00.000Z" },
+  );
+  const resolvedPacket = firstReport.nextExecutablePacket.packetId;
+
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      outcomeSummary: buildOutcomeSummary([
+        {
+          schema: "studiobrain-ops-work-packet-outcome.v1",
+          recordedAt: "2026-05-06T20:01:00.000Z",
+          packetId: resolvedPacket,
+          outcome: "resolved",
+          usedBy: "codex",
+          notes: "completed by prior slice",
+        },
+      ]),
+    },
+    { runId: "unit-test", generatedAt: "2026-05-06T20:02:00.000Z" },
+  );
+
+  assert.equal(report.evidenceSummary.outcomeSuppressedPackets, 1);
+  assert.equal(report.outcomeSuppressions[0].packetId, resolvedPacket);
+  assert.equal(report.outcomeSuppressions[0].outcome, "resolved");
+  assert.equal(report.packets.some((packet) => packet.packetId === resolvedPacket), false);
+  assert.notEqual(report.nextExecutablePacket.packetId, resolvedPacket);
 });
 
 test("buildOpsWorkPacket suppresses packets that already have open PRs", () => {

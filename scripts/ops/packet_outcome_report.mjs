@@ -12,6 +12,33 @@ const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "swarm");
 const DEFAULT_OUTCOMES = resolve(DEFAULT_OUTPUT_DIR, "outcomes.jsonl");
 const DEFAULT_WORK_PACKET = resolve(DEFAULT_OUTPUT_DIR, "latest-work-packet.json");
 const DEFAULT_PR_READINESS = resolve(REPO_ROOT, "output", "ops", "pr-readiness", "pr-readiness-latest.json");
+const OUTCOME_COMMAND_TEMPLATES = [
+  {
+    outcome: "used",
+    when: "The packet materially guided a PR, patch, or reviewed artifact.",
+    notes: "used by PR or slice; replace with concrete evidence",
+  },
+  {
+    outcome: "helpful",
+    when: "The packet saved operator time or prevented scope drift.",
+    notes: "helpful; replace with concrete time saved or drift avoided",
+  },
+  {
+    outcome: "blocked",
+    when: "The packet is still valid but needs approval, credentials, sudo, or a service window.",
+    notes: "blocked; replace with approval or credential gate",
+  },
+  {
+    outcome: "stale",
+    when: "The packet was superseded by fresher evidence or a newer packet id.",
+    notes: "stale; replace with superseding artifact or packet id",
+  },
+  {
+    outcome: "misleading",
+    when: "The packet sent work toward the wrong evidence or wrong next step.",
+    notes: "misleading; replace with correction evidence",
+  },
+];
 
 function usage() {
   return `Studio Brain packet outcome report
@@ -32,6 +59,11 @@ Options:
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
+}
+
+function quoteCommandArg(value) {
+  const text = clean(value);
+  return /^[A-Za-z0-9._:/\\=-]+$/.test(text) ? text : JSON.stringify(text);
 }
 
 function nowIso() {
@@ -185,6 +217,29 @@ function outcomeAdoption(summary = {}, currentPackets = [], prReadiness = null) 
   const readinessPacketId = clean(prReadiness?.outcomeLedger?.packetId);
   const hasReadinessEvidence = Boolean(prReadinessGeneratedAt || readinessPacketId);
   const currentWindowPackets = currentPackets.length;
+  const currentPacketIds = new Set(currentPackets.map((packet) => clean(packet.packetId)).filter(Boolean));
+  const readinessPacketInCurrentWindow = Boolean(readinessPacketId && currentPacketIds.has(readinessPacketId));
+  const recommendedPacket = readinessPacketInCurrentWindow
+    ? currentPackets.find((packet) => packet.packetId === readinessPacketId)
+    : currentPackets.find((packet) => packet.status === "ready") || currentPackets[0] || null;
+  const recommendedPacketId = clean(recommendedPacket?.packetId);
+  const recommendedPacketTitle = clean(recommendedPacket?.title);
+  const recordCommands = recommendedPacketId
+    ? OUTCOME_COMMAND_TEMPLATES.map((template) => ({
+        outcome: template.outcome,
+        when: template.when,
+        command: [
+          "node",
+          "scripts/studiobrain-ops-work-packet.mjs",
+          "--record-outcome",
+          quoteCommandArg(recommendedPacketId),
+          "--outcome",
+          quoteCommandArg(template.outcome),
+          "--notes",
+          quoteCommandArg(template.notes),
+        ].join(" "),
+      }))
+    : [];
   const needsRecords = hasReadinessEvidence && currentWindowPackets > 0 && totalOutcomes === 0;
   const status = needsRecords
     ? "needs_records"
@@ -198,8 +253,12 @@ function outcomeAdoption(summary = {}, currentPackets = [], prReadiness = null) 
     hasReadinessEvidence,
     prReadinessGeneratedAt,
     readinessPacketId,
+    readinessPacketInCurrentWindow,
+    recommendedPacketId,
+    recommendedPacketTitle,
     currentWindowPackets,
     totalOutcomes,
+    recordCommands,
     guidance: needsRecords
       ? "Record at least one packet outcome after using a PR readiness packet so the loop can learn whether generated work packets were useful."
       : "Continue recording packet outcomes whenever a packet materially steers a PR or is found stale, misleading, blocked, or superseded.",
@@ -281,6 +340,11 @@ function renderMarkdown(report) {
   const orphaned = report.orphanedLatestOutcomes
     .map((entry) => `- ${entry.packetId}: ${entry.outcome}${entry.notes ? ` - ${entry.notes}` : ""}`)
     .join("\n") || "- None.";
+  const recordCommands = Array.isArray(report.outcomeAdoption.recordCommands) && report.outcomeAdoption.recordCommands.length > 0
+    ? report.outcomeAdoption.recordCommands
+        .map((entry) => `- ${entry.outcome}: \`${entry.command}\`\n  - When: ${entry.when}`)
+        .join("\n")
+    : "- No current packet command is available.";
   return `# Packet Outcome Report
 
 Generated: ${report.generatedAt}
@@ -315,9 +379,16 @@ Run ID: ${report.runId}
 - PR readiness evidence: ${report.outcomeAdoption.hasReadinessEvidence}
 - PR readiness generated: ${report.outcomeAdoption.prReadinessGeneratedAt || "unknown"}
 - Readiness packet ID: ${report.outcomeAdoption.readinessPacketId || "none"}
+- Readiness packet current: ${report.outcomeAdoption.readinessPacketInCurrentWindow}
+- Recommended packet ID: ${report.outcomeAdoption.recommendedPacketId || "none"}
+- Recommended packet title: ${report.outcomeAdoption.recommendedPacketTitle || "none"}
 - Current window packets: ${report.outcomeAdoption.currentWindowPackets}
 - Total outcomes: ${report.outcomeAdoption.totalOutcomes}
 - Guidance: ${report.outcomeAdoption.guidance}
+
+### Suggested Record Commands
+
+${recordCommands}
 
 ### Warnings
 

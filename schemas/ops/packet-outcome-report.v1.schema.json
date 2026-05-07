@@ -90,8 +90,12 @@
         "hasReadinessEvidence",
         "prReadinessGeneratedAt",
         "readinessPacketId",
+        "readinessPacketInCurrentWindow",
+        "recommendedPacketId",
+        "recommendedPacketTitle",
         "currentWindowPackets",
         "totalOutcomes",
+        "recordCommands",
         "guidance"
       ],
       "properties": {
@@ -99,8 +103,24 @@
         "hasReadinessEvidence": { "type": "boolean" },
         "prReadinessGeneratedAt": { "type": "string" },
         "readinessPacketId": { "type": "string" },
+        "readinessPacketInCurrentWindow": { "type": "boolean" },
+        "recommendedPacketId": { "type": "string" },
+        "recommendedPacketTitle": { "type": "string" },
         "currentWindowPackets": { "type": "number", "minimum": 0 },
         "totalOutcomes": { "type": "number", "minimum": 0 },
+        "recordCommands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["outcome", "when", "command"],
+            "properties": {
+              "outcome": { "enum": ["used", "helpful", "blocked", "stale", "misleading"] },
+              "when": { "type": "string" },
+              "command": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
         "guidance": { "type": "string" }
       },
       "additionalProperties": false

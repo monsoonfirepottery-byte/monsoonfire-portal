@@ -113,9 +113,32 @@ test("buildPacketOutcomeReport warns when readiness exists but no outcomes were 
   assert.equal(report.outcomeAdoption.status, "needs_records");
   assert.equal(report.outcomeAdoption.hasReadinessEvidence, true);
   assert.equal(report.outcomeAdoption.readinessPacketId, "ops-wp-current");
+  assert.equal(report.outcomeAdoption.readinessPacketInCurrentWindow, true);
+  assert.equal(report.outcomeAdoption.recommendedPacketId, "ops-wp-current");
   assert.equal(report.outcomeAdoption.currentWindowPackets, 2);
+  assert.ok(report.outcomeAdoption.recordCommands.some((entry) => entry.outcome === "used" && entry.command.includes("--record-outcome ops-wp-current")));
   assert.match(renderMarkdown(report), /Outcome Adoption/);
   assert.match(renderMarkdown(report), /Status: needs_records/);
+  assert.match(renderMarkdown(report), /Suggested Record Commands/);
+});
+
+test("buildPacketOutcomeReport suggests a current ready packet when readiness packet is stale", () => {
+  const report = buildPacketOutcomeReport(
+    {
+      workPacket,
+      prReadiness: {
+        ...prReadiness,
+        outcomeLedger: { packetId: "ops-wp-old" },
+      },
+      outcomes: [],
+    },
+    { generatedAt: "2026-05-07T12:10:00.000Z", runId: "packet-adoption-stale-readiness-test" },
+  );
+
+  assert.equal(report.outcomeAdoption.readinessPacketInCurrentWindow, false);
+  assert.equal(report.outcomeAdoption.recommendedPacketId, "ops-wp-current");
+  assert.equal(report.outcomeAdoption.recommendedPacketTitle, "[ops] Current packet");
+  assert.equal(report.outcomeAdoption.recordCommands.length, 5);
 });
 
 test("buildPacketOutcomeReport stays compatible with schema", () => {

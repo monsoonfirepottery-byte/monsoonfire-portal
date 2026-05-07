@@ -388,16 +388,30 @@ function buildReport(options) {
   };
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  const report = buildReport(options);
-  const artifacts = options.write ? writeArtifacts(options, report) : null;
-  if (options.json || !options.write) {
-    process.stdout.write(`${JSON.stringify(artifacts ? { ...report, artifacts } : report, null, 2)}\n`);
-  } else {
-    process.stdout.write(`tooling quality report: ${report.status}, findings=${report.summary.findings}, skipped=${report.summary.skipped}\n`);
+function main(argv = process.argv.slice(2)) {
+  try {
+    const options = parseArgs(argv);
+    const report = buildReport(options);
+    const artifacts = options.write ? writeArtifacts(options, report) : null;
+    if (options.json || !options.write) {
+      process.stdout.write(`${JSON.stringify(artifacts ? { ...report, artifacts } : report, null, 2)}\n`);
+    } else {
+      process.stdout.write(`tooling quality report: ${report.status}, findings=${report.summary.findings}, skipped=${report.summary.skipped}\n`);
+    }
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
   }
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+}
+
+export {
+  buildReport,
+  main,
+  parseArgs,
+  parseShellCheckJson,
+  statusFromSections
+};
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main();
 }

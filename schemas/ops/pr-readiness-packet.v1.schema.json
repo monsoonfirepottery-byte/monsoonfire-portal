@@ -10,6 +10,7 @@
     "pr",
     "owner",
     "sliceIds",
+    "outcomeLedger",
     "scope",
     "evidence",
     "warnings",
@@ -23,6 +24,16 @@
     "pr": { "type": "string" },
     "owner": { "type": "string" },
     "sliceIds": { "type": "string" },
+    "outcomeLedger": {
+      "type": "object",
+      "required": ["packetId", "suggestedPacketIds", "recordCommand"],
+      "properties": {
+        "packetId": { "type": "string" },
+        "suggestedPacketIds": { "type": "array", "items": { "type": "string" } },
+        "recordCommand": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "scope": {
       "type": "object",
       "required": ["branch", "base", "head", "changedFiles", "dirtyFiles", "nonScope"],
@@ -84,8 +95,9 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["title", "status", "priority"],
+                "required": ["packetId", "title", "status", "priority"],
                 "properties": {
+                  "packetId": { "type": "string" },
                   "title": { "type": "string" },
                   "status": { "type": "string" },
                   "priority": { "type": "string" }

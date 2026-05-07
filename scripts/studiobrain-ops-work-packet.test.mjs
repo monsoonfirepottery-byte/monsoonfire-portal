@@ -712,3 +712,34 @@ test("buildOpsWorkPacket limits packet count and preserves source signals", () =
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "risk-register"));
   assert.ok(report.packets[0].verification.some((line) => line.includes("tokens")));
 });
+
+test("buildOpsWorkPacket normalizes markdown-wrapped branch and PR suggestions", () => {
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      effectivityMarkdown,
+      backlogMarkdown: `
+# Backlog
+
+## Now
+
+### [ops] Normalize suggestions
+
+- Type: ops
+- Priority: P1
+- Effort: S
+- Risk: low
+- Status: ready
+- Acceptance criteria:
+  - Suggestions are plain text.
+- Recommended owner: Codex
+- Suggested branch name: \`codex/plain-suggestion\`
+- Suggested PR title: \`[ops] Plain suggestion\`
+`,
+    },
+    { maxPackets: 1 },
+  );
+
+  assert.equal(report.packets[0].suggestedBranchName, "codex/plain-suggestion");
+  assert.equal(report.packets[0].suggestedPrTitle, "[ops] Plain suggestion");
+});

@@ -42,6 +42,7 @@ check_file "scripts/ops/post_deploy_verify.sh"
 check_file "scripts/ops/validate_ops_artifacts.mjs"
 check_file "scripts/ops/swarm_lane_preflight.mjs"
 check_file "scripts/ops/ops_wave_runner.mjs"
+check_file "scripts/ops/slice_ledger.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -61,7 +62,8 @@ section "Node Syntax"
 for script in \
   "scripts/ops/validate_ops_artifacts.mjs" \
   "scripts/ops/swarm_lane_preflight.mjs" \
-  "scripts/ops/ops_wave_runner.mjs"; do
+  "scripts/ops/ops_wave_runner.mjs" \
+  "scripts/ops/slice_ledger.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
     pass "node --check ${script}"
   else
@@ -86,6 +88,12 @@ if node --test "${REPO_ROOT}/scripts/ops/ops_wave_runner.test.mjs" >"${OUT_DIR}/
   pass "node --test scripts/ops/ops_wave_runner.test.mjs"
 else
   fail "node --test scripts/ops/ops_wave_runner.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/slice_ledger.test.mjs" >"${OUT_DIR}/slice-ledger.test.out" 2>&1; then
+  pass "node --test scripts/ops/slice_ledger.test.mjs"
+else
+  fail "node --test scripts/ops/slice_ledger.test.mjs"
 fi
 
 section "Swarm Lane Preflight Smoke"

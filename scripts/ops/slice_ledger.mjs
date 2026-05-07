@@ -36,6 +36,7 @@ Usage:
 Options:
   --ledger <path>             Ledger JSONL path. Default: output/ops/effectivity/slice-ledger.jsonl.
   --latest <path>             Latest summary JSON path.
+  --audit-interval <n>        Countable slices between audits. Default: 5.
   --append                    Append one row.
   --summary                   Summarize the last rows. Default when --append is absent.
   --dry-run                   Print the row or summary without writing.
@@ -121,6 +122,7 @@ function parseArgs(argv) {
     ledger: DEFAULT_LEDGER,
     latest: DEFAULT_LATEST,
     last: 5,
+    auditInterval: 5,
     sliceId: "",
     runId: "",
     lane: "",
@@ -167,6 +169,7 @@ function parseArgs(argv) {
       ["--ledger", "ledger"],
       ["--latest", "latest"],
       ["--last", "last"],
+      ["--audit-interval", "auditInterval"],
       ["--slice-id", "sliceId"],
       ["--run-id", "runId"],
       ["--lane", "lane"],
@@ -217,6 +220,7 @@ function parseArgs(argv) {
   options.ledger = resolve(REPO_ROOT, options.ledger);
   options.latest = resolve(REPO_ROOT, options.latest);
   options.last = Math.max(1, Number(options.last) || 5);
+  options.auditInterval = Math.max(1, Number(options.auditInterval) || 5);
   options.usefulnessScore = Math.max(0, Math.min(1, Number(options.usefulnessScore) || 0));
   options.minutesSaved = Math.max(0, Number(options.minutesSaved) || 0);
   return options;
@@ -288,17 +292,36 @@ function compareRows(left, right) {
   return rowTimestamp(left.row) - rowTimestamp(right.row) || left.index - right.index;
 }
 
-function selectRecentRows(rows, last, runId = "") {
+function orderedRows(rows, runId = "") {
   const filtered = clean(runId) ? rows.filter((row) => clean(row.runId) === clean(runId)) : rows;
   return filtered
     .map((row, index) => ({ row, index }))
     .sort(compareRows)
-    .slice(-last)
     .map((entry) => entry.row);
 }
 
-function summarize(rows, last, runId = "") {
-  const selected = selectRecentRows(rows, last, runId);
+function selectRecentRows(rows, last, runId = "") {
+  return orderedRows(rows, runId).slice(-last);
+}
+
+function auditCadence(rows, interval = 5) {
+  const countable = rows.filter((row) => row.status !== "noop" && !row.noOp?.detected);
+  const total = countable.length;
+  const remainder = total % interval;
+  const slicesSinceLastAudit = total === 0 ? 0 : remainder === 0 ? interval : remainder;
+  const auditDue = total > 0 && remainder === 0;
+  return {
+    interval,
+    countedSlices: total,
+    slicesSinceLastAudit,
+    auditDue,
+    nextAuditAt: auditDue ? total : total + (interval - slicesSinceLastAudit)
+  };
+}
+
+function summarize(rows, last, runId = "", auditInterval = 5) {
+  const ordered = orderedRows(rows, runId);
+  const selected = ordered.slice(-last);
   const completed = selected.filter((row) => row.status === "completed").length;
   const blocked = selected.filter((row) => row.status === "blocked").length;
   const failed = selected.filter((row) => row.status === "failed").length;
@@ -320,6 +343,7 @@ function summarize(rows, last, runId = "") {
       from: selected[0]?.sliceId ?? null,
       to: selected[selected.length - 1]?.sliceId ?? null
     },
+    auditCadence: auditCadence(ordered, auditInterval),
     counts: {
       completed,
       blocked,
@@ -340,13 +364,14 @@ function summarize(rows, last, runId = "") {
 function printTextSummary(summary) {
   process.stdout.write(`slice ledger: ${summary.window.count} row(s), ${summary.counts.completed} completed, ${summary.counts.blocked} blocked, ${summary.counts.failed} failed\n`);
   process.stdout.write(`usefulness=${summary.scores.usefulness} noOpRate=${summary.scores.noOpRate} verification=${summary.scores.verification}\n`);
+  process.stdout.write(`auditDue=${summary.auditCadence.auditDue} slicesSinceLastAudit=${summary.auditCadence.slicesSinceLastAudit} nextAuditAt=${summary.auditCadence.nextAuditAt}\n`);
   for (const row of summary.rows) {
     process.stdout.write(`- ${row.sliceId} [${row.status}] ${row.title}\n`);
   }
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
+function run(rawArgs = process.argv.slice(2)) {
+  const options = parseArgs(rawArgs);
   if (options.append) {
     const row = buildRow(options);
     if (!options.dryRun) appendJsonl(options.ledger, row);
@@ -358,7 +383,7 @@ try {
   } else {
     const rows = readJsonl(options.ledger);
     rows.ledgerPath = options.ledger;
-    const summary = summarize(rows, options.last, options.runId);
+    const summary = summarize(rows, options.last, options.runId, options.auditInterval);
     if (!options.dryRun) writeJson(options.latest, summary);
     if (options.json) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -366,7 +391,15 @@ try {
       printTextSummary(summary);
     }
   }
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+}
+
+export { auditCadence, buildRow, run, selectRecentRows, summarize };
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  try {
+    run();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
+  }
 }

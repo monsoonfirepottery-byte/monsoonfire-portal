@@ -237,12 +237,50 @@ const freshInputs = {
     warnings: [],
     recommendation: "lane is ready for scoped work",
   },
+  hostDriftManifest: {
+    schema: "studiobrain-host-drift-manifest.v1",
+    generatedAt: "2026-05-07T08:46:40.000Z",
+    status: "warn",
+    readOnly: true,
+    safety: {
+      pathNamesOnly: true,
+      readsFileContents: false,
+      mutatesHost: false,
+      destructiveActions: false,
+      sensitivePathNamesRedacted: true,
+    },
+    sources: {
+      repo: "D:\\monsoonfire-portal-ops-wave2-20260507",
+      statusSource: "D:\\monsoonfire-portal-ops-wave2-20260507",
+      statusReadStatus: "present",
+      allowlistPath: "studio-brain/host-drift-allowlist.json",
+      allowlistStatus: "present",
+      allowlistGeneratedAt: "2026-03-23T00:00:00.000Z",
+    },
+    summary: {
+      dirtyPaths: 3,
+      entriesKept: 3,
+      truncated: false,
+      classificationCounts: {
+        source_or_config: 2,
+        generated_or_artifact: 1,
+      },
+      approvalCounts: {
+        requires_human_approval: 2,
+        safe_with_backup: 1,
+      },
+      allowlistEntries: 1,
+      expiredAllowlistMatches: 0,
+      errors: [],
+    },
+  },
   adminAuditPath: "output/ops/effectivity/admin-effectivity-audit-latest.json",
   sliceLedgerPath: "output/ops/effectivity/slice-ledger-latest.json",
   toolInventoryPath: "output/ops/effectivity/installed-tool-inventory-latest.json",
   toolInstallRecommendationsPath: "output/ops/effectivity/tool-install-recommendations-latest.json",
   toolingFindingsPath: "output/ops/tooling-quality/tooling-findings-latest.json",
   swarmPreflightPath: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
+  hostDriftManifestPath: "output/ops/host-drift/host-drift-manifest-latest.json",
 };
 
 test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", () => {
@@ -263,7 +301,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.constraints.noServiceRestart, true);
   assert.equal(report.evidenceSummary.risks, 2);
   assert.equal(report.evidenceSummary.backlogItems, 2);
-  assert.equal(report.evidenceSummary.freshSources, 6);
+  assert.equal(report.evidenceSummary.freshSources, 7);
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.evidenceSummary.toolPromotionCandidates, 0);
   assert.equal(report.evidenceSummary.toolActionableFindings, 0);
@@ -279,6 +317,10 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.effectivityHighSeverityLanes, 1);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
+  assert.equal(report.evidenceSummary.hostDriftStatus, "warn");
+  assert.equal(report.evidenceSummary.hostDriftDirtyPaths, 3);
+  assert.equal(report.evidenceSummary.hostDriftRequiresHumanApproval, 2);
+  assert.equal(report.evidenceSummary.hostDriftAllowlistStatus, "present");
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
   assert.equal(report.freshEvidence.adminAudit.freshness.stale, false);
   assert.ok(report.packets.length >= 2);
@@ -312,6 +354,10 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(toolingFindingsSignal.signalClass, "issue_ready_task");
   assert.equal(toolingFindingsSignal.summary.issueReadyTasks, 2);
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-swarm-preflight"));
+  const hostDriftSignal = report.packets[0].sourceSignals.find((signal) => signal.source === "fresh-host-drift-manifest");
+  assert.equal(hostDriftSignal.signalClass, "approval_gate");
+  assert.equal(hostDriftSignal.summary.dirtyPaths, 3);
+  assert.equal(hostDriftSignal.summary.sensitivePathNamesRedacted, true);
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
   assert.ok(report.packets[0].safeNextStep.includes("restore-prerequisite"));
@@ -338,6 +384,7 @@ test("summarizeFreshEvidence degrades when ignored artifacts are missing", () =>
   assert.equal(fresh.toolInstallRecommendations.status, "missing");
   assert.equal(fresh.toolingFindings.status, "missing");
   assert.equal(fresh.swarmPreflight.status, "missing");
+  assert.equal(fresh.hostDriftManifest.status, "missing");
 });
 
 test("comparePackets prefers ready packets within the same priority", () => {
@@ -441,6 +488,7 @@ test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
       toolInventory: { status: "invalid_json", parseError: "bad tools" },
       toolInstallRecommendations: { status: "invalid_json", parseError: "bad tool install recommendations" },
       toolingFindings: { status: "invalid_json", parseError: "bad tooling findings" },
+      hostDriftManifest: { status: "invalid_json", parseError: "bad host drift" },
     },
     { maxPackets: 1 },
   );
@@ -451,10 +499,12 @@ test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
   assert.equal(report.freshEvidence.toolInventory.summary.parseError, "bad tools");
   assert.equal(report.freshEvidence.toolInstallRecommendations.summary.parseError, "bad tool install recommendations");
   assert.equal(report.freshEvidence.toolingFindings.summary.parseError, "bad tooling findings");
+  assert.equal(report.freshEvidence.hostDriftManifest.summary.parseError, "bad host drift");
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"), false);
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"), false);
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations"), false);
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tooling-findings"), false);
+  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-host-drift-manifest"), false);
 });
 
 test("workPacketReportStatus warns when falling back to static docs only", () => {
@@ -509,7 +559,7 @@ test("workPacketReportStatus warns when tool-install recommendations are missing
   );
 
   assert.equal(missingRecommendations.freshEvidence.toolInstallRecommendations.status, "missing");
-  assert.equal(missingRecommendations.evidenceSummary.freshSources, 5);
+  assert.equal(missingRecommendations.evidenceSummary.freshSources, 6);
   assert.equal(workPacketReportStatus(missingRecommendations), "warn");
 });
 
@@ -585,7 +635,7 @@ test("workPacketReportStatus warns when fresh evidence is stale", () => {
   );
 
   assert.equal(stale.evidenceSummary.freshSources, 0);
-  assert.equal(stale.evidenceSummary.staleSources, 6);
+  assert.equal(stale.evidenceSummary.staleSources, 7);
   assert.equal(stale.freshEvidence.adminAudit.status, "stale");
   assert.equal(stale.freshEvidence.adminAudit.sourceStatus, "pass");
   assert.equal(stale.freshEvidence.adminAudit.freshness.stale, true);

@@ -23,6 +23,7 @@ const DEFAULT_TOOL_INVENTORY = resolve(REPO_ROOT, "output", "ops", "effectivity"
 const DEFAULT_TOOL_INSTALL_RECOMMENDATIONS = resolve(REPO_ROOT, "output", "ops", "effectivity", "tool-install-recommendations-latest.json");
 const DEFAULT_TOOLING_FINDINGS = resolve(REPO_ROOT, "output", "ops", "tooling-quality", "tooling-findings-latest.json");
 const DEFAULT_SWARM_PREFLIGHT = resolve(REPO_ROOT, "output", "ops", "swarm-lane-preflight", "swarm-lane-preflight-latest.json");
+const DEFAULT_HOST_DRIFT_MANIFEST = resolve(REPO_ROOT, "output", "ops", "host-drift", "host-drift-manifest-latest.json");
 const VALID_OUTCOMES = new Set([
   "used",
   "helpful",
@@ -579,6 +580,7 @@ function freshSourceSignals(freshEvidence) {
     freshEvidence.toolInstallRecommendations,
     freshEvidence.toolingFindings,
     freshEvidence.swarmPreflight,
+    freshEvidence.hostDriftManifest,
   ]
     .filter((source) => source && !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status))
     .flatMap(sourceSignalsForFreshSource);
@@ -622,6 +624,16 @@ function signalClassForSource(source) {
   if (source.source === "fresh-tooling-findings") {
     if ((source.summary?.issueReadyTasks || 0) > 0) return "issue_ready_task";
     if ((source.summary?.coverageGaps || 0) > 0) return "coverage_gap";
+  }
+  if (source.source === "fresh-host-drift-manifest") {
+    if (
+      (source.summary?.requiresHumanApproval || 0) > 0 ||
+      (source.summary?.doNotTouchSecurityReview || 0) > 0 ||
+      (source.summary?.expiredAllowlistMatches || 0) > 0
+    ) {
+      return "approval_gate";
+    }
+    if ((source.summary?.dirtyPaths || 0) > 0) return "evidence_gap";
   }
   return "fresh";
 }
@@ -775,6 +787,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
   const toolInstallRecommendations = inputs.toolInstallRecommendations || null;
   const toolingFindings = inputs.toolingFindings || null;
   const swarmPreflight = inputs.swarmPreflight || null;
+  const hostDriftManifest = inputs.hostDriftManifest || null;
   const unavailable = (source, path, status = "missing", summary = {}) => ({
     source,
     path,
@@ -942,6 +955,40 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
           swarmPreflight?.status || "missing",
           swarmPreflight?.parseError ? { parseError: swarmPreflight.parseError } : {},
         ),
+    hostDriftManifest: hostDriftManifest && hostDriftManifest.status !== "invalid_json"
+      ? applyFreshness({
+          source: "fresh-host-drift-manifest",
+          path: inputs.hostDriftManifestPath || "output/ops/host-drift/host-drift-manifest-latest.json",
+          status: clean(hostDriftManifest.status) || "unknown",
+          generatedAt: clean(hostDriftManifest.generatedAt),
+          summary: {
+            dirtyPaths: hostDriftManifest.summary?.dirtyPaths ?? null,
+            entriesKept: hostDriftManifest.summary?.entriesKept ?? null,
+            truncated: hostDriftManifest.summary?.truncated ?? null,
+            sourceOrConfig: hostDriftManifest.summary?.classificationCounts?.source_or_config ?? null,
+            generatedOrArtifact: hostDriftManifest.summary?.classificationCounts?.generated_or_artifact ?? null,
+            sensitivePathNames: hostDriftManifest.summary?.classificationCounts?.sensitive_path_name ?? null,
+            unknownPaths: hostDriftManifest.summary?.classificationCounts?.unknown ?? null,
+            requiresHumanApproval: hostDriftManifest.summary?.approvalCounts?.requires_human_approval ?? null,
+            doNotTouchSecurityReview: hostDriftManifest.summary?.approvalCounts?.do_not_touch_security_review ?? null,
+            safeWithBackup: hostDriftManifest.summary?.approvalCounts?.safe_with_backup ?? null,
+            allowlistedReviewBeforeCleanup: hostDriftManifest.summary?.approvalCounts?.allowlisted_review_before_cleanup ?? null,
+            allowlistStatus: clean(hostDriftManifest.sources?.allowlistStatus),
+            allowlistEntries: hostDriftManifest.summary?.allowlistEntries ?? null,
+            expiredAllowlistMatches: hostDriftManifest.summary?.expiredAllowlistMatches ?? null,
+            statusReadStatus: clean(hostDriftManifest.sources?.statusReadStatus),
+            sensitivePathNamesRedacted: typeof hostDriftManifest.safety?.sensitivePathNamesRedacted === "boolean"
+              ? hostDriftManifest.safety.sensitivePathNamesRedacted
+              : null,
+            errors: Array.isArray(hostDriftManifest.summary?.errors) ? hostDriftManifest.summary.errors.length : null,
+          },
+        }, options)
+      : unavailable(
+          "fresh-host-drift-manifest",
+          inputs.hostDriftManifestPath || "output/ops/host-drift/host-drift-manifest-latest.json",
+          hostDriftManifest?.status || "missing",
+          hostDriftManifest?.parseError ? { parseError: hostDriftManifest.parseError } : {},
+        ),
   };
 }
 
@@ -965,6 +1012,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
     freshEvidence.toolInstallRecommendations,
     freshEvidence.toolingFindings,
     freshEvidence.swarmPreflight,
+    freshEvidence.hostDriftManifest,
   ];
   const freshSources = freshEvidenceSources.filter((source) => !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status));
   const staleSources = freshEvidenceSources.filter((source) => ["invalid_timestamp", "stale"].includes(source.status));
@@ -995,6 +1043,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       toolInstallRecommendations: freshEvidence.toolInstallRecommendations.path,
       toolingFindings: freshEvidence.toolingFindings.path,
       swarmPreflight: freshEvidence.swarmPreflight.path,
+      hostDriftManifest: freshEvidence.hostDriftManifest.path,
     },
     constraints: {
       readOnlyFirst: true,
@@ -1025,6 +1074,13 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       swarmPreflightStatus: freshEvidence.swarmPreflight.status,
       swarmPreflightOutsideScope: freshEvidence.swarmPreflight.summary.outsideScope ?? null,
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,
+      hostDriftStatus: freshEvidence.hostDriftManifest.status,
+      hostDriftDirtyPaths: freshEvidence.hostDriftManifest.summary.dirtyPaths ?? null,
+      hostDriftSensitivePathNames: freshEvidence.hostDriftManifest.summary.sensitivePathNames ?? null,
+      hostDriftRequiresHumanApproval: freshEvidence.hostDriftManifest.summary.requiresHumanApproval ?? null,
+      hostDriftDoNotTouchSecurityReview: freshEvidence.hostDriftManifest.summary.doNotTouchSecurityReview ?? null,
+      hostDriftAllowlistStatus: freshEvidence.hostDriftManifest.summary.allowlistStatus ?? "",
+      hostDriftExpiredAllowlistMatches: freshEvidence.hostDriftManifest.summary.expiredAllowlistMatches ?? null,
     },
     freshEvidence,
     nextExecutablePacket: summarizeNextExecutablePacket(normalized.packets),
@@ -1048,6 +1104,7 @@ function parseArgs(argv) {
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
     toolingFindings: DEFAULT_TOOLING_FINDINGS,
     swarmPreflight: DEFAULT_SWARM_PREFLIGHT,
+    hostDriftManifest: DEFAULT_HOST_DRIFT_MANIFEST,
     maxAgeHours: 24,
     maxPackets: 8,
     recordOutcome: "",
@@ -1092,6 +1149,7 @@ function parseArgs(argv) {
       "--tool-install-recommendations": "toolInstallRecommendations",
       "--tooling-findings": "toolingFindings",
       "--swarm-preflight": "swarmPreflight",
+      "--host-drift-manifest": "hostDriftManifest",
       "--record-outcome": "recordOutcome",
       "--outcome": "outcome",
       "--used-by": "usedBy",
@@ -1102,7 +1160,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(stringOptions)) {
       const value = read(flag);
       if (value !== null) {
-        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "toolInstallRecommendations" || key === "toolingFindings" || key === "swarmPreflight"
+        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "toolInstallRecommendations" || key === "toolingFindings" || key === "swarmPreflight" || key === "hostDriftManifest"
           ? resolve(REPO_ROOT, value)
           : value;
         matched = true;
@@ -1148,6 +1206,7 @@ function printUsage() {
       "  --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.",
       "  --tooling-findings <path> Default: output/ops/tooling-quality/tooling-findings-latest.json.",
       "  --swarm-preflight <path> Default: output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json.",
+      "  --host-drift-manifest <path> Default: output/ops/host-drift/host-drift-manifest-latest.json.",
       "  --max-age-hours <n>     Warn when fresh-input artifacts are older than this. Default: 24.",
       "  --max-packets <n>       Default: 8.",
       "  --record-outcome <id>   Append an outcome ledger entry.",
@@ -1216,12 +1275,14 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
       toolingFindings: readJsonIfExists(options.toolingFindings),
       swarmPreflight: readJsonIfExists(options.swarmPreflight),
+      hostDriftManifest: readJsonIfExists(options.hostDriftManifest),
       adminAuditPath: toRepoRelative(options.adminAudit),
       sliceLedgerPath: toRepoRelative(options.sliceLedger),
       toolInventoryPath: toRepoRelative(options.toolInventory),
       toolInstallRecommendationsPath: toRepoRelative(options.toolInstallRecommendations),
       toolingFindingsPath: toRepoRelative(options.toolingFindings),
       swarmPreflightPath: toRepoRelative(options.swarmPreflight),
+      hostDriftManifestPath: toRepoRelative(options.hostDriftManifest),
     },
     {
       runId: options.runId,

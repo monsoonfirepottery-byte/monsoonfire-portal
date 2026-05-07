@@ -10,7 +10,8 @@
     "status",
     "written",
     "packet",
-    "outcomeSummary"
+    "outcomeSummary",
+    "outcomeHealth"
   ],
   "properties": {
     "schema": {
@@ -125,6 +126,53 @@
         }
       },
       "additionalProperties": true
+    },
+    "outcomeHealth": {
+      "type": "object",
+      "required": [
+        "status",
+        "maturity",
+        "score",
+        "warnings",
+        "thresholds",
+        "staleOrMisleadingPackets",
+        "blockedPackets"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "warn"
+          ]
+        },
+        "maturity": {
+          "enum": [
+            "warming_up",
+            "evidence_ready"
+          ]
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "thresholds": {
+          "type": "object"
+        },
+        "staleOrMisleadingPackets": {
+          "type": "array"
+        },
+        "blockedPackets": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

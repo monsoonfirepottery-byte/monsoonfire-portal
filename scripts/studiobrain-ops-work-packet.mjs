@@ -21,6 +21,7 @@ const DEFAULT_ADMIN_AUDIT = resolve(REPO_ROOT, "output", "ops", "effectivity", "
 const DEFAULT_SLICE_LEDGER = resolve(REPO_ROOT, "output", "ops", "effectivity", "slice-ledger-latest.json");
 const DEFAULT_TOOL_INVENTORY = resolve(REPO_ROOT, "output", "ops", "effectivity", "installed-tool-inventory-latest.json");
 const DEFAULT_TOOL_INSTALL_RECOMMENDATIONS = resolve(REPO_ROOT, "output", "ops", "effectivity", "tool-install-recommendations-latest.json");
+const DEFAULT_TOOLING_FINDINGS = resolve(REPO_ROOT, "output", "ops", "tooling-quality", "tooling-findings-latest.json");
 const DEFAULT_SWARM_PREFLIGHT = resolve(REPO_ROOT, "output", "ops", "swarm-lane-preflight", "swarm-lane-preflight-latest.json");
 const VALID_OUTCOMES = new Set([
   "used",
@@ -341,6 +342,7 @@ function freshSourceSignals(freshEvidence) {
     freshEvidence.sliceLedger,
     freshEvidence.toolInventory,
     freshEvidence.toolInstallRecommendations,
+    freshEvidence.toolingFindings,
     freshEvidence.swarmPreflight,
   ]
     .filter((source) => source && !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status))
@@ -363,6 +365,10 @@ function signalClassForSource(source) {
   if (source.source === "fresh-tool-install-recommendations") {
     if ((source.summary?.installNowCandidates || 0) > 0) return "tool_install_recommendation";
     if ((source.summary?.approvalRequired || 0) > 0) return "approval_gate";
+  }
+  if (source.source === "fresh-tooling-findings") {
+    if ((source.summary?.issueReadyTasks || 0) > 0) return "issue_ready_task";
+    if ((source.summary?.coverageGaps || 0) > 0) return "coverage_gap";
   }
   return "fresh";
 }
@@ -450,6 +456,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
   const sliceLedger = inputs.sliceLedger || null;
   const toolInventory = inputs.toolInventory || null;
   const toolInstallRecommendations = inputs.toolInstallRecommendations || null;
+  const toolingFindings = inputs.toolingFindings || null;
   const swarmPreflight = inputs.swarmPreflight || null;
   const unavailable = (source, path, status = "missing", summary = {}) => ({
     source,
@@ -555,6 +562,34 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
           toolInstallRecommendations?.status || "missing",
           toolInstallRecommendations?.parseError ? { parseError: toolInstallRecommendations.parseError } : {},
         ),
+    toolingFindings: toolingFindings && toolingFindings.status !== "invalid_json"
+      ? applyFreshness({
+          source: "fresh-tooling-findings",
+          path: inputs.toolingFindingsPath || "output/ops/tooling-quality/tooling-findings-latest.json",
+          status: clean(toolingFindings.status) || "unknown",
+          generatedAt: clean(toolingFindings.generatedAt),
+          summary: {
+            findings: toolingFindings.summary?.findings ?? null,
+            actionableFindings: toolingFindings.summary?.actionableFindings ?? null,
+            coverageGaps: toolingFindings.summary?.coverageGaps ?? null,
+            issueReadyTasks: toolingFindings.summary?.issueReadyTasks ?? null,
+            topTasks: Array.isArray(toolingFindings.tasks)
+              ? toolingFindings.tasks.slice(0, 3).map((task) => ({
+                  title: clean(task.title),
+                  priority: clean(task.priority),
+                  approvalRequired: Boolean(task.approvalRequired),
+                  suggestedBranchName: clean(task.suggestedBranchName),
+                  suggestedPrTitle: clean(task.suggestedPrTitle),
+                }))
+              : [],
+          },
+        }, options)
+      : unavailable(
+          "fresh-tooling-findings",
+          inputs.toolingFindingsPath || "output/ops/tooling-quality/tooling-findings-latest.json",
+          toolingFindings?.status || "missing",
+          toolingFindings?.parseError ? { parseError: toolingFindings.parseError } : {},
+        ),
     swarmPreflight: swarmPreflight && swarmPreflight.status !== "invalid_json"
       ? applyFreshness({
           source: "fresh-swarm-preflight",
@@ -600,6 +635,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
     freshEvidence.sliceLedger,
     freshEvidence.toolInventory,
     freshEvidence.toolInstallRecommendations,
+    freshEvidence.toolingFindings,
     freshEvidence.swarmPreflight,
   ];
   const freshSources = freshEvidenceSources.filter((source) => !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status));
@@ -623,6 +659,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       sliceLedger: freshEvidence.sliceLedger.path,
       toolInventory: freshEvidence.toolInventory.path,
       toolInstallRecommendations: freshEvidence.toolInstallRecommendations.path,
+      toolingFindings: freshEvidence.toolingFindings.path,
       swarmPreflight: freshEvidence.swarmPreflight.path,
     },
     constraints: {
@@ -645,6 +682,9 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       toolInstallRecommendations: freshEvidence.toolInstallRecommendations.summary.recommendations ?? null,
       toolInstallApprovalRequired: freshEvidence.toolInstallRecommendations.summary.approvalRequired ?? null,
       toolInstallNowCandidates: freshEvidence.toolInstallRecommendations.summary.installNowCandidates ?? null,
+      toolingFindings: freshEvidence.toolingFindings.summary.findings ?? null,
+      toolingActionableFindings: freshEvidence.toolingFindings.summary.actionableFindings ?? null,
+      toolingIssueReadyTasks: freshEvidence.toolingFindings.summary.issueReadyTasks ?? null,
       effectivityEvidenceLanes: freshEvidence.adminAudit.summary.effectivityEvidenceLanes ?? null,
       effectivityApprovalRequiredLanes: freshEvidence.adminAudit.summary.approvalRequiredEvidenceLanes ?? null,
       effectivityHighSeverityLanes: freshEvidence.adminAudit.summary.highSeverityEvidenceLanes ?? null,
@@ -670,6 +710,7 @@ function parseArgs(argv) {
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInventory: DEFAULT_TOOL_INVENTORY,
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
+    toolingFindings: DEFAULT_TOOLING_FINDINGS,
     swarmPreflight: DEFAULT_SWARM_PREFLIGHT,
     maxAgeHours: 24,
     maxPackets: 8,
@@ -713,6 +754,7 @@ function parseArgs(argv) {
       "--slice-ledger": "sliceLedger",
       "--tool-inventory": "toolInventory",
       "--tool-install-recommendations": "toolInstallRecommendations",
+      "--tooling-findings": "toolingFindings",
       "--swarm-preflight": "swarmPreflight",
       "--record-outcome": "recordOutcome",
       "--outcome": "outcome",
@@ -724,7 +766,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(stringOptions)) {
       const value = read(flag);
       if (value !== null) {
-        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "toolInstallRecommendations" || key === "swarmPreflight"
+        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "toolInstallRecommendations" || key === "toolingFindings" || key === "swarmPreflight"
           ? resolve(REPO_ROOT, value)
           : value;
         matched = true;
@@ -768,6 +810,7 @@ function printUsage() {
       "  --slice-ledger <path>   Default: output/ops/effectivity/slice-ledger-latest.json.",
       "  --tool-inventory <path> Default: output/ops/effectivity/installed-tool-inventory-latest.json.",
       "  --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.",
+      "  --tooling-findings <path> Default: output/ops/tooling-quality/tooling-findings-latest.json.",
       "  --swarm-preflight <path> Default: output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json.",
       "  --max-age-hours <n>     Warn when fresh-input artifacts are older than this. Default: 24.",
       "  --max-packets <n>       Default: 8.",
@@ -829,11 +872,13 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       sliceLedger: readJsonIfExists(options.sliceLedger),
       toolInventory: readJsonIfExists(options.toolInventory),
       toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
+      toolingFindings: readJsonIfExists(options.toolingFindings),
       swarmPreflight: readJsonIfExists(options.swarmPreflight),
       adminAuditPath: toRepoRelative(options.adminAudit),
       sliceLedgerPath: toRepoRelative(options.sliceLedger),
       toolInventoryPath: toRepoRelative(options.toolInventory),
       toolInstallRecommendationsPath: toRepoRelative(options.toolInstallRecommendations),
+      toolingFindingsPath: toRepoRelative(options.toolingFindings),
       swarmPreflightPath: toRepoRelative(options.swarmPreflight),
     },
     {

@@ -152,6 +152,34 @@ const freshInputs = {
       promotionCandidates: 0,
     },
   },
+  toolInstallRecommendations: {
+    schema: "studiobrain-ops-tool-install-recommendations.v1",
+    generatedAt: "2026-05-07T08:45:52.000Z",
+    status: "warn",
+    readOnly: true,
+    summary: {
+      recommendations: 7,
+      coverageGaps: 4,
+      approvalRequired: 1,
+      installNowCandidates: 2,
+    },
+    recommendations: [
+      {
+        tool: "shellcheck",
+        priority: "P1",
+        acquisitionClass: "ephemeral-runner",
+        validationCommand: "node scripts/ops/tooling_quality_report.mjs --mode shellcheck --allow-install --json --write",
+        approvalRequired: false,
+      },
+      {
+        tool: "docker",
+        priority: "P2",
+        acquisitionClass: "remote-lane",
+        validationCommand: "node scripts/ops/tooling_quality_report.mjs --mode compose-config --json --write",
+        approvalRequired: true,
+      },
+    ],
+  },
   swarmPreflight: {
     schema: "studiobrain-swarm-lane-preflight.v1",
     generatedAt: "2026-05-07T08:46:12.000Z",
@@ -170,6 +198,7 @@ const freshInputs = {
   adminAuditPath: "output/ops/effectivity/admin-effectivity-audit-latest.json",
   sliceLedgerPath: "output/ops/effectivity/slice-ledger-latest.json",
   toolInventoryPath: "output/ops/effectivity/installed-tool-inventory-latest.json",
+  toolInstallRecommendationsPath: "output/ops/effectivity/tool-install-recommendations-latest.json",
   swarmPreflightPath: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
 };
 
@@ -190,11 +219,14 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.constraints.noServiceRestart, true);
   assert.equal(report.evidenceSummary.risks, 2);
   assert.equal(report.evidenceSummary.backlogItems, 2);
-  assert.equal(report.evidenceSummary.freshSources, 4);
+  assert.equal(report.evidenceSummary.freshSources, 5);
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.evidenceSummary.toolPromotionCandidates, 0);
   assert.equal(report.evidenceSummary.toolActionableFindings, 0);
   assert.equal(report.evidenceSummary.toolCoverageGaps, 4);
+  assert.equal(report.evidenceSummary.toolInstallRecommendations, 7);
+  assert.equal(report.evidenceSummary.toolInstallApprovalRequired, 1);
+  assert.equal(report.evidenceSummary.toolInstallNowCandidates, 2);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
@@ -205,6 +237,11 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory" && signal.signalClass === "coverage_gap"));
+  assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations"));
+  assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations" && signal.signalClass === "tool_install_recommendation"));
+  const installSignal = report.packets[0].sourceSignals.find((signal) => signal.source === "fresh-tool-install-recommendations");
+  assert.equal(installSignal.summary.approvalRequired, 1);
+  assert.equal(installSignal.summary.topRecommendations.some((item) => Object.hasOwn(item, "installCommand")), false);
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-swarm-preflight"));
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
@@ -217,6 +254,7 @@ test("summarizeFreshEvidence degrades when ignored artifacts are missing", () =>
   assert.equal(fresh.adminAudit.status, "missing");
   assert.equal(fresh.sliceLedger.status, "missing");
   assert.equal(fresh.toolInventory.status, "missing");
+  assert.equal(fresh.toolInstallRecommendations.status, "missing");
   assert.equal(fresh.swarmPreflight.status, "missing");
 });
 
@@ -229,6 +267,7 @@ test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
       adminAudit: { status: "invalid_json", parseError: "bad admin" },
       sliceLedger: freshInputs.sliceLedger,
       toolInventory: { status: "invalid_json", parseError: "bad tools" },
+      toolInstallRecommendations: { status: "invalid_json", parseError: "bad tool install recommendations" },
     },
     { maxPackets: 1 },
   );
@@ -237,8 +276,10 @@ test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "invalid_json");
   assert.equal(report.freshEvidence.toolInventory.summary.parseError, "bad tools");
+  assert.equal(report.freshEvidence.toolInstallRecommendations.summary.parseError, "bad tool install recommendations");
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"), false);
   assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"), false);
+  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations"), false);
 });
 
 test("workPacketReportStatus warns when falling back to static docs only", () => {
@@ -321,7 +362,7 @@ test("workPacketReportStatus warns when fresh evidence is stale", () => {
   );
 
   assert.equal(stale.evidenceSummary.freshSources, 0);
-  assert.equal(stale.evidenceSummary.staleSources, 4);
+  assert.equal(stale.evidenceSummary.staleSources, 5);
   assert.equal(stale.freshEvidence.adminAudit.status, "stale");
   assert.equal(stale.freshEvidence.adminAudit.sourceStatus, "pass");
   assert.equal(stale.freshEvidence.adminAudit.freshness.stale, true);

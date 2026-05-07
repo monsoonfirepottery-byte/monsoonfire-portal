@@ -403,6 +403,45 @@ function comparePackets(left, right) {
     || left.title.localeCompare(right.title);
 }
 
+function summarizeNextExecutablePacket(packets) {
+  const packetList = Array.isArray(packets) ? packets : [];
+  const ready = packetList.find((packet) => clean(packet.status) === "ready") || null;
+  const approvalGatedCount = packetList.filter((packet) => clean(packet.status) === "approval_gated").length;
+  const base = {
+    status: ready ? "ready" : "none_ready",
+    totalPackets: packetList.length,
+    approvalGatedCount,
+  };
+  if (!ready) {
+    return {
+      ...base,
+      packetId: "",
+      title: "",
+      priority: "",
+      risk: "",
+      recommendedOwner: "",
+      safeNextStep: "Refresh evidence or clear approval gates before assigning the next packet.",
+      suggestedBranchName: "",
+      suggestedPrTitle: "",
+      verification: [],
+      sourceSignalCount: 0,
+    };
+  }
+  return {
+    ...base,
+    packetId: ready.packetId,
+    title: ready.title,
+    priority: ready.priority,
+    risk: ready.risk,
+    recommendedOwner: ready.recommendedOwner,
+    safeNextStep: ready.safeNextStep,
+    suggestedBranchName: ready.suggestedBranchName || "",
+    suggestedPrTitle: ready.suggestedPrTitle || "",
+    verification: Array.isArray(ready.verification) ? ready.verification.slice(0, 3) : [],
+    sourceSignalCount: Array.isArray(ready.sourceSignals) ? ready.sourceSignals.length : 0,
+  };
+}
+
 function freshSourceSignals(freshEvidence) {
   if (!freshEvidence) return [];
   return [
@@ -858,6 +897,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,
     },
     freshEvidence,
+    nextExecutablePacket: summarizeNextExecutablePacket(packets),
     packets,
   };
 }
@@ -1092,7 +1132,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   return report;
 }
 
-export { buildOutcomeSummary, comparePackets, outcomeHealthFromSummary, summarizeFreshEvidence, workPacketReportStatus };
+export { buildOutcomeSummary, comparePackets, outcomeHealthFromSummary, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

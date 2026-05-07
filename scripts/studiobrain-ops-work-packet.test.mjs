@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { buildOpsWorkPacket, comparePackets, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { buildOpsWorkPacket, comparePackets, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
 import { validateJsonSchema } from "./ops/validate_ops_artifacts.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
@@ -282,6 +282,11 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
   assert.equal(report.freshEvidence.adminAudit.freshness.stale, false);
   assert.ok(report.packets.length >= 2);
+  assert.equal(report.nextExecutablePacket.status, "ready");
+  assert.equal(report.nextExecutablePacket.packetId, toolingPacketId(report));
+  assert.ok(report.nextExecutablePacket.safeNextStep);
+  assert.equal(report.nextExecutablePacket.totalPackets, report.packets.length);
+  assert.equal(report.nextExecutablePacket.approvalGatedCount, report.packets.filter((packet) => packet.status === "approval_gated").length);
   assert.ok(report.packets.every((packet) => packet.packetId.startsWith("ops-wp-")));
   assert.ok(report.packets.every((packet) => packet.constraints.readOnlyFirst));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"));
@@ -314,6 +319,10 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(validateJsonSchema(leaked, packetSchema).some((error) => error.includes("installCommand")));
 });
 
+function toolingPacketId(report) {
+  return report.packets.find((packet) => packet.title === "[ops-tooling] Review shellcheck findings")?.packetId || "";
+}
+
 test("summarizeFreshEvidence degrades when ignored artifacts are missing", () => {
   const fresh = summarizeFreshEvidence({});
 
@@ -332,6 +341,40 @@ test("comparePackets prefers ready packets within the same priority", () => {
   ].sort(comparePackets);
 
   assert.equal(packets[0].title, "[ops-tooling] Ready shellcheck task");
+});
+
+test("summarizeNextExecutablePacket returns a compact ready-packet pointer", () => {
+  const summary = summarizeNextExecutablePacket([
+    { packetId: "ops-wp-gated", title: "Gated", status: "approval_gated" },
+    {
+      packetId: "ops-wp-ready",
+      title: "Ready",
+      status: "ready",
+      priority: "P1",
+      risk: "low",
+      recommendedOwner: "Codex",
+      safeNextStep: "Run the check.",
+      suggestedBranchName: "codex/check",
+      suggestedPrTitle: "[ops] Check",
+      verification: ["verify one", "verify two", "verify three", "verify four"],
+      sourceSignals: [{ source: "unit" }],
+    },
+  ]);
+
+  assert.equal(summary.status, "ready");
+  assert.equal(summary.packetId, "ops-wp-ready");
+  assert.equal(summary.approvalGatedCount, 1);
+  assert.deepEqual(summary.verification, ["verify one", "verify two", "verify three"]);
+  assert.equal(summary.sourceSignalCount, 1);
+});
+
+test("summarizeNextExecutablePacket gives a safe no-ready fallback", () => {
+  const summary = summarizeNextExecutablePacket([{ packetId: "ops-wp-gated", status: "approval_gated" }]);
+
+  assert.equal(summary.status, "none_ready");
+  assert.equal(summary.packetId, "");
+  assert.equal(summary.approvalGatedCount, 1);
+  assert.ok(summary.safeNextStep.includes("approval gates"));
 });
 
 test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {

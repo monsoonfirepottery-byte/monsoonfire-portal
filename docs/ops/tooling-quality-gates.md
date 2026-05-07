@@ -46,3 +46,5 @@ The first local inventory found required tools present, but optional Docker, mak
 The first useful signal from this gate was not theoretical: ShellCheck and the LF guard both surfaced CRLF bytes in Ubuntu-targeted shell scripts. Treat that as a follow-up cleanup slice with reviewable line-ending policy, not as an automatic broad rewrite.
 
 Use `tool-install-recommendations-latest.json` as the install decision surface. It can recommend ephemeral report-only runs for tools such as ShellCheck or SQLFluff, while classifying Docker as a host/remote-lane gap and unmodeled tools such as gitleaks or shfmt as not yet justified.
+
+The tooling quality summary uses `findings`/`actionableFindings` for defect-like rows and `coverageGaps` for missing validators. `rawFindings` remains available for row accounting, but it should not be used as the defect count.

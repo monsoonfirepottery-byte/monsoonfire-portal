@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
+  annotateSection,
   buildReport,
+  findingCounts,
   parseArgs,
   parseActionlintOutput,
   parseShellCheckJson,
@@ -21,12 +23,18 @@ function assertReportContract(report) {
   assert.equal(typeof report.allowInstall, "boolean");
   assert.equal(typeof report.summary.checkedFiles, "number");
   assert.equal(typeof report.summary.findings, "number");
+  assert.equal(typeof report.summary.actionableFindings, "number");
+  assert.equal(typeof report.summary.coverageGaps, "number");
+  assert.equal(typeof report.summary.rawFindings, "number");
   assert.equal(typeof report.summary.skipped, "number");
   for (const section of report.sections) {
     assert.ok(schema.properties.sections.items.properties.id.enum.includes(section.id));
     assert.ok(schema.properties.sections.items.properties.status.enum.includes(section.status));
     assert.equal(typeof section.tool, "string");
     assert.equal(typeof section.checkedFiles, "number");
+    assert.equal(typeof section.actionableFindings, "number");
+    assert.equal(typeof section.coverageGaps, "number");
+    assert.equal(typeof section.rawFindings, "number");
     assert.ok(Array.isArray(section.findings));
     for (const finding of section.findings) {
       assert.equal(typeof finding.code, "string");
@@ -86,6 +94,31 @@ test("statusFromSections preserves worst section state", () => {
   assert.equal(statusFromSections([{ status: "pass" }, { status: "warn" }]), "warn");
   assert.equal(statusFromSections([{ status: "warn" }, { status: "fail" }]), "fail");
   assert.equal(statusFromSections([{ status: "pass" }]), "pass");
+});
+
+test("findingCounts treats missing tools as coverage gaps, not actionable findings", () => {
+  assert.deepEqual(findingCounts([
+    { code: "tool_missing", message: "missing" },
+    { code: "parse_error", message: "bad" }
+  ]), {
+    rawFindings: 2,
+    coverageGaps: 1,
+    actionableFindings: 1
+  });
+});
+
+test("annotateSection adds explicit finding classes", () => {
+  const section = annotateSection({
+    id: "shellcheck",
+    status: "skipped",
+    tool: "shellcheck",
+    checkedFiles: 0,
+    findings: [{ code: "tool_missing", message: "missing" }]
+  });
+
+  assert.equal(section.rawFindings, 1);
+  assert.equal(section.coverageGaps, 1);
+  assert.equal(section.actionableFindings, 0);
 });
 
 test("buildReport emits the documented tooling quality schema", () => {

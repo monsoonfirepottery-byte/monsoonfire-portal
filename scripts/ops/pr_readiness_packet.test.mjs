@@ -29,6 +29,9 @@ const workPacket = {
     staleSources: 0,
     toolInstallNowCandidates: 2,
     toolInstallApprovalRequired: 1,
+    effectivityEvidenceLanes: 4,
+    effectivityApprovalRequiredLanes: 1,
+    effectivityHighSeverityLanes: 1,
   },
   packets: [{ title: "[ops] Refresh evidence", humanGate: "" }],
 };
@@ -77,12 +80,17 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.status, "warn");
   assert.equal(packet.evidence.artifactValidation.status, "pass");
   assert.equal(packet.evidence.workPacket.freshSources, 5);
+  assert.equal(packet.evidence.workPacket.effectivityEvidenceLanes, 4);
+  assert.equal(packet.evidence.workPacket.effectivityApprovalRequiredLanes, 1);
+  assert.equal(packet.evidence.workPacket.effectivityHighSeverityLanes, 1);
   assert.equal(packet.evidence.toolInstall.installNowCandidates, 2);
   assert.equal(packet.evidence.toolInstall.approvalRequired, 1);
   assert.ok(packet.warnings.some((warning) => warning.includes("require approval")));
 
   const markdown = renderMarkdown(packet);
   assert.match(markdown, /Tool Recommendation Summary/);
+  assert.match(markdown, /lanes=4/);
+  assert.match(markdown, /approvalLanes=1/);
   assert.match(markdown, /shellcheck/);
   assert.doesNotMatch(markdown, /do not copy this/);
   assert.doesNotMatch(markdown, /do not install Docker/);

@@ -86,8 +86,8 @@ function summarizeArtifactValidation(report) {
 }
 
 function summarizeWorkPacket(packet) {
-  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", humanGates: 0 };
-  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", humanGates: 0, parseError: packet.parseError || "" };
+  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null };
+  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, parseError: packet.parseError || "" };
   const packets = Array.isArray(packet.packets) ? packet.packets : [];
   return {
     status: packets.length > 0 ? "present" : "empty",
@@ -99,6 +99,9 @@ function summarizeWorkPacket(packet) {
     humanGates: packets.filter((entry) => clean(entry.humanGate)).length,
     toolInstallNowCandidates: packet.evidenceSummary?.toolInstallNowCandidates ?? null,
     toolInstallApprovalRequired: packet.evidenceSummary?.toolInstallApprovalRequired ?? null,
+    effectivityEvidenceLanes: packet.evidenceSummary?.effectivityEvidenceLanes ?? null,
+    effectivityApprovalRequiredLanes: packet.evidenceSummary?.effectivityApprovalRequiredLanes ?? null,
+    effectivityHighSeverityLanes: packet.evidenceSummary?.effectivityHighSeverityLanes ?? null,
   };
 }
 
@@ -228,7 +231,7 @@ ${dirtyFiles}
 | --- | --- | --- |
 | Artifact validation | ${packet.evidence.artifactValidation.status} | checks=${packet.evidence.artifactValidation.checks}, warned=${packet.evidence.artifactValidation.warned}, missing=${packet.evidence.artifactValidation.missing}, failed=${packet.evidence.artifactValidation.failed} |
 | Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
-| Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
+| Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |
 
 ## Tool Recommendation Summary

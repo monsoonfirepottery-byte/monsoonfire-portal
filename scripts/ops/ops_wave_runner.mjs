@@ -297,13 +297,20 @@ function run(rawArgs = process.argv.slice(2)) {
   const manifest = runWave(options);
   const artifact = resolve(options.outputDir, `${manifest.runId}.json`);
   const latest = resolve(options.outputDir, "ops-wave-runner-latest.json");
+  const shouldUpdateLatest = options.write && !options.dryRun;
   if (options.write) {
     writeJson(artifact, manifest);
-    writeJson(latest, manifest);
+    if (shouldUpdateLatest) writeJson(latest, manifest);
   }
   const report = {
     ...manifest,
-    artifacts: options.write ? { jsonPath: repoRelative(artifact), latestPath: repoRelative(latest) } : null,
+    artifacts: options.write
+      ? {
+          jsonPath: repoRelative(artifact),
+          latestPath: shouldUpdateLatest ? repoRelative(latest) : "",
+          latestUpdated: shouldUpdateLatest,
+        }
+      : null,
   };
   if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else {

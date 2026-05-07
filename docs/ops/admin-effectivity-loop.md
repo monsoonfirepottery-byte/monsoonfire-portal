@@ -99,6 +99,7 @@ node scripts/ops/ops_wave_runner.mjs --max-packets 8 --json --write
 
 The wave runner executes read-only checks in dependency order: preflight, tooling quality, tooling findings export, tool inventory, tool-install recommendation refresh, admin effectivity audit, work packet generation, preliminary artifact schema validation, PR readiness packet generation, then final artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
 The default run does not install or fetch missing optional validators. Use `--allow-tool-install` only on a tooling lane where ephemeral runners such as `npx` or `uv tool run` are acceptable; the mode still writes only under `output/ops`. Use `--max-packets <n>` when the default three-packet window hides lower-priority ready work behind approval-gated P0/P1 tasks.
+Dry-run wave artifacts are timestamped only and do not replace `ops-wave-runner-latest.json`; latest is reserved for executable wave evidence.
 Tooling findings export converts fresh `tooling-quality` findings into GitHub-copy-ready cleanup tasks, keeping validator output from becoming a one-off terminal observation.
 The effectivity audit compares tool inventory sources against the start of the selected slice window, so validators run during the wave are not falsely marked stale just because the slice ledger is appended after validation completes.
 
@@ -106,6 +107,7 @@ Work packets should steer from fresh evidence only. Missing, invalid, stale, or 
 Tooling findings export is included in work-packet evidence as `fresh-tooling-findings`; issue-ready validator tasks are tagged `signalClass=issue_ready_task` so agents can pick them up without scraping terminal output.
 When the export contains task entries, the work-packet generator also emits them as normal `ops-wp-*` packets with scoped write sets and validator-focused acceptance criteria.
 Packets are sorted by priority first, then readiness, so a ready P1 diagnostic/tooling task is visible before an approval-gated P1 cleanup task.
+PR readiness packets include the latest wave runner packet window and top work-packet titles so reviewers can tell whether a PR was prepared from the default three-packet view or a widened slice window.
 
 ## Scoring
 

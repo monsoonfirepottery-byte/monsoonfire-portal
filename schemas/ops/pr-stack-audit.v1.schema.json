@@ -12,6 +12,7 @@
     "purpose",
     "repos",
     "stackEdges",
+    "mergePlan",
     "summary",
     "warnings",
     "operatorNotes"
@@ -59,6 +60,7 @@
                 "updatedAt",
                 "author",
                 "category",
+                "mergeReadiness",
                 "recommendedDisposition"
               ],
               "properties": {
@@ -73,6 +75,16 @@
                 "updatedAt": { "type": "string" },
                 "author": { "type": "string" },
                 "category": { "type": "string" },
+                "mergeReadiness": {
+                  "type": "object",
+                  "required": ["status", "blockers", "baseDependencyPr"],
+                  "properties": {
+                    "status": { "enum": ["ready", "blocked"] },
+                    "blockers": { "type": "array", "items": { "type": "string" } },
+                    "baseDependencyPr": { "type": ["number", "null"] }
+                  },
+                  "additionalProperties": false
+                },
                 "recommendedDisposition": { "type": "string" }
               },
               "additionalProperties": false
@@ -135,9 +147,52 @@
         "additionalProperties": false
       }
     },
+    "mergePlan": {
+      "type": "object",
+      "required": ["status", "nextMergeCandidate", "mergeOrder", "blockedCount", "readyCount"],
+      "properties": {
+        "status": { "enum": ["candidate_ready", "blocked", "empty"] },
+        "nextMergeCandidate": {
+          "type": ["object", "null"],
+          "required": ["repoId", "number", "title", "url", "headRefName", "baseRefName"],
+          "properties": {
+            "repoId": { "type": "string" },
+            "number": { "type": "number" },
+            "title": { "type": "string" },
+            "url": { "type": "string" },
+            "headRefName": { "type": "string" },
+            "baseRefName": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "mergeOrder": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repoId", "order", "number", "title", "url", "headRefName", "baseRefName", "category", "status", "blockers"],
+            "properties": {
+              "repoId": { "type": "string" },
+              "order": { "type": "number", "minimum": 1 },
+              "number": { "type": "number" },
+              "title": { "type": "string" },
+              "url": { "type": "string" },
+              "headRefName": { "type": "string" },
+              "baseRefName": { "type": "string" },
+              "category": { "type": "string" },
+              "status": { "enum": ["ready", "blocked"] },
+              "blockers": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        },
+        "blockedCount": { "type": "number", "minimum": 0 },
+        "readyCount": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "summary": {
       "type": "object",
-      "required": ["repos", "open", "recentlyMerged", "categories", "warnings"],
+      "required": ["repos", "open", "recentlyMerged", "categories", "warnings", "mergeReady", "mergeBlocked"],
       "properties": {
         "repos": { "type": "number", "minimum": 0 },
         "open": { "type": "number", "minimum": 0 },
@@ -146,7 +201,9 @@
           "type": "object",
           "additionalProperties": { "type": "number", "minimum": 0 }
         },
-        "warnings": { "type": "number", "minimum": 0 }
+        "warnings": { "type": "number", "minimum": 0 },
+        "mergeReady": { "type": "number", "minimum": 0 },
+        "mergeBlocked": { "type": "number", "minimum": 0 }
       },
       "additionalProperties": false
     },

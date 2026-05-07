@@ -100,6 +100,11 @@ test("buildPrStackAudit classifies current PR lanes and stack edges", () => {
   assert.equal(report.stackEdges.length, 1);
   assert.equal(report.stackEdges[0].basePr, 646);
   assert.equal(report.stackEdges[0].childPr, 647);
+  assert.equal(report.mergePlan.status, "blocked");
+  assert.equal(report.mergePlan.readyCount, 0);
+  assert.equal(report.mergePlan.blockedCount, 4);
+  assert.equal(report.repos[0].openPullRequests[0].mergeReadiness.baseDependencyPr, 646);
+  assert.ok(report.repos[0].openPullRequests[0].mergeReadiness.blockers.includes("base_pr_open:#646"));
   assert.ok(report.warnings.some((warning) => warning.includes("dirty/conflicted")));
   assert.ok(report.warnings.some((warning) => warning.includes("dependency PRs")));
 
@@ -108,7 +113,32 @@ test("buildPrStackAudit classifies current PR lanes and stack edges", () => {
   assert.match(markdown, /#646/);
   assert.match(markdown, /#647/);
   assert.match(markdown, /Stacked Edges/);
+  assert.match(markdown, /Merge Readiness/);
+  assert.match(markdown, /base_pr_open:#646/);
   assert.match(markdown, /dependency/);
+});
+
+test("buildPrStackAudit exposes the next clean merge candidate", () => {
+  const cleanFixture = structuredClone(fixture);
+  cleanFixture.repos[0].openPullRequests.push({
+    number: 660,
+    title: "[ops] Ready small diagnostics",
+    headRefName: "codex/ops-ready-diagnostics",
+    baseRefName: "main",
+    isDraft: false,
+    mergeStateStatus: "CLEAN",
+    updatedAt: "2026-05-07T17:00:00Z",
+    url: "https://example.test/pr/660",
+    author: { login: "codex" },
+  });
+
+  const report = buildPrStackAudit(cleanFixture, { generatedAt: "2026-05-07T17:00:00.000Z", runId: "test-pr-stack", repos, openLimit: 40 });
+
+  assert.equal(report.mergePlan.status, "candidate_ready");
+  assert.equal(report.mergePlan.readyCount, 1);
+  assert.equal(report.mergePlan.nextMergeCandidate.number, 660);
+  assert.equal(report.mergePlan.nextMergeCandidate.headRefName, "codex/ops-ready-diagnostics");
+  assert.match(renderMarkdown(report), /Next merge candidate: \[#660\]/);
 });
 
 test("buildPrStackAudit stays compatible with its JSON schema", () => {

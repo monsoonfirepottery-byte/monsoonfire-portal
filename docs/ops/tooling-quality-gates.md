@@ -8,6 +8,14 @@ This packet turns the research swarm recommendations into read-only, auditable t
 node scripts/ops/tooling_quality_report.mjs --mode all --json --write
 ```
 
+Windows-friendly npm wrappers:
+
+```bash
+npm run ops:tooling-quality
+npm run ops:tooling-quality:allow-install
+npm run ops:ci-validate
+```
+
 The report writes ignored artifacts under `output/ops/tooling-quality/`.
 Optional validators can be exercised explicitly after a tool usefulness audit:
 

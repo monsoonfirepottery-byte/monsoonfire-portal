@@ -92,7 +92,7 @@ INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bun
 ```bash
 make ops-wave-runner OPS_WAVE_FROM_STEP=packet-outcome-report
 make ops-wave-runner OPS_WAVE_MAX_PACKETS=8 OPS_WAVE_FLAGS=--json
-make ops-wave-runner OPS_WAVE_STEPS=swarm-preflight,work-packet,artifact-validation OPS_WAVE_SKIP=tooling-quality
+make ops-wave-runner OPS_WAVE_STEPS=swarm-preflight,pr-stack-audit,work-packet,artifact-validation OPS_WAVE_SKIP=tooling-quality
 ```
 
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.

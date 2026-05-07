@@ -100,8 +100,8 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/pr_stack_audit.mjs --json --write",
     producerStep: "pr-stack-audit",
     safeWriteRoot: "output/ops/pr-stack",
-    consumers: ["operator-handoff", "merge-planning"],
-    requiredFor: ["stack-discipline"],
+    consumers: ["operator-handoff", "merge-planning", "ops-work-packet"],
+    requiredFor: ["stack-discipline", "in-flight-work-suppression"],
   },
   "pr-readiness-packet": {
     producerCommand: "node scripts/ops/pr_readiness_packet.mjs --json --write",

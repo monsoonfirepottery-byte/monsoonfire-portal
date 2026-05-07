@@ -274,6 +274,34 @@ const freshInputs = {
       errors: [],
     },
   },
+  prStackAudit: {
+    schema: "studiobrain-ops-pr-stack-audit.v1",
+    generatedAt: "2026-05-07T08:47:00.000Z",
+    status: "pass",
+    readOnly: true,
+    summary: {
+      open: 1,
+      recentlyMerged: 0,
+      mergeReady: 1,
+      mergeBlocked: 0,
+    },
+    repos: [
+      {
+        id: "portal",
+        openPullRequests: [
+          {
+            repoId: "portal",
+            number: 900,
+            title: "[ops] Unrelated admin docs polish",
+            url: "https://example.test/pr/900",
+            headRefName: "codex/ops-unrelated-docs",
+            baseRefName: "main",
+            isDraft: true,
+          },
+        ],
+      },
+    ],
+  },
   adminAuditPath: "output/ops/effectivity/admin-effectivity-audit-latest.json",
   sliceLedgerPath: "output/ops/effectivity/slice-ledger-latest.json",
   toolInventoryPath: "output/ops/effectivity/installed-tool-inventory-latest.json",
@@ -281,6 +309,7 @@ const freshInputs = {
   toolingFindingsPath: "output/ops/tooling-quality/tooling-findings-latest.json",
   swarmPreflightPath: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
   hostDriftManifestPath: "output/ops/host-drift/host-drift-manifest-latest.json",
+  prStackAuditPath: "output/ops/pr-stack/pr-stack-audit-latest.json",
 };
 
 test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", () => {
@@ -301,7 +330,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.constraints.noServiceRestart, true);
   assert.equal(report.evidenceSummary.risks, 2);
   assert.equal(report.evidenceSummary.backlogItems, 2);
-  assert.equal(report.evidenceSummary.freshSources, 7);
+  assert.equal(report.evidenceSummary.freshSources, 8);
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.evidenceSummary.toolPromotionCandidates, 0);
   assert.equal(report.evidenceSummary.toolActionableFindings, 0);
@@ -315,6 +344,9 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.effectivityEvidenceLanes, 2);
   assert.equal(report.evidenceSummary.effectivityApprovalRequiredLanes, 1);
   assert.equal(report.evidenceSummary.effectivityHighSeverityLanes, 1);
+  assert.equal(report.evidenceSummary.prStackStatus, "pass");
+  assert.equal(report.evidenceSummary.prStackOpen, 1);
+  assert.equal(report.evidenceSummary.inFlightPrSuppressedPackets, 0);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.evidenceSummary.hostDriftStatus, "warn");
@@ -371,6 +403,44 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(validateJsonSchema(leaked, packetSchema).some((error) => error.includes("installCommand")));
 });
 
+test("buildOpsWorkPacket suppresses packets that already have open PRs", () => {
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      prStackAudit: {
+        ...freshInputs.prStackAudit,
+        summary: { ...freshInputs.prStackAudit.summary, open: 1, mergeReady: 1 },
+        repos: [
+          {
+            id: "portal",
+            openPullRequests: [
+              {
+                repoId: "portal",
+                number: 901,
+                title: "[ops] Add Studio Brain backup evidence and restore drill report",
+                url: "https://example.test/pr/901",
+                headRefName: "codex/ops-backup-evidence",
+                baseRefName: "main",
+                isDraft: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    { runId: "unit-test", generatedAt: "2026-05-06T20:00:00.000Z" },
+  );
+
+  assert.equal(report.evidenceSummary.inFlightPrSuppressedPackets, 1);
+  assert.equal(report.inFlightPrSuppressions[0].prNumber, 901);
+  assert.equal(report.packets.some((packet) => packet.suggestedBranchName === "codex/ops-backup-evidence"), false);
+  assert.equal(report.nextExecutablePacket.title, "[ops-tooling] Review shellcheck findings");
+  assert.deepEqual(validateJsonSchema(report, packetSchema), []);
+});
+
 function toolingPacketId(report) {
   return report.packets.find((packet) => packet.title === "[ops-tooling] Review shellcheck findings")?.packetId || "";
 }
@@ -385,6 +455,7 @@ test("summarizeFreshEvidence degrades when ignored artifacts are missing", () =>
   assert.equal(fresh.toolingFindings.status, "missing");
   assert.equal(fresh.swarmPreflight.status, "missing");
   assert.equal(fresh.hostDriftManifest.status, "missing");
+  assert.equal(fresh.prStackAudit.status, "missing");
 });
 
 test("comparePackets prefers ready packets within the same priority", () => {
@@ -559,7 +630,7 @@ test("workPacketReportStatus warns when tool-install recommendations are missing
   );
 
   assert.equal(missingRecommendations.freshEvidence.toolInstallRecommendations.status, "missing");
-  assert.equal(missingRecommendations.evidenceSummary.freshSources, 6);
+  assert.equal(missingRecommendations.evidenceSummary.freshSources, 7);
   assert.equal(workPacketReportStatus(missingRecommendations), "warn");
 });
 
@@ -635,7 +706,7 @@ test("workPacketReportStatus warns when fresh evidence is stale", () => {
   );
 
   assert.equal(stale.evidenceSummary.freshSources, 0);
-  assert.equal(stale.evidenceSummary.staleSources, 7);
+  assert.equal(stale.evidenceSummary.staleSources, 8);
   assert.equal(stale.freshEvidence.adminAudit.status, "stale");
   assert.equal(stale.freshEvidence.adminAudit.sourceStatus, "pass");
   assert.equal(stale.freshEvidence.adminAudit.freshness.stale, true);

@@ -38,6 +38,7 @@
       "required": [
         "checks",
         "passed",
+        "warned",
         "missing",
         "failed"
       ],
@@ -47,6 +48,10 @@
           "minimum": 0
         },
         "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warned": {
           "type": "integer",
           "minimum": 0
         },
@@ -70,7 +75,8 @@
           "artifact",
           "schema",
           "status",
-          "errors"
+          "errors",
+          "warnings"
         ],
         "properties": {
           "id": {
@@ -95,6 +101,26 @@
             "items": {
               "type": "string"
             }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ageHours": {
+            "type": ["number", "null"],
+            "minimum": 0
+          },
+          "maxAgeHours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "referencedArtifact": {
+            "type": "string"
           }
         },
         "additionalProperties": false

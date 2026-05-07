@@ -41,7 +41,30 @@ test("buildPacketOutcomeReport summarizes outcome health and orphaned packets", 
   assert.deepEqual(report.currentPacketWindow.packetIds, ["ops-wp-current", "ops-wp-blocked"]);
   assert.equal(report.orphanedLatestOutcomes.length, 1);
   assert.equal(report.orphanedLatestOutcomes[0].packetId, "ops-wp-stale");
+  assert.equal(report.packetChurn.status, "pass");
+  assert.equal(report.packetChurn.orphanedRate, 0.333);
   assert.match(renderMarkdown(report), /Orphaned Latest Outcomes/);
+});
+
+test("buildPacketOutcomeReport warns when latest outcomes mostly reference old packet ids", () => {
+  const report = buildPacketOutcomeReport(
+    {
+      workPacket,
+      outcomes: [
+        { packetId: "ops-wp-old-1", outcome: "helpful", recordedAt: "2026-05-07T12:01:00.000Z" },
+        { packetId: "ops-wp-old-2", outcome: "helpful", recordedAt: "2026-05-07T12:02:00.000Z" },
+        { packetId: "ops-wp-old-3", outcome: "helpful", recordedAt: "2026-05-07T12:03:00.000Z" },
+        { packetId: "ops-wp-current", outcome: "helpful", recordedAt: "2026-05-07T12:04:00.000Z" },
+      ],
+    },
+    { generatedAt: "2026-05-07T12:10:00.000Z", runId: "packet-churn-test" },
+  );
+
+  assert.equal(report.status, "warn");
+  assert.equal(report.packetChurn.status, "warn");
+  assert.equal(report.packetChurn.resetRecommended, true);
+  assert.equal(report.packetChurn.orphanedRate, 0.75);
+  assert.match(renderMarkdown(report), /Reset recommended: true/);
 });
 
 test("buildPacketOutcomeReport stays compatible with schema", () => {

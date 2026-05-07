@@ -13,6 +13,7 @@
     "currentPacketWindow",
     "outcomeSummary",
     "outcomeHealth",
+    "packetChurn",
     "latestByPacket",
     "orphanedLatestOutcomes",
     "operatorNotes"
@@ -47,6 +48,19 @@
     },
     "outcomeSummary": { "type": "object" },
     "outcomeHealth": { "type": "object" },
+    "packetChurn": {
+      "type": "object",
+      "required": ["status", "latestOutcomePackets", "orphanedLatestOutcomes", "orphanedRate", "resetRecommended", "guidance"],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "latestOutcomePackets": { "type": "number", "minimum": 0 },
+        "orphanedLatestOutcomes": { "type": "number", "minimum": 0 },
+        "orphanedRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "resetRecommended": { "type": "boolean" },
+        "guidance": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "latestByPacket": { "type": "array" },
     "orphanedLatestOutcomes": { "type": "array" },
     "operatorNotes": { "type": "array", "items": { "type": "string" } },

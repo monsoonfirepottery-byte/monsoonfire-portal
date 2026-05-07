@@ -335,6 +335,64 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
   };
 }
 
+function makeToolingFindingPacket(task, freshEvidence) {
+  const title = clean(task.title);
+  const priority = clean(task.priority) || "P2";
+  const packetKey = ["tooling-finding", title, clean(task.suggestedBranchName), clean(task.suggestedPrTitle)].join("|");
+  return {
+    packetId: `ops-wp-${stableHash(packetKey)}`,
+    title,
+    status: task.approvalRequired ? "approval_gated" : "ready",
+    priority,
+    priorityRank: priorityRank(priority),
+    risk: "low for scoped code cleanup",
+    recommendedOwner: clean(task.owner) || "Codex",
+    sourceSignals: [
+      freshEvidence?.toolingFindings
+        ? {
+            source: freshEvidence.toolingFindings.source,
+            path: freshEvidence.toolingFindings.path,
+            status: freshEvidence.toolingFindings.status,
+            generatedAt: freshEvidence.toolingFindings.generatedAt || "",
+            signalClass: signalClassForSource(freshEvidence.toolingFindings),
+            summary: freshEvidence.toolingFindings.summary,
+          }
+        : null,
+      {
+        source: "tooling-findings-task",
+        title,
+        evidence: Array.isArray(task.evidence) ? task.evidence : [],
+        files: Array.isArray(task.files) ? task.files : [],
+      },
+    ].filter(Boolean),
+    why: clean(task.problem) || "Issue-ready tooling finding from the latest report-only validator output.",
+    safeNextStep: clean(task.proposedFix) || "Make the smallest safe fix and rerun the targeted validator.",
+    suggestedBranchName: clean(task.suggestedBranchName),
+    suggestedPrTitle: clean(task.suggestedPrTitle),
+    verification: Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0
+      ? task.acceptanceCriteria.map(clean)
+      : [
+          "Rerun the targeted validator and confirm the finding is gone or documented as intentional.",
+          "Confirm no generated artifact includes secrets, tokens, keys, or raw environment values.",
+        ],
+    humanGate: task.approvalRequired ? "Tooling finding task requires human approval before execution." : "",
+    constraints: {
+      readOnlyFirst: true,
+      noSecrets: true,
+      noServiceRestart: true,
+      noDataMutation: true,
+      writeScope: Array.isArray(task.files) && task.files.length > 0 ? task.files.map(clean) : ["scripts/"],
+    },
+  };
+}
+
+function toolingFindingPackets(toolingFindings, freshEvidence) {
+  if (!Array.isArray(toolingFindings?.tasks)) return [];
+  return toolingFindings.tasks
+    .filter((task) => clean(task.title))
+    .map((task) => makeToolingFindingPacket(task, freshEvidence));
+}
+
 function freshSourceSignals(freshEvidence) {
   if (!freshEvidence) return [];
   return [
@@ -640,9 +698,13 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
   ];
   const freshSources = freshEvidenceSources.filter((source) => !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status));
   const staleSources = freshEvidenceSources.filter((source) => ["invalid_timestamp", "stale"].includes(source.status));
-  const packets = backlog
+  const backlogPackets = backlog
     .filter((item) => priorityRank(item.priority) <= 2)
-    .map((item) => makePacket(item, matchingRisk(item, risks), effectivity, freshEvidence))
+    .map((item) => makePacket(item, matchingRisk(item, risks), effectivity, freshEvidence));
+  const packets = [
+    ...backlogPackets,
+    ...toolingFindingPackets(inputs.toolingFindings, freshEvidence),
+  ]
     .sort((left, right) => left.priorityRank - right.priorityRank || left.title.localeCompare(right.title))
     .slice(0, Number(options.maxPackets || 8));
 

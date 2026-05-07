@@ -26,10 +26,12 @@
     "sliceIds": { "type": "string" },
     "outcomeLedger": {
       "type": "object",
-      "required": ["packetId", "suggestedPacketIds", "recordCommand"],
+      "required": ["packetId", "suggestedPacketIds", "packetIdInSuggestedWindow", "validationStatus", "recordCommand"],
       "properties": {
         "packetId": { "type": "string" },
         "suggestedPacketIds": { "type": "array", "items": { "type": "string" } },
+        "packetIdInSuggestedWindow": { "type": ["boolean", "null"] },
+        "validationStatus": { "enum": ["not_requested", "suggested", "outside_window"] },
         "recordCommand": { "type": "string" }
       },
       "additionalProperties": false

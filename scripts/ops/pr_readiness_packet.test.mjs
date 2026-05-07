@@ -101,6 +101,8 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.readyPackets, 1);
   assert.equal(packet.evidence.workPacket.approvalGatedPackets, 1);
   assert.equal(packet.outcomeLedger.packetId, "ops-wp-ready");
+  assert.equal(packet.outcomeLedger.packetIdInSuggestedWindow, true);
+  assert.equal(packet.outcomeLedger.validationStatus, "suggested");
   assert.ok(packet.outcomeLedger.suggestedPacketIds.includes("ops-wp-gated"));
   assert.match(packet.outcomeLedger.recordCommand, /--record-outcome ops-wp-ready/);
   assert.equal(packet.evidence.workPacket.effectivityEvidenceLanes, 4);
@@ -124,6 +126,20 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /shellcheck/);
   assert.doesNotMatch(markdown, /do not copy this/);
   assert.doesNotMatch(markdown, /do not install Docker/);
+});
+
+test("buildPrReadinessPacket warns when requested packet id is outside the latest window", () => {
+  const packet = buildPrReadinessPacket(
+    { gitState, artifactValidation, waveRunner, workPacket, sliceLedger, toolInstallRecommendations },
+    { generatedAt: "2026-05-07T12:10:00.000Z", packetId: "ops-wp-stale" },
+  );
+
+  assert.equal(packet.status, "warn");
+  assert.equal(packet.outcomeLedger.packetId, "ops-wp-stale");
+  assert.equal(packet.outcomeLedger.packetIdInSuggestedWindow, false);
+  assert.equal(packet.outcomeLedger.validationStatus, "outside_window");
+  assert.ok(packet.warnings.some((warning) => warning.includes("not in the latest suggested packet window")));
+  assert.match(renderMarkdown(packet), /Packet ID validation: outside_window/);
 });
 
 test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet count", () => {

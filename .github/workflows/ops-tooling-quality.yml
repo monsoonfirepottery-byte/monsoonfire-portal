@@ -71,6 +71,9 @@ jobs:
       - name: Generate installed tool inventory
         run: npm run ops:tooling-quality:inventory
 
+      - name: Run ops CI validator
+        run: npm run ops:ci-validate
+
       - name: Upload ops tooling artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,4 +82,5 @@ jobs:
           path: |
             output/ops/tooling-quality/**
             output/ops/effectivity/installed-tool-inventory-latest.json
+            output/ops/ci-validate/**
           if-no-files-found: warn

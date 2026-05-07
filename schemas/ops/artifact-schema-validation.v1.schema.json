@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/artifact-schema-validation.v1.schema.json",
+  "title": "Studio Brain Ops Artifact Schema Validation v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "readOnly",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "schema": {
+      "const": "studiobrain-ops-artifact-schema-validation.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "readOnly": {
+      "const": true
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "checks",
+        "passed",
+        "missing",
+        "failed"
+      ],
+      "properties": {
+        "checks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "artifact",
+          "schema",
+          "status",
+          "errors"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "warn",
+              "missing",
+              "fail"
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -48,7 +48,9 @@
         "events": { "type": "array" }
       },
       "additionalProperties": true
-    }
+    },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" }
   },
   "additionalProperties": false
 }

@@ -37,7 +37,7 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
@@ -47,6 +47,7 @@
         "staleSources": { "type": "number", "minimum": 0 },
         "toolPromotionCandidates": { "type": ["number", "null"], "minimum": 0 },
         "toolActionableFindings": { "type": ["number", "null"], "minimum": 0 },
+        "toolCoverageGaps": { "type": ["number", "null"], "minimum": 0 },
         "swarmPreflightStatus": { "type": "string" },
         "swarmPreflightOutsideScope": { "type": ["number", "null"], "minimum": 0 },
         "swarmPreflightProblems": { "type": ["number", "null"], "minimum": 0 }

@@ -147,8 +147,9 @@ const freshInputs = {
       installed: 13,
       missingRequired: 0,
       missingOptional: 7,
-      actionableFindings: 4,
-      promotionCandidates: 2,
+      actionableFindings: 0,
+      coverageGaps: 4,
+      promotionCandidates: 0,
     },
   },
   swarmPreflight: {
@@ -191,7 +192,9 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.backlogItems, 2);
   assert.equal(report.evidenceSummary.freshSources, 4);
   assert.equal(report.evidenceSummary.staleSources, 0);
-  assert.equal(report.evidenceSummary.toolPromotionCandidates, 2);
+  assert.equal(report.evidenceSummary.toolPromotionCandidates, 0);
+  assert.equal(report.evidenceSummary.toolActionableFindings, 0);
+  assert.equal(report.evidenceSummary.toolCoverageGaps, 4);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
@@ -201,6 +204,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(report.packets.every((packet) => packet.constraints.readOnlyFirst));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"));
+  assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory" && signal.signalClass === "coverage_gap"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-swarm-preflight"));
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
@@ -233,7 +237,8 @@ test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "invalid_json");
   assert.equal(report.freshEvidence.toolInventory.summary.parseError, "bad tools");
-  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"), true);
+  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"), false);
+  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"), false);
 });
 
 test("workPacketReportStatus warns when falling back to static docs only", () => {

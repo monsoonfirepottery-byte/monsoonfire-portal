@@ -11,6 +11,16 @@ test("buildWavePlan keeps dependent ops steps ordered", () => {
   assert.ok(plan[0].commandText.includes("swarm_lane_preflight.mjs"));
 });
 
+test("buildWavePlan runs PR readiness after artifact validation by default", () => {
+  const plan = buildWavePlan();
+  const artifactIndex = plan.findIndex((step) => step.id === "artifact-validation");
+  const readinessIndex = plan.findIndex((step) => step.id === "pr-readiness");
+
+  assert.ok(artifactIndex >= 0);
+  assert.ok(readinessIndex > artifactIndex);
+  assert.ok(plan[readinessIndex].commandText.includes("pr_readiness_packet.mjs"));
+});
+
 test("runWave dry-run records skipped receipts without executing", () => {
   const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "work-packet"] }, () => {
     throw new Error("runner should not execute in dry-run mode");

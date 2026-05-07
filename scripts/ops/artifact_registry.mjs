@@ -54,6 +54,13 @@ const PRODUCER_METADATA = {
     consumers: ["admin-effectivity-audit", "pr-readiness-packet"],
     requiredFor: ["slice-accountability"],
   },
+  "host-drift-manifest": {
+    producerCommand: "node scripts/ops/host_drift_manifest.mjs --json --write",
+    producerStep: "host-drift-manifest",
+    safeWriteRoot: "output/ops/host-drift",
+    consumers: ["ops-work-packet", "operator-handoff"],
+    requiredFor: ["host-drift-review"],
+  },
   "ops-work-packet": {
     producerCommand: "node scripts/studiobrain-ops-work-packet.mjs --json --write --max-packets 8",
     producerStep: "work-packet",
@@ -153,6 +160,12 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "slice-ledger-summary",
     artifact: "output/ops/effectivity/slice-ledger-latest.json",
     schema: "schemas/ops/slice-ledger-summary.v1.schema.json",
+    freshnessTier: "loop",
+  },
+  {
+    id: "host-drift-manifest",
+    artifact: "output/ops/host-drift/host-drift-manifest-latest.json",
+    schema: "schemas/ops/host-drift-manifest.v1.schema.json",
     freshnessTier: "loop",
   },
   {

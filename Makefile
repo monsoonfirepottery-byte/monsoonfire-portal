@@ -12,7 +12,7 @@ OPS_WAVE_STEPS ?=
 OPS_WAVE_SKIP ?=
 OPS_WAVE_FROM_STEP ?=
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-slice-ledger ops-tool-inventory ops-tool-install-plan ops-admin-effectivity-audit ops-tooling-quality ops-shell-lf-guard ops-shellcheck-report ops-powershell-syntax ops-sql-parse-report ops-actionlint-report ops-compose-config-report ops-validate-artifacts ops-swarm-lane-preflight ops-wave-runner ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-pr-stack-audit ops-pr-readiness-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-host-drift-manifest ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-idle-worker-effectivity ops-effectivity-report ops-slice-ledger ops-tool-inventory ops-tool-install-plan ops-admin-effectivity-audit ops-tooling-quality ops-shell-lf-guard ops-shellcheck-report ops-powershell-syntax ops-sql-parse-report ops-actionlint-report ops-compose-config-report ops-validate-artifacts ops-swarm-lane-preflight ops-wave-runner ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-pr-stack-audit ops-pr-readiness-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
 
 ops-check: ops-inventory ops-docker-review ops-capacity ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review
 
@@ -101,6 +101,9 @@ ops-network-review:
 
 ops-host-drift:
 	bash scripts/ops/host_drift_inventory.sh
+
+ops-host-drift-manifest:
+	node scripts/ops/host_drift_manifest.mjs --json --write
 
 ops-systemd-drift:
 	bash scripts/ops/systemd_drift_review.sh

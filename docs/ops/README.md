@@ -46,6 +46,7 @@ make ops-package-posture
 make ops-time-sync
 make ops-network-review
 make ops-host-drift
+make ops-host-drift-manifest
 make ops-systemd-drift
 make ops-portal-bridge-review
 make ops-app-review
@@ -79,6 +80,7 @@ bash scripts/ops/npm_audit_inventory.sh
 bash scripts/ops/effectivity_report.sh
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
+node scripts/ops/host_drift_manifest.mjs --json --write
 node scripts/studiobrain-ops-work-packet.mjs --write
 node scripts/ops/ops_wave_runner.mjs --write
 node scripts/ops/pr_stack_audit.mjs --write
@@ -94,6 +96,8 @@ make ops-wave-runner OPS_WAVE_STEPS=swarm-preflight,work-packet,artifact-validat
 ```
 
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.
+
+`ops-host-drift-manifest` is path-name-only and read-only. It converts a live or captured `git status --porcelain=v1 --untracked-files=all` listing into JSON/Markdown under `output/ops/host-drift`, compares paths with `studio-brain/host-drift-allowlist.json`, redacts sensitive-looking path names by default, and keeps cleanup/reset/stash/delete decisions approval-gated.
 
 ## Approval Boundaries
 

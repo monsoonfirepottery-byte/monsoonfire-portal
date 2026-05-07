@@ -14,7 +14,11 @@
         "installed": { "type": "integer", "minimum": 0 },
         "missingRequired": { "type": "integer", "minimum": 0 },
         "missingOptional": { "type": "integer", "minimum": 0 },
-        "shadowed": { "type": "integer", "minimum": 0 }
+        "shadowed": { "type": "integer", "minimum": 0 },
+        "actionableFindings": { "type": "integer", "minimum": 0 },
+        "falsePositiveCount": { "type": "integer", "minimum": 0 },
+        "minutesSaved": { "type": "integer", "minimum": 0 },
+        "promotionCandidates": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     },
@@ -23,6 +27,15 @@
       "properties": {
         "contractToolCount": { "type": "integer", "minimum": 0 },
         "primitiveFamilyCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "effectivitySource": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+        "status": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -38,7 +51,20 @@
           "path": { "type": ["string", "null"] },
           "allPaths": { "type": "array", "items": { "type": "string" } },
           "version": { "type": ["string", "null"] },
-          "note": { "type": "string" }
+          "note": { "type": "string" },
+          "effectivity": {
+            "type": "object",
+            "required": ["observed", "actionableFindings", "falsePositiveCount", "minutesSaved", "promotionState", "evidence"],
+            "properties": {
+              "observed": { "type": "boolean" },
+              "actionableFindings": { "type": "integer", "minimum": 0 },
+              "falsePositiveCount": { "type": "integer", "minimum": 0 },
+              "minutesSaved": { "type": "integer", "minimum": 0 },
+              "promotionState": { "enum": ["required", "optional_missing", "not_observed", "candidate", "report_only"] },
+              "evidence": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       }

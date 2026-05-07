@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/tooling-quality-report.v1.schema.json",
+  "title": "Studio Brain Ops Tooling Quality Report",
+  "type": "object",
+  "required": ["schema", "generatedAt", "mode", "allowInstall", "status", "summary", "sections"],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-tooling-quality-report.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "mode": { "enum": ["all", "shell-lf", "shellcheck", "powershell", "sqlfluff"] },
+    "allowInstall": { "type": "boolean" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "summary": {
+      "type": "object",
+      "required": ["checkedFiles", "findings", "skipped"],
+      "properties": {
+        "checkedFiles": { "type": "integer", "minimum": 0 },
+        "findings": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "tool", "checkedFiles", "findings"],
+        "properties": {
+          "id": { "enum": ["shell-lf", "shellcheck", "powershell", "sqlfluff"] },
+          "status": { "enum": ["pass", "warn", "fail", "skipped"] },
+          "tool": { "type": "string" },
+          "checkedFiles": { "type": "integer", "minimum": 0 },
+          "command": { "type": "string" },
+          "outputPreview": { "type": "string" },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["code", "message"],
+              "properties": {
+                "file": { "type": "string" },
+                "line": { "type": "integer", "minimum": 1 },
+                "column": { "type": "integer", "minimum": 1 },
+                "code": { "type": "string" },
+                "severity": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "jsonPath": { "type": "string" },
+        "markdownPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" }
+  },
+  "additionalProperties": false
+}

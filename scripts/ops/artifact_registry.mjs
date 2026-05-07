@@ -72,8 +72,15 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/work_packet_quality_lint.mjs --json --write",
     producerStep: "work-packet-quality",
     safeWriteRoot: "output/ops/swarm",
-    consumers: ["pr-readiness-packet", "operator-handoff"],
+    consumers: ["stale-backlog-packet-report", "pr-readiness-packet", "operator-handoff"],
     requiredFor: ["work-packet-quality"],
+  },
+  "stale-backlog-packet-report": {
+    producerCommand: "node scripts/ops/stale_backlog_packet_report.mjs --json --write",
+    producerStep: "stale-backlog-packets",
+    safeWriteRoot: "output/ops/swarm",
+    consumers: ["operator-handoff", "backlog-refresh"],
+    requiredFor: ["backlog-retirement-steering"],
   },
   "packet-outcome-report": {
     producerCommand: "node scripts/ops/packet_outcome_report.mjs --json --write",
@@ -185,6 +192,12 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "work-packet-quality-lint",
     artifact: "output/ops/swarm/work-packet-quality-latest.json",
     schema: "schemas/ops/work-packet-quality-lint.v1.schema.json",
+    freshnessTier: "loop",
+  },
+  {
+    id: "stale-backlog-packet-report",
+    artifact: "output/ops/swarm/stale-backlog-packets-latest.json",
+    schema: "schemas/ops/stale-backlog-packet-report.v1.schema.json",
     freshnessTier: "loop",
   },
   {

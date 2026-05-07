@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/stale-backlog-packet-report.v1.schema.json",
+  "title": "Studio Brain Stale Backlog Packet Report v1",
+  "type": "object",
+  "required": ["schema", "generatedAt", "runId", "status", "readOnly", "sources", "summary", "candidates", "sourceWarnings"],
+  "properties": {
+    "schema": { "const": "studiobrain-stale-backlog-packet-report.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "sources": {
+      "type": "object",
+      "required": ["workPacket", "workPacketGeneratedAt", "quality", "qualityGeneratedAt"],
+      "properties": {
+        "workPacket": { "type": "string" },
+        "workPacketGeneratedAt": { "type": "string" },
+        "quality": { "type": "string" },
+        "qualityGeneratedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["packets", "candidates", "staleBacklogPackets", "missingBacklogStatusPackets", "readyPackets", "approvalGatedPackets", "nextExecutableStatus", "sourceWarnings"],
+      "properties": {
+        "packets": { "type": "number", "minimum": 0 },
+        "candidates": { "type": "number", "minimum": 0 },
+        "staleBacklogPackets": { "type": "number", "minimum": 0 },
+        "missingBacklogStatusPackets": { "type": "number", "minimum": 0 },
+        "readyPackets": { "type": "number", "minimum": 0 },
+        "approvalGatedPackets": { "type": "number", "minimum": 0 },
+        "nextExecutableStatus": { "type": "string" },
+        "sourceWarnings": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packetId", "title", "priority", "status", "backlogStatus", "staleBacklogStatus", "missingBacklogStatus", "humanGate", "safeNextStep", "suggestedAction", "suggestedBranchName", "suggestedPrTitle"],
+        "properties": {
+          "packetId": { "type": "string" },
+          "title": { "type": "string" },
+          "priority": { "type": "string" },
+          "status": { "type": "string" },
+          "backlogStatus": { "type": "string" },
+          "staleBacklogStatus": { "type": "boolean" },
+          "missingBacklogStatus": { "type": "boolean" },
+          "humanGate": { "type": "string" },
+          "safeNextStep": { "type": "string" },
+          "suggestedAction": { "enum": ["refresh_or_retire_backlog_item", "add_backlog_status_evidence"] },
+          "suggestedBranchName": { "type": "string" },
+          "suggestedPrTitle": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sourceWarnings": { "type": "array", "items": { "type": "string" } },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" },
+    "artifacts": { "type": "object" }
+  },
+  "additionalProperties": false
+}

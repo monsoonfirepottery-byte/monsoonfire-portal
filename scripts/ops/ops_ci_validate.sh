@@ -48,6 +48,7 @@ check_file "scripts/ops/admin_effectivity_audit.mjs"
 check_file "scripts/ops/admin_effectivity_trend.mjs"
 check_file "scripts/ops/host_drift_manifest.mjs"
 check_file "scripts/ops/work_packet_quality_lint.mjs"
+check_file "scripts/ops/stale_backlog_packet_report.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/tooling_findings_export.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
@@ -83,6 +84,7 @@ for script in \
   "scripts/ops/admin_effectivity_trend.mjs" \
   "scripts/ops/host_drift_manifest.mjs" \
   "scripts/ops/work_packet_quality_lint.mjs" \
+  "scripts/ops/stale_backlog_packet_report.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
   "scripts/ops/tooling_findings_export.mjs" \
   "scripts/ops/installed_tool_inventory.mjs" \
@@ -150,6 +152,12 @@ if node --test "${REPO_ROOT}/scripts/ops/work_packet_quality_lint.test.mjs" >"${
   pass "node --test scripts/ops/work_packet_quality_lint.test.mjs"
 else
   fail "node --test scripts/ops/work_packet_quality_lint.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/stale_backlog_packet_report.test.mjs" >"${OUT_DIR}/stale-backlog-packet-report.test.out" 2>&1; then
+  pass "node --test scripts/ops/stale_backlog_packet_report.test.mjs"
+else
+  fail "node --test scripts/ops/stale_backlog_packet_report.test.mjs"
 fi
 
 if node --test "${REPO_ROOT}/scripts/ops/tooling_quality_report.test.mjs" >"${OUT_DIR}/tooling-quality-report.test.out" 2>&1; then
@@ -272,13 +280,6 @@ else
   fail "pr_readiness_packet smoke"
 fi
 
-section "Artifact Schema Smoke"
-if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"${OUT_DIR}/artifact-schema-validation.json"; then
-  pass "validate_ops_artifacts schema smoke"
-else
-  fail "validate_ops_artifacts schema smoke"
-fi
-
 section "Packet Outcome Report Smoke"
 if node "${REPO_ROOT}/scripts/ops/packet_outcome_report.mjs" --json --write >"${OUT_DIR}/packet-outcome-report.json"; then
   pass "packet_outcome_report smoke"
@@ -293,11 +294,25 @@ else
   fail "work_packet_quality_lint smoke"
 fi
 
+section "Stale Backlog Packet Report Smoke"
+if node "${REPO_ROOT}/scripts/ops/stale_backlog_packet_report.mjs" --json --write >"${OUT_DIR}/stale-backlog-packet-report.json"; then
+  pass "stale_backlog_packet_report smoke"
+else
+  fail "stale_backlog_packet_report smoke"
+fi
+
 section "Admin Effectivity Trend Smoke"
 if node "${REPO_ROOT}/scripts/ops/admin_effectivity_trend.mjs" --json --write >"${OUT_DIR}/admin-effectivity-trend.json"; then
   pass "admin_effectivity_trend smoke"
 else
   fail "admin_effectivity_trend smoke"
+fi
+
+section "Artifact Schema Smoke"
+if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"${OUT_DIR}/artifact-schema-validation.json"; then
+  pass "validate_ops_artifacts schema smoke"
+else
+  fail "validate_ops_artifacts schema smoke"
 fi
 
 section "Docs Contract"

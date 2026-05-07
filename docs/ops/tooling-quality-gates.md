@@ -23,6 +23,7 @@ The Makefile wrapper keeps installs off by default. Use `make ops-tooling-qualit
 - `shellcheck`: runs `shellcheck -f json -S warning` when installed. With `--allow-install`, it can use `npx --yes shellcheck` and stores structured file/line/code findings.
 - `powershell`: parses tracked `.ps1` files with `pwsh` or Windows PowerShell.
 - `sqlfluff`: runs PostgreSQL parser checks when `sqlfluff` is installed. With `--allow-install`, it can use `uv tool run --from sqlfluff`.
+- `actionlint`: validates tracked GitHub Actions workflow YAML when `actionlint` is installed. With `--allow-install`, it can use `go run github.com/rhysd/actionlint/cmd/actionlint@latest` if Go is available.
 
 ## Promotion Rule
 
@@ -35,6 +36,6 @@ Keep new validators report-only until they prove useful over about five slices:
 
 ## Current Expected Findings
 
-The first local inventory found required tools present, but optional Docker, make, ShellCheck, gitleaks, sqlfluff, actionlint, and shfmt were missing. The tooling quality report should therefore treat missing ShellCheck or SQLFluff as `skipped` unless `--allow-install` is explicit.
+The first local inventory found required tools present, but optional Docker, make, ShellCheck, gitleaks, sqlfluff, actionlint, and shfmt were missing. The tooling quality report should therefore treat missing ShellCheck, SQLFluff, or actionlint as `skipped` unless `--allow-install` is explicit.
 
 The first useful signal from this gate was not theoretical: ShellCheck and the LF guard both surfaced CRLF bytes in Ubuntu-targeted shell scripts. Treat that as a follow-up cleanup slice with reviewable line-ending policy, not as an automatic broad rewrite.

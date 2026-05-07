@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import {
   buildReport,
   parseArgs,
+  parseActionlintOutput,
   parseShellCheckJson,
   statusFromSections
 } from "./tooling_quality_report.mjs";
@@ -35,12 +36,26 @@ function assertReportContract(report) {
 }
 
 test("parseArgs accepts explicit modes and allow-install flag", () => {
-  const options = parseArgs(["--mode", "shellcheck", "--allow-install", "--limit=2", "--json"]);
+  const options = parseArgs(["--mode", "actionlint", "--allow-install", "--limit=2", "--json"]);
 
-  assert.equal(options.mode, "shellcheck");
+  assert.equal(options.mode, "actionlint");
   assert.equal(options.allowInstall, true);
   assert.equal(options.limit, 2);
   assert.equal(options.json, true);
+});
+
+test("parseActionlintOutput extracts structured workflow findings", () => {
+  const findings = parseActionlintOutput(".github/workflows/ci.yml:12:7: property \"foo\" is not defined [expression]");
+
+  assert.deepEqual(findings, [
+    {
+      file: ".github/workflows/ci.yml",
+      line: 12,
+      column: 7,
+      code: "expression",
+      message: "property \"foo\" is not defined"
+    }
+  ]);
 });
 
 test("parseShellCheckJson extracts structured findings", () => {

@@ -233,6 +233,7 @@ function effectivityFromToolingReport(report) {
   assign("pwsh", sections.find((section) => section.id === "powershell"));
   assign("powershell", sections.find((section) => section.id === "powershell"));
   assign("sqlfluff", sections.find((section) => section.id === "sqlfluff"));
+  assign("actionlint", sections.find((section) => section.id === "actionlint"));
   byTool.uv = runnerEffectivity("uv", sections.find((section) => section.id === "sqlfluff"));
   byTool.npx = runnerEffectivity("npx", sections.find((section) => section.id === "shellcheck"));
   return byTool;

@@ -22,7 +22,8 @@ test("effectivityFromToolingReport maps findings to tool usefulness", () => {
     sections: [
       { id: "shell-lf", status: "fail", findings: [{ code: "CRLF" }, { code: "CRLF" }] },
       { id: "shellcheck", status: "warn", findings: [{ code: "SC1017" }] },
-      { id: "sqlfluff", status: "pass", findings: [] }
+      { id: "sqlfluff", status: "pass", findings: [] },
+      { id: "actionlint", status: "warn", findings: [{ code: "expression" }] }
     ]
   });
 
@@ -30,6 +31,8 @@ test("effectivityFromToolingReport maps findings to tool usefulness", () => {
   assert.equal(effectivity.node.promotionState, "candidate");
   assert.equal(effectivity.shellcheck.actionableFindings, 1);
   assert.equal(effectivity.sqlfluff.promotionState, "report_only");
+  assert.equal(effectivity.actionlint.actionableFindings, 1);
+  assert.equal(effectivity.actionlint.promotionState, "candidate");
   assert.equal(effectivity.uv.observed, true);
   assert.equal(effectivity.uv.actionableFindings, 0);
   assert.equal(effectivity.npx.actionableFindings, 0);

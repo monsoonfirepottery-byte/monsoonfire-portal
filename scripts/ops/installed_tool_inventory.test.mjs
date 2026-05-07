@@ -23,7 +23,8 @@ test("effectivityFromToolingReport maps findings to tool usefulness", () => {
       { id: "shell-lf", status: "fail", findings: [{ code: "CRLF" }, { code: "CRLF" }] },
       { id: "shellcheck", status: "warn", findings: [{ code: "SC1017" }] },
       { id: "sqlfluff", status: "pass", findings: [] },
-      { id: "actionlint", status: "warn", findings: [{ code: "expression" }] }
+      { id: "actionlint", status: "warn", findings: [{ code: "expression" }] },
+      { id: "compose-config", status: "warn", findings: [{ code: "compose_config_failed" }] }
     ]
   });
 
@@ -33,6 +34,8 @@ test("effectivityFromToolingReport maps findings to tool usefulness", () => {
   assert.equal(effectivity.sqlfluff.promotionState, "report_only");
   assert.equal(effectivity.actionlint.actionableFindings, 1);
   assert.equal(effectivity.actionlint.promotionState, "candidate");
+  assert.equal(effectivity.docker.actionableFindings, 1);
+  assert.equal(effectivity.docker.promotionState, "candidate");
   assert.equal(effectivity.uv.observed, true);
   assert.equal(effectivity.uv.actionableFindings, 0);
   assert.equal(effectivity.npx.actionableFindings, 0);

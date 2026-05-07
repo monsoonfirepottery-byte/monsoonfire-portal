@@ -234,6 +234,7 @@ function effectivityFromToolingReport(report) {
   assign("powershell", sections.find((section) => section.id === "powershell"));
   assign("sqlfluff", sections.find((section) => section.id === "sqlfluff"));
   assign("actionlint", sections.find((section) => section.id === "actionlint"));
+  assign("docker", sections.find((section) => section.id === "compose-config"));
   byTool.uv = runnerEffectivity("uv", sections.find((section) => section.id === "sqlfluff"));
   byTool.npx = runnerEffectivity("npx", sections.find((section) => section.id === "shellcheck"));
   return byTool;

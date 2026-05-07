@@ -43,6 +43,8 @@ check_file "scripts/ops/validate_ops_artifacts.mjs"
 check_file "scripts/ops/swarm_lane_preflight.mjs"
 check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "scripts/ops/slice_ledger.mjs"
+check_file "scripts/ops/tooling_quality_report.mjs"
+check_file "scripts/ops/installed_tool_inventory.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -63,7 +65,9 @@ for script in \
   "scripts/ops/validate_ops_artifacts.mjs" \
   "scripts/ops/swarm_lane_preflight.mjs" \
   "scripts/ops/ops_wave_runner.mjs" \
-  "scripts/ops/slice_ledger.mjs"; do
+  "scripts/ops/slice_ledger.mjs" \
+  "scripts/ops/tooling_quality_report.mjs" \
+  "scripts/ops/installed_tool_inventory.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
     pass "node --check ${script}"
   else
@@ -94,6 +98,18 @@ if node --test "${REPO_ROOT}/scripts/ops/slice_ledger.test.mjs" >"${OUT_DIR}/sli
   pass "node --test scripts/ops/slice_ledger.test.mjs"
 else
   fail "node --test scripts/ops/slice_ledger.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/tooling_quality_report.test.mjs" >"${OUT_DIR}/tooling-quality-report.test.out" 2>&1; then
+  pass "node --test scripts/ops/tooling_quality_report.test.mjs"
+else
+  fail "node --test scripts/ops/tooling_quality_report.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/installed_tool_inventory.test.mjs" >"${OUT_DIR}/installed-tool-inventory.test.out" 2>&1; then
+  pass "node --test scripts/ops/installed_tool_inventory.test.mjs"
+else
+  fail "node --test scripts/ops/installed_tool_inventory.test.mjs"
 fi
 
 section "Swarm Lane Preflight Smoke"

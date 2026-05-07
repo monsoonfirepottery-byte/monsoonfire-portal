@@ -36,9 +36,9 @@ function assertReportContract(report) {
 }
 
 test("parseArgs accepts explicit modes and allow-install flag", () => {
-  const options = parseArgs(["--mode", "actionlint", "--allow-install", "--limit=2", "--json"]);
+  const options = parseArgs(["--mode", "compose-config", "--allow-install", "--limit=2", "--json"]);
 
-  assert.equal(options.mode, "actionlint");
+  assert.equal(options.mode, "compose-config");
   assert.equal(options.allowInstall, true);
   assert.equal(options.limit, 2);
   assert.equal(options.json, true);
@@ -102,4 +102,21 @@ test("buildReport emits the documented tooling quality schema", () => {
   assert.equal(report.mode, "shell-lf");
   assert.equal(report.sections.length, 1);
   assert.equal(report.sections[0].id, "shell-lf");
+});
+
+test("buildReport emits a compose config section without starting services", () => {
+  const report = buildReport({
+    mode: "compose-config",
+    json: true,
+    write: false,
+    outputDir: resolve("output/ops/tooling-quality"),
+    allowInstall: false,
+    limit: 1
+  });
+
+  assertReportContract(report);
+  assert.equal(report.mode, "compose-config");
+  assert.equal(report.sections.length, 1);
+  assert.equal(report.sections[0].id, "compose-config");
+  assert.equal(report.sections[0].tool.includes("docker compose"), true);
 });

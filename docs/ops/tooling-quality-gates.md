@@ -24,6 +24,7 @@ The Makefile wrapper keeps installs off by default. Use `make ops-tooling-qualit
 - `powershell`: parses tracked `.ps1` files with `pwsh` or Windows PowerShell.
 - `sqlfluff`: runs PostgreSQL parser checks when `sqlfluff` is installed. With `--allow-install`, it can use `uv tool run --from sqlfluff`.
 - `actionlint`: validates tracked GitHub Actions workflow YAML when `actionlint` is installed. With `--allow-install`, it can use `go run github.com/rhysd/actionlint/cmd/actionlint@latest` if Go is available.
+- `compose-config`: renders tracked Docker Compose files with `docker compose config --quiet` when Docker is installed. This validates configuration only; it does not pull images, start services, restart containers, prune artifacts, or contact the Docker daemon for lifecycle changes.
 
 ## Promotion Rule
 
@@ -36,6 +37,6 @@ Keep new validators report-only until they prove useful over about five slices:
 
 ## Current Expected Findings
 
-The first local inventory found required tools present, but optional Docker, make, ShellCheck, gitleaks, sqlfluff, actionlint, and shfmt were missing. The tooling quality report should therefore treat missing ShellCheck, SQLFluff, or actionlint as `skipped` unless `--allow-install` is explicit.
+The first local inventory found required tools present, but optional Docker, make, ShellCheck, gitleaks, sqlfluff, actionlint, and shfmt were missing. The tooling quality report should therefore treat missing Docker/Compose, ShellCheck, SQLFluff, or actionlint as `skipped` unless a useful local install path is explicit.
 
 The first useful signal from this gate was not theoretical: ShellCheck and the LF guard both surfaced CRLF bytes in Ubuntu-targeted shell scripts. Treat that as a follow-up cleanup slice with reviewable line-ending policy, not as an automatic broad rewrite.

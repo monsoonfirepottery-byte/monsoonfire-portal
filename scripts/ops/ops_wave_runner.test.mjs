@@ -24,6 +24,14 @@ test("buildWavePlan runs PR readiness between preflight validation and final val
   assert.ok(plan[readinessIndex].commandText.includes("pr_readiness_packet.mjs"));
 });
 
+test("buildWavePlan only enables ephemeral validator runners when requested", () => {
+  const defaultPlan = buildWavePlan({ steps: ["tooling-quality"] });
+  const installPlan = buildWavePlan({ steps: ["tooling-quality"], allowToolInstall: true });
+
+  assert.equal(defaultPlan[0].commandText.includes("--allow-install"), false);
+  assert.equal(installPlan[0].commandText.includes("--allow-install"), true);
+});
+
 test("runWave dry-run records skipped receipts without executing", () => {
   const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "work-packet"] }, () => {
     throw new Error("runner should not execute in dry-run mode");

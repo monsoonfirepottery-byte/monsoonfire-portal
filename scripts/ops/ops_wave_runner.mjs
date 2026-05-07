@@ -79,6 +79,7 @@ Options:
   --run-id <id>           Default: generated from current UTC time.
   --steps <a,b,c>         Restrict to step ids.
   --skip <id>             Skip one step; repeatable.
+  --allow-tool-install    Allow tooling-quality to use its ephemeral validator runners.
 `;
 }
 
@@ -97,6 +98,7 @@ function parseArgs(argv) {
     json: false,
     write: false,
     dryRun: false,
+    allowToolInstall: false,
     runId: "",
     outputDir: DEFAULT_OUTPUT_DIR,
     steps: [],
@@ -119,6 +121,10 @@ function parseArgs(argv) {
     }
     if (arg === "--dry-run") {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === "--allow-tool-install") {
+      options.allowToolInstall = true;
       continue;
     }
     const mappings = [
@@ -156,11 +162,17 @@ function buildWavePlan(options = {}) {
   if (unknown.length > 0) throw new Error(`Unknown step id(s): ${Array.from(new Set(unknown)).join(", ")}`);
   return STEP_DEFINITIONS
     .filter((step) => (only.size === 0 || only.has(step.id)) && !skip.has(step.id))
-    .map((step, index) => ({
-      ...step,
-      order: index + 1,
-      commandText: step.command.map((part, partIndex) => (partIndex === 0 && part === process.execPath ? "node" : part)).join(" "),
-    }));
+    .map((step, index) => {
+      const command = step.id === "tooling-quality" && options.allowToolInstall
+        ? [...step.command, "--allow-install"]
+        : step.command;
+      return {
+        ...step,
+        command,
+        order: index + 1,
+        commandText: command.map((part, partIndex) => (partIndex === 0 && part === process.execPath ? "node" : part)).join(" "),
+      };
+    });
 }
 
 function parseJsonObject(stdout) {

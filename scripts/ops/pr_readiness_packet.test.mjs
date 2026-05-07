@@ -34,8 +34,8 @@ const workPacket = {
     effectivityHighSeverityLanes: 1,
   },
   packets: [
-    { title: "[ops] Refresh evidence", status: "ready", priority: "P1", humanGate: "" },
-    { title: "[backup] Restore drill", status: "approval_gated", priority: "P0", humanGate: "human approval" },
+    { packetId: "ops-wp-ready", title: "[ops] Refresh evidence", status: "ready", priority: "P1", humanGate: "" },
+    { packetId: "ops-wp-gated", title: "[backup] Restore drill", status: "approval_gated", priority: "P0", humanGate: "human approval" },
   ],
 };
 
@@ -89,7 +89,7 @@ const toolInstallRecommendations = {
 test("buildPrReadinessPacket summarizes current evidence without executable install commands", () => {
   const packet = buildPrReadinessPacket(
     { gitState, artifactValidation, waveRunner, workPacket, sliceLedger, toolInstallRecommendations },
-    { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047" },
+    { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
 
   assert.equal(packet.schema, "studiobrain-ops-pr-readiness-packet.v1");
@@ -100,6 +100,9 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.freshSources, 5);
   assert.equal(packet.evidence.workPacket.readyPackets, 1);
   assert.equal(packet.evidence.workPacket.approvalGatedPackets, 1);
+  assert.equal(packet.outcomeLedger.packetId, "ops-wp-ready");
+  assert.ok(packet.outcomeLedger.suggestedPacketIds.includes("ops-wp-gated"));
+  assert.match(packet.outcomeLedger.recordCommand, /--record-outcome ops-wp-ready/);
   assert.equal(packet.evidence.workPacket.effectivityEvidenceLanes, 4);
   assert.equal(packet.evidence.workPacket.effectivityApprovalRequiredLanes, 1);
   assert.equal(packet.evidence.workPacket.effectivityHighSeverityLanes, 1);
@@ -110,6 +113,9 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   const markdown = renderMarkdown(packet);
   assert.match(markdown, /Tool Recommendation Summary/);
   assert.match(markdown, /Work Packet Window/);
+  assert.match(markdown, /Outcome Ledger/);
+  assert.match(markdown, /ops-wp-ready/);
+  assert.match(markdown, /--record-outcome ops-wp-ready/);
   assert.match(markdown, /workPacketMaxPackets=8/);
   assert.match(markdown, /ready=1/);
   assert.match(markdown, /approvalGated=1/);
@@ -142,7 +148,7 @@ test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet 
 test("buildPrReadinessPacket stays compatible with its JSON schema", () => {
   const packet = buildPrReadinessPacket(
     { gitState, artifactValidation, waveRunner, workPacket, sliceLedger, toolInstallRecommendations },
-    { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047" },
+    { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
   const schema = JSON.parse(readFileSync("schemas/ops/pr-readiness-packet.v1.schema.json", "utf8"));
 

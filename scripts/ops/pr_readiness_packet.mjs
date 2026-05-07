@@ -100,6 +100,7 @@ function summarizeWorkPacket(packet) {
     readyPackets: packets.filter((entry) => clean(entry.status) === "ready").length,
     approvalGatedPackets: packets.filter((entry) => clean(entry.status) === "approval_gated").length,
     topPackets: packets.slice(0, 5).map((entry) => ({
+      packetId: clean(entry.packetId),
       title: clean(entry.title),
       status: clean(entry.status),
       priority: clean(entry.priority),
@@ -110,6 +111,22 @@ function summarizeWorkPacket(packet) {
     effectivityEvidenceLanes: packet.evidenceSummary?.effectivityEvidenceLanes ?? null,
     effectivityApprovalRequiredLanes: packet.evidenceSummary?.effectivityApprovalRequiredLanes ?? null,
     effectivityHighSeverityLanes: packet.evidenceSummary?.effectivityHighSeverityLanes ?? null,
+  };
+}
+
+function buildOutcomeLedger(options = {}, evidence = {}) {
+  const packetId = clean(options.packetId);
+  const pr = clean(options.pr);
+  const suggestedPacketIds = Array.isArray(evidence.workPacket?.topPackets)
+    ? evidence.workPacket.topPackets.map((packet) => clean(packet.packetId)).filter(Boolean)
+    : [];
+  const notes = pr ? `PR ${pr} used this packet` : "PR readiness used this packet";
+  return {
+    packetId,
+    suggestedPacketIds,
+    recordCommand: packetId
+      ? `node scripts/studiobrain-ops-work-packet.mjs --record-outcome ${packetId} --outcome used --notes "${notes}"`
+      : "",
   };
 }
 
@@ -212,6 +229,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     pr: clean(options.pr),
     owner: clean(options.owner) || "Codex",
     sliceIds: clean(options.sliceIds),
+    outcomeLedger: buildOutcomeLedger(options, evidence),
     scope: {
       branch: gitState.branch,
       base: gitState.base,
@@ -239,8 +257,11 @@ function renderMarkdown(packet) {
     .map((item) => `- ${item.priority} ${item.tool}: ${item.acquisitionClass}; validate with \`${item.validationCommand}\`; approvalRequired=${item.approvalRequired}`)
     .join("\n") || "- None recorded.";
   const topPackets = packet.evidence.workPacket.topPackets
-    .map((item) => `- ${item.priority || "P?"} ${item.status || "unknown"}: ${item.title}`)
+    .map((item) => `- ${item.priority || "P?"} ${item.status || "unknown"} ${item.packetId || ""}: ${item.title}`)
     .join("\n") || "- None recorded.";
+  const outcomeCommand = packet.outcomeLedger.recordCommand
+    ? `\`${packet.outcomeLedger.recordCommand}\``
+    : "Pass `--packet-id <ops-wp-id>` to include a ready-to-run outcome command.";
   const warnings = packet.warnings.map((warning) => `- ${warning}`).join("\n") || "- None.";
   const changedFiles = packet.scope.changedFiles.slice(0, 20).map((file) => `- ${file}`).join("\n") || "- None detected from base.";
   const dirtyFiles = packet.scope.dirtyFiles.map((file) => `- ${file}`).join("\n") || "- Clean.";
@@ -280,6 +301,12 @@ ${dirtyFiles}
 
 ${topPackets}
 
+## Outcome Ledger
+
+- Packet ID: ${packet.outcomeLedger.packetId || ""}
+- Suggested packet IDs: ${packet.outcomeLedger.suggestedPacketIds.join(", ") || "none"}
+- Record command: ${outcomeCommand}
+
 ## Tool Recommendation Summary
 
 ${topRecommendations}
@@ -310,6 +337,7 @@ function parseArgs(argv) {
     pr: "",
     owner: "Codex",
     sliceIds: "",
+    packetId: "",
     artifactValidation: DEFAULT_ARTIFACT_VALIDATION,
     waveRunner: DEFAULT_WAVE_RUNNER,
     workPacket: DEFAULT_WORK_PACKET,
@@ -347,6 +375,7 @@ function parseArgs(argv) {
       "--pr": "pr",
       "--owner": "owner",
       "--slice-ids": "sliceIds",
+      "--packet-id": "packetId",
       "--artifact-validation": "artifactValidation",
       "--wave-runner": "waveRunner",
       "--work-packet": "workPacket",
@@ -379,6 +408,7 @@ Options:
   --base <ref>                         Default: origin/main.
   --pr <id-or-url>                     Optional PR number or URL.
   --slice-ids <ids>                    Optional slice id list.
+  --packet-id <ops-wp-id>              Optional work packet id used by this PR.
   --artifact-validation <path>         Default: output/ops/artifact-validation/artifact-schema-validation-latest.json.
   --wave-runner <path>                 Default: output/ops/waves/ops-wave-runner-latest.json.
   --work-packet <path>                 Default: output/ops/swarm/latest-work-packet.json.

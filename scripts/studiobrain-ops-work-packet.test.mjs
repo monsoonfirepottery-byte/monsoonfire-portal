@@ -864,3 +864,53 @@ test("buildOpsWorkPacket normalizes markdown-wrapped branch and PR suggestions",
   assert.equal(report.packets[0].suggestedBranchName, "codex/plain-suggestion");
   assert.equal(report.packets[0].suggestedPrTitle, "[ops] Plain suggestion");
 });
+
+test("buildOpsWorkPacket does not attach unrelated risk guidance", () => {
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown: `
+# Risks
+
+## Medium
+
+### Docker healthcheck coverage is thin
+
+- Affected component: Docker containers.
+- Evidence: no healthcheck for a service.
+- Likely impact: runtime failures may be missed.
+- Recommended action: add healthchecks.
+- Safe next step: add healthcheck coverage for monitoring proxy and SearXNG in a small PR.
+- PR can address it: yes.
+`,
+      backlogMarkdown: `
+# Backlog
+
+## Now
+
+### [ops] Verify merged ops-doctor stack from main
+
+- Type: documentation
+- Priority: P1
+- Effort: S
+- Risk: low
+- Status: needs a post-merge verification note.
+- Acceptance criteria:
+  - Run read-only verification from current main.
+  - Record the result in the ops handoff.
+- Recommended owner: Codex
+- Suggested branch name: codex/ops-admin-next
+- Suggested PR title: [ops] Add post-merge ops doctor handoff
+      `,
+      effectivityMarkdown,
+      ...freshInputs,
+      toolingFindings: null,
+      prStackAudit: null,
+    },
+    { maxPackets: 1, runId: "unit-test", generatedAt: "2026-05-06T20:00:00.000Z" },
+  );
+
+  assert.equal(report.packets[0].title, "[ops] Verify merged ops-doctor stack from main");
+  assert.equal(report.packets[0].safeNextStep, "Run read-only verification from current main.");
+  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "risk-register"), false);
+  assert.doesNotMatch(report.packets[0].safeNextStep, /healthcheck/);
+});

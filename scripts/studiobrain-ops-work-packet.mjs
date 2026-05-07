@@ -285,14 +285,15 @@ function overlapScore(left, right) {
 }
 
 function matchingRisk(backlogItem, risks) {
-  return risks
+  const match = risks
     .map((risk) => ({
       risk,
       score:
         overlapScore(backlogItem.title, risk.title) * 3 +
         overlapScore(`${backlogItem.type} ${backlogItem.status}`, `${risk.affectedComponent} ${risk.recommendedAction}`),
     }))
-    .sort((left, right) => right.score - left.score || severityRank(left.risk.severity) - severityRank(right.risk.severity))[0]?.risk || null;
+    .sort((left, right) => right.score - left.score || severityRank(left.risk.severity) - severityRank(right.risk.severity))[0] || null;
+  return match && match.score >= 2 ? match.risk : null;
 }
 
 function makePacket(backlogItem, risk, effectivity, freshEvidence) {

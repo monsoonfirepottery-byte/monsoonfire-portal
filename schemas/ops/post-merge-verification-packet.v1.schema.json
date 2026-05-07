@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/post-merge-verification-packet.v1.schema.json",
+  "title": "Studio Brain Post-Merge Verification Packet v1",
+  "type": "object",
+  "required": ["schema", "generatedAt", "runId", "status", "readOnly", "scope", "sources", "summary", "evidence", "warnings", "safeNextSteps"],
+  "properties": {
+    "schema": { "const": "studiobrain-post-merge-verification-packet.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "scope": {
+      "type": "object",
+      "required": ["branch", "head", "dirtyFiles"],
+      "properties": {
+        "branch": { "type": "string" },
+        "head": { "type": "string" },
+        "dirtyFiles": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "object",
+      "required": ["doc", "artifactValidation", "workPacketQuality", "staleBacklog", "prStack"],
+      "properties": {
+        "doc": { "type": "string" },
+        "artifactValidation": { "type": "string" },
+        "workPacketQuality": { "type": "string" },
+        "staleBacklog": { "type": "string" },
+        "prStack": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["docExists", "approvalGates", "dirtyFiles", "artifactValidationStatus", "artifactValidationFailed", "workPacketQualityFindings", "staleBacklogCandidates", "prStackOpenLowerBound", "prStackMergeReady", "recommendedSteering"],
+      "properties": {
+        "docExists": { "type": "boolean" },
+        "approvalGates": { "type": "number", "minimum": 0 },
+        "dirtyFiles": { "type": "number", "minimum": 0 },
+        "artifactValidationStatus": { "type": "string" },
+        "artifactValidationFailed": { "type": "number", "minimum": 0 },
+        "workPacketQualityFindings": { "type": "number", "minimum": 0 },
+        "staleBacklogCandidates": { "type": "number", "minimum": 0 },
+        "prStackOpenLowerBound": { "type": "number", "minimum": 0 },
+        "prStackMergeReady": { "type": "number", "minimum": 0 },
+        "recommendedSteering": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["artifactValidation", "workPacketQuality", "staleBacklog", "prStack"],
+      "properties": {
+        "artifactValidation": { "type": "object" },
+        "workPacketQuality": { "type": "object" },
+        "staleBacklog": { "type": "object" },
+        "prStack": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "safeNextSteps": { "type": "array", "items": { "type": "string" } },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" },
+    "artifacts": { "type": "object" }
+  },
+  "additionalProperties": false
+}

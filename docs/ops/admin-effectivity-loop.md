@@ -60,8 +60,25 @@ The work-packet generator still uses the durable docs as its baseline, then enri
 - `--slice-ledger output/ops/effectivity/slice-ledger-latest.json`
 - `--tool-inventory output/ops/effectivity/installed-tool-inventory-latest.json`
 - `--max-age-hours 24`
+- `--pr-stack-audit output/ops/pr-stack/pr-stack-audit-latest.json`
 
 Missing, invalid, or stale fresh artifacts degrade to warnings and docs-only packet generation. The generator should not run the audit itself; run `make ops-admin-effectivity-audit` first when fresh steering is needed.
+
+The local validation runner refreshes the work-packet window before packet outcome, quality lint, stale-backlog reporting, and PR readiness consume it:
+
+```bash
+bash scripts/ops/ops_ci_validate.sh
+```
+
+Set `OPS_CI_MAX_PACKETS=12` or another positive count when a wider packet window is needed for a swarm wave.
+
+For the post-merge ops-doctor handoff loop, generate a compact verification packet after the validation runner refreshes artifacts:
+
+```bash
+node scripts/ops/post_merge_verification_packet.mjs --json --write
+```
+
+The packet is read-only and combines the durable post-merge handoff doc, artifact schema validation, work-packet quality, stale-backlog status, and PR-stack steering into one attachable evidence summary.
 
 Validate generated ops artifacts against their committed schemas:
 
@@ -69,7 +86,7 @@ Validate generated ops artifacts against their committed schemas:
 node scripts/ops/validate_ops_artifacts.mjs --json --write
 ```
 
-Missing ignored artifacts are warnings. Schema mismatches are failures because they mean a dashboard, swarm packet consumer, or future automation would be reading a contract it cannot trust.
+Missing ignored artifacts are warnings. Schema mismatches are failures because they mean a dashboard, swarm packet consumer, or future automation would be reading a contract it cannot trust. Some artifacts also carry Git-head freshness checks; for example PR readiness packets warn when their recorded `scope.head` no longer matches the current checkout, even if the JSON schema and timestamp are still valid.
 
 Preflight a swarm worker lane before delegation:
 
@@ -97,7 +114,7 @@ node scripts/ops/ops_wave_runner.mjs --allow-tool-install --json --write
 node scripts/ops/ops_wave_runner.mjs --max-packets 8 --json --write
 ```
 
-The wave runner executes read-only checks in dependency order: preflight, tooling quality, tooling findings export, tool inventory, tool-install recommendation refresh, admin effectivity audit, host drift manifest generation, work packet generation, packet outcome report generation, preliminary artifact schema validation, PR readiness packet generation, then final artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
+The wave runner executes read-only checks in dependency order: preflight, tooling quality, tooling findings export, tool inventory, tool-install recommendation refresh, admin effectivity audit, host drift manifest generation, PR stack audit, work packet generation, packet outcome report generation, preliminary artifact schema validation, PR readiness packet generation, then final artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
 The default run does not install or fetch missing optional validators. Use `--allow-tool-install` only on a tooling lane where ephemeral runners such as `npx` or `uv tool run` are acceptable; the mode still writes only under `output/ops`. Use `--max-packets <n>` when the default three-packet window hides lower-priority ready work behind approval-gated P0/P1 tasks.
 If a run fails or the laptop is interrupted, inspect the failed receipt and resume from the failed step with `--from-step <step-id>`. Failed manifests now include `resumeCommand`, for example `node scripts/ops/ops_wave_runner.mjs --json --write --from-step work-packet`.
 The Makefile wrapper passes through `OPS_WAVE_FLAGS`, `OPS_WAVE_FROM_STEP`, `OPS_WAVE_MAX_PACKETS`, `OPS_WAVE_STEPS`, and space-separated `OPS_WAVE_SKIP` values, so common resumes can stay in the standard command shape: `make ops-wave-runner OPS_WAVE_FROM_STEP=work-packet OPS_WAVE_MAX_PACKETS=8`.
@@ -105,10 +122,12 @@ Wave runner manifests include `registryConsistency`, which checks that every pla
 Dry-run wave artifacts are timestamped only and do not replace `ops-wave-runner-latest.json`; latest is reserved for executable wave evidence.
 Tooling findings export converts fresh `tooling-quality` findings into GitHub-copy-ready cleanup tasks, keeping validator output from becoming a one-off terminal observation.
 The effectivity audit compares tool inventory sources against the start of the selected slice window, so validators run during the wave are not falsely marked stale just because the slice ledger is appended after validation completes.
+`ops_ci_validate.sh` refreshes the report-only tooling-quality artifact before installed-tool inventory and tool-install recommendations, so local validation produces a coherent freshness chain instead of a fresh inventory pointing at an older validator report.
 
-Work packets should steer from fresh evidence only. Missing, invalid, stale, or invalid-timestamp latest artifacts stay visible in `freshEvidence`, but they are excluded from packet `sourceSignals`. Tool inventory coverage gaps are kept as `signalClass=coverage_gap` so missing validators remain visible without being treated as actionable defect evidence. Tool-install recommendations are refreshed by the wave runner after installed-tool inventory and before packet generation. They use `signalClass=tool_install_recommendation` only for install-now candidates, and emit a separate `signalClass=approval_gate` when any recommended tool still needs human approval or a remote lane. Host drift manifests are refreshed by the wave runner before packet generation; dirty source/config paths, expired allowlist matches, or sensitive-path review needs emit `signalClass=approval_gate`, while drift without an approval gate stays visible as `signalClass=evidence_gap`. Work packets also treat stale upstream inventory as stale recommendation evidence.
+Work packets should steer from fresh evidence only. Missing, invalid, stale, or invalid-timestamp latest artifacts stay visible in `freshEvidence`, but they are excluded from packet `sourceSignals`. Tool inventory coverage gaps are kept as `signalClass=coverage_gap` so missing validators remain visible without being treated as actionable defect evidence. Tool-install recommendations are refreshed by the wave runner after installed-tool inventory and before packet generation. They use `signalClass=tool_install_recommendation` only for install-now candidates, and emit a separate `signalClass=approval_gate` when any recommended tool still needs human approval or a remote lane. Host drift manifests are refreshed by the wave runner before packet generation; dirty source/config paths, expired allowlist matches, or sensitive-path review needs emit `signalClass=approval_gate`, while drift without an approval gate stays visible as `signalClass=evidence_gap`. PR stack audit evidence is refreshed before packet generation and uses `signalClass=inflight_pr`; packets whose suggested branch or title overlaps an open PR are suppressed and counted in `inFlightPrSuppressions` so the next executable packet does not loop on work already in review. The PR stack audit also emits a compact `steeringDigest` so capped open-PR counts are treated as lower bounds and long draft stacks are represented as lanes in PR readiness instead of noisy per-PR blocker walls. Work packets also treat stale upstream inventory as stale recommendation evidence.
 Work packet reports include `sourceSignalAudit`: every source signal must carry a known `signalClass`, exact duplicate signals are removed from emitted packets, and any duplicate or unclassified signal is surfaced as a warning instead of quietly inflating packet payloads.
-Use `node scripts/ops/work_packet_quality_lint.mjs --json --write` to lint the latest work-packet artifact for operational quality: duplicate packet ids, weak branch or PR title suggestions, markdown-wrapped branch names, thin verification, low source-signal counts, unsafe constraints, and potentially service-impacting terms without approval gates.
+Use `node scripts/ops/work_packet_quality_lint.mjs --json --write` to lint the latest work-packet artifact for operational quality: duplicate packet ids, weak branch or PR title suggestions, markdown-wrapped branch names, thin verification, low source-signal counts, stale or missing backlog status evidence, unsafe constraints, and potentially service-impacting terms without approval gates.
+Use `node scripts/ops/stale_backlog_packet_report.mjs --json --write` after the quality lint to turn stale or missing backlog-status signals into a copy-ready retirement/refresh queue. It is read-only: candidates are proposed as `refresh_or_retire_backlog_item` or `add_backlog_status_evidence`, never edited or deleted automatically. The Markdown report includes issue-ready action packets with problem, evidence, acceptance criteria, and safety notes so stale backlog cleanup can stay documentation-only unless a separate approval packet authorizes host or service action.
 The latest work-packet artifact also includes `nextExecutablePacket`, a compact pointer to the first ready packet after priority and approval-gate sorting. Use it as the quick assignment view before opening the full packet list.
 Artifact validation reads its default catalog from `scripts/ops/artifact_registry.mjs`; add new latest-artifact contracts there first, assign the right freshness tier, producer command, safe write root, consumers, and `requiredFor` tags, then let validators and downstream reports consume the shared registry. Current tiers are `loop` (6 hours), `daily` (24 hours), and `weekly` (168 hours).
 Tooling findings export is included in work-packet evidence as `fresh-tooling-findings`; issue-ready validator tasks are tagged `signalClass=issue_ready_task` so agents can pick them up without scraping terminal output.

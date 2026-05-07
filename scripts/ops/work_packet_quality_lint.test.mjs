@@ -19,7 +19,7 @@ const goodPacket = {
       suggestedPrTitle: "[ops] Good packet",
       safeNextStep: "Run the read-only validator and attach the generated artifact.",
       verification: ["Run validator.", "Confirm generated artifacts contain no secrets."],
-      sourceSignals: [{ source: "a" }, { source: "b" }, { source: "c" }],
+      sourceSignals: [{ source: "backlog", status: "ready for implementation" }, { source: "a" }, { source: "b" }],
       constraints: {
         readOnlyFirst: true,
         noSecrets: true,
@@ -62,6 +62,41 @@ test("buildQualityReport warns on weak operational packet fields", () => {
   assert.ok(report.findings.some((finding) => finding.code === "weak-title-area"));
   assert.ok(report.findings.some((finding) => finding.code === "markdown-wrapped-branch"));
   assert.ok(report.findings.some((finding) => finding.code === "weak-verification"));
+});
+
+test("buildQualityReport warns when backlog status looks stale", () => {
+  const report = buildQualityReport(
+    {
+      ...goodPacket,
+      packets: [
+        {
+          ...goodPacket.packets[0],
+          sourceSignals: [
+            { source: "backlog", status: "follow-up prepared in docs/ops/14-post-merge-verification.md" },
+            { source: "fresh-admin-audit" },
+            { source: "fresh-pr-stack-audit" },
+          ],
+        },
+        {
+          ...goodPacket.packets[0],
+          packetId: "ops-wp-missing-status",
+          title: "[ops] Missing status packet",
+          sourceSignals: [
+            { source: "backlog", status: "" },
+            { source: "fresh-admin-audit" },
+            { source: "fresh-pr-stack-audit" },
+          ],
+        },
+      ],
+    },
+    { generatedAt: "2026-05-07T12:10:00.000Z", runId: "quality-stale-backlog" },
+  );
+
+  assert.equal(report.status, "warn");
+  assert.equal(report.summary.staleBacklogPackets, 1);
+  assert.equal(report.summary.missingBacklogStatusPackets, 1);
+  assert.ok(report.findings.some((finding) => finding.code === "stale-backlog-status"));
+  assert.ok(report.findings.some((finding) => finding.code === "missing-backlog-status"));
 });
 
 test("buildQualityReport fails duplicate ids and unsafe constraints", () => {

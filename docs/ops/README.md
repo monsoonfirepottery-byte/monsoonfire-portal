@@ -84,7 +84,7 @@ node scripts/ops/host_drift_manifest.mjs --json --write
 node scripts/studiobrain-ops-work-packet.mjs --write
 node scripts/ops/ops_wave_runner.mjs --write
 node scripts/ops/pr_stack_audit.mjs --write
-bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
+INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 ```
 
 `make ops-wave-runner` accepts operator pass-through variables for interrupted or widened waves:
@@ -92,12 +92,14 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 ```bash
 make ops-wave-runner OPS_WAVE_FROM_STEP=packet-outcome-report
 make ops-wave-runner OPS_WAVE_MAX_PACKETS=8 OPS_WAVE_FLAGS=--json
-make ops-wave-runner OPS_WAVE_STEPS=swarm-preflight,work-packet,artifact-validation OPS_WAVE_SKIP=tooling-quality
+make ops-wave-runner OPS_WAVE_STEPS=swarm-preflight,pr-stack-audit,work-packet,artifact-validation OPS_WAVE_SKIP=tooling-quality
 ```
 
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.
 
 `ops-host-drift-manifest` is path-name-only and read-only. It converts a live or captured `git status --porcelain=v1 --untracked-files=all` listing into JSON/Markdown under `output/ops/host-drift`, compares paths with `studio-brain/host-drift-allowlist.json`, redacts sensitive-looking path names by default, and keeps cleanup/reset/stash/delete decisions approval-gated.
+
+`ops-incident-bundle-v2` can run in `INCIDENT_BUNDLE_V2_SMOKE=1` mode for PR and CI evidence. It writes a stable latest summary at `output/ops/incidents-v2/incident-bundle-v2-latest.json` so artifact validation and PR readiness can show whether redacted incident evidence exists before any service-impacting response. Full bundle checks are individually time-limited by `INCIDENT_BUNDLE_CHECK_TIMEOUT_SECONDS` (default 45 seconds) so one slow host probe records a timed-out report instead of hanging the entire bundle.
 
 ## Approval Boundaries
 

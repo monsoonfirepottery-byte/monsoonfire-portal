@@ -93,6 +93,8 @@ test("buildPrStackAudit classifies current PR lanes and stack edges", () => {
   assert.equal(report.schema, "studiobrain-ops-pr-stack-audit.v1");
   assert.equal(report.readOnly, true);
   assert.equal(report.summary.open, 4);
+  assert.equal(report.summary.openCountExact, true);
+  assert.equal(report.summary.openLowerBound, 4);
   assert.equal(report.summary.categories.stacked, 2);
   assert.equal(report.summary.categories.dependency, 1);
   assert.equal(report.summary.categories.conflict, 1);
@@ -103,6 +105,15 @@ test("buildPrStackAudit classifies current PR lanes and stack edges", () => {
   assert.equal(report.mergePlan.status, "blocked");
   assert.equal(report.mergePlan.readyCount, 0);
   assert.equal(report.mergePlan.blockedCount, 4);
+  assert.equal(report.steeringDigest.status, "blocked");
+  assert.equal(report.steeringDigest.openCountExact, true);
+  assert.equal(report.steeringDigest.openLowerBound, 4);
+  assert.equal(report.steeringDigest.recommendedSteering, "do_not_merge_or_rebase_from_this_slice");
+  assert.equal(report.steeringDigest.blockedStackLanes.length, 1);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].count, 2);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].bottomPr, 646);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].tipPr, 647);
+  assert.ok(report.steeringDigest.blockedStackLanes[0].commonBlockers.includes("draft"));
   assert.equal(report.repos[0].openPullRequests[0].mergeReadiness.baseDependencyPr, 646);
   assert.ok(report.repos[0].openPullRequests[0].mergeReadiness.blockers.includes("base_pr_open:#646"));
   assert.ok(report.warnings.some((warning) => warning.includes("dirty/conflicted")));
@@ -113,6 +124,8 @@ test("buildPrStackAudit classifies current PR lanes and stack edges", () => {
   assert.match(markdown, /#646/);
   assert.match(markdown, /#647/);
   assert.match(markdown, /Stacked Edges/);
+  assert.match(markdown, /Steering Digest/);
+  assert.match(markdown, /do_not_merge_or_rebase_from_this_slice/);
   assert.match(markdown, /Merge Readiness/);
   assert.match(markdown, /base_pr_open:#646/);
   assert.match(markdown, /dependency/);
@@ -137,8 +150,42 @@ test("buildPrStackAudit exposes the next clean merge candidate", () => {
   assert.equal(report.mergePlan.status, "candidate_ready");
   assert.equal(report.mergePlan.readyCount, 1);
   assert.equal(report.mergePlan.nextMergeCandidate.number, 660);
+  assert.equal(report.steeringDigest.recommendedSteering, "review_next_merge_candidate");
+  assert.equal(report.steeringDigest.nextMergeCandidate.number, 660);
   assert.equal(report.mergePlan.nextMergeCandidate.headRefName, "codex/ops-ready-diagnostics");
   assert.match(renderMarkdown(report), /Next merge candidate: \[#660\]/);
+});
+
+test("buildPrStackAudit compresses a linear draft stack into one steering lane", () => {
+  const stackFixture = structuredClone(fixture);
+  stackFixture.repos[0].openPullRequests = Array.from({ length: 5 }, (_, index) => {
+    const number = 700 + index;
+    const headRefName = `codex/ops-stack-${index + 1}`;
+    const baseRefName = index === 0 ? "main" : `codex/ops-stack-${index}`;
+    return {
+      number,
+      title: `[ops] Stack slice ${index + 1}`,
+      headRefName,
+      baseRefName,
+      isDraft: true,
+      mergeStateStatus: "UNKNOWN",
+      updatedAt: "2026-05-07T17:00:00Z",
+      url: `https://example.test/pr/${number}`,
+      author: { login: "codex" },
+    };
+  });
+
+  const report = buildPrStackAudit(stackFixture, { generatedAt: "2026-05-07T17:00:00.000Z", runId: "test-pr-stack", repos, openLimit: 5 });
+
+  assert.equal(report.status, "warn");
+  assert.equal(report.steeringDigest.openCountExact, false);
+  assert.equal(report.steeringDigest.openLowerBound, 5);
+  assert.equal(report.steeringDigest.blockedStackLanes.length, 1);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].count, 5);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].bottomPr, 700);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].tipPr, 704);
+  assert.equal(report.steeringDigest.blockedStackLanes[0].recommendedSteering, "do_not_merge_or_rebase_from_this_slice");
+  assert.ok(report.steeringDigest.notes.some((note) => note.includes("lower bound")));
 });
 
 test("buildPrStackAudit stays compatible with its JSON schema", () => {
@@ -153,5 +200,6 @@ test("buildPrStackAudit warns when open PR collection reaches the configured lim
 
   assert.equal(report.status, "warn");
   assert.equal(report.repos[0].summary.openLimitReached, true);
+  assert.equal(report.steeringDigest.openCountExact, false);
   assert.ok(report.warnings.some((warning) => warning.includes("reached limit 4")));
 });

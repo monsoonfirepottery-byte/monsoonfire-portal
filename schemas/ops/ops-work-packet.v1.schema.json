@@ -11,7 +11,7 @@
     "purpose": { "type": "string" },
     "sources": {
       "type": "object",
-      "required": ["riskRegister", "backlog", "effectivity", "adminAudit", "sliceLedger", "toolInventory", "toolInstallRecommendations", "toolingFindings", "swarmPreflight", "hostDriftManifest"],
+      "required": ["riskRegister", "backlog", "effectivity", "adminAudit", "sliceLedger", "toolInventory", "toolInstallRecommendations", "toolingFindings", "swarmPreflight", "hostDriftManifest", "prStackAudit"],
       "properties": {
         "riskRegister": { "type": "string" },
         "backlog": { "type": "string" },
@@ -22,7 +22,8 @@
         "toolInstallRecommendations": { "type": "string" },
         "toolingFindings": { "type": "string" },
         "swarmPreflight": { "type": "string" },
-        "hostDriftManifest": { "type": "string" }
+        "hostDriftManifest": { "type": "string" },
+        "prStackAudit": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -40,7 +41,7 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "toolingFindings", "toolingActionableFindings", "toolingIssueReadyTasks", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftSensitivePathNames", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "toolingFindings", "toolingActionableFindings", "toolingIssueReadyTasks", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "prStackStatus", "prStackOpen", "prStackMergeReady", "prStackMergeBlocked", "inFlightPrSuppressedPackets", "outcomeSuppressedPackets", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems", "hostDriftStatus", "hostDriftDirtyPaths", "hostDriftSensitivePathNames", "hostDriftRequiresHumanApproval", "hostDriftDoNotTouchSecurityReview", "hostDriftAllowlistStatus", "hostDriftExpiredAllowlistMatches", "staleBacklogPackets"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
@@ -60,6 +61,12 @@
         "effectivityEvidenceLanes": { "type": ["number", "null"], "minimum": 0 },
         "effectivityApprovalRequiredLanes": { "type": ["number", "null"], "minimum": 0 },
         "effectivityHighSeverityLanes": { "type": ["number", "null"], "minimum": 0 },
+        "prStackStatus": { "type": "string" },
+        "prStackOpen": { "type": ["number", "null"], "minimum": 0 },
+        "prStackMergeReady": { "type": ["number", "null"], "minimum": 0 },
+        "prStackMergeBlocked": { "type": ["number", "null"], "minimum": 0 },
+        "inFlightPrSuppressedPackets": { "type": "number", "minimum": 0 },
+        "outcomeSuppressedPackets": { "type": "number", "minimum": 0 },
         "swarmPreflightStatus": { "type": "string" },
         "swarmPreflightOutsideScope": { "type": ["number", "null"], "minimum": 0 },
         "swarmPreflightProblems": { "type": ["number", "null"], "minimum": 0 },
@@ -69,13 +76,14 @@
         "hostDriftRequiresHumanApproval": { "type": ["number", "null"], "minimum": 0 },
         "hostDriftDoNotTouchSecurityReview": { "type": ["number", "null"], "minimum": 0 },
         "hostDriftAllowlistStatus": { "type": "string" },
-        "hostDriftExpiredAllowlistMatches": { "type": ["number", "null"], "minimum": 0 }
+        "hostDriftExpiredAllowlistMatches": { "type": ["number", "null"], "minimum": 0 },
+        "staleBacklogPackets": { "type": "number", "minimum": 0 }
       },
       "additionalProperties": false
     },
     "freshEvidence": {
       "type": "object",
-      "required": ["adminAudit", "sliceLedger", "toolInventory", "toolInstallRecommendations", "toolingFindings", "swarmPreflight", "hostDriftManifest"],
+      "required": ["adminAudit", "sliceLedger", "toolInventory", "toolInstallRecommendations", "toolingFindings", "swarmPreflight", "hostDriftManifest", "prStackAudit"],
       "properties": {
         "toolInstallRecommendations": {
           "type": "object",
@@ -176,6 +184,39 @@
         }
       },
       "additionalProperties": false
+    },
+    "inFlightPrSuppressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packetId", "title", "reason", "prNumber", "prTitle", "headRefName", "url"],
+        "properties": {
+          "packetId": { "type": "string" },
+          "title": { "type": "string" },
+          "reason": { "type": "string" },
+          "prNumber": { "type": "number", "minimum": 0 },
+          "prTitle": { "type": "string" },
+          "headRefName": { "type": "string" },
+          "url": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "outcomeSuppressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packetId", "title", "reason", "outcome", "recordedAt", "notes"],
+        "properties": {
+          "packetId": { "type": "string" },
+          "title": { "type": "string" },
+          "reason": { "type": "string" },
+          "outcome": { "type": "string" },
+          "recordedAt": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
     },
     "packets": {
       "type": "array",

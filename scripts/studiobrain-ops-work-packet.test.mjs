@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { auditSourceSignals, buildOpsWorkPacket, comparePackets, normalizePacketsSourceSignals, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { auditSourceSignals, buildOpsWorkPacket, buildOutcomeSummary, comparePackets, normalizePacketsSourceSignals, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
 import { validateJsonSchema } from "./ops/validate_ops_artifacts.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
@@ -274,6 +274,34 @@ const freshInputs = {
       errors: [],
     },
   },
+  prStackAudit: {
+    schema: "studiobrain-ops-pr-stack-audit.v1",
+    generatedAt: "2026-05-07T08:47:00.000Z",
+    status: "pass",
+    readOnly: true,
+    summary: {
+      open: 1,
+      recentlyMerged: 0,
+      mergeReady: 1,
+      mergeBlocked: 0,
+    },
+    repos: [
+      {
+        id: "portal",
+        openPullRequests: [
+          {
+            repoId: "portal",
+            number: 900,
+            title: "[ops] Unrelated admin docs polish",
+            url: "https://example.test/pr/900",
+            headRefName: "codex/ops-unrelated-docs",
+            baseRefName: "main",
+            isDraft: true,
+          },
+        ],
+      },
+    ],
+  },
   adminAuditPath: "output/ops/effectivity/admin-effectivity-audit-latest.json",
   sliceLedgerPath: "output/ops/effectivity/slice-ledger-latest.json",
   toolInventoryPath: "output/ops/effectivity/installed-tool-inventory-latest.json",
@@ -281,6 +309,7 @@ const freshInputs = {
   toolingFindingsPath: "output/ops/tooling-quality/tooling-findings-latest.json",
   swarmPreflightPath: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
   hostDriftManifestPath: "output/ops/host-drift/host-drift-manifest-latest.json",
+  prStackAuditPath: "output/ops/pr-stack/pr-stack-audit-latest.json",
 };
 
 test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", () => {
@@ -301,7 +330,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.constraints.noServiceRestart, true);
   assert.equal(report.evidenceSummary.risks, 2);
   assert.equal(report.evidenceSummary.backlogItems, 2);
-  assert.equal(report.evidenceSummary.freshSources, 7);
+  assert.equal(report.evidenceSummary.freshSources, 8);
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.evidenceSummary.toolPromotionCandidates, 0);
   assert.equal(report.evidenceSummary.toolActionableFindings, 0);
@@ -315,12 +344,17 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.effectivityEvidenceLanes, 2);
   assert.equal(report.evidenceSummary.effectivityApprovalRequiredLanes, 1);
   assert.equal(report.evidenceSummary.effectivityHighSeverityLanes, 1);
+  assert.equal(report.evidenceSummary.prStackStatus, "pass");
+  assert.equal(report.evidenceSummary.prStackOpen, 1);
+  assert.equal(report.evidenceSummary.inFlightPrSuppressedPackets, 0);
+  assert.equal(report.evidenceSummary.outcomeSuppressedPackets, 0);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.evidenceSummary.hostDriftStatus, "warn");
   assert.equal(report.evidenceSummary.hostDriftDirtyPaths, 3);
   assert.equal(report.evidenceSummary.hostDriftRequiresHumanApproval, 2);
   assert.equal(report.evidenceSummary.hostDriftAllowlistStatus, "present");
+  assert.equal(report.evidenceSummary.staleBacklogPackets, 2);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
   assert.equal(report.freshEvidence.adminAudit.freshness.stale, false);
   assert.ok(report.packets.length >= 2);
@@ -360,6 +394,8 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(hostDriftSignal.summary.sensitivePathNamesRedacted, true);
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
+  assert.ok(report.packets[0].humanGate.includes("refresh or retire"));
+  assert.equal(report.packets[0].sourceSignals.find((signal) => signal.source === "backlog").staleBacklogStatus, true);
   assert.ok(report.packets[0].safeNextStep.includes("restore-prerequisite"));
   const toolingPacket = report.packets.find((packet) => packet.title === "[ops-tooling] Review shellcheck findings");
   assert.equal(toolingPacket.status, "ready");
@@ -369,6 +405,83 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   const leaked = structuredClone(report);
   leaked.freshEvidence.toolInstallRecommendations.summary.topRecommendations[0].installCommand = "do not execute from work packets";
   assert.ok(validateJsonSchema(leaked, packetSchema).some((error) => error.includes("installCommand")));
+});
+
+test("buildOpsWorkPacket suppresses packets with terminal latest outcomes", () => {
+  const firstReport = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+    },
+    { runId: "unit-test", generatedAt: "2026-05-06T20:00:00.000Z" },
+  );
+  const resolvedPacket = firstReport.nextExecutablePacket.packetId;
+
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      outcomeSummary: buildOutcomeSummary([
+        {
+          schema: "studiobrain-ops-work-packet-outcome.v1",
+          recordedAt: "2026-05-06T20:01:00.000Z",
+          packetId: resolvedPacket,
+          outcome: "resolved",
+          usedBy: "codex",
+          notes: "completed by prior slice",
+        },
+      ]),
+    },
+    { runId: "unit-test", generatedAt: "2026-05-06T20:02:00.000Z" },
+  );
+
+  assert.equal(report.evidenceSummary.outcomeSuppressedPackets, 1);
+  assert.equal(report.outcomeSuppressions[0].packetId, resolvedPacket);
+  assert.equal(report.outcomeSuppressions[0].outcome, "resolved");
+  assert.equal(report.packets.some((packet) => packet.packetId === resolvedPacket), false);
+  assert.notEqual(report.nextExecutablePacket.packetId, resolvedPacket);
+});
+
+test("buildOpsWorkPacket suppresses packets that already have open PRs", () => {
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      prStackAudit: {
+        ...freshInputs.prStackAudit,
+        summary: { ...freshInputs.prStackAudit.summary, open: 1, mergeReady: 1 },
+        repos: [
+          {
+            id: "portal",
+            openPullRequests: [
+              {
+                repoId: "portal",
+                number: 901,
+                title: "[ops] Add Studio Brain backup evidence and restore drill report",
+                url: "https://example.test/pr/901",
+                headRefName: "codex/ops-backup-evidence",
+                baseRefName: "main",
+                isDraft: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    { runId: "unit-test", generatedAt: "2026-05-06T20:00:00.000Z" },
+  );
+
+  assert.equal(report.evidenceSummary.inFlightPrSuppressedPackets, 1);
+  assert.equal(report.inFlightPrSuppressions[0].prNumber, 901);
+  assert.equal(report.packets.some((packet) => packet.suggestedBranchName === "codex/ops-backup-evidence"), false);
+  assert.equal(report.nextExecutablePacket.title, "[ops-tooling] Review shellcheck findings");
+  assert.deepEqual(validateJsonSchema(report, packetSchema), []);
 });
 
 function toolingPacketId(report) {
@@ -385,6 +498,7 @@ test("summarizeFreshEvidence degrades when ignored artifacts are missing", () =>
   assert.equal(fresh.toolingFindings.status, "missing");
   assert.equal(fresh.swarmPreflight.status, "missing");
   assert.equal(fresh.hostDriftManifest.status, "missing");
+  assert.equal(fresh.prStackAudit.status, "missing");
 });
 
 test("comparePackets prefers ready packets within the same priority", () => {
@@ -559,7 +673,7 @@ test("workPacketReportStatus warns when tool-install recommendations are missing
   );
 
   assert.equal(missingRecommendations.freshEvidence.toolInstallRecommendations.status, "missing");
-  assert.equal(missingRecommendations.evidenceSummary.freshSources, 6);
+  assert.equal(missingRecommendations.evidenceSummary.freshSources, 7);
   assert.equal(workPacketReportStatus(missingRecommendations), "warn");
 });
 
@@ -635,7 +749,7 @@ test("workPacketReportStatus warns when fresh evidence is stale", () => {
   );
 
   assert.equal(stale.evidenceSummary.freshSources, 0);
-  assert.equal(stale.evidenceSummary.staleSources, 7);
+  assert.equal(stale.evidenceSummary.staleSources, 8);
   assert.equal(stale.freshEvidence.adminAudit.status, "stale");
   assert.equal(stale.freshEvidence.adminAudit.sourceStatus, "pass");
   assert.equal(stale.freshEvidence.adminAudit.freshness.stale, true);
@@ -792,4 +906,54 @@ test("buildOpsWorkPacket normalizes markdown-wrapped branch and PR suggestions",
 
   assert.equal(report.packets[0].suggestedBranchName, "codex/plain-suggestion");
   assert.equal(report.packets[0].suggestedPrTitle, "[ops] Plain suggestion");
+});
+
+test("buildOpsWorkPacket does not attach unrelated risk guidance", () => {
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown: `
+# Risks
+
+## Medium
+
+### Docker healthcheck coverage is thin
+
+- Affected component: Docker containers.
+- Evidence: no healthcheck for a service.
+- Likely impact: runtime failures may be missed.
+- Recommended action: add healthchecks.
+- Safe next step: add healthcheck coverage for monitoring proxy and SearXNG in a small PR.
+- PR can address it: yes.
+`,
+      backlogMarkdown: `
+# Backlog
+
+## Now
+
+### [ops] Verify merged ops-doctor stack from main
+
+- Type: documentation
+- Priority: P1
+- Effort: S
+- Risk: low
+- Status: needs a post-merge verification note.
+- Acceptance criteria:
+  - Run read-only verification from current main.
+  - Record the result in the ops handoff.
+- Recommended owner: Codex
+- Suggested branch name: codex/ops-admin-next
+- Suggested PR title: [ops] Add post-merge ops doctor handoff
+      `,
+      effectivityMarkdown,
+      ...freshInputs,
+      toolingFindings: null,
+      prStackAudit: null,
+    },
+    { maxPackets: 1, runId: "unit-test", generatedAt: "2026-05-06T20:00:00.000Z" },
+  );
+
+  assert.equal(report.packets[0].title, "[ops] Verify merged ops-doctor stack from main");
+  assert.equal(report.packets[0].safeNextStep, "Run read-only verification from current main.");
+  assert.equal(report.packets[0].sourceSignals.some((signal) => signal.source === "risk-register"), false);
+  assert.doesNotMatch(report.packets[0].safeNextStep, /healthcheck/);
 });

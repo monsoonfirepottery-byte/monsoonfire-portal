@@ -361,6 +361,107 @@ function mergePlanForRepos(repos) {
   };
 }
 
+function normalizeBlocker(blocker) {
+  const text = clean(blocker);
+  if (/^base_pr_open:#\d+$/.test(text)) return "base_pr_open";
+  return text || "unknown";
+}
+
+function commonBlockers(prs) {
+  const counts = new Map();
+  for (const pr of prs) {
+    const blockers = Array.isArray(pr.mergeReadiness?.blockers) ? pr.mergeReadiness.blockers : [];
+    for (const blocker of new Set(blockers.map(normalizeBlocker).filter(Boolean))) {
+      counts.set(blocker, (counts.get(blocker) || 0) + 1);
+    }
+  }
+  const threshold = Math.max(2, Math.ceil(prs.length / 2));
+  return [...counts.entries()]
+    .filter(([, count]) => count >= threshold)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([blocker]) => blocker)
+    .slice(0, 6);
+}
+
+function stackLanesForRepo(repo) {
+  const prs = repo.openPullRequests || [];
+  const byHead = new Map(prs.map((pr) => [pr.headRefName, pr]));
+  const byNumber = new Map(prs.map((pr) => [pr.number, pr]));
+  const neighbors = new Map(prs.map((pr) => [pr.number, new Set()]));
+  for (const pr of prs) {
+    const base = byHead.get(pr.baseRefName);
+    if (!base) continue;
+    neighbors.get(pr.number)?.add(base.number);
+    neighbors.get(base.number)?.add(pr.number);
+  }
+  const lanes = [];
+  const seen = new Set();
+  for (const pr of [...prs].sort((left, right) => Number(left.number) - Number(right.number))) {
+    if (seen.has(pr.number)) continue;
+    const stack = [pr.number];
+    const component = [];
+    seen.add(pr.number);
+    while (stack.length > 0) {
+      const number = stack.pop();
+      const entry = byNumber.get(number);
+      if (entry) component.push(entry);
+      for (const neighbor of neighbors.get(number) || []) {
+        if (seen.has(neighbor)) continue;
+        seen.add(neighbor);
+        stack.push(neighbor);
+      }
+    }
+    if (component.length < 2) continue;
+    const ordered = mergeOrderForRepo(component);
+    const bottom = ordered[0];
+    const tip = ordered[ordered.length - 1];
+    lanes.push({
+      repoId: repo.id,
+      count: ordered.length,
+      bottomPr: bottom?.number ?? null,
+      bottomHead: clean(bottom?.headRefName),
+      tipPr: tip?.number ?? null,
+      tipHead: clean(tip?.headRefName),
+      openLimitReached: Boolean(repo.summary?.openLimitReached),
+      commonBlockers: commonBlockers(ordered),
+      recommendedSteering: ordered.some((entry) => entry.mergeReadiness?.status === "ready")
+        ? "review_bottom_ready_candidate"
+        : "do_not_merge_or_rebase_from_this_slice",
+    });
+  }
+  return lanes.sort((left, right) => right.count - left.count || String(left.repoId).localeCompare(String(right.repoId)));
+}
+
+function buildSteeringDigest(repos, mergePlan) {
+  const openLimitReached = repos.some((repo) => Boolean(repo.summary?.openLimitReached));
+  const collectionIncomplete = repos.some((repo) => repo.collection?.openStatus !== "pass");
+  const openLowerBound = repos.reduce((sum, repo) => sum + (repo.summary?.open ?? 0), 0);
+  const blockedStackLanes = repos.flatMap(stackLanesForRepo).slice(0, 8);
+  const notes = [];
+  if (openLimitReached) notes.push("Open PR count reached one or more collection limits; treat openLowerBound as a lower bound.");
+  if (collectionIncomplete) notes.push("One or more repositories had incomplete PR collection.");
+  if (blockedStackLanes.length > 0) notes.push("Stacked lanes are compressed for steering; inspect mergeOrder before any actual merge.");
+  const recommendedSteering = mergePlan.nextMergeCandidate
+    ? "review_next_merge_candidate"
+    : blockedStackLanes.length > 0
+      ? "do_not_merge_or_rebase_from_this_slice"
+      : openLowerBound > 0
+        ? "classify_blockers_before_merge"
+        : "no_open_prs";
+  return {
+    status: mergePlan.status,
+    openCountExact: !openLimitReached && !collectionIncomplete,
+    openLowerBound,
+    openLimitReached,
+    mergeReady: mergePlan.readyCount,
+    mergeBlocked: mergePlan.blockedCount,
+    nextMergeCandidate: mergePlan.nextMergeCandidate,
+    blockedStackLanes,
+    recommendedSteering,
+    notes,
+  };
+}
+
 function countBy(items, field) {
   return items.reduce((acc, item) => {
     const key = clean(item[field]) || "unknown";
@@ -396,6 +497,7 @@ function buildPrStackAudit(inputs = {}, options = {}) {
   const allOpen = repos.flatMap((repo) => repo.openPullRequests);
   const allMerged = repos.flatMap((repo) => repo.recentlyMerged);
   const mergePlan = mergePlanForRepos(repos);
+  const steeringDigest = buildSteeringDigest(repos, mergePlan);
   const collectionWarnings = repos.flatMap((repo) => [
     repo.collection.openStatus !== "pass" ? `${repo.id} open PR collection: ${repo.collection.openError || repo.collection.openStatus}` : "",
     repo.collection.mergedStatus !== "pass" ? `${repo.id} merged PR collection: ${repo.collection.mergedError || repo.collection.mergedStatus}` : "",
@@ -417,9 +519,12 @@ function buildPrStackAudit(inputs = {}, options = {}) {
     repos,
     stackEdges: stackEdges(allOpen),
     mergePlan,
+    steeringDigest,
     summary: {
       repos: repos.length,
       open: allOpen.length,
+      openCountExact: steeringDigest.openCountExact,
+      openLowerBound: steeringDigest.openLowerBound,
       recentlyMerged: allMerged.length,
       categories: countBy(allOpen, "category"),
       warnings: warnings.length,
@@ -437,6 +542,14 @@ function buildPrStackAudit(inputs = {}, options = {}) {
 
 function renderMarkdown(report) {
   const warnings = report.warnings.map((warning) => `- ${warning}`).join("\n") || "- None.";
+  const digest = report.steeringDigest || {};
+  const digestCandidate = digest.nextMergeCandidate
+    ? `[#${digest.nextMergeCandidate.number}](${digest.nextMergeCandidate.url}) ${digest.nextMergeCandidate.headRefName} -> ${digest.nextMergeCandidate.baseRefName}`
+    : "None.";
+  const stackLaneRows = (digest.blockedStackLanes || []).map((lane) =>
+    `| ${lane.repoId} | ${lane.count} | #${lane.bottomPr || ""} ${lane.bottomHead || ""} | #${lane.tipPr || ""} ${lane.tipHead || ""} | ${lane.commonBlockers.join(", ") || ""} | ${lane.recommendedSteering} |`,
+  ).join("\n") || "| _none_ |  |  |  |  |  |";
+  const digestNotes = (digest.notes || []).map((note) => `- ${note}`).join("\n") || "- None.";
   const nextMerge = report.mergePlan.nextMergeCandidate
     ? `[#${report.mergePlan.nextMergeCandidate.number}](${report.mergePlan.nextMergeCandidate.url}) ${report.mergePlan.nextMergeCandidate.headRefName} -> ${report.mergePlan.nextMergeCandidate.baseRefName}`
     : "None.";
@@ -484,10 +597,30 @@ Run ID: ${report.runId}
 
 - Repos: ${report.summary.repos}
 - Open PRs: ${report.summary.open}
+- Open count exact: ${report.summary.openCountExact}
+- Open lower bound: ${report.summary.openLowerBound}
 - Recently merged captured: ${report.summary.recentlyMerged}
 - Categories: ${JSON.stringify(report.summary.categories)}
 - Merge ready: ${report.summary.mergeReady}
 - Merge blocked: ${report.summary.mergeBlocked}
+
+## Steering Digest
+
+- Status: ${digest.status || ""}
+- Recommended steering: ${digest.recommendedSteering || ""}
+- Open count exact: ${digest.openCountExact}
+- Open lower bound: ${digest.openLowerBound ?? ""}
+- Merge ready: ${digest.mergeReady ?? ""}
+- Merge blocked: ${digest.mergeBlocked ?? ""}
+- Next merge candidate: ${digestCandidate}
+
+| Repo | Count | Bottom | Tip | Common blockers | Recommended steering |
+| --- | --- | --- | --- | --- | --- |
+${stackLaneRows}
+
+### Digest Notes
+
+${digestNotes}
 
 ## Merge Readiness
 

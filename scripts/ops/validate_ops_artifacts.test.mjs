@@ -185,3 +185,86 @@ test("buildReport fails when latest artifactPath points nowhere", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("buildReport warns when a git-scoped artifact was generated from an older head", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-artifact-git-head-"));
+  try {
+    const schemaPath = join(dir, "schema.json");
+    const latestPath = join(dir, "latest.json");
+    writeFileSync(schemaPath, JSON.stringify({
+      type: "object",
+      required: ["schema", "generatedAt", "scope"],
+      properties: {
+        schema: { const: "artifact.v1" },
+        generatedAt: { type: "string", format: "date-time" },
+        scope: {
+          type: "object",
+          required: ["head"],
+          properties: { head: { type: "string" } },
+          additionalProperties: false,
+        }
+      },
+      additionalProperties: false,
+    }));
+    writeFileSync(latestPath, JSON.stringify({
+      schema: "artifact.v1",
+      generatedAt: "2026-05-07T12:00:00.000Z",
+      scope: { head: "old1234" }
+    }));
+
+    const report = buildReport({
+      artifacts: [{ id: "git-head", artifact: latestPath, schema: schemaPath, gitHeadField: "scope.head" }],
+      now: "2026-05-07T12:00:00.000Z",
+      currentGitHead: "new5678",
+      maxAgeHours: 24
+    });
+
+    assert.equal(report.status, "warn");
+    assert.equal(report.checks[0].gitHeadField, "scope.head");
+    assert.equal(report.checks[0].artifactGitHead, "old1234");
+    assert.equal(report.checks[0].currentGitHead, "new5678");
+    assert.ok(report.checks[0].warnings.some((warning) => warning.includes("artifact git head is stale")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("buildReport accepts matching long and short git heads", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-artifact-git-head-match-"));
+  try {
+    const schemaPath = join(dir, "schema.json");
+    const latestPath = join(dir, "latest.json");
+    writeFileSync(schemaPath, JSON.stringify({
+      type: "object",
+      required: ["schema", "generatedAt", "scope"],
+      properties: {
+        schema: { const: "artifact.v1" },
+        generatedAt: { type: "string", format: "date-time" },
+        scope: {
+          type: "object",
+          required: ["head"],
+          properties: { head: { type: "string" } },
+          additionalProperties: false,
+        }
+      },
+      additionalProperties: false,
+    }));
+    writeFileSync(latestPath, JSON.stringify({
+      schema: "artifact.v1",
+      generatedAt: "2026-05-07T12:00:00.000Z",
+      scope: { head: "abc123456789" }
+    }));
+
+    const report = buildReport({
+      artifacts: [{ id: "git-head", artifact: latestPath, schema: schemaPath, gitHeadField: "scope.head" }],
+      now: "2026-05-07T12:00:00.000Z",
+      currentGitHead: "abc12345",
+      maxAgeHours: 24
+    });
+
+    assert.equal(report.status, "pass");
+    assert.equal(report.checks[0].warnings.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

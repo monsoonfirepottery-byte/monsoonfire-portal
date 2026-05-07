@@ -47,6 +47,7 @@ git fetch origin main
 git log origin/main --oneline -8
 bash -n scripts/ops/*.sh
 make ops-backlog
+node scripts/ops/post_merge_verification_packet.mjs --json --write
 ```
 
 Optional read-only smoke commands:

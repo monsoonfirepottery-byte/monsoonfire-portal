@@ -49,6 +49,11 @@ const STEP_DEFINITIONS = [
     expectedArtifacts: ["output/ops/host-drift/host-drift-manifest-latest.json"],
   },
   {
+    id: "pr-stack-audit",
+    command: [process.execPath, "scripts/ops/pr_stack_audit.mjs", "--json", "--write"],
+    expectedArtifacts: ["output/ops/pr-stack/pr-stack-audit-latest.json"],
+  },
+  {
     id: "work-packet",
     command: [process.execPath, "scripts/studiobrain-ops-work-packet.mjs", "--json", "--write"],
     expectedArtifacts: ["output/ops/swarm/latest-work-packet.json"],

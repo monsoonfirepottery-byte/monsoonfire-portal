@@ -111,6 +111,20 @@ Monitoring Compose attaches Uptime Kuma to `studio-brain_default` and `searxng_d
 - No exited containers observed.
 - Several images use floating tags: `latest`, `stable`, or major-only tags.
 
+Tracked floating or broad tags to review:
+
+- `minio/minio:latest`
+- `otel/opentelemetry-collector-contrib:latest`
+- `netdata/netdata:stable`
+- `pgvector/pgvector:pg16`
+- `redis:7-alpine`
+- `louislam/uptime-kuma:1`
+- `caddy:2-alpine`
+
+See `docs/ops/18-docker-runbook-refresh.md` for the image update cadence,
+rollback notes, and service-window requirements. Do not pull or recreate
+containers from this review packet.
+
 ## Orphan/Zombie Container Risks
 
 - No exited containers were observed.

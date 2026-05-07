@@ -24,6 +24,7 @@ const DEFAULT_TOOL_INSTALL_RECOMMENDATIONS = resolve(REPO_ROOT, "output", "ops",
 const DEFAULT_TOOLING_FINDINGS = resolve(REPO_ROOT, "output", "ops", "tooling-quality", "tooling-findings-latest.json");
 const DEFAULT_SWARM_PREFLIGHT = resolve(REPO_ROOT, "output", "ops", "swarm-lane-preflight", "swarm-lane-preflight-latest.json");
 const DEFAULT_HOST_DRIFT_MANIFEST = resolve(REPO_ROOT, "output", "ops", "host-drift", "host-drift-manifest-latest.json");
+const DEFAULT_PR_STACK_AUDIT = resolve(REPO_ROOT, "output", "ops", "pr-stack", "pr-stack-audit-latest.json");
 const VALID_OUTCOMES = new Set([
   "used",
   "helpful",
@@ -41,10 +42,12 @@ const SOURCE_SIGNAL_CLASSES = new Set([
   "effectivity",
   "evidence_gap",
   "fresh",
+  "inflight_pr",
   "issue_ready_task",
   "risk",
   "tool_install_recommendation",
 ]);
+const STALE_BACKLOG_STATUS_TERMS = /\b(merged|prepared|completed|complete|done|shipped|superseded|already)\b/i;
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -283,14 +286,19 @@ function overlapScore(left, right) {
 }
 
 function matchingRisk(backlogItem, risks) {
-  return risks
+  const match = risks
     .map((risk) => ({
       risk,
       score:
         overlapScore(backlogItem.title, risk.title) * 3 +
         overlapScore(`${backlogItem.type} ${backlogItem.status}`, `${risk.affectedComponent} ${risk.recommendedAction}`),
     }))
-    .sort((left, right) => right.score - left.score || severityRank(left.risk.severity) - severityRank(right.risk.severity))[0]?.risk || null;
+    .sort((left, right) => right.score - left.score || severityRank(left.risk.severity) - severityRank(right.risk.severity))[0] || null;
+  return match && match.score >= 2 ? match.risk : null;
+}
+
+function staleBacklogStatus(status) {
+  return STALE_BACKLOG_STATUS_TERMS.test(clean(status));
 }
 
 function makePacket(backlogItem, risk, effectivity, freshEvidence) {
@@ -304,7 +312,10 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
   const preflightGate = freshEvidence?.swarmPreflight?.status === "fail"
     ? freshEvidence.swarmPreflight.summary?.recommendation || "Fix failed swarm lane preflight before delegating this packet."
     : "";
-  const humanGate = [approvalGate, preflightGate].filter(Boolean).join(" / ");
+  const staleBacklogGate = staleBacklogStatus(backlogItem.status)
+    ? "Backlog status suggests this work is already merged, prepared, completed, or superseded; refresh or retire the item before execution."
+    : "";
+  const humanGate = [approvalGate, preflightGate, staleBacklogGate].filter(Boolean).join(" / ");
   return {
     packetId: `ops-wp-${stableHash(packetKey)}`,
     title,
@@ -320,6 +331,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
         path: backlogItem.sourcePath,
         id: backlogItem.id,
         status: backlogItem.status,
+        staleBacklogStatus: Boolean(staleBacklogGate),
         acceptanceCriteria,
       },
       risk
@@ -426,6 +438,58 @@ function comparePackets(left, right) {
   return left.priorityRank - right.priorityRank
     || packetReadinessRank(left) - packetReadinessRank(right)
     || left.title.localeCompare(right.title);
+}
+
+function comparableBranch(value) {
+  return clean(value).replace(/\b(codex|ops|main|origin|wave\d+)\b/gi, " ");
+}
+
+function phraseOverlapScore(left, right) {
+  const leftText = clean(left).toLowerCase();
+  const rightText = clean(right).toLowerCase();
+  const phrases = ["pr stack", "host drift", "incident bundle", "backup evidence", "work packet", "packet outcome", "effectivity audit"];
+  return phrases.some((phrase) => leftText.includes(phrase) && rightText.includes(phrase)) ? 50 : 0;
+}
+
+function packetPrOverlap(packet, pr) {
+  const packetBranch = plainSuggestion(packet.suggestedBranchName);
+  const prBranch = plainSuggestion(pr.headRefName);
+  if (packetBranch && prBranch && packetBranch.toLowerCase() === prBranch.toLowerCase()) return 100;
+  const packetText = `${packet.title} ${packet.suggestedPrTitle} ${packetBranch}`;
+  const prText = `${pr.title} ${prBranch}`;
+  const titleScore = Math.max(
+    overlapScore(packet.title, pr.title),
+    overlapScore(packet.suggestedPrTitle, pr.title),
+    phraseOverlapScore(packetText, prText),
+  );
+  const branchScore = overlapScore(comparableBranch(packetBranch), comparableBranch(prBranch));
+  return Math.max(titleScore >= 2 ? titleScore : 0, branchScore >= 3 ? branchScore : 0);
+}
+
+function matchingInFlightPr(packet, openPullRequests) {
+  return (Array.isArray(openPullRequests) ? openPullRequests : [])
+    .map((pr) => ({ pr, score: packetPrOverlap(packet, pr) }))
+    .filter((entry) => entry.score >= 2)
+    .sort((left, right) => right.score - left.score || left.pr.number - right.pr.number)[0]?.pr || null;
+}
+
+function summarizeInFlightSuppressions(packets, prStackAudit) {
+  const openPullRequests = prStackAudit?.summary?.openPullRequests || [];
+  return (Array.isArray(packets) ? packets : [])
+    .map((packet) => {
+      const pr = matchingInFlightPr(packet, openPullRequests);
+      if (!pr) return null;
+      return {
+        packetId: clean(packet.packetId),
+        title: clean(packet.title),
+        reason: "open_pr_overlap",
+        prNumber: Number(pr.number) || 0,
+        prTitle: clean(pr.title),
+        headRefName: clean(pr.headRefName),
+        url: clean(pr.url),
+      };
+    })
+    .filter(Boolean);
 }
 
 function summarizeNextExecutablePacket(packets) {
@@ -581,6 +645,7 @@ function freshSourceSignals(freshEvidence) {
     freshEvidence.toolingFindings,
     freshEvidence.swarmPreflight,
     freshEvidence.hostDriftManifest,
+    freshEvidence.prStackAudit,
   ]
     .filter((source) => source && !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status))
     .flatMap(sourceSignalsForFreshSource);
@@ -635,6 +700,7 @@ function signalClassForSource(source) {
     }
     if ((source.summary?.dirtyPaths || 0) > 0) return "evidence_gap";
   }
+  if (source.source === "fresh-pr-stack-audit" && (source.summary?.open || 0) > 0) return "inflight_pr";
   return "fresh";
 }
 
@@ -723,6 +789,28 @@ function outcomeHealthFromSummary(summary) {
   };
 }
 
+function summarizeOutcomeSuppressions(packets, outcomeSummary) {
+  const latest = Array.isArray(outcomeSummary?.latestByPacket) ? outcomeSummary.latestByPacket : [];
+  const terminalByPacket = new Map(
+    latest
+      .filter((entry) => ["resolved", "superseded"].includes(clean(entry.outcome)))
+      .map((entry) => [clean(entry.packetId), entry]),
+  );
+  return packets
+    .filter((packet) => terminalByPacket.has(clean(packet.packetId)))
+    .map((packet) => {
+      const outcome = terminalByPacket.get(clean(packet.packetId));
+      return {
+        packetId: clean(packet.packetId),
+        title: clean(packet.title),
+        reason: "latest outcome is terminal",
+        outcome: clean(outcome.outcome),
+        recordedAt: clean(outcome.recordedAt),
+        notes: clean(outcome.notes),
+      };
+    });
+}
+
 function freshness(generatedAt, options = {}) {
   const maxAgeHours = Number(options.maxAgeHours ?? 24);
   const now = options.now || nowIso();
@@ -788,6 +876,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
   const toolingFindings = inputs.toolingFindings || null;
   const swarmPreflight = inputs.swarmPreflight || null;
   const hostDriftManifest = inputs.hostDriftManifest || null;
+  const prStackAudit = inputs.prStackAudit || null;
   const unavailable = (source, path, status = "missing", summary = {}) => ({
     source,
     path,
@@ -989,6 +1078,38 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
           hostDriftManifest?.status || "missing",
           hostDriftManifest?.parseError ? { parseError: hostDriftManifest.parseError } : {},
         ),
+    prStackAudit: prStackAudit && prStackAudit.status !== "invalid_json"
+      ? applyFreshness({
+          source: "fresh-pr-stack-audit",
+          path: inputs.prStackAuditPath || "output/ops/pr-stack/pr-stack-audit-latest.json",
+          status: clean(prStackAudit.status) || "unknown",
+          generatedAt: clean(prStackAudit.generatedAt),
+          summary: {
+            open: prStackAudit.summary?.open ?? null,
+            recentlyMerged: prStackAudit.summary?.recentlyMerged ?? null,
+            mergeReady: prStackAudit.summary?.mergeReady ?? null,
+            mergeBlocked: prStackAudit.summary?.mergeBlocked ?? null,
+            openPullRequests: Array.isArray(prStackAudit.repos)
+              ? prStackAudit.repos.flatMap((repo) => Array.isArray(repo.openPullRequests)
+                  ? repo.openPullRequests.map((pr) => ({
+                      repoId: clean(pr.repoId || repo.id),
+                      number: Number(pr.number) || 0,
+                      title: clean(pr.title),
+                      url: clean(pr.url),
+                      headRefName: clean(pr.headRefName),
+                      baseRefName: clean(pr.baseRefName),
+                      isDraft: Boolean(pr.isDraft),
+                    }))
+                  : []).slice(0, 20)
+              : [],
+          },
+        }, options)
+      : unavailable(
+          "fresh-pr-stack-audit",
+          inputs.prStackAuditPath || "output/ops/pr-stack/pr-stack-audit-latest.json",
+          prStackAudit?.status || "missing",
+          prStackAudit?.parseError ? { parseError: prStackAudit.parseError } : { open: null, recentlyMerged: null, mergeReady: null, mergeBlocked: null, openPullRequests: [] },
+        ),
   };
 }
 
@@ -1013,17 +1134,27 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
     freshEvidence.toolingFindings,
     freshEvidence.swarmPreflight,
     freshEvidence.hostDriftManifest,
+    freshEvidence.prStackAudit,
   ];
   const freshSources = freshEvidenceSources.filter((source) => !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status));
   const staleSources = freshEvidenceSources.filter((source) => ["invalid_timestamp", "stale"].includes(source.status));
   const backlogPackets = backlog
     .filter((item) => priorityRank(item.priority) <= 2)
     .map((item) => makePacket(item, matchingRisk(item, risks), effectivity, freshEvidence));
-  const packets = [
+  const candidatePackets = [
     ...backlogPackets,
     ...toolingFindingPackets(inputs.toolingFindings, freshEvidence),
   ]
-    .sort(comparePackets)
+    .sort(comparePackets);
+  const inFlightPrSuppressions = summarizeInFlightSuppressions(candidatePackets, freshEvidence.prStackAudit);
+  const outcomeSummary = inputs.outcomeSummary || buildOutcomeSummary(Array.isArray(inputs.outcomes) ? inputs.outcomes : []);
+  const outcomeSuppressions = summarizeOutcomeSuppressions(candidatePackets, outcomeSummary);
+  const suppressedPacketIds = new Set([
+    ...inFlightPrSuppressions.map((entry) => entry.packetId),
+    ...outcomeSuppressions.map((entry) => entry.packetId),
+  ]);
+  const packets = candidatePackets
+    .filter((packet) => !suppressedPacketIds.has(packet.packetId))
     .slice(0, Number(options.maxPackets || 8));
   const normalized = normalizePacketsSourceSignals(packets);
   const sourceSignalAudit = auditSourceSignals(normalized.packets, normalized.duplicateSignals);
@@ -1044,6 +1175,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       toolingFindings: freshEvidence.toolingFindings.path,
       swarmPreflight: freshEvidence.swarmPreflight.path,
       hostDriftManifest: freshEvidence.hostDriftManifest.path,
+      prStackAudit: freshEvidence.prStackAudit.path,
     },
     constraints: {
       readOnlyFirst: true,
@@ -1071,6 +1203,12 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       effectivityEvidenceLanes: freshEvidence.adminAudit.summary.effectivityEvidenceLanes ?? null,
       effectivityApprovalRequiredLanes: freshEvidence.adminAudit.summary.approvalRequiredEvidenceLanes ?? null,
       effectivityHighSeverityLanes: freshEvidence.adminAudit.summary.highSeverityEvidenceLanes ?? null,
+      prStackStatus: freshEvidence.prStackAudit.status,
+      prStackOpen: freshEvidence.prStackAudit.summary.open ?? null,
+      prStackMergeReady: freshEvidence.prStackAudit.summary.mergeReady ?? null,
+      prStackMergeBlocked: freshEvidence.prStackAudit.summary.mergeBlocked ?? null,
+      inFlightPrSuppressedPackets: inFlightPrSuppressions.length,
+      outcomeSuppressedPackets: outcomeSuppressions.length,
       swarmPreflightStatus: freshEvidence.swarmPreflight.status,
       swarmPreflightOutsideScope: freshEvidence.swarmPreflight.summary.outsideScope ?? null,
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,
@@ -1081,10 +1219,15 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       hostDriftDoNotTouchSecurityReview: freshEvidence.hostDriftManifest.summary.doNotTouchSecurityReview ?? null,
       hostDriftAllowlistStatus: freshEvidence.hostDriftManifest.summary.allowlistStatus ?? "",
       hostDriftExpiredAllowlistMatches: freshEvidence.hostDriftManifest.summary.expiredAllowlistMatches ?? null,
+      staleBacklogPackets: normalized.packets.filter((packet) =>
+        packet.sourceSignals?.some((signal) => signal.source === "backlog" && signal.staleBacklogStatus),
+      ).length,
     },
     freshEvidence,
     nextExecutablePacket: summarizeNextExecutablePacket(normalized.packets),
     sourceSignalAudit,
+    inFlightPrSuppressions,
+    outcomeSuppressions,
     packets: normalized.packets,
   };
 }
@@ -1105,6 +1248,7 @@ function parseArgs(argv) {
     toolingFindings: DEFAULT_TOOLING_FINDINGS,
     swarmPreflight: DEFAULT_SWARM_PREFLIGHT,
     hostDriftManifest: DEFAULT_HOST_DRIFT_MANIFEST,
+    prStackAudit: DEFAULT_PR_STACK_AUDIT,
     maxAgeHours: 24,
     maxPackets: 8,
     recordOutcome: "",
@@ -1150,6 +1294,7 @@ function parseArgs(argv) {
       "--tooling-findings": "toolingFindings",
       "--swarm-preflight": "swarmPreflight",
       "--host-drift-manifest": "hostDriftManifest",
+      "--pr-stack-audit": "prStackAudit",
       "--record-outcome": "recordOutcome",
       "--outcome": "outcome",
       "--used-by": "usedBy",
@@ -1160,7 +1305,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(stringOptions)) {
       const value = read(flag);
       if (value !== null) {
-        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "toolInstallRecommendations" || key === "toolingFindings" || key === "swarmPreflight" || key === "hostDriftManifest"
+        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "toolInstallRecommendations" || key === "toolingFindings" || key === "swarmPreflight" || key === "hostDriftManifest" || key === "prStackAudit"
           ? resolve(REPO_ROOT, value)
           : value;
         matched = true;
@@ -1207,6 +1352,7 @@ function printUsage() {
       "  --tooling-findings <path> Default: output/ops/tooling-quality/tooling-findings-latest.json.",
       "  --swarm-preflight <path> Default: output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json.",
       "  --host-drift-manifest <path> Default: output/ops/host-drift/host-drift-manifest-latest.json.",
+      "  --pr-stack-audit <path> Default: output/ops/pr-stack/pr-stack-audit-latest.json.",
       "  --max-age-hours <n>     Warn when fresh-input artifacts are older than this. Default: 24.",
       "  --max-packets <n>       Default: 8.",
       "  --record-outcome <id>   Append an outcome ledger entry.",
@@ -1264,6 +1410,9 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
     return outcomeReport;
   }
 
+  const outcomes = readJsonl(options.outcomes);
+  const outcomeSummary = buildOutcomeSummary(outcomes);
+  const outcomeHealth = outcomeHealthFromSummary(outcomeSummary);
   const packet = buildOpsWorkPacket(
     {
       riskMarkdown: readTextIfExists(DEFAULT_RISK_DOC),
@@ -1276,6 +1425,9 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       toolingFindings: readJsonIfExists(options.toolingFindings),
       swarmPreflight: readJsonIfExists(options.swarmPreflight),
       hostDriftManifest: readJsonIfExists(options.hostDriftManifest),
+      prStackAudit: readJsonIfExists(options.prStackAudit),
+      outcomes,
+      outcomeSummary,
       adminAuditPath: toRepoRelative(options.adminAudit),
       sliceLedgerPath: toRepoRelative(options.sliceLedger),
       toolInventoryPath: toRepoRelative(options.toolInventory),
@@ -1283,6 +1435,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       toolingFindingsPath: toRepoRelative(options.toolingFindings),
       swarmPreflightPath: toRepoRelative(options.swarmPreflight),
       hostDriftManifestPath: toRepoRelative(options.hostDriftManifest),
+      prStackAuditPath: toRepoRelative(options.prStackAudit),
     },
     {
       runId: options.runId,
@@ -1290,9 +1443,6 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       maxAgeHours: options.maxAgeHours,
     },
   );
-  const outcomes = readJsonl(options.outcomes);
-  const outcomeSummary = buildOutcomeSummary(outcomes);
-  const outcomeHealth = outcomeHealthFromSummary(outcomeSummary);
   const report = {
     schema: "studiobrain-ops-work-packet-report.v1",
     generatedAt: packet.generatedAt,

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -201,6 +202,43 @@ function referencedArtifactErrors(artifact) {
   };
 }
 
+function readPath(value, path) {
+  const parts = clean(path).split(".").filter(Boolean);
+  let cursor = value;
+  for (const part of parts) {
+    if (!cursor || typeof cursor !== "object" || !Object.hasOwn(cursor, part)) return "";
+    cursor = cursor[part];
+  }
+  return clean(cursor);
+}
+
+function headsMatch(artifactHead, currentHead) {
+  const artifact = clean(artifactHead);
+  const current = clean(currentHead);
+  if (!artifact || !current) return true;
+  return artifact === current || artifact.startsWith(current) || current.startsWith(artifact);
+}
+
+function currentGitHead(options = {}) {
+  if (Object.hasOwn(options, "currentGitHead")) return clean(options.currentGitHead);
+  try {
+    return clean(execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
+  } catch {
+    return "";
+  }
+}
+
+function gitHeadWarning(artifact, definition, options = {}) {
+  const gitHeadField = clean(definition.gitHeadField);
+  if (!gitHeadField) return { gitHeadField: "", artifactGitHead: "", currentGitHead: "", warnings: [] };
+  const artifactGitHead = readPath(artifact, gitHeadField);
+  const current = currentGitHead(options);
+  const warnings = artifactGitHead && current && !headsMatch(artifactGitHead, current)
+    ? [`artifact git head is stale: ${gitHeadField}=${artifactGitHead}, current=${current}`]
+    : [];
+  return { gitHeadField, artifactGitHead, currentGitHead: current, warnings };
+}
+
 function validateArtifact(definition, options = {}) {
   const artifactPath = resolve(REPO_ROOT, definition.artifact);
   const schemaPath = resolve(REPO_ROOT, definition.schema);
@@ -215,6 +253,7 @@ function validateArtifact(definition, options = {}) {
     safeWriteRoot: clean(definition.safeWriteRoot),
     consumers: Array.isArray(definition.consumers) ? definition.consumers.map(clean).filter(Boolean) : [],
     requiredFor: Array.isArray(definition.requiredFor) ? definition.requiredFor.map(clean).filter(Boolean) : [],
+    gitHeadField: clean(definition.gitHeadField),
     status: "missing",
     errors: [],
     warnings: [],
@@ -233,8 +272,9 @@ function validateArtifact(definition, options = {}) {
     const errors = validateJsonSchema(artifact, schema);
     const freshness = generatedAtWarning(artifact, { ...options, maxAgeHours });
     const referenced = referencedArtifactErrors(artifact);
+    const gitHead = gitHeadWarning(artifact, definition, options);
     const allErrors = [...errors, ...referenced.errors];
-    const warnings = freshness.warnings;
+    const warnings = [...freshness.warnings, ...gitHead.warnings];
     return {
       ...check,
       status: allErrors.length ? "fail" : warnings.length ? "warn" : "pass",
@@ -244,6 +284,9 @@ function validateArtifact(definition, options = {}) {
       ageHours: freshness.ageHours,
       maxAgeHours,
       referencedArtifact: referenced.referencedArtifact,
+      gitHeadField: gitHead.gitHeadField,
+      artifactGitHead: gitHead.artifactGitHead,
+      currentGitHead: gitHead.currentGitHead,
     };
   } catch (error) {
     return {
@@ -257,7 +300,8 @@ function validateArtifact(definition, options = {}) {
 
 function buildReport(options = {}) {
   const generatedAt = nowIso();
-  const checks = options.artifacts.map((artifact) => validateArtifact(artifact, { maxAgeHours: options.maxAgeHours, now: options.now || generatedAt }));
+  const currentHead = currentGitHead(options);
+  const checks = options.artifacts.map((artifact) => validateArtifact(artifact, { maxAgeHours: options.maxAgeHours, now: options.now || generatedAt, currentGitHead: currentHead }));
   const failed = checks.filter((check) => check.status === "fail").length;
   const missing = checks.filter((check) => check.status === "missing").length;
   const warned = checks.filter((check) => check.status === "warn").length;

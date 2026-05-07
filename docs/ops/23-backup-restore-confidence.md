@@ -21,6 +21,32 @@ Known evidence at this snapshot:
 - Prior ops handoff evidence recorded `sudo_unavailable` as the blocker for
   deeper privileged host evidence.
 
+Current read-only host evidence from 2026-05-07 20:19 UTC:
+
+- `scripts/ops/backup_evidence.sh` was run on `studiobrain` from
+  `/home/wuff/monsoonfire-portal`.
+- Root-owned metadata exists at `/var/backups/studio-brain/latest-metadata.json`
+  with `metadata_generated_at: 2026-05-07T03:45:01.738705+00:00`.
+- The app backup manifest exists and reports Postgres, Redis, and MinIO checks
+  as passing, but its freshness status is stale at about 1567 minutes old
+  against a 1440 minute threshold.
+- `studiobrain_postgres`, `studiobrain_redis`, and `studiobrain_minio` were
+  running and Docker-reported healthy. PostgreSQL `pg_dump` and `pg_restore`
+  were available at version 16.13, and MinIO live health passed.
+- Dedicated backup artifact directories were missing for PostgreSQL dumps,
+  Redis artifacts, and MinIO artifacts under `/var/backups/studio-brain/`.
+- The newest restore drill summary found was
+  `/home/wuff/monsoonfire-portal/output/backups/2026-02-23T07-39-51-116Z/restore-drill-summary.json`,
+  which is stale by the 30 day threshold.
+- Local Windows lane evidence remains tool-limited: `make` and Docker are not
+  installed locally, so host evidence should be captured over SSH or from a
+  Docker-capable host lane.
+
+Conservative current rollup: yellow/orange. Runtime dependencies are healthy
+and root-owned config metadata is current, but restore confidence remains
+degraded until PostgreSQL/Redis/MinIO artifact coverage and a current
+disposable-target restore drill are proven.
+
 ## Slice 16: Backup Confidence Score Semantics
 
 The score is a communication aid, not proof that a restore will succeed. Treat

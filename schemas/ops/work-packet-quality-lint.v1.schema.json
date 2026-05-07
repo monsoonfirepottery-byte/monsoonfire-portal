@@ -21,7 +21,7 @@
     },
     "summary": {
       "type": "object",
-      "required": ["packets", "readyPackets", "approvalGatedPackets", "findings", "warnings", "failures", "sourceSignalAuditStatus"],
+      "required": ["packets", "readyPackets", "approvalGatedPackets", "findings", "warnings", "failures", "staleBacklogPackets", "missingBacklogStatusPackets", "sourceSignalAuditStatus"],
       "properties": {
         "packets": { "type": "number", "minimum": 0 },
         "readyPackets": { "type": "number", "minimum": 0 },
@@ -29,6 +29,8 @@
         "findings": { "type": "number", "minimum": 0 },
         "warnings": { "type": "number", "minimum": 0 },
         "failures": { "type": "number", "minimum": 0 },
+        "staleBacklogPackets": { "type": "number", "minimum": 0 },
+        "missingBacklogStatusPackets": { "type": "number", "minimum": 0 },
         "sourceSignalAuditStatus": { "type": "string" }
       },
       "additionalProperties": false

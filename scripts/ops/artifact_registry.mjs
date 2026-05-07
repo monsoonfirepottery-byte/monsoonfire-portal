@@ -72,8 +72,15 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/work_packet_quality_lint.mjs --json --write",
     producerStep: "work-packet-quality",
     safeWriteRoot: "output/ops/swarm",
-    consumers: ["pr-readiness-packet", "operator-handoff"],
+    consumers: ["stale-backlog-packet-report", "pr-readiness-packet", "operator-handoff"],
     requiredFor: ["work-packet-quality"],
+  },
+  "stale-backlog-packet-report": {
+    producerCommand: "node scripts/ops/stale_backlog_packet_report.mjs --json --write",
+    producerStep: "stale-backlog-packets",
+    safeWriteRoot: "output/ops/swarm",
+    consumers: ["pr-readiness-packet", "operator-handoff", "backlog-refresh"],
+    requiredFor: ["backlog-retirement-steering"],
   },
   "packet-outcome-report": {
     producerCommand: "node scripts/ops/packet_outcome_report.mjs --json --write",
@@ -100,8 +107,8 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/pr_stack_audit.mjs --json --write",
     producerStep: "pr-stack-audit",
     safeWriteRoot: "output/ops/pr-stack",
-    consumers: ["operator-handoff", "merge-planning"],
-    requiredFor: ["stack-discipline"],
+    consumers: ["operator-handoff", "merge-planning", "ops-work-packet"],
+    requiredFor: ["stack-discipline", "in-flight-work-suppression"],
   },
   "pr-readiness-packet": {
     producerCommand: "node scripts/ops/pr_readiness_packet.mjs --json --write",
@@ -109,6 +116,20 @@ const PRODUCER_METADATA = {
     safeWriteRoot: "output/ops/pr-readiness",
     consumers: ["pr-body", "review-handoff"],
     requiredFor: ["reviewable-prs"],
+  },
+  "post-merge-verification-packet": {
+    producerCommand: "node scripts/ops/post_merge_verification_packet.mjs --json --write",
+    producerStep: "post-merge-verification",
+    safeWriteRoot: "output/ops/post-merge",
+    consumers: ["pr-readiness-packet", "operator-handoff", "post-merge-issue"],
+    requiredFor: ["post-merge-verification"],
+  },
+  "incident-bundle-v2-summary": {
+    producerCommand: "INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_POST_DEPLOY=0 INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/registry-smoke",
+    producerStep: "incident-bundle-v2",
+    safeWriteRoot: "output/ops/incidents-v2",
+    consumers: ["pr-readiness-packet", "incident-response"],
+    requiredFor: ["pre-incident-mutation-evidence"],
   },
   "artifact-schema-validation": {
     producerCommand: "node scripts/ops/validate_ops_artifacts.mjs --json --write",
@@ -181,6 +202,12 @@ const OPS_ARTIFACT_REGISTRY = [
     freshnessTier: "loop",
   },
   {
+    id: "stale-backlog-packet-report",
+    artifact: "output/ops/swarm/stale-backlog-packets-latest.json",
+    schema: "schemas/ops/stale-backlog-packet-report.v1.schema.json",
+    freshnessTier: "loop",
+  },
+  {
     id: "packet-outcome-report",
     artifact: "output/ops/swarm/packet-outcome-report-latest.json",
     schema: "schemas/ops/packet-outcome-report.v1.schema.json",
@@ -208,6 +235,20 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "pr-readiness-packet",
     artifact: "output/ops/pr-readiness/pr-readiness-latest.json",
     schema: "schemas/ops/pr-readiness-packet.v1.schema.json",
+    freshnessTier: "loop",
+    gitHeadField: "scope.head",
+  },
+  {
+    id: "post-merge-verification-packet",
+    artifact: "output/ops/post-merge/post-merge-verification-latest.json",
+    schema: "schemas/ops/post-merge-verification-packet.v1.schema.json",
+    freshnessTier: "loop",
+    gitHeadField: "scope.head",
+  },
+  {
+    id: "incident-bundle-v2-summary",
+    artifact: "output/ops/incidents-v2/incident-bundle-v2-latest.json",
+    schema: "schemas/ops/incident-bundle-v2-summary.v1.schema.json",
     freshnessTier: "loop",
   },
   {

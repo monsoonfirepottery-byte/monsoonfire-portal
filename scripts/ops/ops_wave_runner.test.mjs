@@ -100,6 +100,16 @@ test("buildWavePlan refreshes host drift manifest before work packets", () => {
   assert.ok(plan[hostDriftIndex].commandText.includes("host_drift_manifest.mjs"));
 });
 
+test("buildWavePlan refreshes PR stack audit before work packets", () => {
+  const plan = buildWavePlan();
+  const prStackIndex = plan.findIndex((step) => step.id === "pr-stack-audit");
+  const workPacketIndex = plan.findIndex((step) => step.id === "work-packet");
+
+  assert.ok(prStackIndex >= 0);
+  assert.ok(workPacketIndex > prStackIndex);
+  assert.ok(plan[prStackIndex].commandText.includes("pr_stack_audit.mjs"));
+});
+
 test("checkRegistryConsistency verifies planned artifacts against the shared registry", () => {
   const plan = buildWavePlan();
   const consistency = checkRegistryConsistency(plan);
@@ -107,7 +117,7 @@ test("checkRegistryConsistency verifies planned artifacts against the shared reg
   assert.equal(consistency.status, "pass");
   assert.equal(consistency.restrictedPlan, false);
   assert.equal(consistency.unregisteredExpectedArtifacts.length, 0);
-  assert.ok(consistency.externalRegistryArtifacts.some((entry) => entry.id === "pr-stack-audit"));
+  assert.equal(consistency.externalRegistryArtifacts.some((entry) => entry.id === "pr-stack-audit"), false);
 });
 
 test("checkRegistryConsistency warns on unregistered planned artifacts", () => {

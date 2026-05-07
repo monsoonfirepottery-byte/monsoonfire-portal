@@ -33,7 +33,7 @@ test("defaultArtifactRegistry expands freshness tiers into maxAgeHours", () => {
 
 test("defaultArtifactRegistry includes producer and consumer metadata", () => {
   for (const entry of defaultArtifactRegistry()) {
-    assert.match(entry.producerCommand, /^node scripts\//);
+    assert.match(entry.producerCommand, /^(node scripts\/|bash scripts\/|[A-Z0-9_]+=.*bash scripts\/)/);
     assert.match(entry.producerStep, /^[a-z0-9-]+$/);
     assert.match(entry.safeWriteRoot, /^output\/ops\//);
     assert.equal(Array.isArray(entry.consumers), true);
@@ -41,4 +41,11 @@ test("defaultArtifactRegistry includes producer and consumer metadata", () => {
     assert.equal(Array.isArray(entry.requiredFor), true);
     assert.ok(entry.requiredFor.length > 0);
   }
+});
+
+test("defaultArtifactRegistry marks PR readiness as git-head scoped", () => {
+  const registry = defaultArtifactRegistry();
+  const readiness = registry.find((entry) => entry.id === "pr-readiness-packet");
+
+  assert.equal(readiness.gitHeadField, "scope.head");
 });

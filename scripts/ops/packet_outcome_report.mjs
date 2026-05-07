@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -99,19 +99,21 @@ function parseArgs(argv = process.argv.slice(2)) {
   return options;
 }
 
-function readJsonl(path) {
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8")
+function readOutcomeLedger(path) {
+  if (!existsSync(path)) return { outcomes: [], metadata: { exists: false, bytes: 0, lineCount: 0 } };
+  const text = readFileSync(path, "utf8");
+  const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
+    .filter(Boolean);
+  const outcomes = lines.map((line, index) => {
       try {
         return JSON.parse(line);
       } catch (error) {
         throw new Error(`Invalid outcome JSONL at ${repoRelative(path)}:${index + 1}: ${error.message}`);
       }
     });
+  return { outcomes, metadata: { exists: true, bytes: statSync(path).size, lineCount: lines.length } };
 }
 
 function readJsonIfExists(path) {
@@ -143,6 +145,35 @@ function annotateOutcomes(outcomes, currentPacketIds) {
   }));
 }
 
+function outcomeLedgerRetention(outcomes, metadata = {}, summary = {}) {
+  const recorded = outcomes.map((entry) => clean(entry.recordedAt)).filter(Boolean).sort();
+  const totalOutcomes = outcomes.length;
+  const latestOutcomePackets = Array.isArray(summary.latestByPacket) ? summary.latestByPacket.length : 0;
+  const historicalEntries = Math.max(0, totalOutcomes - latestOutcomePackets);
+  const bytes = Number.isFinite(metadata.bytes) ? metadata.bytes : null;
+  const lineCount = Number.isFinite(metadata.lineCount) ? metadata.lineCount : totalOutcomes;
+  const sizeWarn = bytes !== null && bytes > 1024 * 1024;
+  const historyWarn = historicalEntries > 200;
+  const lineWarn = lineCount > 1000;
+  const compactionRecommended = sizeWarn || historyWarn || lineWarn;
+  return {
+    status: compactionRecommended ? "warn" : "pass",
+    exists: Boolean(metadata.exists) || totalOutcomes > 0,
+    bytes,
+    lineCount,
+    totalOutcomes,
+    uniquePackets: summary.uniquePackets ?? 0,
+    latestOutcomePackets,
+    historicalEntries,
+    oldestRecordedAt: recorded[0] || "",
+    newestRecordedAt: recorded[recorded.length - 1] || "",
+    compactionRecommended,
+    guidance: compactionRecommended
+      ? "Keep the append-only ledger for audit history, but consider a reviewed compaction/export that preserves latest outcomes plus archived history."
+      : "No retention action is currently suggested; keep recording outcomes against current packet ids.",
+  };
+}
+
 function buildPacketOutcomeReport(inputs = {}, options = {}) {
   const generatedAt = clean(options.generatedAt) || nowIso();
   const runId = clean(options.runId) || `packet-outcome-${generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
@@ -152,6 +183,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
   const currentPacketIds = new Set(currentPackets.map((packet) => packet.packetId));
   const summary = buildOutcomeSummary(outcomes);
   const health = outcomeHealthFromSummary(summary);
+  const ledgerRetention = outcomeLedgerRetention(outcomes, inputs.outcomeMetadata || inputs.metadata || {}, summary);
   const latestByPacket = annotateOutcomes(summary.latestByPacket || [], currentPacketIds);
   const orphanedLatestOutcomes = latestByPacket.filter((entry) => entry.packetId && !entry.inCurrentWindow);
   const latestOutcomePackets = latestByPacket.length;
@@ -166,7 +198,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
   };
   const status = workPacket?.status === "invalid_json"
     ? "fail"
-    : health.status === "warn" || packetChurn.status === "warn"
+    : health.status === "warn" || packetChurn.status === "warn" || ledgerRetention.status === "warn"
       ? "warn"
       : "pass";
 
@@ -190,6 +222,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
     },
     outcomeSummary: summary,
     outcomeHealth: health,
+    ledgerRetention,
     packetChurn,
     latestByPacket,
     orphanedLatestOutcomes,
@@ -201,7 +234,10 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
 }
 
 function renderMarkdown(report) {
-  const warnings = report.outcomeHealth.warnings.map((warning) => `- ${warning}`).join("\n") || "- None.";
+  const warnings = [
+    ...report.outcomeHealth.warnings,
+    report.ledgerRetention.status === "warn" ? "outcome ledger retention review is recommended" : "",
+  ].filter(Boolean).map((warning) => `- ${warning}`).join("\n") || "- None.";
   const topPackets = report.currentPacketWindow.topPackets
     .map((packet) => `- ${packet.priority || "P?"} ${packet.status || "unknown"} ${packet.packetId}: ${packet.title}`)
     .join("\n") || "- None.";
@@ -224,6 +260,17 @@ Run ID: ${report.runId}
 - Score: ${report.outcomeHealth.score}
 - Packet churn: ${report.packetChurn.status} (${report.packetChurn.orphanedLatestOutcomes}/${report.packetChurn.latestOutcomePackets} latest outcomes orphaned)
 - Reset recommended: ${report.packetChurn.resetRecommended}
+
+## Ledger Retention
+
+- Exists: ${report.ledgerRetention.exists}
+- Bytes: ${report.ledgerRetention.bytes ?? ""}
+- Lines: ${report.ledgerRetention.lineCount}
+- Historical entries: ${report.ledgerRetention.historicalEntries}
+- Oldest recorded: ${report.ledgerRetention.oldestRecordedAt || "unknown"}
+- Newest recorded: ${report.ledgerRetention.newestRecordedAt || "unknown"}
+- Compaction recommended: ${report.ledgerRetention.compactionRecommended}
+- Guidance: ${report.ledgerRetention.guidance}
 
 ### Warnings
 
@@ -269,7 +316,7 @@ function main(argv = process.argv.slice(2)) {
     const options = parseArgs(argv);
     const report = buildPacketOutcomeReport(
       {
-        outcomes: readJsonl(options.outcomes),
+        ...readOutcomeLedger(options.outcomes),
         workPacket: readJsonIfExists(options.workPacket),
       },
       {

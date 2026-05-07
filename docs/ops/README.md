@@ -52,6 +52,7 @@ make ops-app-review
 make ops-dependency-review
 make ops-idle-worker-effectivity
 make ops-effectivity-report
+make ops-proactive-radar
 make ops-privileged-evidence-read
 make ops-privileged-evidence-capture-smoke
 make ops-work-packet
@@ -60,6 +61,12 @@ make ops-incident-bundle-v2
 make ops-ci-validate
 make ops-post-deploy-verify
 make ops-report
+```
+
+Windows-friendly npm equivalent:
+
+```bash
+npm run ops:proactive:radar
 ```
 
 The scripts under `scripts/ops/` avoid environment dumps and degrade when Docker, PostgreSQL, or host-only tools are unavailable.
@@ -75,6 +82,7 @@ bash scripts/ops/import_pressure.sh --target /home/wuff/imports
 bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports
 bash scripts/ops/npm_audit_inventory.sh
 bash scripts/ops/effectivity_report.sh
+node scripts/ops/proactive_issue_radar.mjs --write
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 node scripts/studiobrain-ops-work-packet.mjs --write
@@ -82,6 +90,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 ```
 
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.
+
+`ops-proactive-radar` is a read-only loop-start command. It looks for merge-blocked PRs, stacked draft PR pressure, stale ops artifacts, dirty worktree risk, and hidden ops scripts without printing secrets or mutating the host.
 
 ## Approval Boundaries
 

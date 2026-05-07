@@ -87,8 +87,14 @@ test("buildStaleBacklogPacketReport emits refresh and status-evidence candidates
   assert.equal(report.summary.readyPackets, 1);
   assert.equal(report.candidates[0].suggestedAction, "refresh_or_retire_backlog_item");
   assert.equal(report.candidates[1].suggestedAction, "add_backlog_status_evidence");
+  assert.match(report.candidates[0].issuePacket.title, /Refresh or retire stale backlog item/);
+  assert.match(report.candidates[1].issuePacket.title, /Add backlog status evidence/);
+  assert.ok(report.candidates[0].issuePacket.acceptanceCriteria.length >= 3);
+  assert.ok(report.candidates[0].issuePacket.safetyNotes.some((note) => note.includes("Documentation-only")));
   assert.match(renderMarkdown(report), /Stale Backlog Packet Report/);
   assert.match(renderMarkdown(report), /ops-wp-stale/);
+  assert.match(renderMarkdown(report), /Issue-Ready Action Packets/);
+  assert.match(renderMarkdown(report), /## Acceptance Criteria/);
 });
 
 test("buildStaleBacklogPacketReport warns on missing sources", () => {

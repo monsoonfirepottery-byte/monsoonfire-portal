@@ -40,7 +40,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["packetId", "title", "priority", "status", "backlogStatus", "staleBacklogStatus", "missingBacklogStatus", "humanGate", "safeNextStep", "suggestedAction", "suggestedBranchName", "suggestedPrTitle"],
+        "required": ["packetId", "title", "priority", "status", "backlogStatus", "staleBacklogStatus", "missingBacklogStatus", "humanGate", "safeNextStep", "suggestedAction", "suggestedBranchName", "suggestedPrTitle", "issuePacket"],
         "properties": {
           "packetId": { "type": "string" },
           "title": { "type": "string" },
@@ -53,7 +53,22 @@
           "safeNextStep": { "type": "string" },
           "suggestedAction": { "enum": ["refresh_or_retire_backlog_item", "add_backlog_status_evidence"] },
           "suggestedBranchName": { "type": "string" },
-          "suggestedPrTitle": { "type": "string" }
+          "suggestedPrTitle": { "type": "string" },
+          "issuePacket": {
+            "type": "object",
+            "required": ["title", "problem", "evidence", "risk", "proposedFix", "acceptanceCriteria", "safetyNotes", "labels"],
+            "properties": {
+              "title": { "type": "string" },
+              "problem": { "type": "string" },
+              "evidence": { "type": "array", "items": { "type": "string" } },
+              "risk": { "type": "string" },
+              "proposedFix": { "type": "string" },
+              "acceptanceCriteria": { "type": "array", "items": { "type": "string" } },
+              "safetyNotes": { "type": "array", "items": { "type": "string" } },
+              "labels": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       }

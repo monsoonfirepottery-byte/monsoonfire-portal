@@ -130,6 +130,51 @@ function classifyCandidate(packet, qualityFindingsByPacket) {
   };
 }
 
+function buildIssuePacket(candidate) {
+  const action = clean(candidate.suggestedAction);
+  const stale = action === "refresh_or_retire_backlog_item";
+  const titlePrefix = stale ? "Refresh or retire stale backlog item" : "Add backlog status evidence";
+  const problem = stale
+    ? "The work-packet generator found a backlog item whose status looks completed, merged, shipped, superseded, or otherwise stale, so it is no longer safe to treat as ready work."
+    : "The work-packet generator found a backlog-derived packet without explicit status evidence, so it cannot distinguish ready work from stale or approval-gated work.";
+  const proposedFix = stale
+    ? "Review the source backlog item, then either refresh it with current evidence and a concrete next step or move it to a retired/waiting section with a short reason."
+    : "Add explicit backlog status evidence, including whether the item is ready, approval-gated, waiting on a human, already handled, or blocked by privileged/destructive action.";
+  const acceptanceCriteria = stale
+    ? [
+        "The backlog item has a current status with date or evidence reference.",
+        "If still needed, the item has a concrete safe next step and owner.",
+        "If no longer needed, the item is marked retired/superseded/waiting with rollback or re-open notes.",
+        "A regenerated stale backlog packet report no longer classifies this item as stale without explanation.",
+      ]
+    : [
+        "The backlog item includes explicit status evidence.",
+        "Approval-gated or destructive follow-up remains clearly separated from executable work.",
+        "A regenerated work-packet quality report no longer flags the item as missing backlog status.",
+      ];
+  const safetyNotes = [
+    "Documentation-only backlog triage; do not run cleanup, restarts, package updates, firewall changes, schema changes, or destructive commands.",
+    "If the backlog item refers to production-impacting work, leave the action approval-gated and only update the evidence/status text.",
+    "Rollback is a git revert of the backlog documentation patch.",
+  ];
+  return {
+    title: `[ops] ${titlePrefix}: ${candidate.title}`,
+    problem,
+    evidence: [
+      `packetId=${candidate.packetId}`,
+      `packetStatus=${candidate.status}`,
+      `backlogStatus=${candidate.backlogStatus || "missing"}`,
+      `staleBacklogStatus=${candidate.staleBacklogStatus}`,
+      `missingBacklogStatus=${candidate.missingBacklogStatus}`,
+    ],
+    risk: "Stale or underspecified backlog rows can send agents into no-op loops, duplicate merged work, or blur approval-gated operations into ready work.",
+    proposedFix,
+    acceptanceCriteria,
+    safetyNotes,
+    labels: ["ops", "docs", "reliability", "cleanup"],
+  };
+}
+
 function buildStaleBacklogPacketReport(inputs = {}, options = {}) {
   const generatedAt = clean(options.generatedAt) || nowIso();
   const runId = clean(options.runId) || `stale-backlog-packets-${generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
@@ -151,7 +196,11 @@ function buildStaleBacklogPacketReport(inputs = {}, options = {}) {
   }
   const candidates = packets
     .map((packet) => classifyCandidate(packet, qualityFindingsByPacket))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((candidate) => ({
+      ...candidate,
+      issuePacket: buildIssuePacket(candidate),
+    }));
   const sourceWarnings = [];
   if (workPacket.status === "missing") sourceWarnings.push("work-packet artifact is missing");
   if (workPacket.status === "invalid_json") sourceWarnings.push(`work-packet artifact is invalid JSON: ${clean(workPacket.parseError)}`);
@@ -189,6 +238,34 @@ function renderMarkdown(report) {
     `| ${candidate.priority || ""} | ${candidate.status || ""} | ${candidate.packetId} | ${candidate.title} | ${candidate.staleBacklogStatus} | ${candidate.missingBacklogStatus} | ${candidate.suggestedAction} |`,
   ).join("\n") || "|  |  | _none_ |  |  |  |  |";
   const warnings = report.sourceWarnings.map((warning) => `- ${warning}`).join("\n") || "- None.";
+  const issuePackets = report.candidates.map((candidate) => {
+    const issue = candidate.issuePacket || buildIssuePacket(candidate);
+    const evidence = issue.evidence.map((item) => `- ${item}`).join("\n");
+    const acceptance = issue.acceptanceCriteria.map((item) => `- ${item}`).join("\n");
+    const safety = issue.safetyNotes.map((item) => `- ${item}`).join("\n");
+    return `### ${issue.title}
+
+## Problem
+${issue.problem}
+
+## Evidence
+${evidence}
+
+## Risk
+${issue.risk}
+
+## Proposed Fix
+${issue.proposedFix}
+
+## Acceptance Criteria
+${acceptance}
+
+## Safety Notes
+${safety}
+
+Labels: ${issue.labels.join(", ")}
+`;
+  }).join("\n") || "_No issue packets needed._";
   return `# Stale Backlog Packet Report
 
 Generated: ${report.generatedAt}
@@ -214,6 +291,10 @@ ${rows}
 ## Source Warnings
 
 ${warnings}
+
+## Issue-Ready Action Packets
+
+${issuePackets}
 `;
 }
 

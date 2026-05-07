@@ -1,0 +1,70 @@
+---
+name: Ops Tooling Quality Report
+
+"on":
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/ops/**"
+      - "scripts/*.sh"
+      - "scripts/codexr"
+      - "android/gradlew"
+      - "docs/ops/**"
+      - "schemas/ops/**"
+      - "Makefile"
+      - ".gitattributes"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ops-tooling-quality.yml"
+  pull_request:
+    paths:
+      - "scripts/ops/**"
+      - "scripts/*.sh"
+      - "scripts/codexr"
+      - "android/gradlew"
+      - "docs/ops/**"
+      - "schemas/ops/**"
+      - "Makefile"
+      - ".gitattributes"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ops-tooling-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Generate tooling quality report
+        run: npm run ops:tooling-quality:report:portable
+
+      - name: Generate installed tool inventory
+        run: npm run ops:tooling-quality:inventory
+
+      - name: Upload ops tooling artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-tooling-quality
+          path: |
+            output/ops/tooling-quality/**
+            output/ops/effectivity/installed-tool-inventory-latest.json
+          if-no-files-found: warn

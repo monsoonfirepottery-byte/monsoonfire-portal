@@ -63,9 +63,15 @@
       "type": "object",
       "required": [
         "total",
+        "uniquePackets",
         "helpful",
+        "helpfulRate",
         "staleOrMisleading",
+        "staleOrMisleadingRate",
         "blocked",
+        "staleOrMisleadingPackets",
+        "blockedPackets",
+        "latestByPacket",
         "byOutcome",
         "recent",
         "latest"
@@ -79,13 +85,34 @@
           "type": "integer",
           "minimum": 0
         },
+        "uniquePackets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "helpfulRate": {
+          "type": "number",
+          "minimum": 0
+        },
         "staleOrMisleading": {
           "type": "integer",
+          "minimum": 0
+        },
+        "staleOrMisleadingRate": {
+          "type": "number",
           "minimum": 0
         },
         "blocked": {
           "type": "integer",
           "minimum": 0
+        },
+        "staleOrMisleadingPackets": {
+          "type": "array"
+        },
+        "blockedPackets": {
+          "type": "array"
+        },
+        "latestByPacket": {
+          "type": "array"
         },
         "byOutcome": {
           "type": "object"

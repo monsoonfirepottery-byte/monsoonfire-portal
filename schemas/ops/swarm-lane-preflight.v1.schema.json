@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/swarm-lane-preflight.v1.schema.json",
+  "title": "Studio Brain Swarm Lane Preflight v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "readOnly",
+    "lane",
+    "branch",
+    "base",
+    "integrationBase",
+    "allowed",
+    "changedFiles",
+    "dirtyFiles",
+    "outsideScope",
+    "problems",
+    "warnings",
+    "recommendation"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-swarm-lane-preflight.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "lane": { "type": "string" },
+    "branch": { "type": "string" },
+    "base": { "type": "string" },
+    "integrationBase": {
+      "type": "object",
+      "required": ["ref", "differs", "files", "error"],
+      "properties": {
+        "ref": { "type": "string" },
+        "differs": { "type": "boolean" },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "allowed": { "type": "array", "items": { "type": "string" } },
+    "changedFiles": { "type": "array", "items": { "type": "string" } },
+    "dirtyFiles": { "type": "array", "items": { "type": "string" } },
+    "outsideScope": { "type": "array", "items": { "type": "string" } },
+    "problems": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "recommendation": { "type": "string" }
+  },
+  "additionalProperties": false
+}

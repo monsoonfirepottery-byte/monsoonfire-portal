@@ -29,6 +29,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/ops-work-packet.v1.schema.json",
   },
   {
+    id: "swarm-lane-preflight",
+    artifact: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
+    schema: "schemas/ops/swarm-lane-preflight.v1.schema.json",
+  },
+  {
     id: "artifact-schema-validation",
     artifact: "output/ops/artifact-validation/artifact-schema-validation-latest.json",
     schema: "schemas/ops/artifact-schema-validation.v1.schema.json",

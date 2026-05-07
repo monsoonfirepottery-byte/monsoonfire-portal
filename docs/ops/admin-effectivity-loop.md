@@ -107,7 +107,7 @@ Work packets should steer from fresh evidence only. Missing, invalid, stale, or 
 Tooling findings export is included in work-packet evidence as `fresh-tooling-findings`; issue-ready validator tasks are tagged `signalClass=issue_ready_task` so agents can pick them up without scraping terminal output.
 When the export contains task entries, the work-packet generator also emits them as normal `ops-wp-*` packets with scoped write sets and validator-focused acceptance criteria.
 Packets are sorted by priority first, then readiness, so a ready P1 diagnostic/tooling task is visible before an approval-gated P1 cleanup task.
-PR readiness packets include the latest wave runner packet window and top work-packet titles so reviewers can tell whether a PR was prepared from the default three-packet view or a widened slice window. When `--packet-id <ops-wp-id>` is supplied, the readiness packet also includes a ready-to-run `--record-outcome` command for the work-packet outcome ledger. Work-packet reports summarize that ledger by outcome, useful/stale rates, latest outcome by packet, and stale/misleading or blocked packet IDs.
+PR readiness packets include the latest wave runner packet window and top work-packet titles so reviewers can tell whether a PR was prepared from the default three-packet view or a widened slice window. When `--packet-id <ops-wp-id>` is supplied, the readiness packet also includes a ready-to-run `--record-outcome` command for the work-packet outcome ledger. Work-packet reports summarize that ledger by outcome, useful/stale rates, latest outcome by packet, and stale/misleading or blocked packet IDs. The admin effectivity audit reads the latest work-packet report and carries that outcome health into the five-slice audit, warning when mature packet outcomes show stale/misleading or blocked work.
 
 ## Scoring
 
@@ -116,8 +116,9 @@ PR readiness packets include the latest wave runner packet window and top work-p
 - `noOpRate`: share of rows with no changed file, artifact, command evidence, or an explicit no-op status.
 - `blockedLaneClarity`: blocked slices with a fixed blocker class and safe next step.
 - `toolInventoryFreshness`: 1 when the inventory command can run and both the inventory and its upstream tooling-quality source are fresh enough for the selected slice window; 0 when unavailable, stale, invalid, or older than the audited slices.
+- `workPacketOutcomeHealth`: 1 when the latest work-packet report is fresh and its outcome ledger is clean or still warming up; 0.4 when mature outcomes show too many stale/misleading packets; 0.6 when blocked packet outcomes need triage.
 
-The audit fails if required tools are missing or a slice failed. It warns when no slices are recorded, no-op rate is high, or the underlying ops effectivity report cannot run.
+The audit fails if required tools are missing or a slice failed. It warns when no slices are recorded, no-op rate is high, the underlying ops effectivity report cannot run, or the latest work-packet outcome health is degraded.
 
 ## Blocker Classes
 

@@ -2,3 +2,6 @@ wiki/00_source_index/source-map.md text eol=lf
 wiki/00_source_index/extracted-facts.jsonl text eol=lf
 wiki/50_contradictions/*.md text eol=lf
 wiki/70_agent_context_packs/*.md text eol=lf
+*.sh text eol=lf
+scripts/codexr text eol=lf
+android/gradlew text eol=lf

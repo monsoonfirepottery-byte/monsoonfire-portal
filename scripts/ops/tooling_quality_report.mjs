@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -164,8 +164,33 @@ function limited(files, limit) {
   return limit > 0 ? files.slice(0, limit) : files;
 }
 
+function hasShellShebang(content) {
+  const firstLine = Buffer.from(content).toString("utf8", 0, 256).split(/\r?\n/, 1)[0] || "";
+  return /^#!.*\b(?:bash|sh)\b/.test(firstLine);
+}
+
+function isShellScriptFile(file, content = null) {
+  if (file.endsWith(".sh")) return true;
+  if (basename(file).includes(".")) return false;
+  if (!content) return false;
+  return hasShellShebang(content);
+}
+
+function shellFiles(limit) {
+  const candidates = gitFiles((file) => file.endsWith(".sh") || !basename(file).includes("."));
+  const files = candidates.filter((file) => {
+    if (file.endsWith(".sh")) return true;
+    try {
+      return isShellScriptFile(file, readFileSync(resolve(REPO_ROOT, file)));
+    } catch {
+      return false;
+    }
+  });
+  return limited(files, limit);
+}
+
 function shellLfReport(options) {
-  const files = limited(gitFiles((file) => file.endsWith(".sh")), options.limit);
+  const files = shellFiles(options.limit);
   const offenders = [];
   for (const file of files) {
     const content = readFileSync(resolve(REPO_ROOT, file));
@@ -181,7 +206,7 @@ function shellLfReport(options) {
 }
 
 function shellcheckReport(options) {
-  const files = limited(gitFiles((file) => file.endsWith(".sh")), options.limit);
+  const files = shellFiles(options.limit);
   if (files.length === 0) return { id: "shellcheck", status: "pass", tool: "shellcheck", checkedFiles: 0, findings: [] };
   let command = "";
   let args = [];
@@ -406,6 +431,7 @@ function main(argv = process.argv.slice(2)) {
 
 export {
   buildReport,
+  isShellScriptFile,
   main,
   parseArgs,
   parseShellCheckJson,

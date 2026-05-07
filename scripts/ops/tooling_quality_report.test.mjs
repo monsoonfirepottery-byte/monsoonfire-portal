@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 
 import {
   buildReport,
+  isShellScriptFile,
   parseArgs,
   parseShellCheckJson,
   statusFromSections
@@ -65,6 +66,14 @@ test("parseShellCheckJson extracts structured findings", () => {
       message: "Literal carriage return."
     }
   ]);
+});
+
+test("isShellScriptFile includes extensionless shell shebangs", () => {
+  assert.equal(isShellScriptFile("scripts/example.sh"), true);
+  assert.equal(isShellScriptFile("scripts/codexr", Buffer.from("#!/usr/bin/env bash\nset -e\n")), true);
+  assert.equal(isShellScriptFile("android/gradlew", Buffer.from("#!/bin/sh\n")), true);
+  assert.equal(isShellScriptFile("scripts/not-shell", Buffer.from("#!/usr/bin/env node\n")), false);
+  assert.equal(isShellScriptFile("scripts/not-shell.txt", Buffer.from("#!/bin/sh\n")), false);
 });
 
 test("statusFromSections preserves worst section state", () => {

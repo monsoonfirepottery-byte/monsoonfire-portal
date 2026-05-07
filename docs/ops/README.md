@@ -55,6 +55,7 @@ make ops-effectivity-report
 make ops-privileged-evidence-read
 make ops-privileged-evidence-capture-smoke
 make ops-work-packet
+make ops-pr-stack-audit
 make ops-incident-bundle
 make ops-incident-bundle-v2
 make ops-ci-validate
@@ -78,6 +79,7 @@ bash scripts/ops/effectivity_report.sh
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 node scripts/studiobrain-ops-work-packet.mjs --write
+node scripts/ops/pr_stack_audit.mjs --write
 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 ```
 
@@ -106,4 +108,4 @@ The first ops-doctor stack is merged into `main`, including post-merge verificat
 - Node/npm audit inventory is available with `make ops-dependency-review`; findings are evidence for small dependency PRs, not approval to run `npm audit fix`.
 - network/SSH/PostgreSQL hardening is approval-gated.
 
-Use `02-kanban-backlog.md` for the next issue-ready slices, and `13-ops-pr-stack-audit.md` for current open PR triage.
+Use `02-kanban-backlog.md` for the next issue-ready slices, and `make ops-pr-stack-audit` plus `13-ops-pr-stack-audit.md` for current open PR triage.

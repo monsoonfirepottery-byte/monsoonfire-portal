@@ -4,6 +4,100 @@ const FRESHNESS_TIERS = {
   weekly: { maxAgeHours: 168, description: "slower-moving evidence that is still useful across a weekly ops review" },
 };
 
+const PRODUCER_METADATA = {
+  "tooling-quality-report": {
+    producerCommand: "node scripts/ops/tooling_quality_report.mjs --mode all --json --write",
+    producerStep: "tooling-quality",
+    safeWriteRoot: "output/ops/tooling-quality",
+    consumers: ["tooling-findings-export", "installed-tool-inventory", "tool-install-recommendations", "admin-effectivity-audit"],
+    requiredFor: ["ops-ci-validate", "five-slice-audit"],
+  },
+  "tooling-findings-export": {
+    producerCommand: "node scripts/ops/tooling_findings_export.mjs --json --write",
+    producerStep: "tooling-findings",
+    safeWriteRoot: "output/ops/tooling-quality",
+    consumers: ["ops-work-packet", "admin-effectivity-audit"],
+    requiredFor: ["work-packet-generation"],
+  },
+  "installed-tool-inventory": {
+    producerCommand: "node scripts/ops/installed_tool_inventory.mjs --json --write",
+    producerStep: "tool-inventory",
+    safeWriteRoot: "output/ops/effectivity",
+    consumers: ["tool-install-recommendations", "admin-effectivity-audit"],
+    requiredFor: ["tooling-quality-audit"],
+  },
+  "tool-install-recommendations": {
+    producerCommand: "node scripts/ops/tool_install_recommendations.mjs --json --write",
+    producerStep: "tool-install-recommendations",
+    safeWriteRoot: "output/ops/effectivity",
+    consumers: ["ops-work-packet", "pr-readiness-packet"],
+    requiredFor: ["safe-tooling-recommendations"],
+  },
+  "admin-effectivity-audit": {
+    producerCommand: "node scripts/ops/admin_effectivity_audit.mjs --json --write --last 5 --slice-run-id admin-infra-20260507",
+    producerStep: "admin-effectivity-audit",
+    safeWriteRoot: "output/ops/effectivity",
+    consumers: ["ops-work-packet", "mission-control-admin-import"],
+    requiredFor: ["five-slice-audit"],
+  },
+  "slice-ledger-summary": {
+    producerCommand: "node scripts/ops/slice_ledger.mjs --summary --last 5 --run-id admin-infra-20260507 --json",
+    producerStep: "slice-ledger",
+    safeWriteRoot: "output/ops/effectivity",
+    consumers: ["admin-effectivity-audit", "pr-readiness-packet"],
+    requiredFor: ["slice-accountability"],
+  },
+  "ops-work-packet": {
+    producerCommand: "node scripts/studiobrain-ops-work-packet.mjs --json --write --max-packets 8",
+    producerStep: "work-packet",
+    safeWriteRoot: "output/ops/swarm",
+    consumers: ["packet-outcome-report", "pr-readiness-packet"],
+    requiredFor: ["next-slice-selection"],
+  },
+  "packet-outcome-report": {
+    producerCommand: "node scripts/ops/packet_outcome_report.mjs --json --write",
+    producerStep: "packet-outcome-report",
+    safeWriteRoot: "output/ops/swarm",
+    consumers: ["admin-effectivity-audit", "pr-readiness-packet"],
+    requiredFor: ["work-packet-effectivity"],
+  },
+  "swarm-lane-preflight": {
+    producerCommand: "node scripts/ops/swarm_lane_preflight.mjs --lane tooling --base origin/main --json --write",
+    producerStep: "swarm-preflight",
+    safeWriteRoot: "output/ops/swarm-lane-preflight",
+    consumers: ["ops-work-packet", "ops-wave-runner"],
+    requiredFor: ["safe-swarm-delegation"],
+  },
+  "ops-wave-runner": {
+    producerCommand: "node scripts/ops/ops_wave_runner.mjs --json --write",
+    producerStep: "ops-wave-runner",
+    safeWriteRoot: "output/ops/waves",
+    consumers: ["pr-readiness-packet"],
+    requiredFor: ["ordered-artifact-refresh"],
+  },
+  "pr-stack-audit": {
+    producerCommand: "node scripts/ops/pr_stack_audit.mjs --json --write",
+    producerStep: "pr-stack-audit",
+    safeWriteRoot: "output/ops/pr-stack",
+    consumers: ["operator-handoff", "merge-planning"],
+    requiredFor: ["stack-discipline"],
+  },
+  "pr-readiness-packet": {
+    producerCommand: "node scripts/ops/pr_readiness_packet.mjs --json --write",
+    producerStep: "pr-readiness",
+    safeWriteRoot: "output/ops/pr-readiness",
+    consumers: ["pr-body", "review-handoff"],
+    requiredFor: ["reviewable-prs"],
+  },
+  "artifact-schema-validation": {
+    producerCommand: "node scripts/ops/validate_ops_artifacts.mjs --json --write",
+    producerStep: "artifact-validation",
+    safeWriteRoot: "output/ops/artifact-validation",
+    consumers: ["ops-wave-runner", "pr-readiness-packet"],
+    requiredFor: ["artifact-contract-health"],
+  },
+};
+
 const OPS_ARTIFACT_REGISTRY = [
   {
     id: "tooling-quality-report",
@@ -88,8 +182,9 @@ const OPS_ARTIFACT_REGISTRY = [
 function defaultArtifactRegistry() {
   return OPS_ARTIFACT_REGISTRY.map((entry) => ({
     ...entry,
+    ...(PRODUCER_METADATA[entry.id] || {}),
     maxAgeHours: FRESHNESS_TIERS[entry.freshnessTier]?.maxAgeHours ?? FRESHNESS_TIERS.daily.maxAgeHours,
   }));
 }
 
-export { defaultArtifactRegistry, FRESHNESS_TIERS, OPS_ARTIFACT_REGISTRY };
+export { defaultArtifactRegistry, FRESHNESS_TIERS, OPS_ARTIFACT_REGISTRY, PRODUCER_METADATA };

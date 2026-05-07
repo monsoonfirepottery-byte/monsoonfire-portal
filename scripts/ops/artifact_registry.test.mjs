@@ -30,3 +30,15 @@ test("defaultArtifactRegistry expands freshness tiers into maxAgeHours", () => {
   assert.equal(loopEntry.maxAgeHours, FRESHNESS_TIERS.loop.maxAgeHours);
   assert.equal(dailyEntry.maxAgeHours, FRESHNESS_TIERS.daily.maxAgeHours);
 });
+
+test("defaultArtifactRegistry includes producer and consumer metadata", () => {
+  for (const entry of defaultArtifactRegistry()) {
+    assert.match(entry.producerCommand, /^node scripts\//);
+    assert.match(entry.producerStep, /^[a-z0-9-]+$/);
+    assert.match(entry.safeWriteRoot, /^output\/ops\//);
+    assert.equal(Array.isArray(entry.consumers), true);
+    assert.ok(entry.consumers.length > 0);
+    assert.equal(Array.isArray(entry.requiredFor), true);
+    assert.ok(entry.requiredFor.length > 0);
+  }
+});

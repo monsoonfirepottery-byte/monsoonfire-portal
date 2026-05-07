@@ -115,6 +115,43 @@ test("buildReport applies per-artifact freshness thresholds before global defaul
   }
 });
 
+test("buildReport carries registry producer and consumer metadata into checks", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-artifact-metadata-"));
+  try {
+    const schemaPath = join(dir, "schema.json");
+    const artifactPath = join(dir, "artifact.json");
+    writeFileSync(schemaPath, JSON.stringify({
+      type: "object",
+      required: ["schema"],
+      properties: { schema: { const: "artifact.v1" } },
+      additionalProperties: false,
+    }));
+    writeFileSync(artifactPath, JSON.stringify({ schema: "artifact.v1" }));
+
+    const report = buildReport({
+      artifacts: [{
+        id: "metadata",
+        artifact: artifactPath,
+        schema: schemaPath,
+        freshnessTier: "loop",
+        producerCommand: "node scripts/ops/example.mjs --json --write",
+        producerStep: "example",
+        safeWriteRoot: "output/ops/example",
+        consumers: ["consumer-a"],
+        requiredFor: ["review"],
+      }]
+    });
+
+    assert.equal(report.status, "pass");
+    assert.equal(report.checks[0].producerStep, "example");
+    assert.equal(report.checks[0].safeWriteRoot, "output/ops/example");
+    assert.deepEqual(report.checks[0].consumers, ["consumer-a"]);
+    assert.deepEqual(report.checks[0].requiredFor, ["review"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("buildReport fails when latest artifactPath points nowhere", () => {
   const dir = mkdtempSync(join(tmpdir(), "ops-artifact-latest-"));
   try {

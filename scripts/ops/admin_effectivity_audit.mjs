@@ -287,8 +287,118 @@ function summarizeEffectivityReport(report) {
     paths: {
       json: report?.paths?.json ? repoRelative(resolve(REPO_ROOT, report.paths.json)) : "",
       markdown: report?.paths?.markdown ? repoRelative(resolve(REPO_ROOT, report.paths.markdown)) : ""
-    }
+    },
+    evidenceLanes: classifyEffectivityLanes(report)
   };
+}
+
+function evidenceLane(id, status, title, evidence, safeNextStep, options = {}) {
+  return {
+    id,
+    status,
+    severity: clean(options.severity) || "medium",
+    approvalRequired: Boolean(options.approvalRequired),
+    title,
+    evidence: evidence.filter(Boolean).map(clean),
+    safeNextStep,
+  };
+}
+
+function classifyEffectivityLanes(report) {
+  const sections = report?.sections || {};
+  const sources = report?.sources || {};
+  const lanes = [];
+  const liveStatus = clean(sections.live?.status).toLowerCase();
+  const idleStatus = clean(sections.idleWorker?.status).toLowerCase();
+  const harnessStatus = clean(sections.harness?.status).toLowerCase();
+  const backupStatus = clean(sections.backup?.status).toLowerCase();
+  const failedUnitsStatus = clean(sections.failedUnits?.status).toLowerCase();
+  const privilegedStatus = clean(sections.privilegedEvidence?.status).toLowerCase();
+
+  if (liveStatus && liveStatus !== "pass") {
+    lanes.push(evidenceLane(
+      "live_health",
+      liveStatus,
+      "Live health is not fully passing",
+      [
+        `studioBrain=${clean(sections.live?.studioBrain?.commandStatus || sections.live?.studioBrain?.ok)}`,
+        `missionControl=${clean(sections.live?.missionControl?.commandStatus || sections.live?.missionControl?.ok)}`,
+      ],
+      "Refresh read-only Studio Brain and Mission Control health probes before treating this as an outage.",
+      { severity: liveStatus === "fail" ? "high" : "medium" },
+    ));
+  }
+
+  if (idleStatus && idleStatus !== "pass" && idleStatus !== "passed") {
+    lanes.push(evidenceLane(
+      "idle_worker_effectivity",
+      idleStatus,
+      "Idle-worker effectivity evidence is degraded or unavailable",
+      [
+        sources.idleAudit?.exists === false ? "idle-worker latest artifact missing" : "",
+        sources.idleAudit?.stale ? "idle-worker latest artifact stale" : "",
+        `commandStatus=${clean(sections.idleWorker?.commandStatus)}`,
+      ],
+      "Run the read-only idle-worker effectivity audit and attach the latest artifact before diagnosing worker behavior.",
+      { severity: idleStatus === "fail" ? "high" : "medium" },
+    ));
+  }
+
+  if (harnessStatus && harnessStatus !== "pass") {
+    lanes.push(evidenceLane(
+      "mission_harness_coverage",
+      harnessStatus,
+      "Mission Control harness coverage needs attention",
+      [
+        `missingTickets=${sections.harness?.missingTickets ?? ""}`,
+        `openTickets=${sections.harness?.openTickets ?? ""}`,
+        `commandStatus=${clean(sections.harness?.commandStatus)}`,
+      ],
+      "Run the read-only Mission Control harness learner and convert missing coverage into issue-ready tasks.",
+      { severity: "medium" },
+    ));
+  }
+
+  if (backupStatus && backupStatus !== "pass") {
+    lanes.push(evidenceLane(
+      "backup_confidence",
+      backupStatus,
+      "Backup confidence has unresolved evidence gaps",
+      Array.isArray(sections.backup?.gaps) ? sections.backup.gaps : [],
+      "Refresh backup evidence and classify each missing family before proposing any backup or restore change.",
+      { severity: "high" },
+    ));
+  }
+
+  if (failedUnitsStatus && failedUnitsStatus !== "pass") {
+    lanes.push(evidenceLane(
+      "failed_units",
+      failedUnitsStatus,
+      "Failed-unit classifier found units needing triage",
+      [
+        `trueFailedUnits=${sections.failedUnits?.trueFailedUnits ?? ""}`,
+        `commandStatus=${clean(sections.failedUnits?.commandStatus)}`,
+      ],
+      "Inspect the failed-unit classifier output and collect approval-gated journals for true failed services.",
+      { severity: (Number(sections.failedUnits?.trueFailedUnits) || 0) > 0 ? "high" : "medium" },
+    ));
+  }
+
+  if (privilegedStatus && privilegedStatus !== "pass") {
+    lanes.push(evidenceLane(
+      "privileged_evidence",
+      privilegedStatus,
+      "Privileged host evidence is blocked by approval or sudo availability",
+      [
+        clean(sections.privilegedEvidence?.note),
+        sections.privilegedEvidence?.summaryPresent === false ? "privileged evidence summary missing" : "",
+      ],
+      clean(sections.privilegedEvidence?.safeNextStep) || "Use the approval-gated privileged capture path; do not grant broad agent sudo.",
+      { approvalRequired: true, severity: "medium" },
+    ));
+  }
+
+  return lanes;
 }
 
 function buildAudit(options) {
@@ -399,6 +509,15 @@ function markdown(audit) {
     lines.push(`- ${row.sliceId}: ${row.status} - ${row.title}`);
   }
   if (audit.sections.sliceLedger.rows.length === 0) lines.push("- No slice rows recorded yet.");
+  lines.push("", "## Effectivity Evidence Lanes", "");
+  const evidenceLanes = audit.sections.effectivityReport?.report?.evidenceLanes || [];
+  if (evidenceLanes.length === 0) {
+    lines.push("- No degraded effectivity lanes reported.");
+  } else {
+    for (const lane of evidenceLanes) {
+      lines.push(`- ${lane.id}: ${lane.status}, severity=${lane.severity}, approvalRequired=${lane.approvalRequired} - ${lane.safeNextStep}`);
+    }
+  }
   lines.push("", "## Mission Control Import", "", `- External ID: ${audit.missionControl.externalId}`, `- Task title: ${audit.missionControl.taskTitle}`, "");
   return `${lines.join("\n")}\n`;
 }
@@ -432,6 +551,7 @@ function main(argv = process.argv.slice(2)) {
 
 export {
   buildAudit,
+  classifyEffectivityLanes,
   buildInstalledToolsFreshness,
   main,
   parseArgs,

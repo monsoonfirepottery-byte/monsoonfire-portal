@@ -11,13 +11,16 @@ test("buildWavePlan keeps dependent ops steps ordered", () => {
   assert.ok(plan[0].commandText.includes("swarm_lane_preflight.mjs"));
 });
 
-test("buildWavePlan runs PR readiness after artifact validation by default", () => {
+test("buildWavePlan runs PR readiness between preflight validation and final validation", () => {
   const plan = buildWavePlan();
+  const preArtifactIndex = plan.findIndex((step) => step.id === "artifact-validation-pre");
   const artifactIndex = plan.findIndex((step) => step.id === "artifact-validation");
   const readinessIndex = plan.findIndex((step) => step.id === "pr-readiness");
 
+  assert.ok(preArtifactIndex >= 0);
   assert.ok(artifactIndex >= 0);
-  assert.ok(readinessIndex > artifactIndex);
+  assert.ok(readinessIndex > preArtifactIndex);
+  assert.ok(artifactIndex > readinessIndex);
   assert.ok(plan[readinessIndex].commandText.includes("pr_readiness_packet.mjs"));
 });
 

@@ -95,7 +95,7 @@ node scripts/ops/ops_wave_runner.mjs --json --write
 node scripts/ops/ops_wave_runner.mjs --dry-run --json --write
 ```
 
-The wave runner executes read-only checks in dependency order: preflight, tooling quality, tool inventory, admin effectivity audit, work packet generation, artifact schema validation, then PR readiness packet generation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
+The wave runner executes read-only checks in dependency order: preflight, tooling quality, tool inventory, admin effectivity audit, work packet generation, preliminary artifact schema validation, PR readiness packet generation, then final artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
 
 Work packets should steer from fresh evidence only. Missing, invalid, stale, or invalid-timestamp latest artifacts stay visible in `freshEvidence`, but they are excluded from packet `sourceSignals`. Tool inventory coverage gaps are kept as `signalClass=coverage_gap` so missing validators remain visible without being treated as actionable defect evidence. Tool-install recommendations are tracked as a separate fresh source and use `signalClass=tool_install_recommendation` only when the recommendation artifact has install-now candidates; approval-required tools remain evidence for planning, not automatic installation.
 

@@ -4,6 +4,9 @@
 }
 
 :18080 {
+    @health path /healthz
+    respond @health "ok" 200
+
     @notlan not remote_ip 192.168.1.0/24 127.0.0.1/8 ::1
     respond @notlan "Forbidden" 403
 
@@ -15,6 +18,9 @@
 }
 
 :18081 {
+    @health path /healthz
+    respond @health "ok" 200
+
     @notlan not remote_ip 192.168.1.0/24 127.0.0.1/8 ::1
     respond @notlan "Forbidden" 403
 

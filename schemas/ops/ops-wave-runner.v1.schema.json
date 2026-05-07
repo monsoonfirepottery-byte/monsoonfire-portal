@@ -57,6 +57,34 @@
         "additionalProperties": false
       }
     },
+    "registryConsistency": {
+      "type": "object",
+      "required": ["status", "restrictedPlan", "registeredArtifacts", "plannedArtifacts", "unregisteredExpectedArtifacts", "managedRegistryArtifactsMissingFromPlan", "externalRegistryArtifacts", "warnings"],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "restrictedPlan": { "type": "boolean" },
+        "registeredArtifacts": { "type": "number", "minimum": 0 },
+        "plannedArtifacts": { "type": "number", "minimum": 0 },
+        "unregisteredExpectedArtifacts": { "type": "array", "items": { "type": "string" } },
+        "managedRegistryArtifactsMissingFromPlan": { "type": "array", "items": { "type": "string" } },
+        "externalRegistryArtifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "artifact", "producerStep", "producerCommand"],
+            "properties": {
+              "id": { "type": "string" },
+              "artifact": { "type": "string" },
+              "producerStep": { "type": "string" },
+              "producerCommand": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
     "resumeCommand": { "type": "string" },
     "nextRecommendedAction": { "type": "string" }
   },

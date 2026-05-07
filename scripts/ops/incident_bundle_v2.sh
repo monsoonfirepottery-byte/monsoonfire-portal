@@ -16,6 +16,7 @@ INCIDENT_INCLUDE_LOGS="${INCIDENT_INCLUDE_LOGS:-0}"
 INCIDENT_INCLUDE_POST_DEPLOY="${INCIDENT_INCLUDE_POST_DEPLOY:-1}"
 INCIDENT_BUNDLE_V2_SMOKE="${INCIDENT_BUNDLE_V2_SMOKE:-0}"
 INCIDENT_WRITE_LATEST="${INCIDENT_WRITE_LATEST:-1}"
+INCIDENT_BUNDLE_CHECK_TIMEOUT_SECONDS="${INCIDENT_BUNDLE_CHECK_TIMEOUT_SECONDS:-45}"
 LATEST_SUMMARY="${REPO_ROOT}/output/ops/incidents-v2/incident-bundle-v2-latest.json"
 SUMMARY_ROWS=()
 
@@ -71,8 +72,15 @@ run_to_file() {
     printf '# %s\n' "${label}"
     printf '# generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '# scope=read_only_redacted_incident_evidence_v2\n\n'
-    "$@" 2>&1
+    if command -v timeout >/dev/null 2>&1 && [ "${INCIDENT_BUNDLE_CHECK_TIMEOUT_SECONDS}" -gt 0 ] 2>/dev/null; then
+      timeout "${INCIDENT_BUNDLE_CHECK_TIMEOUT_SECONDS}s" "$@" 2>&1
+    else
+      "$@" 2>&1
+    fi
     exit_code="$?"
+    if [ "${exit_code}" -eq 124 ]; then
+      printf '\nWARN: check timed out after %s seconds\n' "${INCIDENT_BUNDLE_CHECK_TIMEOUT_SECONDS}"
+    fi
     printf '\n# exit_code=%s\n' "${exit_code}"
   } >"${raw_file}" 2>&1
   sanitize_stream <"${raw_file}" >"${OUT_DIR}/${label}.txt" 2>&1

@@ -59,6 +59,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/ops-wave-runner.v1.schema.json",
   },
   {
+    id: "pr-stack-audit",
+    artifact: "output/ops/pr-stack/pr-stack-audit-latest.json",
+    schema: "schemas/ops/pr-stack-audit.v1.schema.json",
+  },
+  {
     id: "pr-readiness-packet",
     artifact: "output/ops/pr-readiness/pr-readiness-latest.json",
     schema: "schemas/ops/pr-readiness-packet.v1.schema.json",

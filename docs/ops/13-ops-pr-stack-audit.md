@@ -60,6 +60,16 @@ This audit inventories current Studio Brain / ops-adjacent pull requests and sep
 
 ## Evidence Commands
 
+Reusable current audit generator:
+
+```bash
+node scripts/ops/pr_stack_audit.mjs --json --write
+```
+
+The generator writes ignored JSON and Markdown under `output/ops/pr-stack/`, classifies dependency, draft, preview-only, conflicted, behind, ops, and stacked PRs, and records detected base/head stack edges without mutating GitHub state.
+
+Raw commands used by the generator and useful for manual spot checks:
+
 ```bash
 gh pr list --repo monsoonfirepottery-byte/monsoonfire-portal --state open --limit 30 --json number,title,headRefName,isDraft,mergeStateStatus,updatedAt
 gh pr list --repo monsoonfirepottery-byte/studio-brain-mission-control --state open --limit 30 --json number,title,headRefName,isDraft,mergeStateStatus,updatedAt

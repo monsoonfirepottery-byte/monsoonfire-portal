@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/pr-stack-audit.v1.schema.json",
+  "title": "Studio Brain Ops PR Stack Audit",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "readOnly",
+    "purpose",
+    "repos",
+    "stackEdges",
+    "summary",
+    "warnings",
+    "operatorNotes"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-pr-stack-audit.v1" },
+    "generatedAt": { "type": "string" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "purpose": { "type": "string" },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "repo", "collection", "openPullRequests", "recentlyMerged", "summary"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "repo": { "type": "string" },
+          "collection": {
+            "type": "object",
+            "required": ["openStatus", "mergedStatus", "openError", "mergedError"],
+            "properties": {
+              "openStatus": { "type": "string" },
+              "mergedStatus": { "type": "string" },
+              "openError": { "type": "string" },
+              "mergedError": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "openPullRequests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "repoId",
+                "number",
+                "title",
+                "url",
+                "headRefName",
+                "baseRefName",
+                "isDraft",
+                "mergeStateStatus",
+                "updatedAt",
+                "author",
+                "category",
+                "recommendedDisposition"
+              ],
+              "properties": {
+                "repoId": { "type": "string" },
+                "number": { "type": "number" },
+                "title": { "type": "string" },
+                "url": { "type": "string" },
+                "headRefName": { "type": "string" },
+                "baseRefName": { "type": "string" },
+                "isDraft": { "type": "boolean" },
+                "mergeStateStatus": { "type": "string" },
+                "updatedAt": { "type": "string" },
+                "author": { "type": "string" },
+                "category": { "type": "string" },
+                "recommendedDisposition": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "recentlyMerged": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["repoId", "number", "title", "url", "headRefName", "baseRefName", "mergedAt", "mergeCommit", "author"],
+              "properties": {
+                "repoId": { "type": "string" },
+                "number": { "type": "number" },
+                "title": { "type": "string" },
+                "url": { "type": "string" },
+                "headRefName": { "type": "string" },
+                "baseRefName": { "type": "string" },
+                "mergedAt": { "type": "string" },
+                "mergeCommit": { "type": "string" },
+                "author": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "summary": {
+            "type": "object",
+            "required": ["open", "recentlyMerged", "openLimit", "openLimitReached", "categories", "mergeStates"],
+            "properties": {
+              "open": { "type": "number", "minimum": 0 },
+              "recentlyMerged": { "type": "number", "minimum": 0 },
+              "openLimit": { "type": ["number", "null"], "minimum": 0 },
+              "openLimitReached": { "type": "boolean" },
+              "categories": {
+                "type": "object",
+                "additionalProperties": { "type": "number", "minimum": 0 }
+              },
+              "mergeStates": {
+                "type": "object",
+                "additionalProperties": { "type": "number", "minimum": 0 }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "stackEdges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repoId", "basePr", "baseHead", "childPr", "childHead"],
+        "properties": {
+          "repoId": { "type": "string" },
+          "basePr": { "type": "number" },
+          "baseHead": { "type": "string" },
+          "childPr": { "type": "number" },
+          "childHead": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["repos", "open", "recentlyMerged", "categories", "warnings"],
+      "properties": {
+        "repos": { "type": "number", "minimum": 0 },
+        "open": { "type": "number", "minimum": 0 },
+        "recentlyMerged": { "type": "number", "minimum": 0 },
+        "categories": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
+        "warnings": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "operatorNotes": { "type": "array", "items": { "type": "string" } },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" }
+  },
+  "additionalProperties": false
+}

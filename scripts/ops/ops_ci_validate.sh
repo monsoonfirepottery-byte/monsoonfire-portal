@@ -208,6 +208,13 @@ else
   fail "ops_wave_runner dry-run smoke"
 fi
 
+section "Tooling Quality Smoke"
+if node "${REPO_ROOT}/scripts/ops/tooling_quality_report.mjs" --mode all --json --write >"${OUT_DIR}/tooling-quality-report.json"; then
+  pass "tooling_quality_report smoke"
+else
+  fail "tooling_quality_report smoke"
+fi
+
 section "Tool Install Recommendation Smoke"
 if node "${REPO_ROOT}/scripts/ops/installed_tool_inventory.mjs" --json --write >"${OUT_DIR}/installed-tool-inventory.json"; then
   pass "installed_tool_inventory smoke"

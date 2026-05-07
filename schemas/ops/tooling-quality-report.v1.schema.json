@@ -7,7 +7,7 @@
   "properties": {
     "schema": { "const": "studiobrain-ops-tooling-quality-report.v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
-    "mode": { "enum": ["all", "shell-lf", "shellcheck", "powershell", "sqlfluff"] },
+    "mode": { "enum": ["all", "shell-lf", "shellcheck", "powershell", "sqlfluff", "actionlint"] },
     "allowInstall": { "type": "boolean" },
     "status": { "enum": ["pass", "warn", "fail"] },
     "summary": {
@@ -26,7 +26,7 @@
         "type": "object",
         "required": ["id", "status", "tool", "checkedFiles", "findings"],
         "properties": {
-          "id": { "enum": ["shell-lf", "shellcheck", "powershell", "sqlfluff"] },
+          "id": { "enum": ["shell-lf", "shellcheck", "powershell", "sqlfluff", "actionlint"] },
           "status": { "enum": ["pass", "warn", "fail", "skipped"] },
           "tool": { "type": "string" },
           "checkedFiles": { "type": "integer", "minimum": 0 },

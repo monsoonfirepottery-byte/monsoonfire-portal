@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "tooling-quality");
-const MODES = new Set(["all", "shell-lf", "shellcheck", "powershell", "sqlfluff"]);
+const MODES = new Set(["all", "shell-lf", "shellcheck", "powershell", "sqlfluff", "actionlint"]);
 
 function usage() {
   return `Studio Brain ops tooling quality report
@@ -17,7 +17,7 @@ Usage:
   node scripts/ops/tooling_quality_report.mjs [--mode all] [--json] [--write]
 
 Options:
-  --mode <mode>       all, shell-lf, shellcheck, powershell, sqlfluff. Default: all.
+  --mode <mode>       all, shell-lf, shellcheck, powershell, sqlfluff, actionlint. Default: all.
   --json              Print JSON to stdout.
   --write             Write JSON and Markdown artifacts under output/ops/tooling-quality.
   --output-dir <path> Artifact directory.
@@ -322,6 +322,61 @@ function sqlfluffReport(options) {
   };
 }
 
+function parseActionlintOutput(output) {
+  const findings = [];
+  for (const line of clean(output).split(/\r?\n/)) {
+    const match = /^(.+?):(\d+):(\d+):\s+(.+?)(?:\s+\[([^\]]+)])?$/.exec(line.trim());
+    if (!match) continue;
+    findings.push({
+      file: match[1],
+      line: Number(match[2]),
+      column: Number(match[3]),
+      code: match[5] || "actionlint",
+      message: match[4]
+    });
+    if (findings.length >= 200) break;
+  }
+  return findings;
+}
+
+function actionlintReport(options) {
+  const files = limited(gitFiles((file) => /^\.github\/workflows\/.+\.ya?ml$/i.test(file)), options.limit);
+  if (files.length === 0) return { id: "actionlint", status: "pass", tool: "actionlint", checkedFiles: 0, findings: [] };
+  let command = "";
+  let args = [];
+  let tool = "actionlint";
+  if (commandExists("actionlint")) {
+    command = commandExecutable("actionlint");
+    args = files;
+  } else if (options.allowInstall && commandExists("go")) {
+    command = commandExecutable("go");
+    args = ["run", "github.com/rhysd/actionlint/cmd/actionlint@latest", ...files];
+    tool = "go run actionlint";
+  } else {
+    return {
+      id: "actionlint",
+      status: "skipped",
+      tool: "actionlint",
+      checkedFiles: 0,
+      findings: [{ code: "tool_missing", message: "actionlint is not installed; rerun with --allow-install to use go run actionlint when Go is available." }]
+    };
+  }
+  const result = run(command, args, { timeoutMs: 120_000, maxOutput: 40_000 });
+  const findings = parseActionlintOutput(`${result.stdout}\n${result.stderr}`);
+  if (!result.ok && findings.length === 0) {
+    findings.push({ code: "actionlint_failed", message: result.error || `actionlint exited ${result.status} without parseable findings` });
+  }
+  return {
+    id: "actionlint",
+    status: findings.length > 0 ? "warn" : "pass",
+    tool,
+    checkedFiles: files.length,
+    command: result.command,
+    findings,
+    ...(result.ok || findings.length > 0 ? {} : { outputPreview: (result.stdout || result.stderr).slice(0, 12000) })
+  };
+}
+
 function statusFromSections(sections) {
   if (sections.some((section) => section.status === "fail")) return "fail";
   if (sections.some((section) => section.status === "warn" || section.status === "skipped")) return "warn";
@@ -372,6 +427,7 @@ function buildReport(options) {
   if (options.mode === "all" || options.mode === "shellcheck") sections.push(shellcheckReport(options));
   if (options.mode === "all" || options.mode === "powershell") sections.push(powershellSyntaxReport(options));
   if (options.mode === "all" || options.mode === "sqlfluff") sections.push(sqlfluffReport(options));
+  if (options.mode === "all" || options.mode === "actionlint") sections.push(actionlintReport(options));
   const summary = {
     checkedFiles: sections.reduce((sum, section) => sum + section.checkedFiles, 0),
     findings: sections.reduce((sum, section) => sum + section.findings.length, 0),
@@ -408,6 +464,7 @@ export {
   buildReport,
   main,
   parseArgs,
+  parseActionlintOutput,
   parseShellCheckJson,
   statusFromSections
 };

@@ -40,6 +40,11 @@ const STEP_DEFINITIONS = [
     command: [process.execPath, "scripts/ops/validate_ops_artifacts.mjs", "--json", "--write"],
     expectedArtifacts: ["output/ops/artifact-validation/artifact-schema-validation-latest.json"],
   },
+  {
+    id: "pr-readiness",
+    command: [process.execPath, "scripts/ops/pr_readiness_packet.mjs", "--json", "--write"],
+    expectedArtifacts: ["output/ops/pr-readiness/pr-readiness-latest.md"],
+  },
 ];
 
 function clean(value) {
@@ -246,7 +251,7 @@ function runWave(options = {}, runner = defaultRunner) {
       ? "Inspect the failed receipt before running downstream dependent steps."
       : status === "planned"
         ? "Run without --dry-run to refresh ordered ops artifacts."
-        : "Use the latest work packet and artifact validation report for the next safe slice.",
+        : "Use the latest work packet, artifact validation report, and PR readiness packet for the next safe slice.",
   };
 }
 

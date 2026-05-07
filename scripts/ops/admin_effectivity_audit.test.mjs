@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildInstalledToolsFreshness,
   classifyEffectivityLanes,
+  earliestRowIso,
   sourceFreshness
 } from "./admin_effectivity_audit.mjs";
 
@@ -61,6 +62,15 @@ test("buildInstalledToolsFreshness requires both inventory and tooling source fr
 
   assert.equal(fresh.status, "fresh");
   assert.equal(fresh.score, 1);
+});
+
+test("earliestRowIso uses the start of the selected slice window", () => {
+  const timestamp = earliestRowIso([
+    { sliceId: "slice-20260507-059", completedAt: "2026-05-07T15:31:02.238Z" },
+    { sliceId: "slice-20260507-060", completedAt: "2026-05-07T15:36:18.629Z" },
+  ]);
+
+  assert.equal(timestamp, "2026-05-07T15:31:02.238Z");
 });
 
 test("classifyEffectivityLanes turns degraded report sections into approval-aware lanes", () => {

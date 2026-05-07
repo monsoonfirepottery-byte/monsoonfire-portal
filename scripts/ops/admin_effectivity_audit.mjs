@@ -179,9 +179,12 @@ function rowTimestamp(row) {
   return Date.parse(clean(row.completedAt) || clean(row.startedAt)) || 0;
 }
 
-function latestRowIso(rows) {
-  const timestamp = rows.reduce((latest, row) => Math.max(latest, rowTimestamp(row)), 0);
-  return timestamp > 0 ? new Date(timestamp).toISOString() : "";
+function earliestRowIso(rows) {
+  const timestamps = rows
+    .map(rowTimestamp)
+    .filter((timestamp) => timestamp > 0);
+  if (timestamps.length === 0) return "";
+  return new Date(Math.min(...timestamps)).toISOString();
 }
 
 function sliceSequence(row) {
@@ -411,7 +414,7 @@ function buildAudit(options) {
   const effectivityReport = tryEffectivityReport();
   const installedToolsFreshness = buildInstalledToolsFreshness(toolInventory.json, {
     now: generatedAt,
-    minGeneratedAt: latestRowIso(selectedRows),
+    minGeneratedAt: earliestRowIso(selectedRows),
     maxAgeHours: 24
   });
   const toolFreshness = toolInventory.ok ? installedToolsFreshness.score : 0;
@@ -552,6 +555,7 @@ function main(argv = process.argv.slice(2)) {
 export {
   buildAudit,
   classifyEffectivityLanes,
+  earliestRowIso,
   buildInstalledToolsFreshness,
   main,
   parseArgs,

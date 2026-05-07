@@ -72,6 +72,14 @@ bash scripts/ops/ops_ci_validate.sh
 
 Set `OPS_CI_MAX_PACKETS=12` or another positive count when a wider packet window is needed for a swarm wave.
 
+For the post-merge ops-doctor handoff loop, generate a compact verification packet after the validation runner refreshes artifacts:
+
+```bash
+node scripts/ops/post_merge_verification_packet.mjs --json --write
+```
+
+The packet is read-only and combines the durable post-merge handoff doc, artifact schema validation, work-packet quality, stale-backlog status, and PR-stack steering into one attachable evidence summary.
+
 Validate generated ops artifacts against their committed schemas:
 
 ```bash

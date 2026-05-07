@@ -56,10 +56,12 @@ check_file "scripts/ops/installed_tool_inventory.mjs"
 check_file "scripts/ops/tool_install_recommendations.mjs"
 check_file "scripts/studiobrain-ops-work-packet.mjs"
 check_file "scripts/ops/pr_readiness_packet.mjs"
+check_file "scripts/ops/post_merge_verification_packet.mjs"
 check_file "scripts/ops/packet_outcome_report.mjs"
 check_file "scripts/ops/pr_stack_audit.mjs"
 check_file "schemas/ops/incident-bundle-v2-summary.v1.schema.json"
 check_file "schemas/ops/pr-readiness-packet.v1.schema.json"
+check_file "schemas/ops/post-merge-verification-packet.v1.schema.json"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -93,6 +95,7 @@ for script in \
   "scripts/ops/tool_install_recommendations.mjs" \
   "scripts/studiobrain-ops-work-packet.mjs" \
   "scripts/ops/pr_readiness_packet.mjs" \
+  "scripts/ops/post_merge_verification_packet.mjs" \
   "scripts/ops/packet_outcome_report.mjs" \
   "scripts/ops/pr_stack_audit.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
@@ -197,6 +200,12 @@ if node --test "${REPO_ROOT}/scripts/ops/pr_readiness_packet.test.mjs" >"${OUT_D
   pass "node --test scripts/ops/pr_readiness_packet.test.mjs"
 else
   fail "node --test scripts/ops/pr_readiness_packet.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/post_merge_verification_packet.test.mjs" >"${OUT_DIR}/post-merge-verification-packet.test.out" 2>&1; then
+  pass "node --test scripts/ops/post_merge_verification_packet.test.mjs"
+else
+  fail "node --test scripts/ops/post_merge_verification_packet.test.mjs"
 fi
 
 if node --test "${REPO_ROOT}/scripts/ops/packet_outcome_report.test.mjs" >"${OUT_DIR}/packet-outcome-report.test.out" 2>&1; then
@@ -315,6 +324,13 @@ if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OU
   pass "pr_readiness_packet smoke"
 else
   fail "pr_readiness_packet smoke"
+fi
+
+section "Post-Merge Verification Packet Smoke"
+if node "${REPO_ROOT}/scripts/ops/post_merge_verification_packet.mjs" --json --write >"${OUT_DIR}/post-merge-verification-packet.json"; then
+  pass "post_merge_verification_packet smoke"
+else
+  fail "post_merge_verification_packet smoke"
 fi
 
 section "Admin Effectivity Trend Smoke"

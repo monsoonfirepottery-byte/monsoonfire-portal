@@ -117,6 +117,13 @@ const PRODUCER_METADATA = {
     consumers: ["pr-body", "review-handoff"],
     requiredFor: ["reviewable-prs"],
   },
+  "post-merge-verification-packet": {
+    producerCommand: "node scripts/ops/post_merge_verification_packet.mjs --json --write",
+    producerStep: "post-merge-verification",
+    safeWriteRoot: "output/ops/post-merge",
+    consumers: ["operator-handoff", "post-merge-issue"],
+    requiredFor: ["post-merge-verification"],
+  },
   "incident-bundle-v2-summary": {
     producerCommand: "INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_POST_DEPLOY=0 INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/registry-smoke",
     producerStep: "incident-bundle-v2",
@@ -228,6 +235,13 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "pr-readiness-packet",
     artifact: "output/ops/pr-readiness/pr-readiness-latest.json",
     schema: "schemas/ops/pr-readiness-packet.v1.schema.json",
+    freshnessTier: "loop",
+    gitHeadField: "scope.head",
+  },
+  {
+    id: "post-merge-verification-packet",
+    artifact: "output/ops/post-merge/post-merge-verification-latest.json",
+    schema: "schemas/ops/post-merge-verification-packet.v1.schema.json",
     freshnessTier: "loop",
     gitHeadField: "scope.head",
   },

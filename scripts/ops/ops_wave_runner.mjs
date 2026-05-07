@@ -94,6 +94,7 @@ Options:
   --output-dir <path>     Default: output/ops/waves.
   --run-id <id>           Default: generated from current UTC time.
   --steps <a,b,c>         Restrict to step ids.
+  --from-step <id>        Resume from a step id and run downstream steps.
   --skip <id>             Skip one step; repeatable.
   --allow-tool-install    Allow tooling-quality to use its ephemeral validator runners.
   --max-packets <n>       Number of work packets to generate. Default: ${DEFAULT_WORK_PACKET_MAX_PACKETS}.
@@ -119,6 +120,7 @@ function parseArgs(argv) {
     runId: "",
     outputDir: DEFAULT_OUTPUT_DIR,
     steps: [],
+    fromStep: "",
     skip: [],
     maxPackets: DEFAULT_WORK_PACKET_MAX_PACKETS,
   };
@@ -149,6 +151,7 @@ function parseArgs(argv) {
       ["--run-id", "runId"],
       ["--output-dir", "outputDir"],
       ["--steps", "steps"],
+      ["--from-step", "fromStep"],
       ["--max-packets", "maxPackets"],
     ];
     let consumed = false;
@@ -178,10 +181,12 @@ function parseArgs(argv) {
 function buildWavePlan(options = {}) {
   const only = new Set(options.steps || []);
   const skip = new Set(options.skip || []);
-  const unknown = [...only, ...skip].filter((id) => !STEP_DEFINITIONS.some((step) => step.id === id));
+  const fromStep = clean(options.fromStep);
+  const unknown = [...only, ...skip, fromStep].filter(Boolean).filter((id) => !STEP_DEFINITIONS.some((step) => step.id === id));
   if (unknown.length > 0) throw new Error(`Unknown step id(s): ${Array.from(new Set(unknown)).join(", ")}`);
+  const fromIndex = fromStep ? STEP_DEFINITIONS.findIndex((step) => step.id === fromStep) : 0;
   return STEP_DEFINITIONS
-    .filter((step) => (only.size === 0 || only.has(step.id)) && !skip.has(step.id))
+    .filter((step, definitionIndex) => definitionIndex >= fromIndex && (only.size === 0 || only.has(step.id)) && !skip.has(step.id))
     .map((step, index) => {
       let command = step.command;
       if (step.id === "tooling-quality" && options.allowToolInstall) command = [...command, "--allow-install"];
@@ -192,7 +197,25 @@ function buildWavePlan(options = {}) {
         order: index + 1,
         commandText: command.map((part, partIndex) => (partIndex === 0 && part === process.execPath ? "node" : part)).join(" "),
       };
-    });
+  });
+}
+
+function quoteCommandArg(value) {
+  const text = String(value ?? "");
+  return /^[A-Za-z0-9._:/\\=-]+$/.test(text) ? text : JSON.stringify(text);
+}
+
+function buildResumeCommand(options = {}, failedStepId = "") {
+  if (!failedStepId) return "";
+  const args = ["scripts/ops/ops_wave_runner.mjs", "--json", "--write", "--from-step", failedStepId];
+  const outputDir = resolve(REPO_ROOT, options.outputDir || DEFAULT_OUTPUT_DIR);
+  if (outputDir !== DEFAULT_OUTPUT_DIR) args.push("--output-dir", repoRelative(outputDir));
+  if (Array.isArray(options.steps) && options.steps.length > 0) args.push("--steps", options.steps.join(","));
+  for (const skipped of options.skip || []) args.push("--skip", skipped);
+  if (options.allowToolInstall) args.push("--allow-tool-install");
+  const maxPackets = Math.max(1, Number(options.maxPackets) || DEFAULT_WORK_PACKET_MAX_PACKETS);
+  if (maxPackets !== DEFAULT_WORK_PACKET_MAX_PACKETS) args.push("--max-packets", String(maxPackets));
+  return ["node", ...args].map(quoteCommandArg).join(" ");
 }
 
 function parseJsonObject(stdout) {
@@ -269,6 +292,8 @@ function runWave(options = {}, runner = defaultRunner) {
       : receipts.some((receipt) => receipt.status === "warn" || receipt.status === "skipped")
         ? "warn"
         : "pass";
+  const failedReceipt = receipts.find((receipt) => receipt.status === "fail");
+  const resumeCommand = buildResumeCommand(options, failedReceipt?.id || "");
   return {
     schema: "studiobrain-ops-wave-runner.v1",
     generatedAt,
@@ -284,8 +309,9 @@ function runWave(options = {}, runner = defaultRunner) {
       expectedArtifacts: step.expectedArtifacts,
     })),
     receipts,
+    resumeCommand,
     nextRecommendedAction: status === "fail"
-      ? "Inspect the failed receipt before running downstream dependent steps."
+      ? `Inspect the failed receipt before running downstream dependent steps. Resume with: ${resumeCommand}`
       : status === "planned"
         ? "Run without --dry-run to refresh ordered ops artifacts."
         : "Use the latest work packet, artifact validation report, and PR readiness packet for the next safe slice.",

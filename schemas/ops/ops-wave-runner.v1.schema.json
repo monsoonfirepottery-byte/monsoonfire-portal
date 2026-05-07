@@ -57,6 +57,7 @@
         "additionalProperties": false
       }
     },
+    "resumeCommand": { "type": "string" },
     "nextRecommendedAction": { "type": "string" }
   },
   "additionalProperties": false

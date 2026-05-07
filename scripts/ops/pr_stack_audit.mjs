@@ -219,6 +219,35 @@ function dispositionFor(pr, category) {
   return "Review scope and checks before deciding merge order.";
 }
 
+function mergeStateBlocker(mergeStateStatus) {
+  const state = clean(mergeStateStatus).toUpperCase();
+  if (!state) return "merge_state_unknown";
+  if (state === "CLEAN" || state === "HAS_HOOKS") return "";
+  if (state === "DIRTY") return "merge_conflict";
+  if (state === "BEHIND") return "behind_base";
+  if (state === "BLOCKED") return "blocked_by_policy";
+  if (state === "UNKNOWN") return "merge_state_unknown";
+  return `merge_state_${state.toLowerCase()}`;
+}
+
+function mergeReadinessFor(pr, category, openByHead = new Map()) {
+  const blockers = [];
+  const baseDependency = openByHead.get(clean(pr.baseRefName)) || null;
+  const stateBlocker = mergeStateBlocker(pr.mergeStateStatus);
+  if (pr.isDraft) blockers.push("draft");
+  if (stateBlocker) blockers.push(stateBlocker);
+  if (baseDependency) blockers.push(`base_pr_open:#${baseDependency.number}`);
+  if (category === "dependency") blockers.push("dependency_lane");
+  if (category === "preview_draft") blockers.push("preview_owner_gate");
+  if (category === "conflict" && !blockers.includes("merge_conflict")) blockers.push("merge_conflict");
+  if (category === "behind" && !blockers.includes("behind_base")) blockers.push("behind_base");
+  return {
+    status: blockers.length === 0 ? "ready" : "blocked",
+    blockers: Array.from(new Set(blockers)),
+    baseDependencyPr: baseDependency ? Number(baseDependency.number) : null,
+  };
+}
+
 function normalizeOpenPr(pr, repoId) {
   const category = categoryFor(pr);
   return {
@@ -235,6 +264,14 @@ function normalizeOpenPr(pr, repoId) {
     category,
     recommendedDisposition: dispositionFor(pr, category),
   };
+}
+
+function attachMergeReadiness(openPullRequests) {
+  const openByHead = new Map(openPullRequests.map((pr) => [pr.headRefName, pr]));
+  return openPullRequests.map((pr) => ({
+    ...pr,
+    mergeReadiness: mergeReadinessFor(pr, pr.category, openByHead),
+  }));
 }
 
 function normalizeMergedPr(pr, repoId) {
@@ -264,6 +301,66 @@ function stackEdges(openPrs) {
     }));
 }
 
+function mergeOrderForRepo(openPrs) {
+  const byHead = new Map(openPrs.map((pr) => [pr.headRefName, pr]));
+  const childrenByBase = new Map();
+  for (const pr of openPrs) {
+    if (!byHead.has(pr.baseRefName)) continue;
+    const children = childrenByBase.get(pr.baseRefName) || [];
+    children.push(pr);
+    childrenByBase.set(pr.baseRefName, children);
+  }
+  const roots = openPrs
+    .filter((pr) => !byHead.has(pr.baseRefName))
+    .sort((left, right) => Number(left.number) - Number(right.number));
+  const order = [];
+  const seen = new Set();
+  function visit(pr) {
+    if (!pr || seen.has(pr.number)) return;
+    seen.add(pr.number);
+    order.push(pr);
+    const children = (childrenByBase.get(pr.headRefName) || []).sort((left, right) => Number(left.number) - Number(right.number));
+    for (const child of children) visit(child);
+  }
+  for (const root of roots) visit(root);
+  for (const pr of [...openPrs].sort((left, right) => Number(left.number) - Number(right.number))) visit(pr);
+  return order;
+}
+
+function mergePlanForRepos(repos) {
+  const mergeOrder = repos.flatMap((repo) =>
+    mergeOrderForRepo(repo.openPullRequests).map((pr, index) => ({
+      repoId: repo.id,
+      order: index + 1,
+      number: pr.number,
+      title: pr.title,
+      url: pr.url,
+      headRefName: pr.headRefName,
+      baseRefName: pr.baseRefName,
+      category: pr.category,
+      status: pr.mergeReadiness.status,
+      blockers: pr.mergeReadiness.blockers,
+    })),
+  );
+  const next = mergeOrder.find((item) => item.status === "ready") || null;
+  return {
+    status: next ? "candidate_ready" : mergeOrder.length > 0 ? "blocked" : "empty",
+    nextMergeCandidate: next
+      ? {
+          repoId: next.repoId,
+          number: next.number,
+          title: next.title,
+          url: next.url,
+          headRefName: next.headRefName,
+          baseRefName: next.baseRefName,
+        }
+      : null,
+    mergeOrder,
+    blockedCount: mergeOrder.filter((item) => item.status === "blocked").length,
+    readyCount: mergeOrder.filter((item) => item.status === "ready").length,
+  };
+}
+
 function countBy(items, field) {
   return items.reduce((acc, item) => {
     const key = clean(item[field]) || "unknown";
@@ -276,7 +373,7 @@ function buildPrStackAudit(inputs = {}, options = {}) {
   const generatedAt = clean(options.generatedAt) || nowIso();
   const repos = (options.repos || DEFAULT_REPOS).map((repoConfig) => {
     const source = inputs.repos?.find((entry) => entry.id === repoConfig.id) || collectRepo(repoConfig, options);
-    const openPullRequests = source.openPullRequests.map((pr) => normalizeOpenPr(pr, source.id));
+    const openPullRequests = attachMergeReadiness(source.openPullRequests.map((pr) => normalizeOpenPr(pr, source.id)));
     const recentlyMerged = source.recentlyMerged.map((pr) => normalizeMergedPr(pr, source.id));
     const openLimit = Number.isFinite(options.openLimit) ? options.openLimit : null;
     return {
@@ -298,6 +395,7 @@ function buildPrStackAudit(inputs = {}, options = {}) {
   });
   const allOpen = repos.flatMap((repo) => repo.openPullRequests);
   const allMerged = repos.flatMap((repo) => repo.recentlyMerged);
+  const mergePlan = mergePlanForRepos(repos);
   const collectionWarnings = repos.flatMap((repo) => [
     repo.collection.openStatus !== "pass" ? `${repo.id} open PR collection: ${repo.collection.openError || repo.collection.openStatus}` : "",
     repo.collection.mergedStatus !== "pass" ? `${repo.id} merged PR collection: ${repo.collection.mergedError || repo.collection.mergedStatus}` : "",
@@ -318,12 +416,15 @@ function buildPrStackAudit(inputs = {}, options = {}) {
     purpose: "Inventory open ops-adjacent PRs, stacked branches, stale drafts, and recently merged PRs without mutating GitHub state.",
     repos,
     stackEdges: stackEdges(allOpen),
+    mergePlan,
     summary: {
       repos: repos.length,
       open: allOpen.length,
       recentlyMerged: allMerged.length,
       categories: countBy(allOpen, "category"),
       warnings: warnings.length,
+      mergeReady: mergePlan.readyCount,
+      mergeBlocked: mergePlan.blockedCount,
     },
     warnings,
     operatorNotes: [
@@ -336,10 +437,16 @@ function buildPrStackAudit(inputs = {}, options = {}) {
 
 function renderMarkdown(report) {
   const warnings = report.warnings.map((warning) => `- ${warning}`).join("\n") || "- None.";
+  const nextMerge = report.mergePlan.nextMergeCandidate
+    ? `[#${report.mergePlan.nextMergeCandidate.number}](${report.mergePlan.nextMergeCandidate.url}) ${report.mergePlan.nextMergeCandidate.headRefName} -> ${report.mergePlan.nextMergeCandidate.baseRefName}`
+    : "None.";
+  const mergeRows = report.mergePlan.mergeOrder.map((item) =>
+    `| ${item.order} | ${item.repoId} | [#${item.number}](${item.url}) | ${item.headRefName} | ${item.baseRefName} | ${item.status} | ${item.blockers.join(", ") || ""} |`,
+  ).join("\n") || "|  |  | _none_ |  |  |  |  |";
   const repoSections = report.repos.map((repo) => {
     const openRows = repo.openPullRequests.map((pr) =>
-      `| [#${pr.number}](${pr.url}) | ${pr.headRefName} | ${pr.baseRefName} | ${pr.isDraft ? "yes" : "no"} | ${pr.mergeStateStatus || ""} | ${pr.category} | ${pr.recommendedDisposition} |`,
-    ).join("\n") || "| _none_ |  |  |  |  |  |  |";
+      `| [#${pr.number}](${pr.url}) | ${pr.headRefName} | ${pr.baseRefName} | ${pr.isDraft ? "yes" : "no"} | ${pr.mergeStateStatus || ""} | ${pr.category} | ${pr.mergeReadiness.status} | ${pr.mergeReadiness.blockers.join(", ") || ""} | ${pr.recommendedDisposition} |`,
+    ).join("\n") || "| _none_ |  |  |  |  |  |  |  |  |";
     const mergedRows = repo.recentlyMerged.slice(0, 8).map((pr) =>
       `| [#${pr.number}](${pr.url}) | ${pr.title} | ${pr.mergeCommit || ""} | ${pr.mergedAt || ""} |`,
     ).join("\n") || "| _none_ |  |  |  |";
@@ -353,8 +460,8 @@ function renderMarkdown(report) {
 
 ### Open PRs
 
-| PR | Head | Base | Draft | Merge state | Category | Recommended disposition |
-| --- | --- | --- | --- | --- | --- | --- |
+| PR | Head | Base | Draft | Merge state | Category | Readiness | Blockers | Recommended disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${openRows}
 
 ### Recently Merged
@@ -379,6 +486,17 @@ Run ID: ${report.runId}
 - Open PRs: ${report.summary.open}
 - Recently merged captured: ${report.summary.recentlyMerged}
 - Categories: ${JSON.stringify(report.summary.categories)}
+- Merge ready: ${report.summary.mergeReady}
+- Merge blocked: ${report.summary.mergeBlocked}
+
+## Merge Readiness
+
+- Status: ${report.mergePlan.status}
+- Next merge candidate: ${nextMerge}
+
+| Order | Repo | PR | Head | Base | Status | Blockers |
+| --- | --- | --- | --- | --- | --- | --- |
+${mergeRows}
 
 ## Warnings
 

@@ -66,6 +66,7 @@ Options:
   --write                   Write timestamped and latest reports under output/ops/artifact-validation.
   --output-dir <path>       Default: output/ops/artifact-validation.
   --artifact <id:path:schema>  Validate an additional artifact/schema pair.
+  --max-age-hours <number>  Warn when generatedAt is older than this. Default: 24.
 `;
 }
 
@@ -108,6 +109,7 @@ function parseArgs(argv) {
     write: false,
     outputDir: DEFAULT_OUTPUT_DIR,
     artifacts: [...DEFAULT_ARTIFACTS],
+    maxAgeHours: 24,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -136,6 +138,12 @@ function parseArgs(argv) {
       if (!id || !artifactPath || !schemaPath) throw new Error("--artifact must use id:path:schema.");
       options.artifacts.push({ id, artifact: artifactPath, schema: schemaPath });
       index = artifact.nextIndex;
+      continue;
+    }
+    const maxAgeHours = readFlagValue(argv, index, "--max-age-hours");
+    if (maxAgeHours.matched) {
+      options.maxAgeHours = Math.max(0, Number(maxAgeHours.value) || 0);
+      index = maxAgeHours.nextIndex;
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
@@ -214,7 +222,31 @@ function validateJsonSchema(value, schema, path = "$") {
   return errors;
 }
 
-function validateArtifact(definition) {
+function generatedAtWarning(artifact, options = {}) {
+  const generatedAt = clean(artifact?.generatedAt);
+  if (!generatedAt) return { generatedAt: "", ageHours: null, warnings: [] };
+  const generatedMs = Date.parse(generatedAt);
+  const nowMs = Date.parse(clean(options.now) || nowIso());
+  if (Number.isNaN(generatedMs) || Number.isNaN(nowMs)) return { generatedAt, ageHours: null, warnings: [] };
+  const ageHours = Number(Math.max(0, (nowMs - generatedMs) / 3_600_000).toFixed(2));
+  const maxAgeHours = Number(options.maxAgeHours ?? 24);
+  const warnings = maxAgeHours > 0 && ageHours > maxAgeHours
+    ? [`generatedAt is stale: ageHours=${ageHours}, maxAgeHours=${maxAgeHours}`]
+    : [];
+  return { generatedAt, ageHours, warnings };
+}
+
+function referencedArtifactErrors(artifact) {
+  const artifactPath = clean(artifact?.artifactPath);
+  if (!artifactPath) return { referencedArtifact: "", errors: [] };
+  const resolved = resolve(REPO_ROOT, artifactPath);
+  return {
+    referencedArtifact: repoRelative(resolved),
+    errors: existsSync(resolved) ? [] : [`artifactPath points to a missing artifact: ${repoRelative(resolved)}`]
+  };
+}
+
+function validateArtifact(definition, options = {}) {
   const artifactPath = resolve(REPO_ROOT, definition.artifact);
   const schemaPath = resolve(REPO_ROOT, definition.schema);
   const check = {
@@ -223,6 +255,7 @@ function validateArtifact(definition) {
     schema: repoRelative(schemaPath),
     status: "missing",
     errors: [],
+    warnings: [],
   };
 
   if (!existsSync(schemaPath)) {
@@ -236,23 +269,38 @@ function validateArtifact(definition) {
     const artifact = readJson(artifactPath);
     const schema = readJson(schemaPath);
     const errors = validateJsonSchema(artifact, schema);
-    return { ...check, status: errors.length ? "fail" : "pass", errors };
+    const freshness = generatedAtWarning(artifact, options);
+    const referenced = referencedArtifactErrors(artifact);
+    const allErrors = [...errors, ...referenced.errors];
+    const warnings = freshness.warnings;
+    return {
+      ...check,
+      status: allErrors.length ? "fail" : warnings.length ? "warn" : "pass",
+      errors: allErrors,
+      warnings,
+      generatedAt: freshness.generatedAt,
+      ageHours: freshness.ageHours,
+      maxAgeHours: Number(options.maxAgeHours ?? 24),
+      referencedArtifact: referenced.referencedArtifact,
+    };
   } catch (error) {
     return {
       ...check,
       status: "fail",
       errors: [error instanceof Error ? error.message : String(error)],
+      warnings: [],
     };
   }
 }
 
 function buildReport(options = {}) {
   const generatedAt = nowIso();
-  const checks = options.artifacts.map(validateArtifact);
+  const checks = options.artifacts.map((artifact) => validateArtifact(artifact, { maxAgeHours: options.maxAgeHours, now: options.now || generatedAt }));
   const failed = checks.filter((check) => check.status === "fail").length;
   const missing = checks.filter((check) => check.status === "missing").length;
+  const warned = checks.filter((check) => check.status === "warn").length;
   const passed = checks.filter((check) => check.status === "pass").length;
-  const status = failed > 0 ? "fail" : missing > 0 ? "warn" : "pass";
+  const status = failed > 0 ? "fail" : missing > 0 || warned > 0 ? "warn" : "pass";
   const runId = `ops-artifact-validation-${generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
   return {
     schema: "studiobrain-ops-artifact-schema-validation.v1",
@@ -263,6 +311,7 @@ function buildReport(options = {}) {
     summary: {
       checks: checks.length,
       passed,
+      warned,
       missing,
       failed,
     },

@@ -46,9 +46,74 @@ test("buildReport treats missing artifacts as warnings and schema mismatch as fa
     const fail = buildReport({ artifacts: [{ id: "invalid", artifact: invalidPath, schema: schemaPath }] });
 
     assert.equal(warn.status, "warn");
+    assert.equal(warn.summary.warned, 0);
     assert.equal(pass.status, "pass");
     assert.equal(fail.status, "fail");
     assert.ok(fail.checks[0].errors.some((error) => error.includes("expected const")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("buildReport warns when an artifact is schema-valid but stale", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-artifact-stale-"));
+  try {
+    const schemaPath = join(dir, "schema.json");
+    const stalePath = join(dir, "stale.json");
+    writeFileSync(schemaPath, JSON.stringify({
+      type: "object",
+      required: ["schema", "generatedAt"],
+      properties: {
+        schema: { const: "artifact.v1" },
+        generatedAt: { type: "string", format: "date-time" }
+      },
+      additionalProperties: false,
+    }));
+    writeFileSync(stalePath, JSON.stringify({ schema: "artifact.v1", generatedAt: "2026-05-07T08:00:00.000Z" }));
+
+    const report = buildReport({
+      artifacts: [{ id: "stale", artifact: stalePath, schema: schemaPath }],
+      now: "2026-05-07T12:00:00.000Z",
+      maxAgeHours: 1
+    });
+
+    assert.equal(report.status, "warn");
+    assert.equal(report.summary.warned, 1);
+    assert.ok(report.checks[0].warnings.some((warning) => warning.includes("generatedAt is stale")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("buildReport fails when latest artifactPath points nowhere", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-artifact-latest-"));
+  try {
+    const schemaPath = join(dir, "schema.json");
+    const latestPath = join(dir, "latest.json");
+    writeFileSync(schemaPath, JSON.stringify({
+      type: "object",
+      required: ["schema", "generatedAt", "artifactPath"],
+      properties: {
+        schema: { const: "artifact.v1" },
+        generatedAt: { type: "string", format: "date-time" },
+        artifactPath: { type: "string" }
+      },
+      additionalProperties: false,
+    }));
+    writeFileSync(latestPath, JSON.stringify({
+      schema: "artifact.v1",
+      generatedAt: "2026-05-07T12:00:00.000Z",
+      artifactPath: "output/ops/missing-timestamped-artifact.json"
+    }));
+
+    const report = buildReport({
+      artifacts: [{ id: "latest", artifact: latestPath, schema: schemaPath }],
+      now: "2026-05-07T12:00:00.000Z",
+      maxAgeHours: 24
+    });
+
+    assert.equal(report.status, "fail");
+    assert.ok(report.checks[0].errors.some((error) => error.includes("artifactPath points to a missing artifact")));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

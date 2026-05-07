@@ -121,9 +121,17 @@ function buildOutcomeLedger(options = {}, evidence = {}) {
     ? evidence.workPacket.topPackets.map((packet) => clean(packet.packetId)).filter(Boolean)
     : [];
   const notes = pr ? `PR ${pr} used this packet` : "PR readiness used this packet";
+  const packetIdInSuggestedWindow = packetId ? suggestedPacketIds.includes(packetId) : null;
+  const validationStatus = packetId
+    ? packetIdInSuggestedWindow
+      ? "suggested"
+      : "outside_window"
+    : "not_requested";
   return {
     packetId,
     suggestedPacketIds,
+    packetIdInSuggestedWindow,
+    validationStatus,
     recordCommand: packetId
       ? `node scripts/studiobrain-ops-work-packet.mjs --record-outcome ${packetId} --outcome used --notes "${notes}"`
       : "",
@@ -191,9 +199,12 @@ function readinessStatus(packet) {
   return "pass";
 }
 
-function buildWarnings({ gitState, evidence }) {
+function buildWarnings({ gitState, evidence, outcomeLedger }) {
   const warnings = [];
   if (gitState.dirtyFiles.length > 0) warnings.push(`${gitState.dirtyFiles.length} dirty file(s) in local worktree`);
+  if (outcomeLedger?.validationStatus === "outside_window") {
+    warnings.push(`packet id ${outcomeLedger.packetId} is not in the latest suggested packet window`);
+  }
   if (evidence.artifactValidation.status === "missing") warnings.push("artifact validation report is missing");
   if (evidence.artifactValidation.warned > 0 || evidence.artifactValidation.missing > 0) warnings.push("artifact validation has warnings or missing artifacts");
   if (evidence.waveRunner.status === "missing") warnings.push("wave runner latest artifact is missing");
@@ -221,7 +232,8 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     sliceLedger: summarizeSliceLedger(inputs.sliceLedger),
     toolInstall: summarizeToolInstall(inputs.toolInstallRecommendations),
   };
-  const warnings = buildWarnings({ gitState, evidence });
+  const outcomeLedger = buildOutcomeLedger(options, evidence);
+  const warnings = buildWarnings({ gitState, evidence, outcomeLedger });
   const packet = {
     schema: "studiobrain-ops-pr-readiness-packet.v1",
     generatedAt,
@@ -229,7 +241,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     pr: clean(options.pr),
     owner: clean(options.owner) || "Codex",
     sliceIds: clean(options.sliceIds),
-    outcomeLedger: buildOutcomeLedger(options, evidence),
+    outcomeLedger,
     scope: {
       branch: gitState.branch,
       base: gitState.base,
@@ -305,6 +317,7 @@ ${topPackets}
 
 - Packet ID: ${packet.outcomeLedger.packetId || ""}
 - Suggested packet IDs: ${packet.outcomeLedger.suggestedPacketIds.join(", ") || "none"}
+- Packet ID validation: ${packet.outcomeLedger.validationStatus}
 - Record command: ${outcomeCommand}
 
 ## Tool Recommendation Summary

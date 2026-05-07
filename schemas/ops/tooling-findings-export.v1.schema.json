@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/tooling-findings-export.v1.schema.json",
+  "title": "Studio Brain Ops Tooling Findings Export v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "readOnly",
+    "source",
+    "summary",
+    "findings",
+    "tasks"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-tooling-findings-export.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" },
+    "source": {
+      "type": "object",
+      "required": ["toolingReportPath", "toolingReportGeneratedAt", "toolingReportStatus"],
+      "properties": {
+        "toolingReportPath": { "type": "string" },
+        "toolingReportGeneratedAt": { "type": ["string", "null"] },
+        "toolingReportStatus": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["sections", "findings", "actionableFindings", "coverageGaps", "issueReadyTasks"],
+      "properties": {
+        "sections": { "type": "number", "minimum": 0 },
+        "findings": { "type": "number", "minimum": 0 },
+        "actionableFindings": { "type": "number", "minimum": 0 },
+        "coverageGaps": { "type": "number", "minimum": 0 },
+        "issueReadyTasks": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["toolId", "tool", "file", "line", "column", "code", "severity", "message", "coverageGap"],
+        "properties": {
+          "toolId": { "type": "string" },
+          "tool": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": ["number", "null"] },
+          "column": { "type": ["number", "null"] },
+          "code": { "type": "string" },
+          "severity": { "type": "string" },
+          "message": { "type": "string" },
+          "coverageGap": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "labels",
+          "priority",
+          "owner",
+          "approvalRequired",
+          "problem",
+          "evidence",
+          "proposedFix",
+          "acceptanceCriteria",
+          "safetyNotes",
+          "suggestedBranchName",
+          "suggestedPrTitle",
+          "files"
+        ],
+        "properties": {
+          "title": { "type": "string" },
+          "labels": { "type": "array", "items": { "type": "string" } },
+          "priority": { "enum": ["P0", "P1", "P2", "P3"] },
+          "owner": { "type": "string" },
+          "approvalRequired": { "type": "boolean" },
+          "problem": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "proposedFix": { "type": "string" },
+          "acceptanceCriteria": { "type": "array", "items": { "type": "string" } },
+          "safetyNotes": { "type": "array", "items": { "type": "string" } },
+          "suggestedBranchName": { "type": "string" },
+          "suggestedPrTitle": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

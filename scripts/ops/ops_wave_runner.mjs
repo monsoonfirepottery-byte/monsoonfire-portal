@@ -21,6 +21,11 @@ const STEP_DEFINITIONS = [
     expectedArtifacts: ["output/ops/tooling-quality/tooling-quality-latest.json"],
   },
   {
+    id: "tooling-findings",
+    command: [process.execPath, "scripts/ops/tooling_findings_export.mjs", "--json", "--write"],
+    expectedArtifacts: ["output/ops/tooling-quality/tooling-findings-latest.json"],
+  },
+  {
     id: "tool-inventory",
     command: [process.execPath, "scripts/ops/installed_tool_inventory.mjs", "--json", "--write"],
     expectedArtifacts: ["output/ops/effectivity/installed-tool-inventory-latest.json"],

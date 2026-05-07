@@ -32,8 +32,9 @@ Keep new validators report-only until they prove useful over about five slices:
 
 1. Count actionable findings fixed.
 2. Count false positives or style-only noise.
-3. Record whether the check prevented a broken script, failed CI run, unsafe recommendation, or operator confusion.
-4. Promote to required only after it catches real defects with tolerable noise.
+3. Count coverage gaps separately when a validator is missing; a missing tool is useful evidence, but it is not a caught defect and should not claim minutes saved.
+4. Record whether the check prevented a broken script, failed CI run, unsafe recommendation, or operator confusion.
+5. Promote to required only after it catches real defects with tolerable noise.
 
 ## Current Expected Findings
 

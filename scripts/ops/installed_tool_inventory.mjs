@@ -201,6 +201,7 @@ function defaultToolEffectivity(status, required) {
   return {
     observed: false,
     actionableFindings: 0,
+    coverageGaps: 0,
     falsePositiveCount: 0,
     minutesSaved: 0,
     promotionState: required ? "required" : status === "missing_optional" ? "optional_missing" : "not_observed",
@@ -213,14 +214,19 @@ function effectivityFromToolingReport(report) {
   const byTool = {};
   const assign = (toolName, section) => {
     if (!section) return;
-    const actionableFindings = Array.isArray(section.findings) ? section.findings.length : 0;
+    const findings = Array.isArray(section.findings) ? section.findings : [];
+    const coverageGaps = findings.filter((finding) => finding?.code === "tool_missing").length;
+    const actionableFindings = findings.length - coverageGaps;
     byTool[toolName] = {
       observed: true,
       actionableFindings,
+      coverageGaps,
       falsePositiveCount: 0,
       minutesSaved: actionableFindings > 0 ? Math.min(30, actionableFindings) : 0,
-      promotionState: section.status === "skipped"
-        ? "optional_missing"
+      promotionState: coverageGaps > 0 && actionableFindings === 0
+        ? "coverage_gap"
+        : section.status === "skipped"
+          ? "optional_missing"
         : actionableFindings > 0
           ? "candidate"
           : "report_only",
@@ -245,6 +251,7 @@ function runnerEffectivity(toolName, section) {
   return {
     observed: true,
     actionableFindings: 0,
+    coverageGaps: 0,
     falsePositiveCount: 0,
     minutesSaved: 0,
     promotionState: section.status === "skipped" ? "optional_missing" : "report_only",
@@ -262,6 +269,7 @@ function buildInventory(options = {}) {
     missingOptional: tools.filter((tool) => tool.status === "missing_optional").length,
     shadowed: tools.filter((tool) => tool.status === "shadowed").length,
     actionableFindings: tools.reduce((sum, tool) => sum + (tool.effectivity?.actionableFindings || 0), 0),
+    coverageGaps: tools.reduce((sum, tool) => sum + (tool.effectivity?.coverageGaps || 0), 0),
     falsePositiveCount: tools.reduce((sum, tool) => sum + (tool.effectivity?.falsePositiveCount || 0), 0),
     minutesSaved: tools.reduce((sum, tool) => sum + (tool.effectivity?.minutesSaved || 0), 0),
     promotionCandidates: tools.filter((tool) => tool.effectivity?.promotionState === "candidate").length

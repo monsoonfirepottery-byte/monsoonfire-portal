@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "effectivity");
 const DEFAULT_LEDGER = resolve(DEFAULT_OUTPUT_DIR, "slice-ledger.jsonl");
+const DEFAULT_WORK_PACKET = resolve(REPO_ROOT, "output", "ops", "swarm", "latest-work-packet.json");
 
 function usage() {
   return `Studio Brain administrator effectivity audit
@@ -21,6 +22,7 @@ Options:
   --write             Write timestamped JSON and Markdown artifacts.
   --output-dir <path> Artifact directory. Default: output/ops/effectivity.
   --ledger <path>     Slice ledger path. Default: output/ops/effectivity/slice-ledger.jsonl.
+  --work-packet <path> Latest work-packet report. Default: output/ops/swarm/latest-work-packet.json.
   --last <number>     Slice window. Default: 5.
   --slice-run-id <id> Filter slice ledger rows by run id before selecting the window.
   --run-id <id>       Stable run id. Default: admin-effectivity timestamp.
@@ -72,6 +74,7 @@ function parseArgs(argv) {
     write: false,
     outputDir: DEFAULT_OUTPUT_DIR,
     ledger: DEFAULT_LEDGER,
+    workPacket: DEFAULT_WORK_PACKET,
     last: 5,
     sliceRunId: "",
     runId: ""
@@ -93,6 +96,7 @@ function parseArgs(argv) {
     const mappings = [
       ["--output-dir", "outputDir"],
       ["--ledger", "ledger"],
+      ["--work-packet", "workPacket"],
       ["--last", "last"],
       ["--slice-run-id", "sliceRunId"],
       ["--run-id", "runId"]
@@ -111,8 +115,20 @@ function parseArgs(argv) {
   }
   options.outputDir = resolve(REPO_ROOT, options.outputDir);
   options.ledger = resolve(REPO_ROOT, options.ledger);
+  options.workPacket = resolve(REPO_ROOT, options.workPacket);
   options.last = Math.max(1, Number(options.last) || 5);
   return options;
+}
+
+function readJsonIfExists(path) {
+  if (!existsSync(path)) {
+    return { ok: false, status: "missing", error: `${repoRelative(path)} missing`, json: null };
+  }
+  try {
+    return { ok: true, status: "present", error: "", json: JSON.parse(readFileSync(path, "utf8")) };
+  } catch (error) {
+    return { ok: false, status: "invalid", error: error.message, json: null };
+  }
 }
 
 function runJson(command, args) {
@@ -257,6 +273,67 @@ function buildInstalledToolsFreshness(toolInventory, options = {}) {
     inventory,
     toolingQuality,
     effectivitySourceStatus: clean(toolInventory.effectivitySource?.status) || "unknown"
+  };
+}
+
+function summarizeWorkPacketOutcome(workPacket, options = {}) {
+  const sourcePath = repoRelative(options.path || DEFAULT_WORK_PACKET);
+  if (!workPacket?.schema) {
+    return {
+      status: "unavailable",
+      score: 0,
+      sourcePath,
+      generatedAt: "",
+      freshness: sourceFreshness("", options),
+      maturity: "missing",
+      warnings: ["latest work-packet artifact missing or invalid"],
+      outcomeSummary: null
+    };
+  }
+
+  const freshness = sourceFreshness(workPacket.generatedAt, options);
+  const summary = workPacket.outcomeSummary || {};
+  const total = Number(summary.total) || 0;
+  const staleOrMisleadingRate = Number(summary.staleOrMisleadingRate) || 0;
+  const staleOrMisleadingPackets = Array.isArray(summary.staleOrMisleadingPackets) ? summary.staleOrMisleadingPackets : [];
+  const blockedPackets = Array.isArray(summary.blockedPackets) ? summary.blockedPackets : [];
+  const warnings = [];
+  if (freshness.score < 1) warnings.push(`work-packet freshness=${freshness.status}`);
+  if (total >= 3 && staleOrMisleadingRate > 0.25) warnings.push(`staleOrMisleadingRate=${staleOrMisleadingRate}`);
+  if (blockedPackets.length > 0) warnings.push(`blockedPackets=${blockedPackets.length}`);
+
+  const score = freshness.score < 1
+    ? 0
+    : warnings.length === 0
+      ? 1
+      : total >= 3 && staleOrMisleadingRate > 0.25
+        ? 0.4
+        : 0.6;
+  return {
+    status: warnings.length === 0 ? "pass" : "warn",
+    score,
+    sourcePath,
+    generatedAt: clean(workPacket.generatedAt),
+    freshness,
+    maturity: total >= 3 ? "evidence_ready" : "warming_up",
+    warnings,
+    outcomeSummary: {
+      total,
+      uniquePackets: Number(summary.uniquePackets) || 0,
+      helpfulRate: Number(summary.helpfulRate) || 0,
+      staleOrMisleadingRate,
+      staleOrMisleadingPackets: staleOrMisleadingPackets.map((packet) => ({
+        packetId: clean(packet.packetId),
+        outcome: clean(packet.outcome),
+        reason: clean(packet.reason)
+      })),
+      blockedPackets: blockedPackets.map((packet) => ({
+        packetId: clean(packet.packetId),
+        outcome: clean(packet.outcome),
+        reason: clean(packet.reason),
+        blockerClass: clean(packet.blockerClass)
+      }))
+    }
   };
 }
 
@@ -412,10 +489,17 @@ function buildAudit(options) {
   const sliceSummary = summarizeSlices(selectedRows);
   const toolInventory = runJson(process.execPath, ["scripts/ops/installed_tool_inventory.mjs", "--json"]);
   const effectivityReport = tryEffectivityReport();
+  const workPacketRead = readJsonIfExists(options.workPacket);
   const installedToolsFreshness = buildInstalledToolsFreshness(toolInventory.json, {
     now: generatedAt,
     minGeneratedAt: earliestRowIso(selectedRows),
     maxAgeHours: 24
+  });
+  const workPacketOutcome = summarizeWorkPacketOutcome(workPacketRead.json, {
+    now: generatedAt,
+    minGeneratedAt: earliestRowIso(selectedRows),
+    maxAgeHours: 24,
+    path: options.workPacket
   });
   const toolFreshness = toolInventory.ok ? installedToolsFreshness.score : 0;
   const missingRequired = Number(toolInventory.json?.summary?.missingRequired) || 0;
@@ -425,11 +509,12 @@ function buildAudit(options) {
     verification: sliceSummary.verification,
     noOpRate: sliceSummary.noOpRate,
     blockedLaneClarity: sliceSummary.blockedLaneClarity,
-    toolInventoryFreshness: toolFreshness
+    toolInventoryFreshness: toolFreshness,
+    workPacketOutcomeHealth: workPacketOutcome.score
   };
   const status = missingRequired > 0 || sliceSummary.failed > 0
     ? "fail"
-    : sliceSummary.count === 0 || sliceSummary.noOpRate > 0.4 || !effectivityReport.ok || toolFreshness < 1
+    : sliceSummary.count === 0 || sliceSummary.noOpRate > 0.4 || !effectivityReport.ok || toolFreshness < 1 || workPacketOutcome.status === "warn" || workPacketOutcome.status === "unavailable"
       ? "warn"
       : "pass";
   return {
@@ -454,6 +539,11 @@ function buildAudit(options) {
       },
       installedTools: toolInventory.ok ? toolInventory.json : { status: "unavailable", error: toolInventory.error },
       installedToolsFreshness,
+      workPacketOutcome: {
+        ...workPacketOutcome,
+        readStatus: workPacketRead.status,
+        readError: workPacketRead.error
+      },
       effectivityReport
     },
     missionControl: {
@@ -466,7 +556,8 @@ function buildAudit(options) {
           status,
           sliceCount: selectedRows.length,
           usefulness: scores.usefulness,
-          noOpRate: scores.noOpRate
+          noOpRate: scores.noOpRate,
+          workPacketOutcomeHealth: scores.workPacketOutcomeHealth
         }
       ]
     }
@@ -494,6 +585,7 @@ function markdown(audit) {
     `- No-op rate: ${audit.scores.noOpRate}`,
     `- Blocked-lane clarity: ${audit.scores.blockedLaneClarity}`,
     `- Tool inventory freshness: ${audit.scores.toolInventoryFreshness}`,
+    `- Work-packet outcome health: ${audit.scores.workPacketOutcomeHealth}`,
     "",
     "## Installed Tools",
     "",
@@ -512,6 +604,17 @@ function markdown(audit) {
     lines.push(`- ${row.sliceId}: ${row.status} - ${row.title}`);
   }
   if (audit.sections.sliceLedger.rows.length === 0) lines.push("- No slice rows recorded yet.");
+  lines.push("", "## Work-Packet Outcomes", "");
+  const outcome = audit.sections.workPacketOutcome;
+  lines.push(`- Status: ${outcome.status}`);
+  lines.push(`- Source: ${outcome.sourcePath}`);
+  lines.push(`- Maturity: ${outcome.maturity}`);
+  lines.push(`- Total outcomes: ${outcome.outcomeSummary?.total ?? 0}`);
+  lines.push(`- Helpful rate: ${outcome.outcomeSummary?.helpfulRate ?? 0}`);
+  lines.push(`- Stale/misleading rate: ${outcome.outcomeSummary?.staleOrMisleadingRate ?? 0}`);
+  if (outcome.warnings?.length) {
+    for (const warning of outcome.warnings) lines.push(`- Warning: ${warning}`);
+  }
   lines.push("", "## Effectivity Evidence Lanes", "");
   const evidenceLanes = audit.sections.effectivityReport?.report?.evidenceLanes || [];
   if (evidenceLanes.length === 0) {
@@ -559,6 +662,7 @@ export {
   buildInstalledToolsFreshness,
   main,
   parseArgs,
+  summarizeWorkPacketOutcome,
   sourceFreshness
 };
 

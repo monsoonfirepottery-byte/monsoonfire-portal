@@ -5,7 +5,8 @@ import {
   buildInstalledToolsFreshness,
   classifyEffectivityLanes,
   earliestRowIso,
-  sourceFreshness
+  sourceFreshness,
+  summarizeWorkPacketOutcome
 } from "./admin_effectivity_audit.mjs";
 
 test("sourceFreshness rejects sources older than the selected slice window", () => {
@@ -100,4 +101,56 @@ test("classifyEffectivityLanes turns degraded report sections into approval-awar
   assert.equal(lanes.find((lane) => lane.id === "backup_confidence").severity, "high");
   assert.equal(lanes.find((lane) => lane.id === "privileged_evidence").approvalRequired, true);
   assert.ok(lanes.find((lane) => lane.id === "privileged_evidence").safeNextStep.includes("approval-gated"));
+});
+
+test("summarizeWorkPacketOutcome warns on stale packet outcomes after maturity threshold", () => {
+  const summary = summarizeWorkPacketOutcome({
+    schema: "studiobrain-ops-work-packet.v1",
+    generatedAt: "2026-05-07T11:00:00.000Z",
+    outcomeSummary: {
+      total: 4,
+      uniquePackets: 3,
+      helpfulRate: 0.25,
+      staleOrMisleadingRate: 0.5,
+      staleOrMisleadingPackets: [
+        { packetId: "ops-wp-1", outcome: "stale", reason: "superseded by newer host evidence" }
+      ],
+      blockedPackets: [
+        { packetId: "ops-wp-2", outcome: "blocked", reason: "sudo unavailable", blockerClass: "approval_gate" }
+      ]
+    }
+  }, {
+    now: "2026-05-07T11:05:00.000Z",
+    minGeneratedAt: "2026-05-07T10:30:00.000Z",
+    path: "output/ops/swarm/latest-work-packet.json"
+  });
+
+  assert.equal(summary.status, "warn");
+  assert.equal(summary.score, 0.4);
+  assert.equal(summary.maturity, "evidence_ready");
+  assert.deepEqual(summary.warnings, ["staleOrMisleadingRate=0.5", "blockedPackets=1"]);
+  assert.equal(summary.outcomeSummary.staleOrMisleadingPackets[0].packetId, "ops-wp-1");
+  assert.equal(summary.outcomeSummary.blockedPackets[0].blockerClass, "approval_gate");
+});
+
+test("summarizeWorkPacketOutcome treats a small clean ledger as warming up", () => {
+  const summary = summarizeWorkPacketOutcome({
+    schema: "studiobrain-ops-work-packet.v1",
+    generatedAt: "2026-05-07T11:00:00.000Z",
+    outcomeSummary: {
+      total: 1,
+      uniquePackets: 1,
+      helpfulRate: 1,
+      staleOrMisleadingRate: 0,
+      staleOrMisleadingPackets: [],
+      blockedPackets: []
+    }
+  }, {
+    now: "2026-05-07T11:05:00.000Z",
+    minGeneratedAt: "2026-05-07T10:30:00.000Z"
+  });
+
+  assert.equal(summary.status, "pass");
+  assert.equal(summary.score, 1);
+  assert.equal(summary.maturity, "warming_up");
 });

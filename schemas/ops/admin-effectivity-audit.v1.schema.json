@@ -21,13 +21,14 @@
     },
     "scores": {
       "type": "object",
-      "required": ["usefulness", "verification", "noOpRate", "blockedLaneClarity", "toolInventoryFreshness"],
+      "required": ["usefulness", "verification", "noOpRate", "blockedLaneClarity", "toolInventoryFreshness", "workPacketOutcomeHealth"],
       "properties": {
         "usefulness": { "type": "number", "minimum": 0, "maximum": 1 },
         "verification": { "type": "number", "minimum": 0, "maximum": 1 },
         "noOpRate": { "type": "number", "minimum": 0, "maximum": 1 },
         "blockedLaneClarity": { "type": "number", "minimum": 0, "maximum": 1 },
-        "toolInventoryFreshness": { "type": "number", "minimum": 0, "maximum": 1 }
+        "toolInventoryFreshness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "workPacketOutcomeHealth": { "type": "number", "minimum": 0, "maximum": 1 }
       },
       "additionalProperties": false
     },
@@ -37,6 +38,7 @@
         "sliceLedger": { "type": "object" },
         "installedTools": { "type": "object" },
         "installedToolsFreshness": { "type": "object" },
+        "workPacketOutcome": { "type": "object" },
         "effectivityReport": { "type": "object" }
       },
       "additionalProperties": true

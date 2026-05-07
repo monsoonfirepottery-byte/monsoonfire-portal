@@ -5,6 +5,8 @@ import { dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { defaultArtifactRegistry } from "./artifact_registry.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "waves");
@@ -59,7 +61,7 @@ const STEP_DEFINITIONS = [
   {
     id: "pr-readiness",
     command: [process.execPath, "scripts/ops/pr_readiness_packet.mjs", "--json", "--write"],
-    expectedArtifacts: ["output/ops/pr-readiness/pr-readiness-latest.md"],
+    expectedArtifacts: ["output/ops/pr-readiness/pr-readiness-latest.json"],
   },
   {
     id: "artifact-validation",
@@ -200,6 +202,46 @@ function buildWavePlan(options = {}) {
   });
 }
 
+function checkRegistryConsistency(plan, options = {}, registry = defaultArtifactRegistry()) {
+  const registeredArtifacts = new Map(registry.map((entry) => [repoRelative(entry.artifact), entry]));
+  const plannedArtifacts = new Set(plan.flatMap((step) => step.expectedArtifacts.map((artifact) => repoRelative(artifact))));
+  const waveStepIds = new Set(STEP_DEFINITIONS.map((step) => step.id));
+  const restrictedPlan = Boolean((options.steps || []).length > 0 || (options.skip || []).length > 0 || clean(options.fromStep));
+  const unregisteredExpectedArtifacts = [...plannedArtifacts]
+    .filter((artifact) => !registeredArtifacts.has(artifact))
+    .sort();
+  const managedRegistryArtifactsMissingFromPlan = restrictedPlan
+    ? []
+    : registry
+        .filter((entry) => waveStepIds.has(entry.producerStep))
+        .map((entry) => repoRelative(entry.artifact))
+        .filter((artifact) => !plannedArtifacts.has(artifact))
+        .sort();
+  const externalRegistryArtifacts = registry
+    .filter((entry) => !waveStepIds.has(entry.producerStep))
+    .map((entry) => ({
+      id: entry.id,
+      artifact: repoRelative(entry.artifact),
+      producerStep: clean(entry.producerStep),
+      producerCommand: clean(entry.producerCommand),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const warnings = [
+    ...unregisteredExpectedArtifacts.map((artifact) => `planned artifact is not registered: ${artifact}`),
+    ...managedRegistryArtifactsMissingFromPlan.map((artifact) => `registry artifact claims a wave producer but is not in the plan: ${artifact}`),
+  ];
+  return {
+    status: warnings.length > 0 ? "warn" : "pass",
+    restrictedPlan,
+    registeredArtifacts: registry.length,
+    plannedArtifacts: plannedArtifacts.size,
+    unregisteredExpectedArtifacts,
+    managedRegistryArtifactsMissingFromPlan,
+    externalRegistryArtifacts,
+    warnings,
+  };
+}
+
 function quoteCommandArg(value) {
   const text = String(value ?? "");
   return /^[A-Za-z0-9._:/\\=-]+$/.test(text) ? text : JSON.stringify(text);
@@ -252,6 +294,7 @@ function statusFromReceipt(receipt) {
 function runWave(options = {}, runner = defaultRunner) {
   const generatedAt = nowIso();
   const plan = buildWavePlan(options);
+  const registryConsistency = checkRegistryConsistency(plan, options);
   const receipts = [];
   for (const step of plan) {
     if (options.dryRun) {
@@ -302,6 +345,7 @@ function runWave(options = {}, runner = defaultRunner) {
     readOnly: true,
     dryRun: Boolean(options.dryRun),
     safeWriteRoots: ["output/ops"],
+    registryConsistency,
     plan: plan.map((step) => ({
       id: step.id,
       order: step.order,
@@ -353,7 +397,7 @@ function run(rawArgs = process.argv.slice(2)) {
   return report;
 }
 
-export { buildWavePlan, runWave };
+export { buildWavePlan, checkRegistryConsistency, runWave };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

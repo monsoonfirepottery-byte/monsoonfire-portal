@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { buildWavePlan, runWave } from "./ops_wave_runner.mjs";
+import { buildWavePlan, checkRegistryConsistency, runWave } from "./ops_wave_runner.mjs";
 
 test("buildWavePlan keeps dependent ops steps ordered", () => {
   const plan = buildWavePlan({ steps: ["swarm-preflight", "work-packet", "artifact-validation"] });
@@ -90,6 +90,33 @@ test("buildWavePlan refreshes tool-install recommendations before work packets",
   assert.ok(plan[recommendationIndex].commandText.includes("tool_install_recommendations.mjs"));
 });
 
+test("checkRegistryConsistency verifies planned artifacts against the shared registry", () => {
+  const plan = buildWavePlan();
+  const consistency = checkRegistryConsistency(plan);
+
+  assert.equal(consistency.status, "pass");
+  assert.equal(consistency.restrictedPlan, false);
+  assert.equal(consistency.unregisteredExpectedArtifacts.length, 0);
+  assert.ok(consistency.externalRegistryArtifacts.some((entry) => entry.id === "pr-stack-audit"));
+});
+
+test("checkRegistryConsistency warns on unregistered planned artifacts", () => {
+  const consistency = checkRegistryConsistency([
+    { id: "unit", expectedArtifacts: ["output/ops/unit/unregistered-latest.json"] },
+  ]);
+
+  assert.equal(consistency.status, "warn");
+  assert.deepEqual(consistency.unregisteredExpectedArtifacts, ["output/ops/unit/unregistered-latest.json"]);
+});
+
+test("checkRegistryConsistency treats from-step plans as intentionally restricted", () => {
+  const plan = buildWavePlan({ fromStep: "packet-outcome-report" });
+  const consistency = checkRegistryConsistency(plan, { fromStep: "packet-outcome-report" });
+
+  assert.equal(consistency.restrictedPlan, true);
+  assert.equal(consistency.managedRegistryArtifactsMissingFromPlan.length, 0);
+});
+
 test("runWave dry-run records skipped receipts without executing", () => {
   const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "work-packet"] }, () => {
     throw new Error("runner should not execute in dry-run mode");
@@ -97,6 +124,8 @@ test("runWave dry-run records skipped receipts without executing", () => {
 
   assert.equal(manifest.status, "planned");
   assert.equal(manifest.dryRun, true);
+  assert.equal(manifest.registryConsistency.status, "pass");
+  assert.equal(manifest.registryConsistency.restrictedPlan, true);
   assert.deepEqual(manifest.receipts.map((receipt) => receipt.status), ["skipped", "skipped"]);
 });
 

@@ -44,10 +44,10 @@ The command covers:
 For release evidence packets or incident response, use the v2 bundle:
 
 ```bash
-INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/release-smoke
+INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/release-smoke
 ```
 
-Set `INCIDENT_INCLUDE_LOGS=1` only when an operator intentionally wants short redacted journal excerpts. Review the bundle before sharing it outside the ops team.
+The command writes a local bundle summary and refreshes `output/ops/incidents-v2/incident-bundle-v2-latest.json`, which the PR readiness packet consumes. `INCIDENT_BUNDLE_V2_SMOKE=1` proves the collection and redaction path without requiring live endpoint evidence; capture a full bundle before service-impacting incident response. Set `INCIDENT_INCLUDE_LOGS=1` only when an operator intentionally wants short redacted journal excerpts. Review the bundle before sharing it outside the ops team.
 
 ## CI/SRE Validation
 

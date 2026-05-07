@@ -55,6 +55,8 @@ check_file "scripts/ops/tool_install_recommendations.mjs"
 check_file "scripts/ops/pr_readiness_packet.mjs"
 check_file "scripts/ops/packet_outcome_report.mjs"
 check_file "scripts/ops/pr_stack_audit.mjs"
+check_file "schemas/ops/incident-bundle-v2-summary.v1.schema.json"
+check_file "schemas/ops/pr-readiness-packet.v1.schema.json"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -233,11 +235,20 @@ else
   fail "host_drift_manifest smoke"
 fi
 
-section "Artifact Schema Smoke"
-if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"${OUT_DIR}/artifact-schema-validation.json"; then
-  pass "validate_ops_artifacts schema smoke"
+section "Redacted Bundle Smoke"
+SMOKE_DIR="${OUT_DIR}/incident-bundle-v2-smoke.$(date -u +%Y%m%dT%H%M%SZ).$$"
+INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_POST_DEPLOY=0 INCIDENT_INCLUDE_LOGS=0 bash "${REPO_ROOT}/scripts/ops/incident_bundle_v2.sh" "${SMOKE_DIR}" >"${OUT_DIR}/incident-bundle-v2-smoke.out" 2>&1
+bundle_code="$?"
+if [ "${bundle_code}" -eq 0 ] && [ -f "${SMOKE_DIR}/summary.json" ]; then
+  pass "incident_bundle_v2 smoke wrote summary.json"
 else
-  fail "validate_ops_artifacts schema smoke"
+  fail "incident_bundle_v2 smoke failed with exit ${bundle_code}"
+fi
+
+if grep -RIEq 'Authorization:[[:space:]]*Bearer[[:space:]]+[^[]|password[=:][^[]|secret[=:][^[]|api[_-]?key[=:][^[]' "${SMOKE_DIR}" 2>/dev/null; then
+  fail "redaction smoke found a likely unredacted secret pattern"
+else
+  pass "redaction smoke found no obvious secret patterns"
 fi
 
 section "PR Readiness Packet Smoke"
@@ -245,6 +256,13 @@ if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OU
   pass "pr_readiness_packet smoke"
 else
   fail "pr_readiness_packet smoke"
+fi
+
+section "Artifact Schema Smoke"
+if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"${OUT_DIR}/artifact-schema-validation.json"; then
+  pass "validate_ops_artifacts schema smoke"
+else
+  fail "validate_ops_artifacts schema smoke"
 fi
 
 section "Packet Outcome Report Smoke"
@@ -288,22 +306,6 @@ for needle in \
     fail "docs missing ${needle}"
   fi
 done
-
-section "Redacted Bundle Smoke"
-SMOKE_DIR="${OUT_DIR}/incident-bundle-v2-smoke.$(date -u +%Y%m%dT%H%M%SZ).$$"
-INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_POST_DEPLOY=0 INCIDENT_INCLUDE_LOGS=0 bash "${REPO_ROOT}/scripts/ops/incident_bundle_v2.sh" "${SMOKE_DIR}" >"${OUT_DIR}/incident-bundle-v2-smoke.out" 2>&1
-bundle_code="$?"
-if [ "${bundle_code}" -eq 0 ] && [ -f "${SMOKE_DIR}/summary.json" ]; then
-  pass "incident_bundle_v2 smoke wrote summary.json"
-else
-  fail "incident_bundle_v2 smoke failed with exit ${bundle_code}"
-fi
-
-if grep -RIEq 'Authorization:[[:space:]]*Bearer[[:space:]]+[^[]|password[=:][^[]|secret[=:][^[]|api[_-]?key[=:][^[]' "${SMOKE_DIR}" 2>/dev/null; then
-  fail "redaction smoke found a likely unredacted secret pattern"
-else
-  pass "redaction smoke found no obvious secret patterns"
-fi
 
 section "Post-Deploy Help Smoke"
 if bash "${REPO_ROOT}/scripts/ops/post_deploy_verify.sh" --help >/dev/null 2>&1; then

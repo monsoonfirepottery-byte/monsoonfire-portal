@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/incident-bundle-v2-summary.v1.schema.json",
+  "title": "Studio Brain Incident Bundle v2 Summary",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "scope",
+    "mode",
+    "outputDir",
+    "postgresContainer",
+    "postgresDatabase",
+    "includeLogs",
+    "reports"
+  ],
+  "properties": {
+    "schema": { "const": "studio-brain-incident-bundle-v2.summary.v1" },
+    "generatedAt": { "type": "string" },
+    "scope": { "const": "read_only_redacted_incident_evidence_v2" },
+    "mode": { "enum": ["full", "smoke"] },
+    "outputDir": { "type": "string" },
+    "postgresContainer": { "type": "string" },
+    "postgresDatabase": { "type": "string" },
+    "includeLogs": { "type": "string" },
+    "reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "file", "status", "exitCode", "bytes"],
+        "properties": {
+          "label": { "type": "string" },
+          "file": { "type": "string" },
+          "status": { "enum": ["ok", "check_failed", "skipped"] },
+          "exitCode": { "type": "number" },
+          "bytes": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

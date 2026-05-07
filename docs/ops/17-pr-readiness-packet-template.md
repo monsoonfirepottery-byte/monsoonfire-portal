@@ -22,7 +22,7 @@ Use this packet before opening or merging ops PRs that touch Studio Brain eviden
 | Shell syntax | `bash -n scripts/ops/incident_bundle_v2.sh scripts/ops/ops_ci_validate.sh scripts/ops/post_deploy_verify.sh` | passes | |
 | Ops script validation | `bash scripts/ops/ops_ci_validate.sh` | passes and writes `output/ops/ci-validate` | |
 | Generated readiness packet | `node scripts/ops/pr_readiness_packet.mjs --json --write` | writes `output/ops/pr-readiness/pr-readiness-latest.md` and omits install commands | |
-| Redacted incident bundle v2 | `INCIDENT_INCLUDE_LOGS=0 INCIDENT_INCLUDE_POST_DEPLOY=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/pr-smoke` | writes `summary.json` and redacted reports | |
+| Redacted incident bundle v2 | `INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_LOGS=0 INCIDENT_INCLUDE_POST_DEPLOY=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/pr-smoke` | writes `summary.json`, redacted reports, and `output/ops/incidents-v2/incident-bundle-v2-latest.json` for PR readiness | |
 | Post-deploy verification help | `bash scripts/ops/post_deploy_verify.sh --help` | documents safe flags and env vars | |
 | Docs review | Review `docs/ops/18-release-verification.md` | release verifier covers Studio Brain health/ready, Mission Control health/admin DOM, harness, and idle-worker audit | |
 
@@ -39,7 +39,7 @@ Use this packet before opening or merging ops PRs that touch Studio Brain eviden
 ## Reviewer Notes
 
 - Treat healthy `/healthz` as liveness only; post-deploy verification must include `/readyz` and Mission Control checks.
-- Review generated incident bundles before attaching them outside the ops team.
+- Review generated incident bundles before attaching them outside the ops team. A `smoke` mode latest summary is enough to prove the tooling path exists, but capture a full bundle before service-impacting incident response.
 - If a harness script is missing in the current repo, `post_deploy_verify.sh` should report a warning or skipped check, not read secrets or mutate state to compensate.
 
 ## Handoff

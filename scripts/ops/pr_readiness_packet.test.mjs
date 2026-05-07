@@ -92,6 +92,21 @@ const packetOutcomeReport = {
   packetChurn: { orphanedRate: 0, resetRecommended: false },
 };
 
+const incidentBundle = {
+  schema: "studio-brain-incident-bundle-v2.summary.v1",
+  generatedAt: "2026-05-07T12:02:40.000Z",
+  scope: "read_only_redacted_incident_evidence_v2",
+  mode: "smoke",
+  outputDir: "output/ops/incidents-v2/unit",
+  postgresContainer: "studiobrain_postgres",
+  postgresDatabase: "monsoonfire_studio_os",
+  includeLogs: "0",
+  reports: [
+    { label: "versions", file: "versions.txt", status: "ok", exitCode: 0, bytes: 120 },
+    { label: "journal_studio_brain", file: "journal_studio_brain.txt", status: "skipped", exitCode: 0, bytes: 80 },
+  ],
+};
+
 const workPacketQuality = {
   schema: "studiobrain-work-packet-quality-lint.v1",
   generatedAt: "2026-05-07T12:02:45.000Z",
@@ -138,7 +153,7 @@ const toolInstallRecommendations = {
 
 test("buildPrReadinessPacket summarizes current evidence without executable install commands", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, incidentBundle, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
 
@@ -155,6 +170,10 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.nextExecutablePacket.verification.length, 2);
   assert.equal(packet.evidence.packetOutcome.status, "pass");
   assert.equal(packet.evidence.packetOutcome.total, 2);
+  assert.equal(packet.evidence.incidentBundle.status, "present");
+  assert.equal(packet.evidence.incidentBundle.mode, "smoke");
+  assert.equal(packet.evidence.incidentBundle.reports, 2);
+  assert.equal(packet.evidence.incidentBundle.skippedReports, 1);
   assert.equal(packet.evidence.sliceLedger.requestedCoverage.status, "covered");
   assert.deepEqual(packet.evidence.sliceLedger.requestedCoverage.covered, ["slice-046", "slice-047"]);
   assert.equal(packet.outcomeLedger.packetId, "ops-wp-ready");
@@ -181,6 +200,9 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /Next Executable Packet/);
   assert.match(markdown, /Outcome Ledger/);
   assert.match(markdown, /Packet outcomes/);
+  assert.match(markdown, /Incident bundle v2/);
+  assert.match(markdown, /mode=smoke/);
+  assert.match(markdown, /reports=2/);
   assert.match(markdown, /Work packet quality/);
   assert.match(markdown, /sourceSignalAudit=pass/);
   assert.match(markdown, /ops-wp-ready/);
@@ -199,6 +221,33 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /shellcheck/);
   assert.doesNotMatch(markdown, /do not copy this/);
   assert.doesNotMatch(markdown, /do not install Docker/);
+});
+
+test("buildPrReadinessPacket warns when incident bundle reports fail", () => {
+  const packet = buildPrReadinessPacket({
+    gitState,
+    artifactValidation,
+    incidentBundle: {
+      ...incidentBundle,
+      mode: "full",
+      reports: [
+        ...incidentBundle.reports,
+        { label: "docker", file: "docker.txt", status: "check_failed", exitCode: 1, bytes: 48 },
+      ],
+    },
+    waveRunner,
+    workPacket,
+    workPacketQuality,
+    packetOutcomeReport,
+    sliceLedger,
+    toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
+  });
+
+  assert.equal(packet.status, "warn");
+  assert.equal(packet.evidence.incidentBundle.status, "warn");
+  assert.equal(packet.evidence.incidentBundle.failedReports, 1);
+  assert.ok(packet.warnings.some((warning) => warning.includes("incident bundle v2 has 1 failed report")));
+  assert.match(renderMarkdown(packet), /Incident bundle v2 \| warn/);
 });
 
 test("buildPrReadinessPacket warns when requested packet id is outside the latest window", () => {

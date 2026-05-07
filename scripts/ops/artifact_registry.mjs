@@ -110,6 +110,13 @@ const PRODUCER_METADATA = {
     consumers: ["pr-body", "review-handoff"],
     requiredFor: ["reviewable-prs"],
   },
+  "incident-bundle-v2-summary": {
+    producerCommand: "INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_POST_DEPLOY=0 INCIDENT_INCLUDE_LOGS=0 bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/registry-smoke",
+    producerStep: "incident-bundle-v2",
+    safeWriteRoot: "output/ops/incidents-v2",
+    consumers: ["pr-readiness-packet", "incident-response"],
+    requiredFor: ["pre-incident-mutation-evidence"],
+  },
   "artifact-schema-validation": {
     producerCommand: "node scripts/ops/validate_ops_artifacts.mjs --json --write",
     producerStep: "artifact-validation",
@@ -208,6 +215,12 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "pr-readiness-packet",
     artifact: "output/ops/pr-readiness/pr-readiness-latest.json",
     schema: "schemas/ops/pr-readiness-packet.v1.schema.json",
+    freshnessTier: "loop",
+  },
+  {
+    id: "incident-bundle-v2-summary",
+    artifact: "output/ops/incidents-v2/incident-bundle-v2-latest.json",
+    schema: "schemas/ops/incident-bundle-v2-summary.v1.schema.json",
     freshnessTier: "loop",
   },
   {

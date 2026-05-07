@@ -14,6 +14,9 @@ PG_CONTAINER="${PG_CONTAINER:-studiobrain_postgres}"
 PGDATABASE="${PGDATABASE:-monsoonfire_studio_os}"
 INCIDENT_INCLUDE_LOGS="${INCIDENT_INCLUDE_LOGS:-0}"
 INCIDENT_INCLUDE_POST_DEPLOY="${INCIDENT_INCLUDE_POST_DEPLOY:-1}"
+INCIDENT_BUNDLE_V2_SMOKE="${INCIDENT_BUNDLE_V2_SMOKE:-0}"
+INCIDENT_WRITE_LATEST="${INCIDENT_WRITE_LATEST:-1}"
+LATEST_SUMMARY="${REPO_ROOT}/output/ops/incidents-v2/incident-bundle-v2-latest.json"
 SUMMARY_ROWS=()
 
 mkdir -p "${OUT_DIR}"
@@ -104,12 +107,17 @@ write_skipped_report() {
 
 write_summary_json() {
   local summary_path="${OUT_DIR}/summary.json"
+  local mode="full"
+  if [ "${INCIDENT_BUNDLE_V2_SMOKE}" = "1" ]; then
+    mode="smoke"
+  fi
   printf 'writing %s\n' "${summary_path}"
   {
     printf '{\n'
     printf '  "schema": "studio-brain-incident-bundle-v2.summary.v1",\n'
     printf '  "generatedAt": %s,\n' "$(json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
     printf '  "scope": "read_only_redacted_incident_evidence_v2",\n'
+    printf '  "mode": %s,\n' "$(json_string "${mode}")"
     printf '  "outputDir": %s,\n' "$(json_string "${OUT_DIR}")"
     printf '  "postgresContainer": %s,\n' "$(json_string "${PG_CONTAINER}")"
     printf '  "postgresDatabase": %s,\n' "$(json_string "${PGDATABASE}")"
@@ -125,6 +133,10 @@ write_summary_json() {
     printf '\n  ]\n'
     printf '}\n'
   } >"${summary_path}"
+  if [ "${INCIDENT_WRITE_LATEST}" = "1" ]; then
+    mkdir -p "$(dirname "${LATEST_SUMMARY}")"
+    cp "${summary_path}" "${LATEST_SUMMARY}"
+  fi
 }
 
 run_script_if_present() {
@@ -137,7 +149,7 @@ run_script_if_present() {
   fi
 }
 
-if [ "${INCIDENT_BUNDLE_V2_SMOKE:-0}" = "1" ]; then
+if [ "${INCIDENT_BUNDLE_V2_SMOKE}" = "1" ]; then
   write_command_file versions "printf 'hostname='; hostname 2>/dev/null || true; printf 'date='; date -Is 2>/dev/null || date -u; command -v node >/dev/null 2>&1 && node --version || true; command -v npm >/dev/null 2>&1 && npm --version || true"
   write_skipped_report full_inventory "smoke mode enabled; full inventory checks skipped"
   write_skipped_report journal_studio_brain "smoke mode enabled; journals skipped"

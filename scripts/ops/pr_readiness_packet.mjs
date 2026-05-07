@@ -15,6 +15,7 @@ const DEFAULT_SLICE_LEDGER = resolve(REPO_ROOT, "output", "ops", "effectivity", 
 const DEFAULT_TOOL_INSTALL_RECOMMENDATIONS = resolve(REPO_ROOT, "output", "ops", "effectivity", "tool-install-recommendations-latest.json");
 const DEFAULT_WAVE_RUNNER = resolve(REPO_ROOT, "output", "ops", "waves", "ops-wave-runner-latest.json");
 const DEFAULT_PACKET_OUTCOME_REPORT = resolve(REPO_ROOT, "output", "ops", "swarm", "packet-outcome-report-latest.json");
+const DEFAULT_INCIDENT_BUNDLE = resolve(REPO_ROOT, "output", "ops", "incidents-v2", "incident-bundle-v2-latest.json");
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -85,6 +86,53 @@ function summarizeArtifactValidation(report) {
     failed: report.summary?.failed ?? 0,
     missing: report.summary?.missing ?? 0,
     problems: failing,
+  };
+}
+
+function emptyIncidentBundle(status = "missing", extra = {}) {
+  return {
+    status,
+    generatedAt: "",
+    mode: "",
+    outputDir: "",
+    reports: 0,
+    okReports: 0,
+    skippedReports: 0,
+    failedReports: 0,
+    includeLogs: "",
+    topReports: [],
+    ...extra,
+  };
+}
+
+function summarizeIncidentBundle(report) {
+  if (!report) return emptyIncidentBundle("missing");
+  if (report.status === "invalid_json") {
+    return emptyIncidentBundle("invalid_json", {
+      failedReports: 1,
+      parseError: report.parseError || "incident bundle v2 summary JSON is invalid",
+    });
+  }
+  const reports = Array.isArray(report.reports) ? report.reports : [];
+  const failedReports = reports.filter((entry) => clean(entry.status) === "check_failed").length;
+  const skippedReports = reports.filter((entry) => clean(entry.status) === "skipped").length;
+  const okReports = reports.filter((entry) => clean(entry.status) === "ok").length;
+  return {
+    status: failedReports > 0 ? "warn" : "present",
+    generatedAt: clean(report.generatedAt),
+    mode: clean(report.mode),
+    outputDir: clean(report.outputDir),
+    reports: reports.length,
+    okReports,
+    skippedReports,
+    failedReports,
+    includeLogs: clean(report.includeLogs),
+    topReports: reports.slice(0, 5).map((entry) => ({
+      label: clean(entry.label),
+      status: clean(entry.status),
+      file: clean(entry.file),
+      bytes: Number(entry.bytes) || 0,
+    })),
   };
 }
 
@@ -350,6 +398,10 @@ function buildWarnings({ gitState, evidence, outcomeLedger }) {
   }
   if (evidence.artifactValidation.status === "missing") warnings.push("artifact validation report is missing");
   if (evidence.artifactValidation.warned > 0 || evidence.artifactValidation.missing > 0) warnings.push("artifact validation has warnings or missing artifacts");
+  if (evidence.incidentBundle.status === "missing") warnings.push("incident bundle v2 latest summary is missing; capture a redacted bundle before service-impacting changes");
+  else if (evidence.incidentBundle.status === "invalid_json") warnings.push("incident bundle v2 latest summary is invalid");
+  else if (evidence.incidentBundle.failedReports > 0) warnings.push(`incident bundle v2 has ${evidence.incidentBundle.failedReports} failed report(s)`);
+  if (evidence.incidentBundle.mode === "smoke") warnings.push("incident bundle v2 latest summary is smoke evidence, not a full incident bundle");
   if (evidence.waveRunner.status === "missing") warnings.push("wave runner latest artifact is missing");
   if (evidence.waveRunner.status === "planned") warnings.push("wave runner latest artifact is a dry-run plan, not executable wave evidence");
   if (evidence.waveRunner.workPacketMaxPackets === null) warnings.push("wave runner packet window is unknown");
@@ -390,6 +442,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
   const gitState = inputs.gitState || collectGitState(options);
   const evidence = {
     artifactValidation: summarizeArtifactValidation(inputs.artifactValidation),
+    incidentBundle: summarizeIncidentBundle(inputs.incidentBundle),
     waveRunner: summarizeWaveRunner(inputs.waveRunner),
     workPacket: summarizeWorkPacket(inputs.workPacket),
     workPacketQuality: summarizeWorkPacketQuality(inputs.workPacketQuality),
@@ -472,6 +525,7 @@ ${dirtyFiles}
 | Check | Status | Detail |
 | --- | --- | --- |
 | Artifact validation | ${packet.evidence.artifactValidation.status} | checks=${packet.evidence.artifactValidation.checks}, warned=${packet.evidence.artifactValidation.warned}, missing=${packet.evidence.artifactValidation.missing}, failed=${packet.evidence.artifactValidation.failed} |
+| Incident bundle v2 | ${packet.evidence.incidentBundle.status} | mode=${packet.evidence.incidentBundle.mode || ""}, reports=${packet.evidence.incidentBundle.reports}, failed=${packet.evidence.incidentBundle.failedReports}, skipped=${packet.evidence.incidentBundle.skippedReports}, includeLogs=${packet.evidence.incidentBundle.includeLogs || ""}, output=${packet.evidence.incidentBundle.outputDir || ""} |
 | Wave runner | ${packet.evidence.waveRunner.status} | run=${packet.evidence.waveRunner.runId}, workPacketMaxPackets=${packet.evidence.waveRunner.workPacketMaxPackets ?? ""} |
 | Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, requestedCoverage=${packet.evidence.sliceLedger.requestedCoverage.status}, missing=${packet.evidence.sliceLedger.requestedCoverage.missing.join(", ")}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
 | Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, hostDrift=${packet.evidence.workPacket.hostDriftStatus || ""}, hostDriftDirty=${packet.evidence.workPacket.hostDriftDirtyPaths ?? ""}, hostDriftApproval=${packet.evidence.workPacket.hostDriftRequiresHumanApproval ?? ""}, hostDriftSecurity=${packet.evidence.workPacket.hostDriftDoNotTouchSecurityReview ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
@@ -542,6 +596,7 @@ function parseArgs(argv) {
     workPacket: DEFAULT_WORK_PACKET,
     workPacketQuality: DEFAULT_WORK_PACKET_QUALITY,
     packetOutcomeReport: DEFAULT_PACKET_OUTCOME_REPORT,
+    incidentBundle: DEFAULT_INCIDENT_BUNDLE,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
   };
@@ -582,6 +637,7 @@ function parseArgs(argv) {
       "--work-packet": "workPacket",
       "--work-packet-quality": "workPacketQuality",
       "--packet-outcome-report": "packetOutcomeReport",
+      "--incident-bundle": "incidentBundle",
       "--slice-ledger": "sliceLedger",
       "--tool-install-recommendations": "toolInstallRecommendations",
     };
@@ -589,7 +645,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(flags)) {
       const value = read(flag);
       if (value === null) continue;
-      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "sliceLedger", "toolInstallRecommendations"].includes(key)
+      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "sliceLedger", "toolInstallRecommendations"].includes(key)
         ? resolve(REPO_ROOT, value)
         : value;
       matched = true;
@@ -617,6 +673,7 @@ Options:
   --work-packet <path>                 Default: output/ops/swarm/latest-work-packet.json.
   --work-packet-quality <path>         Default: output/ops/swarm/work-packet-quality-latest.json.
   --packet-outcome-report <path>       Default: output/ops/swarm/packet-outcome-report-latest.json.
+  --incident-bundle <path>             Default: output/ops/incidents-v2/incident-bundle-v2-latest.json.
   --slice-ledger <path>                Default: output/ops/effectivity/slice-ledger-latest.json.
   --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.
 `);
@@ -649,6 +706,7 @@ function run(rawArgs = process.argv.slice(2)) {
     workPacket: readJsonIfExists(options.workPacket),
     workPacketQuality: readJsonIfExists(options.workPacketQuality),
     packetOutcomeReport: readJsonIfExists(options.packetOutcomeReport),
+    incidentBundle: readJsonIfExists(options.incidentBundle),
     sliceLedger: readJsonIfExists(options.sliceLedger),
     toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
   }, options);

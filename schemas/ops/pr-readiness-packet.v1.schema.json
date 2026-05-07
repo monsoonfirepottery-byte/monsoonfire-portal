@@ -51,7 +51,7 @@
     },
     "evidence": {
       "type": "object",
-      "required": ["artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcome", "sliceLedger", "toolInstall"],
+      "required": ["artifactValidation", "incidentBundle", "waveRunner", "workPacket", "workPacketQuality", "packetOutcome", "sliceLedger", "toolInstall"],
       "properties": {
         "artifactValidation": {
           "type": "object",
@@ -65,6 +65,37 @@
             "failed": { "type": "number", "minimum": 0 },
             "missing": { "type": "number", "minimum": 0 },
             "problems": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        },
+        "incidentBundle": {
+          "type": "object",
+          "required": ["status", "generatedAt", "mode", "outputDir", "reports", "okReports", "skippedReports", "failedReports", "includeLogs", "topReports"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "mode": { "type": "string" },
+            "outputDir": { "type": "string" },
+            "reports": { "type": "number", "minimum": 0 },
+            "okReports": { "type": "number", "minimum": 0 },
+            "skippedReports": { "type": "number", "minimum": 0 },
+            "failedReports": { "type": "number", "minimum": 0 },
+            "includeLogs": { "type": "string" },
+            "topReports": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["label", "status", "file", "bytes"],
+                "properties": {
+                  "label": { "type": "string" },
+                  "status": { "type": "string" },
+                  "file": { "type": "string" },
+                  "bytes": { "type": "number", "minimum": 0 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "parseError": { "type": "string" }
           },
           "additionalProperties": false
         },

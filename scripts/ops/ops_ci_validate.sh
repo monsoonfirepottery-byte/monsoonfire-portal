@@ -47,6 +47,7 @@ check_file "scripts/ops/admin_effectivity_audit.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
 check_file "scripts/ops/tool_install_recommendations.mjs"
+check_file "scripts/ops/pr_readiness_packet.mjs"
 check_file "docs/ops/17-pr-readiness-packet-template.md"
 check_file "docs/ops/18-release-verification.md"
 
@@ -71,7 +72,8 @@ for script in \
   "scripts/ops/admin_effectivity_audit.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
   "scripts/ops/installed_tool_inventory.mjs" \
-  "scripts/ops/tool_install_recommendations.mjs"; do
+  "scripts/ops/tool_install_recommendations.mjs" \
+  "scripts/ops/pr_readiness_packet.mjs"; do
   if [ -f "${REPO_ROOT}/${script}" ] && node --check "${REPO_ROOT}/${script}" >/dev/null; then
     pass "node --check ${script}"
   else
@@ -128,6 +130,12 @@ else
   fail "node --test scripts/ops/tool_install_recommendations.test.mjs"
 fi
 
+if node --test "${REPO_ROOT}/scripts/ops/pr_readiness_packet.test.mjs" >"${OUT_DIR}/pr-readiness-packet.test.out" 2>&1; then
+  pass "node --test scripts/ops/pr_readiness_packet.test.mjs"
+else
+  fail "node --test scripts/ops/pr_readiness_packet.test.mjs"
+fi
+
 section "Swarm Lane Preflight Smoke"
 if node "${REPO_ROOT}/scripts/ops/swarm_lane_preflight.mjs" --lane tooling --base origin/main --json --write >"${OUT_DIR}/swarm-lane-preflight.json"; then
   pass "swarm_lane_preflight tooling smoke"
@@ -160,6 +168,13 @@ if node "${REPO_ROOT}/scripts/ops/validate_ops_artifacts.mjs" --json --write >"$
   pass "validate_ops_artifacts schema smoke"
 else
   fail "validate_ops_artifacts schema smoke"
+fi
+
+section "PR Readiness Packet Smoke"
+if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OUT_DIR}/pr-readiness-packet.json"; then
+  pass "pr_readiness_packet smoke"
+else
+  fail "pr_readiness_packet smoke"
 fi
 
 section "Docs Contract"

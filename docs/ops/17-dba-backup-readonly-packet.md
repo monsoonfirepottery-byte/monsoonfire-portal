@@ -55,11 +55,25 @@ docker exec -i -u postgres studiobrain_postgres psql -d monsoonfire_studio_os -f
   readiness. They do not prove that a restore succeeds.
 - The restore-prerequisite drill proves that a safe restore drill is ready to
   schedule. It does not restore into any target.
+- Backup confidence score semantics, artifact age thresholds, and issue-ready
+  stale/missing evidence bodies are defined in
+  `docs/ops/23-backup-restore-confidence.md`.
 - Query hotspot output is workload evidence only. Capture approved
   `EXPLAIN (ANALYZE, BUFFERS)` output with literals scrubbed before proposing
   indexes or query rewrites.
 - Role and extension packets are redacted inventory. Do not add passwords,
   connection strings, raw `.env` values, or dump contents to ticket artifacts.
+
+## Confidence And Age Semantics
+
+Use `docs/ops/23-backup-restore-confidence.md` as the shared issue and dashboard
+language for backup confidence:
+
+| Recommendation | Evidence placeholder / known evidence | Risk | Safe next step | Rollback / undo notes | Approval gate |
+| --- | --- | --- | --- | --- | --- |
+| Score backup confidence as a conservative rollup instead of a binary pass/fail. | Known evidence: root-owned config/archive metadata was recorded for 2026-05-06 18:11 UTC; PostgreSQL, Redis, MinIO, and restore-drill proof still need current attached verifier output. | Medium if partial evidence is mistaken for restore proof. | Attach current backup evidence outputs and apply the score bands from the confidence packet. | Revert docs/dashboard wording if scoring is wrong; keep all backup artifacts intact. | Approval required before backup job changes, manual dumps, restores, or retention changes. |
+| Treat artifact age as stale before it becomes missing-critical. | Placeholder: attach artifact family, mtime, age, threshold, and verifier command used. | Medium to high depending on the data family. | Open stale-evidence issue when age exceeds the documented threshold. | Revert issue/docs updates if evidence was misread; do not delete or overwrite backups. | Read-only checks do not need approval; runtime backup changes do. |
+| Keep restore confidence separate from artifact presence. | Placeholder: attach disposable-target drill summary or explicitly mark drill evidence missing. | High if operators assume `pg_restore --list` or metadata presence proves recovery. | Schedule an owner-approved disposable-target restore drill. | Drop only the disposable target after approval; never restore over production. | Explicit owner approval required before any restore using production-derived data. |
 
 ## Suggested Weekly Packet
 

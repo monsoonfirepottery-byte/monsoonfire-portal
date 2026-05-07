@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { buildOpsWorkPacket, runOpsWorkPacket, summarizeFreshEvidence, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { buildOpsWorkPacket, comparePackets, runOpsWorkPacket, summarizeFreshEvidence, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
 const reportSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet-report.v1.schema.json"), "utf8"));
@@ -312,6 +312,15 @@ test("summarizeFreshEvidence degrades when ignored artifacts are missing", () =>
   assert.equal(fresh.toolInstallRecommendations.status, "missing");
   assert.equal(fresh.toolingFindings.status, "missing");
   assert.equal(fresh.swarmPreflight.status, "missing");
+});
+
+test("comparePackets prefers ready packets within the same priority", () => {
+  const packets = [
+    { title: "[cleanup] Approval-gated cleanup", priorityRank: 1, status: "approval_gated" },
+    { title: "[ops-tooling] Ready shellcheck task", priorityRank: 1, status: "ready" },
+  ].sort(comparePackets);
+
+  assert.equal(packets[0].title, "[ops-tooling] Ready shellcheck task");
 });
 
 test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {

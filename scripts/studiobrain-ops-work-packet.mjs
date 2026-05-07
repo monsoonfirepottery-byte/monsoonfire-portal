@@ -393,6 +393,16 @@ function toolingFindingPackets(toolingFindings, freshEvidence) {
     .map((task) => makeToolingFindingPacket(task, freshEvidence));
 }
 
+function packetReadinessRank(packet) {
+  return clean(packet.status) === "ready" ? 0 : 1;
+}
+
+function comparePackets(left, right) {
+  return left.priorityRank - right.priorityRank
+    || packetReadinessRank(left) - packetReadinessRank(right)
+    || left.title.localeCompare(right.title);
+}
+
 function freshSourceSignals(freshEvidence) {
   if (!freshEvidence) return [];
   return [
@@ -705,7 +715,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
     ...backlogPackets,
     ...toolingFindingPackets(inputs.toolingFindings, freshEvidence),
   ]
-    .sort((left, right) => left.priorityRank - right.priorityRank || left.title.localeCompare(right.title))
+    .sort(comparePackets)
     .slice(0, Number(options.maxPackets || 8));
 
   return {
@@ -981,7 +991,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   return report;
 }
 
-export { summarizeFreshEvidence, workPacketReportStatus };
+export { comparePackets, summarizeFreshEvidence, workPacketReportStatus };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

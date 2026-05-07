@@ -29,6 +29,7 @@ test("auditCadence is due every five countable slices", () => {
     slicesSinceLastAudit: 0,
     auditDue: false,
     nextAuditAt: 5,
+    lastAuditSliceId: null,
   });
   assert.equal(auditCadence([1, 2, 3, 4].map(row), 5).auditDue, false);
   assert.equal(auditCadence([1, 2, 3, 4].map(row), 5).slicesSinceLastAudit, 4);
@@ -41,6 +42,21 @@ test("auditCadence ignores no-op rows", () => {
 
   assert.equal(cadence.countedSlices, 5);
   assert.equal(cadence.auditDue, true);
+});
+
+test("auditCadence treats effectivity audit rows as cadence acknowledgements", () => {
+  const audit = row(5);
+  audit.title = "Run five-slice admin effectivity audit";
+  audit.commands = [{ command: "node scripts/ops/admin_effectivity_audit.mjs --json --write", status: "pass" }];
+  const acknowledged = auditCadence([row(1), row(2), row(3), row(4), audit], 5);
+  const nextSlice = auditCadence([row(1), row(2), row(3), row(4), audit, row(6)], 5);
+
+  assert.equal(acknowledged.auditDue, false);
+  assert.equal(acknowledged.slicesSinceLastAudit, 0);
+  assert.equal(acknowledged.lastAuditSliceId, "slice-20260507-005");
+  assert.equal(acknowledged.nextAuditAt, 10);
+  assert.equal(nextSlice.slicesSinceLastAudit, 1);
+  assert.equal(nextSlice.nextAuditAt, 10);
 });
 
 test("summarize filters cadence by run id while preserving natural slice order", () => {

@@ -121,9 +121,43 @@ const workPacketQuality = {
     findings: 0,
     warnings: 0,
     failures: 0,
+    staleBacklogPackets: 0,
+    missingBacklogStatusPackets: 0,
     sourceSignalAuditStatus: "pass",
   },
   findings: [],
+};
+
+const prStackAudit = {
+  schema: "studiobrain-ops-pr-stack-audit.v1",
+  generatedAt: "2026-05-07T12:02:50.000Z",
+  status: "warn",
+  steeringDigest: {
+    status: "blocked",
+    openCountExact: false,
+    openLowerBound: 40,
+    openLimitReached: true,
+    mergeReady: 0,
+    mergeBlocked: 40,
+    nextMergeCandidate: null,
+    recommendedSteering: "do_not_merge_or_rebase_from_this_slice",
+    notes: ["Open PR count reached one or more collection limits; treat openLowerBound as a lower bound."],
+    blockedStackLanes: [
+      {
+        repoId: "portal",
+        count: 20,
+        bottomPr: 651,
+        bottomHead: "codex/ops-packet-outcome-pressure-wave2",
+        tipPr: 670,
+        tipHead: "codex/ops-incident-bundle-readiness-wave2",
+        openLimitReached: true,
+        commonBlockers: ["draft", "merge_state_unknown", "base_pr_open"],
+        recommendedSteering: "do_not_merge_or_rebase_from_this_slice",
+      },
+    ],
+  },
+  summary: { open: 40, openCountExact: false, openLowerBound: 40, mergeReady: 0, mergeBlocked: 40 },
+  warnings: ["portal open PR collection reached limit 40"],
 };
 
 const toolInstallRecommendations = {
@@ -153,7 +187,7 @@ const toolInstallRecommendations = {
 
 test("buildPrReadinessPacket summarizes current evidence without executable install commands", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, incidentBundle, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, incidentBundle, waveRunner, workPacket, workPacketQuality, prStackAudit, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
 
@@ -190,6 +224,10 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.hostDriftAllowlistStatus, "present");
   assert.equal(packet.evidence.workPacketQuality.status, "pass");
   assert.equal(packet.evidence.workPacketQuality.findings, 0);
+  assert.equal(packet.evidence.prStack.status, "warn");
+  assert.equal(packet.evidence.prStack.openCountExact, false);
+  assert.equal(packet.evidence.prStack.openLowerBound, 40);
+  assert.equal(packet.evidence.prStack.blockedStackLanes.length, 1);
   assert.equal(packet.evidence.toolInstall.installNowCandidates, 2);
   assert.equal(packet.evidence.toolInstall.approvalRequired, 1);
   assert.ok(packet.warnings.some((warning) => warning.includes("require approval")));
@@ -205,6 +243,9 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /reports=2/);
   assert.match(markdown, /Work packet quality/);
   assert.match(markdown, /sourceSignalAudit=pass/);
+  assert.match(markdown, /PR stack/);
+  assert.match(markdown, /openLowerBound=40/);
+  assert.match(markdown, /do_not_merge_or_rebase_from_this_slice/);
   assert.match(markdown, /ops-wp-ready/);
   assert.match(markdown, /Run the evidence refresh/);
   assert.match(markdown, /codex\/ops-refresh-evidence/);
@@ -252,7 +293,7 @@ test("buildPrReadinessPacket warns when incident bundle reports fail", () => {
 
 test("buildPrReadinessPacket warns when requested packet id is outside the latest window", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, prStackAudit, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", packetId: "ops-wp-stale" },
   );
 
@@ -266,7 +307,7 @@ test("buildPrReadinessPacket warns when requested packet id is outside the lates
 
 test("buildPrReadinessPacket warns when requested slice ids are outside the latest slice-ledger window", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, prStackAudit, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", sliceIds: "slice-20260507-076,slice-20260507-077" },
   );
 
@@ -388,7 +429,7 @@ test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet 
 
 test("buildPrReadinessPacket stays compatible with its JSON schema", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, workPacketQuality, prStackAudit, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
   const schema = JSON.parse(readFileSync("schemas/ops/pr-readiness-packet.v1.schema.json", "utf8"));

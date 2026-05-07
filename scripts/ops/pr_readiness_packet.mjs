@@ -16,6 +16,7 @@ const DEFAULT_TOOL_INSTALL_RECOMMENDATIONS = resolve(REPO_ROOT, "output", "ops",
 const DEFAULT_WAVE_RUNNER = resolve(REPO_ROOT, "output", "ops", "waves", "ops-wave-runner-latest.json");
 const DEFAULT_PACKET_OUTCOME_REPORT = resolve(REPO_ROOT, "output", "ops", "swarm", "packet-outcome-report-latest.json");
 const DEFAULT_INCIDENT_BUNDLE = resolve(REPO_ROOT, "output", "ops", "incidents-v2", "incident-bundle-v2-latest.json");
+const DEFAULT_PR_STACK_AUDIT = resolve(REPO_ROOT, "output", "ops", "pr-stack", "pr-stack-audit-latest.json");
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -235,7 +236,7 @@ function summarizePacketOutcome(report) {
 }
 
 function summarizeWorkPacketQuality(report) {
-  if (!report) return { status: "missing", generatedAt: "", runId: "", findings: 0, warnings: 0, failures: 0, sourceSignalAuditStatus: "", topFindings: [] };
+  if (!report) return { status: "missing", generatedAt: "", runId: "", findings: 0, warnings: 0, failures: 0, staleBacklogPackets: 0, missingBacklogStatusPackets: 0, sourceSignalAuditStatus: "", topFindings: [] };
   if (report.status === "invalid_json") {
     return {
       status: "invalid_json",
@@ -244,6 +245,8 @@ function summarizeWorkPacketQuality(report) {
       findings: 1,
       warnings: 0,
       failures: 1,
+      staleBacklogPackets: 0,
+      missingBacklogStatusPackets: 0,
       sourceSignalAuditStatus: "",
       topFindings: [{ severity: "fail", code: "invalid_json", packetId: "", title: "", message: report.parseError || "work-packet quality JSON is invalid" }],
       parseError: report.parseError || "",
@@ -256,6 +259,8 @@ function summarizeWorkPacketQuality(report) {
     findings: report.summary?.findings ?? 0,
     warnings: report.summary?.warnings ?? 0,
     failures: report.summary?.failures ?? 0,
+    staleBacklogPackets: report.summary?.staleBacklogPackets ?? 0,
+    missingBacklogStatusPackets: report.summary?.missingBacklogStatusPackets ?? 0,
     sourceSignalAuditStatus: clean(report.summary?.sourceSignalAuditStatus),
     topFindings: Array.isArray(report.findings)
       ? report.findings.slice(0, 5).map((finding) => ({
@@ -266,6 +271,73 @@ function summarizeWorkPacketQuality(report) {
           message: clean(finding.message),
         }))
       : [],
+  };
+}
+
+function summarizePrStackAudit(report) {
+  const emptyCandidate = null;
+  if (!report) {
+    return {
+      status: "missing",
+      generatedAt: "",
+      openCountExact: false,
+      openLowerBound: 0,
+      openLimitReached: false,
+      mergeReady: 0,
+      mergeBlocked: 0,
+      recommendedSteering: "",
+      nextMergeCandidate: emptyCandidate,
+      blockedStackLanes: [],
+      warnings: [],
+    };
+  }
+  if (report.status === "invalid_json") {
+    return {
+      status: "invalid_json",
+      generatedAt: "",
+      openCountExact: false,
+      openLowerBound: 0,
+      openLimitReached: false,
+      mergeReady: 0,
+      mergeBlocked: 0,
+      recommendedSteering: "",
+      nextMergeCandidate: emptyCandidate,
+      blockedStackLanes: [],
+      warnings: [report.parseError || "PR stack audit JSON is invalid"],
+      parseError: report.parseError || "",
+    };
+  }
+  const digest = report.steeringDigest || {};
+  return {
+    status: clean(report.status) || "unknown",
+    generatedAt: clean(report.generatedAt),
+    openCountExact: Boolean(digest.openCountExact),
+    openLowerBound: Number(digest.openLowerBound ?? report.summary?.open ?? 0) || 0,
+    openLimitReached: Boolean(digest.openLimitReached),
+    mergeReady: Number(digest.mergeReady ?? report.summary?.mergeReady ?? 0) || 0,
+    mergeBlocked: Number(digest.mergeBlocked ?? report.summary?.mergeBlocked ?? 0) || 0,
+    recommendedSteering: clean(digest.recommendedSteering),
+    nextMergeCandidate: digest.nextMergeCandidate
+      ? {
+          repoId: clean(digest.nextMergeCandidate.repoId),
+          number: Number(digest.nextMergeCandidate.number) || 0,
+          title: clean(digest.nextMergeCandidate.title),
+          url: clean(digest.nextMergeCandidate.url),
+          headRefName: clean(digest.nextMergeCandidate.headRefName),
+          baseRefName: clean(digest.nextMergeCandidate.baseRefName),
+        }
+      : emptyCandidate,
+    blockedStackLanes: Array.isArray(digest.blockedStackLanes)
+      ? digest.blockedStackLanes.slice(0, 5).map((lane) => ({
+          repoId: clean(lane.repoId),
+          count: Number(lane.count) || 0,
+          bottomPr: lane.bottomPr === null || lane.bottomPr === undefined ? null : Number(lane.bottomPr) || 0,
+          tipPr: lane.tipPr === null || lane.tipPr === undefined ? null : Number(lane.tipPr) || 0,
+          commonBlockers: Array.isArray(lane.commonBlockers) ? lane.commonBlockers.map(clean).filter(Boolean).slice(0, 6) : [],
+          recommendedSteering: clean(lane.recommendedSteering),
+        }))
+      : [],
+    warnings: Array.isArray(report.warnings) ? report.warnings.map(clean).filter(Boolean).slice(0, 5) : [],
   };
 }
 
@@ -421,6 +493,11 @@ function buildWarnings({ gitState, evidence, outcomeLedger }) {
   for (const finding of evidence.workPacketQuality.topFindings.slice(0, 3)) {
     warnings.push(`work-packet quality ${finding.severity} ${finding.code}${finding.packetId ? ` ${finding.packetId}` : ""}: ${finding.message}`);
   }
+  if (evidence.prStack.status === "missing") warnings.push("PR stack audit latest artifact is missing");
+  else if (evidence.prStack.status === "invalid_json") warnings.push("PR stack audit latest artifact is invalid");
+  else if (evidence.prStack.status === "warn") warnings.push("PR stack audit has warnings");
+  if (evidence.prStack.openLowerBound > 0 && !evidence.prStack.openCountExact) warnings.push(`PR stack open count is a lower bound: >=${evidence.prStack.openLowerBound}`);
+  if (evidence.prStack.openLowerBound > 0 && evidence.prStack.mergeReady === 0) warnings.push("PR stack has no merge-ready PR; use the steering digest before merge/rebase work");
   if (evidence.sliceLedger.requestedCoverage.status === "outside_window") {
     warnings.push(`slice ids outside latest slice-ledger window: ${evidence.sliceLedger.requestedCoverage.missing.join(", ")}`);
   } else if (evidence.sliceLedger.requestedCoverage.status === "unknown") {
@@ -446,6 +523,7 @@ export function buildPrReadinessPacket(inputs = {}, options = {}) {
     waveRunner: summarizeWaveRunner(inputs.waveRunner),
     workPacket: summarizeWorkPacket(inputs.workPacket),
     workPacketQuality: summarizeWorkPacketQuality(inputs.workPacketQuality),
+    prStack: summarizePrStackAudit(inputs.prStackAudit),
     packetOutcome: summarizePacketOutcome(inputs.packetOutcomeReport),
     sliceLedger: summarizeSliceLedger(inputs.sliceLedger),
     toolInstall: summarizeToolInstall(inputs.toolInstallRecommendations),
@@ -529,7 +607,8 @@ ${dirtyFiles}
 | Wave runner | ${packet.evidence.waveRunner.status} | run=${packet.evidence.waveRunner.runId}, workPacketMaxPackets=${packet.evidence.waveRunner.workPacketMaxPackets ?? ""} |
 | Slice ledger | ${packet.evidence.sliceLedger.status} | window=${packet.evidence.sliceLedger.window?.from || ""}..${packet.evidence.sliceLedger.window?.to || ""}, requestedCoverage=${packet.evidence.sliceLedger.requestedCoverage.status}, missing=${packet.evidence.sliceLedger.requestedCoverage.missing.join(", ")}, verification=${packet.evidence.sliceLedger.verification ?? ""}, usefulness=${packet.evidence.sliceLedger.usefulness ?? ""} |
 | Work packet | ${packet.evidence.workPacket.status} | packets=${packet.evidence.workPacket.packets}, ready=${packet.evidence.workPacket.readyPackets}, approvalGated=${packet.evidence.workPacket.approvalGatedPackets}, freshSources=${packet.evidence.workPacket.freshSources ?? ""}, staleSources=${packet.evidence.workPacket.staleSources ?? ""}, lanes=${packet.evidence.workPacket.effectivityEvidenceLanes ?? ""}, approvalLanes=${packet.evidence.workPacket.effectivityApprovalRequiredLanes ?? ""}, highLanes=${packet.evidence.workPacket.effectivityHighSeverityLanes ?? ""}, hostDrift=${packet.evidence.workPacket.hostDriftStatus || ""}, hostDriftDirty=${packet.evidence.workPacket.hostDriftDirtyPaths ?? ""}, hostDriftApproval=${packet.evidence.workPacket.hostDriftRequiresHumanApproval ?? ""}, hostDriftSecurity=${packet.evidence.workPacket.hostDriftDoNotTouchSecurityReview ?? ""}, top="${packet.evidence.workPacket.topPacket}" |
-| Work packet quality | ${packet.evidence.workPacketQuality.status} | findings=${packet.evidence.workPacketQuality.findings}, warnings=${packet.evidence.workPacketQuality.warnings}, failures=${packet.evidence.workPacketQuality.failures}, sourceSignalAudit=${packet.evidence.workPacketQuality.sourceSignalAuditStatus || ""} |
+| Work packet quality | ${packet.evidence.workPacketQuality.status} | findings=${packet.evidence.workPacketQuality.findings}, warnings=${packet.evidence.workPacketQuality.warnings}, failures=${packet.evidence.workPacketQuality.failures}, staleBacklog=${packet.evidence.workPacketQuality.staleBacklogPackets}, missingBacklogStatus=${packet.evidence.workPacketQuality.missingBacklogStatusPackets}, sourceSignalAudit=${packet.evidence.workPacketQuality.sourceSignalAuditStatus || ""} |
+| PR stack | ${packet.evidence.prStack.status} | openExact=${packet.evidence.prStack.openCountExact}, openLowerBound=${packet.evidence.prStack.openLowerBound}, ready=${packet.evidence.prStack.mergeReady}, blocked=${packet.evidence.prStack.mergeBlocked}, steering=${packet.evidence.prStack.recommendedSteering}, stackLanes=${packet.evidence.prStack.blockedStackLanes.length} |
 | Packet outcomes | ${packet.evidence.packetOutcome.status} | total=${packet.evidence.packetOutcome.total}, maturity=${packet.evidence.packetOutcome.maturity}, score=${packet.evidence.packetOutcome.score ?? ""}, orphanedRate=${packet.evidence.packetOutcome.orphanedRate ?? ""}, resetRecommended=${packet.evidence.packetOutcome.resetRecommended} |
 | Tool install recommendations | ${packet.evidence.toolInstall.status} | recommendations=${packet.evidence.toolInstall.recommendations}, installNow=${packet.evidence.toolInstall.installNowCandidates}, approvalRequired=${packet.evidence.toolInstall.approvalRequired} |
 
@@ -597,6 +676,7 @@ function parseArgs(argv) {
     workPacketQuality: DEFAULT_WORK_PACKET_QUALITY,
     packetOutcomeReport: DEFAULT_PACKET_OUTCOME_REPORT,
     incidentBundle: DEFAULT_INCIDENT_BUNDLE,
+    prStackAudit: DEFAULT_PR_STACK_AUDIT,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInstallRecommendations: DEFAULT_TOOL_INSTALL_RECOMMENDATIONS,
   };
@@ -638,6 +718,7 @@ function parseArgs(argv) {
       "--work-packet-quality": "workPacketQuality",
       "--packet-outcome-report": "packetOutcomeReport",
       "--incident-bundle": "incidentBundle",
+      "--pr-stack-audit": "prStackAudit",
       "--slice-ledger": "sliceLedger",
       "--tool-install-recommendations": "toolInstallRecommendations",
     };
@@ -645,7 +726,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(flags)) {
       const value = read(flag);
       if (value === null) continue;
-      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "sliceLedger", "toolInstallRecommendations"].includes(key)
+      options[key] = ["outputDir", "artifactValidation", "waveRunner", "workPacket", "workPacketQuality", "packetOutcomeReport", "incidentBundle", "prStackAudit", "sliceLedger", "toolInstallRecommendations"].includes(key)
         ? resolve(REPO_ROOT, value)
         : value;
       matched = true;
@@ -674,6 +755,7 @@ Options:
   --work-packet-quality <path>         Default: output/ops/swarm/work-packet-quality-latest.json.
   --packet-outcome-report <path>       Default: output/ops/swarm/packet-outcome-report-latest.json.
   --incident-bundle <path>             Default: output/ops/incidents-v2/incident-bundle-v2-latest.json.
+  --pr-stack-audit <path>              Default: output/ops/pr-stack/pr-stack-audit-latest.json.
   --slice-ledger <path>                Default: output/ops/effectivity/slice-ledger-latest.json.
   --tool-install-recommendations <path> Default: output/ops/effectivity/tool-install-recommendations-latest.json.
 `);
@@ -707,6 +789,7 @@ function run(rawArgs = process.argv.slice(2)) {
     workPacketQuality: readJsonIfExists(options.workPacketQuality),
     packetOutcomeReport: readJsonIfExists(options.packetOutcomeReport),
     incidentBundle: readJsonIfExists(options.incidentBundle),
+    prStackAudit: readJsonIfExists(options.prStackAudit),
     sliceLedger: readJsonIfExists(options.sliceLedger),
     toolInstallRecommendations: readJsonIfExists(options.toolInstallRecommendations),
   }, options);

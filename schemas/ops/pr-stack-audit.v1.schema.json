@@ -13,6 +13,7 @@
     "repos",
     "stackEdges",
     "mergePlan",
+    "steeringDigest",
     "summary",
     "warnings",
     "operatorNotes"
@@ -190,12 +191,61 @@
       },
       "additionalProperties": false
     },
+    "steeringDigest": {
+      "type": "object",
+      "required": ["status", "openCountExact", "openLowerBound", "openLimitReached", "mergeReady", "mergeBlocked", "nextMergeCandidate", "blockedStackLanes", "recommendedSteering", "notes"],
+      "properties": {
+        "status": { "enum": ["candidate_ready", "blocked", "empty"] },
+        "openCountExact": { "type": "boolean" },
+        "openLowerBound": { "type": "number", "minimum": 0 },
+        "openLimitReached": { "type": "boolean" },
+        "mergeReady": { "type": "number", "minimum": 0 },
+        "mergeBlocked": { "type": "number", "minimum": 0 },
+        "nextMergeCandidate": {
+          "type": ["object", "null"],
+          "required": ["repoId", "number", "title", "url", "headRefName", "baseRefName"],
+          "properties": {
+            "repoId": { "type": "string" },
+            "number": { "type": "number" },
+            "title": { "type": "string" },
+            "url": { "type": "string" },
+            "headRefName": { "type": "string" },
+            "baseRefName": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "blockedStackLanes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repoId", "count", "bottomPr", "bottomHead", "tipPr", "tipHead", "openLimitReached", "commonBlockers", "recommendedSteering"],
+            "properties": {
+              "repoId": { "type": "string" },
+              "count": { "type": "number", "minimum": 2 },
+              "bottomPr": { "type": ["number", "null"] },
+              "bottomHead": { "type": "string" },
+              "tipPr": { "type": ["number", "null"] },
+              "tipHead": { "type": "string" },
+              "openLimitReached": { "type": "boolean" },
+              "commonBlockers": { "type": "array", "items": { "type": "string" } },
+              "recommendedSteering": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "recommendedSteering": { "type": "string" },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
     "summary": {
       "type": "object",
-      "required": ["repos", "open", "recentlyMerged", "categories", "warnings", "mergeReady", "mergeBlocked"],
+      "required": ["repos", "open", "openCountExact", "openLowerBound", "recentlyMerged", "categories", "warnings", "mergeReady", "mergeBlocked"],
       "properties": {
         "repos": { "type": "number", "minimum": 0 },
         "open": { "type": "number", "minimum": 0 },
+        "openCountExact": { "type": "boolean" },
+        "openLowerBound": { "type": "number", "minimum": 0 },
         "recentlyMerged": { "type": "number", "minimum": 0 },
         "categories": {
           "type": "object",

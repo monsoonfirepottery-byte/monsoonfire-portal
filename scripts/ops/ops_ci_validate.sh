@@ -258,6 +258,13 @@ else
   pass "redaction smoke found no obvious secret patterns"
 fi
 
+section "PR Stack Audit Smoke"
+if node "${REPO_ROOT}/scripts/ops/pr_stack_audit.mjs" --json --write >"${OUT_DIR}/pr-stack-audit.json"; then
+  pass "pr_stack_audit smoke"
+else
+  fail "pr_stack_audit smoke"
+fi
+
 section "PR Readiness Packet Smoke"
 if node "${REPO_ROOT}/scripts/ops/pr_readiness_packet.mjs" --json --write >"${OUT_DIR}/pr-readiness-packet.json"; then
   pass "pr_readiness_packet smoke"
@@ -291,13 +298,6 @@ if node "${REPO_ROOT}/scripts/ops/admin_effectivity_trend.mjs" --json --write >"
   pass "admin_effectivity_trend smoke"
 else
   fail "admin_effectivity_trend smoke"
-fi
-
-section "PR Stack Audit Smoke"
-if node "${REPO_ROOT}/scripts/ops/pr_stack_audit.mjs" --json --write >"${OUT_DIR}/pr-stack-audit.json"; then
-  pass "pr_stack_audit smoke"
-else
-  fail "pr_stack_audit smoke"
 fi
 
 section "Docs Contract"

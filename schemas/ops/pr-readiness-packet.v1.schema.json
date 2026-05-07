@@ -51,7 +51,7 @@
     },
     "evidence": {
       "type": "object",
-      "required": ["artifactValidation", "incidentBundle", "waveRunner", "workPacket", "workPacketQuality", "packetOutcome", "sliceLedger", "toolInstall"],
+      "required": ["artifactValidation", "incidentBundle", "waveRunner", "workPacket", "workPacketQuality", "prStack", "packetOutcome", "sliceLedger", "toolInstall"],
       "properties": {
         "artifactValidation": {
           "type": "object",
@@ -177,7 +177,7 @@
         },
         "workPacketQuality": {
           "type": "object",
-          "required": ["status", "generatedAt", "runId", "findings", "warnings", "failures", "sourceSignalAuditStatus", "topFindings"],
+          "required": ["status", "generatedAt", "runId", "findings", "warnings", "failures", "staleBacklogPackets", "missingBacklogStatusPackets", "sourceSignalAuditStatus", "topFindings"],
           "properties": {
             "status": { "type": "string" },
             "generatedAt": { "type": "string" },
@@ -185,6 +185,8 @@
             "findings": { "type": "number", "minimum": 0 },
             "warnings": { "type": "number", "minimum": 0 },
             "failures": { "type": "number", "minimum": 0 },
+            "staleBacklogPackets": { "type": "number", "minimum": 0 },
+            "missingBacklogStatusPackets": { "type": "number", "minimum": 0 },
             "sourceSignalAuditStatus": { "type": "string" },
             "topFindings": {
               "type": "array",
@@ -201,6 +203,52 @@
                 "additionalProperties": false
               }
             },
+            "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "prStack": {
+          "type": "object",
+          "required": ["status", "generatedAt", "openCountExact", "openLowerBound", "openLimitReached", "mergeReady", "mergeBlocked", "recommendedSteering", "nextMergeCandidate", "blockedStackLanes", "warnings"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "openCountExact": { "type": "boolean" },
+            "openLowerBound": { "type": "number", "minimum": 0 },
+            "openLimitReached": { "type": "boolean" },
+            "mergeReady": { "type": "number", "minimum": 0 },
+            "mergeBlocked": { "type": "number", "minimum": 0 },
+            "recommendedSteering": { "type": "string" },
+            "nextMergeCandidate": {
+              "type": ["object", "null"],
+              "required": ["repoId", "number", "title", "url", "headRefName", "baseRefName"],
+              "properties": {
+                "repoId": { "type": "string" },
+                "number": { "type": "number" },
+                "title": { "type": "string" },
+                "url": { "type": "string" },
+                "headRefName": { "type": "string" },
+                "baseRefName": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            "blockedStackLanes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["repoId", "count", "bottomPr", "tipPr", "commonBlockers", "recommendedSteering"],
+                "properties": {
+                  "repoId": { "type": "string" },
+                  "count": { "type": "number", "minimum": 0 },
+                  "bottomPr": { "type": ["number", "null"] },
+                  "tipPr": { "type": ["number", "null"] },
+                  "commonBlockers": { "type": "array", "items": { "type": "string" } },
+                  "recommendedSteering": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "warnings": { "type": "array", "items": { "type": "string" } },
             "parseError": { "type": "string" }
           },
           "additionalProperties": false

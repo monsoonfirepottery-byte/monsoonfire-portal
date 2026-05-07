@@ -98,4 +98,19 @@ test("buildPreflightReport warns when upstream base differs from origin main", (
   assert.equal(report.status, "warn");
   assert.equal(report.integrationBase.differs, true);
   assert.ok(report.warnings.some((warning) => warning.includes("differs from origin/main")));
+  assert.equal(report.recommendation, "review the stacked base warning and confirm integration order before delegating");
+});
+
+test("buildPreflightReport keeps dirty warning recommendation specific to dirty files", () => {
+  const report = buildPreflightReport(
+    { lane: "docs", base: "origin/main" },
+    fakeGit({
+      "rev-parse --abbrev-ref HEAD": { ok: true, stdout: "codex/docs-lane", stderr: "", status: 0 },
+      "diff --name-only --no-renames origin/main...HEAD": { ok: true, stdout: "docs/ops/admin.md\n", stderr: "", status: 0 },
+      "status --short": { ok: true, stdout: " M docs/ops/admin.md\n", stderr: "", status: 0 },
+    }),
+  );
+
+  assert.equal(report.status, "warn");
+  assert.equal(report.recommendation, "commit, stash, or intentionally account for dirty files before delegating");
 });

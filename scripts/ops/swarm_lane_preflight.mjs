@@ -187,6 +187,22 @@ function inspectIntegrationBase(base, git = runGit) {
   };
 }
 
+function recommendationForPreflight({ status, dirtyFiles = [], outsideScope = [], problems = [], warnings = [], integrationBase = {}, branch = "" }) {
+  if (status === "pass") return "lane is ready for scoped work";
+  if (status === "fail") {
+    if (outsideScope.length > 0) return "do not delegate this lane until out-of-scope files are moved to the owning lane or explicitly allowed";
+    if (dirtyFiles.length > 0 && problems.some((problem) => problem.includes("dirty worktree"))) {
+      return "do not delegate this lane until dirty files are committed, stashed, or intentionally accepted";
+    }
+    return "do not delegate this lane until the scope or branch issue is fixed";
+  }
+  if (dirtyFiles.length > 0) return "commit, stash, or intentionally account for dirty files before delegating";
+  if (branch === "HEAD" || branch === "main") return "switch to a normal feature branch before delegating";
+  if (integrationBase.differs) return "review the stacked base warning and confirm integration order before delegating";
+  if (warnings.length > 0) return "review warning details before delegating this lane";
+  return "review preflight warnings before delegating";
+}
+
 function buildPreflightReport(options = {}, git = runGit) {
   const generatedAt = nowIso();
   const lane = clean(options.lane || "tooling");
@@ -228,11 +244,15 @@ function buildPreflightReport(options = {}, git = runGit) {
     outsideScope,
     problems,
     warnings,
-    recommendation: status === "pass"
-      ? "lane is ready for scoped work"
-      : status === "warn"
-        ? "commit, stash, or intentionally account for dirty files before delegating"
-        : "do not delegate this lane until the scope or branch issue is fixed",
+    recommendation: recommendationForPreflight({
+      status,
+      dirtyFiles,
+      outsideScope,
+      problems,
+      warnings,
+      integrationBase,
+      branch: branch.stdout,
+    }),
   };
 }
 

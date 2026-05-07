@@ -43,10 +43,12 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Priority: P0
 - Effort: M
 - Risk: low for diagnostics, high for any backup-path change
-- Status: backup evidence scripts and docs are in tree; restore confidence still needs an approval-gated drill and current artifact proof.
+- Status: backup evidence scripts and docs are in tree; 2026-05-07 20:19 UTC read-only host evidence is attached in `docs/ops/23-backup-restore-confidence.md`; restore confidence still needs an approval-gated drill and dedicated PostgreSQL/Redis/MinIO artifact proof.
 - Evidence placeholder / known evidence:
-  - Known: root-owned config/archive metadata was recorded as current on 2026-05-06 18:11 UTC in ops docs.
-  - Known: PostgreSQL dump restore proof, Redis scope, MinIO scope, and current restore-drill evidence remain incomplete unless fresh verifier output is attached.
+  - Known: root-owned config/archive metadata was current on 2026-05-07 03:45 UTC.
+  - Known: Postgres, Redis, and MinIO containers were running and Docker-reported healthy during the 2026-05-07 20:19 UTC read-only host check.
+  - Known: dedicated PostgreSQL dump, Redis artifact, and MinIO artifact directories under `/var/backups/studio-brain/` were missing during the same check.
+  - Known: newest restore drill summary found was from 2026-02-23, stale by the 30 day threshold.
   - Placeholder: attach latest `make ops-backup-evidence`, PostgreSQL artifact verifier, Redis/MinIO evidence verifier, and restore drill summary.
 - Safe next step: apply the score semantics and age thresholds in `docs/ops/23-backup-restore-confidence.md`, then open stale or missing evidence issues for any degraded family.
 - Rollback / undo notes: revert docs/backlog/dashboard link changes if evidence is misclassified; do not delete, overwrite, move, or prune existing backups or storage volumes.

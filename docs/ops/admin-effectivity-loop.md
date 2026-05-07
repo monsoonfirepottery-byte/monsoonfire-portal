@@ -102,6 +102,7 @@ Tooling findings export converts fresh `tooling-quality` findings into GitHub-co
 The effectivity audit compares tool inventory sources against the start of the selected slice window, so validators run during the wave are not falsely marked stale just because the slice ledger is appended after validation completes.
 
 Work packets should steer from fresh evidence only. Missing, invalid, stale, or invalid-timestamp latest artifacts stay visible in `freshEvidence`, but they are excluded from packet `sourceSignals`. Tool inventory coverage gaps are kept as `signalClass=coverage_gap` so missing validators remain visible without being treated as actionable defect evidence. Tool-install recommendations are tracked as a separate fresh source and use `signalClass=tool_install_recommendation` only when the recommendation artifact has install-now candidates; approval-required tools remain evidence for planning, not automatic installation.
+Tooling findings export is included in work-packet evidence as `fresh-tooling-findings`; issue-ready validator tasks are tagged `signalClass=issue_ready_task` so agents can pick them up without scraping terminal output.
 
 ## Scoring
 

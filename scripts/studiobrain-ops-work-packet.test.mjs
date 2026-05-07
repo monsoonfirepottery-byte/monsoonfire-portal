@@ -297,6 +297,10 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
   assert.ok(report.packets[0].safeNextStep.includes("restore-prerequisite"));
+  const toolingPacket = report.packets.find((packet) => packet.title === "[ops-tooling] Review shellcheck findings");
+  assert.equal(toolingPacket.status, "ready");
+  assert.ok(toolingPacket.sourceSignals.some((signal) => signal.source === "tooling-findings-task"));
+  assert.equal(toolingPacket.suggestedBranchName, "codex/ops-tooling-shellcheck-findings");
 });
 
 test("summarizeFreshEvidence degrades when ignored artifacts are missing", () => {

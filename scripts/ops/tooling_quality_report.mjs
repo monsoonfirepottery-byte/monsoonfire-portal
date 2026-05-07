@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "tooling-quality");
-const MODES = new Set(["all", "shell-lf", "shellcheck", "powershell", "sqlfluff", "actionlint"]);
+const MODES = new Set(["all", "shell-lf", "shellcheck", "powershell", "sqlfluff", "actionlint", "compose-config"]);
 
 function usage() {
   return `Studio Brain ops tooling quality report
@@ -17,7 +17,7 @@ Usage:
   node scripts/ops/tooling_quality_report.mjs [--mode all] [--json] [--write]
 
 Options:
-  --mode <mode>       all, shell-lf, shellcheck, powershell, sqlfluff, actionlint. Default: all.
+  --mode <mode>       all, shell-lf, shellcheck, powershell, sqlfluff, actionlint, compose-config. Default: all.
   --json              Print JSON to stdout.
   --write             Write JSON and Markdown artifacts under output/ops/tooling-quality.
   --output-dir <path> Artifact directory.
@@ -377,6 +377,39 @@ function actionlintReport(options) {
   };
 }
 
+function composeConfigReport(options) {
+  const files = limited(gitFiles((file) => /(^|\/)(docker-compose|compose)(\.[^/]+)?\.ya?ml$/i.test(file)), options.limit);
+  if (files.length === 0) return { id: "compose-config", status: "pass", tool: "docker compose", checkedFiles: 0, findings: [] };
+  if (!commandExists("docker")) {
+    return {
+      id: "compose-config",
+      status: "skipped",
+      tool: "docker compose",
+      checkedFiles: 0,
+      findings: [{ code: "tool_missing", message: `docker is not installed; ${files.length} compose file(s) were not rendered.` }]
+    };
+  }
+  const command = commandExecutable("docker");
+  const findings = [];
+  for (const file of files) {
+    const result = run(command, ["compose", "-f", file, "config", "--quiet"], { timeoutMs: 60_000, maxOutput: 12_000 });
+    if (!result.ok) {
+      findings.push({
+        file,
+        code: "compose_config_failed",
+        message: result.stderr || result.stdout || result.error || "docker compose config failed."
+      });
+    }
+  }
+  return {
+    id: "compose-config",
+    status: findings.length > 0 ? "warn" : "pass",
+    tool: "docker compose config --quiet",
+    checkedFiles: files.length,
+    findings
+  };
+}
+
 function statusFromSections(sections) {
   if (sections.some((section) => section.status === "fail")) return "fail";
   if (sections.some((section) => section.status === "warn" || section.status === "skipped")) return "warn";
@@ -428,6 +461,7 @@ function buildReport(options) {
   if (options.mode === "all" || options.mode === "powershell") sections.push(powershellSyntaxReport(options));
   if (options.mode === "all" || options.mode === "sqlfluff") sections.push(sqlfluffReport(options));
   if (options.mode === "all" || options.mode === "actionlint") sections.push(actionlintReport(options));
+  if (options.mode === "all" || options.mode === "compose-config") sections.push(composeConfigReport(options));
   const summary = {
     checkedFiles: sections.reduce((sum, section) => sum + section.checkedFiles, 0),
     findings: sections.reduce((sum, section) => sum + section.findings.length, 0),

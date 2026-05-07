@@ -17,6 +17,9 @@ const DEFAULT_OUTPUT_ROOT = resolve(REPO_ROOT, "output", "ops", "swarm");
 const DEFAULT_RISK_DOC = resolve(REPO_ROOT, "docs", "ops", "01-risk-register.md");
 const DEFAULT_BACKLOG_DOC = resolve(REPO_ROOT, "docs", "ops", "02-kanban-backlog.md");
 const DEFAULT_EFFECTIVITY_DOC = resolve(REPO_ROOT, "docs", "ops", "16-effectivity-audit-2026-05-06.md");
+const DEFAULT_ADMIN_AUDIT = resolve(REPO_ROOT, "output", "ops", "effectivity", "admin-effectivity-audit-latest.json");
+const DEFAULT_SLICE_LEDGER = resolve(REPO_ROOT, "output", "ops", "effectivity", "slice-ledger-latest.json");
+const DEFAULT_TOOL_INVENTORY = resolve(REPO_ROOT, "output", "ops", "effectivity", "installed-tool-inventory-latest.json");
 const VALID_OUTCOMES = new Set([
   "used",
   "helpful",
@@ -56,6 +59,19 @@ function toRepoRelative(path) {
 function readTextIfExists(path) {
   if (!existsSync(path)) return "";
   return readFileSync(path, "utf8");
+}
+
+function readJsonIfExists(path) {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    return {
+      schema: "invalid-json",
+      status: "invalid_json",
+      parseError: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function writeJson(path, value) {
@@ -255,7 +271,7 @@ function matchingRisk(backlogItem, risks) {
     .sort((left, right) => right.score - left.score || severityRank(left.risk.severity) - severityRank(right.risk.severity))[0]?.risk || null;
 }
 
-function makePacket(backlogItem, risk, effectivity) {
+function makePacket(backlogItem, risk, effectivity, freshEvidence) {
   const title = backlogItem.title;
   const acceptanceCriteria =
     backlogItem.acceptanceCriteria.length > 0
@@ -294,6 +310,7 @@ function makePacket(backlogItem, risk, effectivity) {
         path: effectivity.sourcePath,
         relevantNextSafeSlices: effectivity.nextSafeSlices.filter((slice) => overlapScore(slice, title) > 0),
       },
+      ...freshSourceSignals(freshEvidence),
     ].filter(Boolean),
     why: risk?.likelyImpact || backlogItem.status || "Issue-ready ops backlog item from current docs evidence.",
     safeNextStep: risk?.safeNextStep || firstAcceptance(backlogItem) || "Refresh the read-only evidence packet and attach it to the ops issue.",
@@ -309,6 +326,19 @@ function makePacket(backlogItem, risk, effectivity) {
       writeScope: ["output/ops/swarm"],
     },
   };
+}
+
+function freshSourceSignals(freshEvidence) {
+  if (!freshEvidence) return [];
+  return [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory]
+    .filter((source) => source && source.status !== "missing")
+    .map((source) => ({
+      source: source.source,
+      path: source.path,
+      status: source.status,
+      generatedAt: source.generatedAt || "",
+      summary: source.summary,
+    }));
 }
 
 function collectAcceptanceFallback(body) {
@@ -344,12 +374,88 @@ function buildOutcomeSummary(outcomes) {
   const valid = outcomes.filter((entry) => VALID_OUTCOMES.has(clean(entry.outcome)));
   const helpful = valid.filter((entry) => ["used", "helpful", "resolved"].includes(entry.outcome));
   const staleOrMisleading = valid.filter((entry) => ["stale", "misleading"].includes(entry.outcome));
+  const byOutcome = Object.fromEntries(Array.from(VALID_OUTCOMES).map((outcome) => [outcome, 0]));
+  for (const entry of valid) byOutcome[entry.outcome] += 1;
+  const recent = valid.slice(-10);
   return {
     total: valid.length,
+    byOutcome,
     helpful: helpful.length,
     staleOrMisleading: staleOrMisleading.length,
     blocked: valid.filter((entry) => entry.outcome === "blocked").length,
-    latest: valid.slice(-10),
+    recent,
+    latest: recent,
+  };
+}
+
+function summarizeFreshEvidence(inputs = {}) {
+  const adminAudit = inputs.adminAudit || null;
+  const sliceLedger = inputs.sliceLedger || null;
+  const toolInventory = inputs.toolInventory || null;
+  const unavailable = (source, path, status = "missing", summary = {}) => ({
+    source,
+    path,
+    status,
+    generatedAt: "",
+    summary,
+  });
+  return {
+    adminAudit: adminAudit && adminAudit.status !== "invalid_json"
+      ? {
+          source: "fresh-admin-audit",
+          path: inputs.adminAuditPath || "output/ops/effectivity/admin-effectivity-audit-latest.json",
+          status: clean(adminAudit.status) || "unknown",
+          generatedAt: clean(adminAudit.generatedAt),
+          summary: {
+            sliceWindow: adminAudit.sliceWindow || null,
+            scores: adminAudit.scores || null,
+            privilegedEvidence: adminAudit.sections?.effectivityReport?.report?.sections?.privilegedEvidence?.status || "",
+          },
+        }
+      : unavailable(
+          "fresh-admin-audit",
+          inputs.adminAuditPath || "output/ops/effectivity/admin-effectivity-audit-latest.json",
+          adminAudit?.status || "missing",
+          adminAudit?.parseError ? { parseError: adminAudit.parseError } : {},
+        ),
+    sliceLedger: sliceLedger && sliceLedger.status !== "invalid_json"
+      ? {
+          source: "fresh-slice-ledger",
+          path: inputs.sliceLedgerPath || "output/ops/effectivity/slice-ledger-latest.json",
+          status: sliceLedger.counts?.failed > 0 ? "fail" : sliceLedger.counts?.blocked > 0 || sliceLedger.counts?.noop > 0 ? "warn" : "pass",
+          generatedAt: clean(sliceLedger.generatedAt),
+          summary: {
+            window: sliceLedger.window || null,
+            counts: sliceLedger.counts || null,
+            scores: sliceLedger.scores || null,
+          },
+        }
+      : unavailable(
+          "fresh-slice-ledger",
+          inputs.sliceLedgerPath || "output/ops/effectivity/slice-ledger-latest.json",
+          sliceLedger?.status || "missing",
+          sliceLedger?.parseError ? { parseError: sliceLedger.parseError } : {},
+        ),
+    toolInventory: toolInventory && toolInventory.status !== "invalid_json"
+      ? {
+          source: "fresh-tool-inventory",
+          path: inputs.toolInventoryPath || "output/ops/effectivity/installed-tool-inventory-latest.json",
+          status: clean(toolInventory.status) || "unknown",
+          generatedAt: clean(toolInventory.generatedAt),
+          summary: {
+            installed: toolInventory.summary?.installed ?? null,
+            missingRequired: toolInventory.summary?.missingRequired ?? null,
+            missingOptional: toolInventory.summary?.missingOptional ?? null,
+            actionableFindings: toolInventory.summary?.actionableFindings ?? null,
+            promotionCandidates: toolInventory.summary?.promotionCandidates ?? null,
+          },
+        }
+      : unavailable(
+          "fresh-tool-inventory",
+          inputs.toolInventoryPath || "output/ops/effectivity/installed-tool-inventory-latest.json",
+          toolInventory?.status || "missing",
+          toolInventory?.parseError ? { parseError: toolInventory.parseError } : {},
+        ),
   };
 }
 
@@ -357,9 +463,10 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
   const risks = parseRiskRegister(inputs.riskMarkdown || "");
   const backlog = parseBacklog(inputs.backlogMarkdown || "");
   const effectivity = parseEffectivity(inputs.effectivityMarkdown || "");
+  const freshEvidence = summarizeFreshEvidence(inputs);
   const packets = backlog
     .filter((item) => priorityRank(item.priority) <= 2)
-    .map((item) => makePacket(item, matchingRisk(item, risks), effectivity))
+    .map((item) => makePacket(item, matchingRisk(item, risks), effectivity, freshEvidence))
     .sort((left, right) => left.priorityRank - right.priorityRank || left.title.localeCompare(right.title))
     .slice(0, Number(options.maxPackets || 8));
 
@@ -372,6 +479,9 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       riskRegister: "docs/ops/01-risk-register.md",
       backlog: "docs/ops/02-kanban-backlog.md",
       effectivity: "docs/ops/16-effectivity-audit-2026-05-06.md",
+      adminAudit: freshEvidence.adminAudit.path,
+      sliceLedger: freshEvidence.sliceLedger.path,
+      toolInventory: freshEvidence.toolInventory.path,
     },
     constraints: {
       readOnlyFirst: true,
@@ -385,7 +495,11 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       backlogItems: backlog.length,
       effectivityNextSafeSlices: effectivity.nextSafeSlices.length,
       remainingApprovalGates: effectivity.remainingApprovalGates.length,
+      freshSources: [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory].filter((source) => !["missing", "invalid_json"].includes(source.status)).length,
+      toolPromotionCandidates: freshEvidence.toolInventory.summary.promotionCandidates ?? null,
+      toolActionableFindings: freshEvidence.toolInventory.summary.actionableFindings ?? null,
     },
+    freshEvidence,
     packets,
   };
 }
@@ -399,6 +513,9 @@ function parseArgs(argv) {
     artifact: "",
     latest: "",
     outcomes: "",
+    adminAudit: DEFAULT_ADMIN_AUDIT,
+    sliceLedger: DEFAULT_SLICE_LEDGER,
+    toolInventory: DEFAULT_TOOL_INVENTORY,
     maxPackets: 8,
     recordOutcome: "",
     outcome: "",
@@ -436,6 +553,9 @@ function parseArgs(argv) {
       "--artifact": "artifact",
       "--latest": "latest",
       "--outcomes": "outcomes",
+      "--admin-audit": "adminAudit",
+      "--slice-ledger": "sliceLedger",
+      "--tool-inventory": "toolInventory",
       "--record-outcome": "recordOutcome",
       "--outcome": "outcome",
       "--used-by": "usedBy",
@@ -446,7 +566,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(stringOptions)) {
       const value = read(flag);
       if (value !== null) {
-        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes"
+        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory"
           ? resolve(REPO_ROOT, value)
           : value;
         matched = true;
@@ -481,6 +601,9 @@ function printUsage() {
       "  --write                 Write timestamped and latest JSON packet artifacts.",
       "  --json                  Print JSON report.",
       "  --output-root <path>    Default: output/ops/swarm.",
+      "  --admin-audit <path>    Default: output/ops/effectivity/admin-effectivity-audit-latest.json.",
+      "  --slice-ledger <path>   Default: output/ops/effectivity/slice-ledger-latest.json.",
+      "  --tool-inventory <path> Default: output/ops/effectivity/installed-tool-inventory-latest.json.",
       "  --max-packets <n>       Default: 8.",
       "  --record-outcome <id>   Append an outcome ledger entry.",
       "  --outcome <value>       used | helpful | resolved | not_used | stale | misleading | blocked | superseded",
@@ -512,6 +635,12 @@ function recordOutcome(options) {
   };
 }
 
+function workPacketReportStatus(packet) {
+  if (packet.packets.length === 0) return "warn";
+  if ((packet.evidenceSummary?.freshSources ?? 0) === 0) return "warn";
+  return "pass";
+}
+
 export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   const options = parseArgs(rawArgs);
   if (options.recordOutcome) {
@@ -526,6 +655,12 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       riskMarkdown: readTextIfExists(DEFAULT_RISK_DOC),
       backlogMarkdown: readTextIfExists(DEFAULT_BACKLOG_DOC),
       effectivityMarkdown: readTextIfExists(DEFAULT_EFFECTIVITY_DOC),
+      adminAudit: readJsonIfExists(options.adminAudit),
+      sliceLedger: readJsonIfExists(options.sliceLedger),
+      toolInventory: readJsonIfExists(options.toolInventory),
+      adminAuditPath: toRepoRelative(options.adminAudit),
+      sliceLedgerPath: toRepoRelative(options.sliceLedger),
+      toolInventoryPath: toRepoRelative(options.toolInventory),
     },
     {
       runId: options.runId,
@@ -537,7 +672,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
     schema: "studiobrain-ops-work-packet-report.v1",
     generatedAt: packet.generatedAt,
     runId: options.runId,
-    status: packet.packets.length > 0 ? "pass" : "warn",
+    status: workPacketReportStatus(packet),
     written: options.write
       ? {
           artifact: toRepoRelative(options.artifact),
@@ -563,6 +698,8 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   }
   return report;
 }
+
+export { summarizeFreshEvidence, workPacketReportStatus };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

@@ -25,6 +25,13 @@ Summarize the last five slices:
 node scripts/ops/slice_ledger.mjs --summary --last 5 --json
 ```
 
+For swarm waves or stacked branches, filter to the active run id so stale rows from another lane do not pollute the five-slice audit:
+
+```bash
+node scripts/ops/slice_ledger.mjs --summary --last 5 --run-id admin-effectivity-20260507 --json
+node scripts/ops/admin_effectivity_audit.mjs --write --slice-run-id admin-effectivity-20260507
+```
+
 Inventory local tool availability:
 
 ```bash
@@ -38,6 +45,20 @@ make ops-admin-effectivity-audit
 ```
 
 The Make target writes JSON and Markdown under `output/ops/effectivity/`, which is ignored by Git. Curated summaries can be copied into docs or tickets when they become durable operator evidence.
+
+Generate the next safe ops work packets:
+
+```bash
+node scripts/studiobrain-ops-work-packet.mjs --json --write
+```
+
+The work-packet generator still uses the durable docs as its baseline, then enriches packets from ignored current artifacts when present:
+
+- `--admin-audit output/ops/effectivity/admin-effectivity-audit-latest.json`
+- `--slice-ledger output/ops/effectivity/slice-ledger-latest.json`
+- `--tool-inventory output/ops/effectivity/installed-tool-inventory-latest.json`
+
+Missing or invalid fresh artifacts degrade to warnings and docs-only packet generation. The generator should not run the audit itself; run `make ops-admin-effectivity-audit` first when fresh steering is needed.
 
 ## Scoring
 

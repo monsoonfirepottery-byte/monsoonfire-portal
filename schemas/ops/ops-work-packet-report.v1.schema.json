@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/ops-work-packet-report.v1.schema.json",
+  "title": "Studio Brain Ops Work Packet CLI Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "written",
+    "packet",
+    "outcomeSummary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "studiobrain-ops-work-packet-report.v1"
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "written": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "artifact",
+            "latest",
+            "outcomes"
+          ],
+          "properties": {
+            "artifact": {
+              "type": "string"
+            },
+            "latest": {
+              "type": "string"
+            },
+            "outcomes": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "packet": {
+      "type": "object"
+    },
+    "outcomeSummary": {
+      "type": "object",
+      "required": [
+        "total",
+        "helpful",
+        "staleOrMisleading",
+        "blocked",
+        "byOutcome",
+        "recent",
+        "latest"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "helpful": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "staleOrMisleading": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "byOutcome": {
+          "type": "object"
+        },
+        "recent": {
+          "type": "array"
+        },
+        "latest": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

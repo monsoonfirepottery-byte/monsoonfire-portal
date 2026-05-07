@@ -41,7 +41,7 @@ Options:
   --dry-run                   Print the row or summary without writing.
   --json                      Print JSON instead of text.
   --slice-id <id>             Stable slice id.
-  --run-id <id>               Run id for grouping slices.
+  --run-id <id>               Run id for grouping slices; filters summaries when --append is absent.
   --lane <name>               Lane such as portal-ops, mission-control, host-readonly.
   --title <text>              Slice title.
   --intent <text>             Intended operational improvement.
@@ -270,8 +270,21 @@ function buildRow(options) {
   };
 }
 
-function summarize(rows, last) {
-  const selected = rows.slice(-last);
+function rowTimestamp(row) {
+  return Date.parse(clean(row.completedAt) || clean(row.startedAt)) || 0;
+}
+
+function selectRecentRows(rows, last, runId = "") {
+  const filtered = clean(runId) ? rows.filter((row) => clean(row.runId) === clean(runId)) : rows;
+  return filtered
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => rowTimestamp(left.row) - rowTimestamp(right.row) || left.index - right.index)
+    .slice(-last)
+    .map((entry) => entry.row);
+}
+
+function summarize(rows, last, runId = "") {
+  const selected = selectRecentRows(rows, last, runId);
   const completed = selected.filter((row) => row.status === "completed").length;
   const blocked = selected.filter((row) => row.status === "blocked").length;
   const failed = selected.filter((row) => row.status === "failed").length;
@@ -285,6 +298,9 @@ function summarize(rows, last) {
     schema: "studiobrain-admin-slice-ledger-summary.v1",
     generatedAt: nowIso(),
     ledgerPath: repoRelative(rows.ledgerPath || DEFAULT_LEDGER),
+    filters: {
+      runId: clean(runId)
+    },
     window: {
       count: selected.length,
       from: selected[0]?.sliceId ?? null,
@@ -328,7 +344,7 @@ try {
   } else {
     const rows = readJsonl(options.ledger);
     rows.ledgerPath = options.ledger;
-    const summary = summarize(rows, options.last);
+    const summary = summarize(rows, options.last, options.runId);
     if (!options.dryRun) writeJson(options.latest, summary);
     if (options.json) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

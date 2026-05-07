@@ -3,7 +3,7 @@
   "$id": "https://studio-brain.local/schemas/ops/ops-work-packet.v1.schema.json",
   "title": "Studio Brain Ops Work Packet",
   "type": "object",
-  "required": ["schema", "generatedAt", "runId", "purpose", "sources", "constraints", "evidenceSummary", "freshEvidence", "packets"],
+  "required": ["schema", "generatedAt", "runId", "purpose", "sources", "constraints", "evidenceSummary", "freshEvidence", "sourceSignalAudit", "packets"],
   "properties": {
     "schema": { "const": "studiobrain-ops-work-packet.v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
@@ -132,6 +132,40 @@
         "suggestedPrTitle": { "type": "string" },
         "verification": { "type": "array", "items": { "type": "string" } },
         "sourceSignalCount": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "sourceSignalAudit": {
+      "type": "object",
+      "required": ["status", "totalSignals", "duplicateSignalsRemoved", "missingClass", "unknownClass", "classificationCounts", "allowedClasses", "findings"],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "totalSignals": { "type": "number", "minimum": 0 },
+        "duplicateSignalsRemoved": { "type": "number", "minimum": 0 },
+        "missingClass": { "type": "number", "minimum": 0 },
+        "unknownClass": { "type": "number", "minimum": 0 },
+        "classificationCounts": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
+        "allowedClasses": { "type": "array", "items": { "type": "string" } },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "code", "packetId", "title", "source", "message"],
+            "properties": {
+              "severity": { "type": "string" },
+              "code": { "type": "string" },
+              "packetId": { "type": "string" },
+              "title": { "type": "string" },
+              "source": { "type": "string" },
+              "signalClass": { "type": "string" },
+              "message": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },

@@ -37,6 +37,21 @@ const workPacket = {
     { packetId: "ops-wp-ready", title: "[ops] Refresh evidence", status: "ready", priority: "P1", humanGate: "" },
     { packetId: "ops-wp-gated", title: "[backup] Restore drill", status: "approval_gated", priority: "P0", humanGate: "human approval" },
   ],
+  nextExecutablePacket: {
+    status: "ready",
+    packetId: "ops-wp-ready",
+    title: "[ops] Refresh evidence",
+    priority: "P1",
+    risk: "low",
+    recommendedOwner: "Codex",
+    safeNextStep: "Run the evidence refresh.",
+    suggestedBranchName: "codex/ops-refresh-evidence",
+    suggestedPrTitle: "[ops] Refresh evidence",
+    verification: ["Rerun packet generation", "Validate artifacts"],
+    sourceSignalCount: 4,
+    totalPackets: 2,
+    approvalGatedCount: 1,
+  },
 };
 
 const waveRunner = {
@@ -109,6 +124,9 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.freshSources, 5);
   assert.equal(packet.evidence.workPacket.readyPackets, 1);
   assert.equal(packet.evidence.workPacket.approvalGatedPackets, 1);
+  assert.equal(packet.evidence.workPacket.nextExecutablePacket.packetId, "ops-wp-ready");
+  assert.equal(packet.evidence.workPacket.nextExecutablePacket.suggestedBranchName, "codex/ops-refresh-evidence");
+  assert.equal(packet.evidence.workPacket.nextExecutablePacket.verification.length, 2);
   assert.equal(packet.evidence.packetOutcome.status, "pass");
   assert.equal(packet.evidence.packetOutcome.total, 2);
   assert.equal(packet.evidence.sliceLedger.requestedCoverage.status, "covered");
@@ -128,9 +146,12 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   const markdown = renderMarkdown(packet);
   assert.match(markdown, /Tool Recommendation Summary/);
   assert.match(markdown, /Work Packet Window/);
+  assert.match(markdown, /Next Executable Packet/);
   assert.match(markdown, /Outcome Ledger/);
   assert.match(markdown, /Packet outcomes/);
   assert.match(markdown, /ops-wp-ready/);
+  assert.match(markdown, /Run the evidence refresh/);
+  assert.match(markdown, /codex\/ops-refresh-evidence/);
   assert.match(markdown, /--record-outcome ops-wp-ready/);
   assert.match(markdown, /workPacketMaxPackets=8/);
   assert.match(markdown, /ready=1/);

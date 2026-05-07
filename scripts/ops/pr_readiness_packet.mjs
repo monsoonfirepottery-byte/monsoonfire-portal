@@ -87,9 +87,47 @@ function summarizeArtifactValidation(report) {
   };
 }
 
+function emptyNextExecutablePacket() {
+  return {
+    status: "",
+    packetId: "",
+    title: "",
+    priority: "",
+    risk: "",
+    recommendedOwner: "",
+    safeNextStep: "",
+    suggestedBranchName: "",
+    suggestedPrTitle: "",
+    verification: [],
+    sourceSignalCount: 0,
+    totalPackets: 0,
+    approvalGatedCount: 0,
+  };
+}
+
+function summarizeNextExecutablePacket(packet) {
+  const next = packet?.nextExecutablePacket;
+  if (!next || typeof next !== "object") return emptyNextExecutablePacket();
+  return {
+    status: clean(next.status),
+    packetId: clean(next.packetId),
+    title: clean(next.title),
+    priority: clean(next.priority),
+    risk: clean(next.risk),
+    recommendedOwner: clean(next.recommendedOwner),
+    safeNextStep: clean(next.safeNextStep),
+    suggestedBranchName: clean(next.suggestedBranchName),
+    suggestedPrTitle: clean(next.suggestedPrTitle),
+    verification: Array.isArray(next.verification) ? next.verification.map(clean).filter(Boolean).slice(0, 3) : [],
+    sourceSignalCount: Number(next.sourceSignalCount) || 0,
+    totalPackets: Number(next.totalPackets) || 0,
+    approvalGatedCount: Number(next.approvalGatedCount) || 0,
+  };
+}
+
 function summarizeWorkPacket(packet) {
-  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null };
-  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, parseError: packet.parseError || "" };
+  if (!packet) return { status: "missing", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], nextExecutablePacket: emptyNextExecutablePacket(), humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null };
+  if (packet.status === "invalid_json") return { status: "invalid_json", generatedAt: "", packets: 0, freshSources: 0, staleSources: 0, topPacket: "", readyPackets: 0, approvalGatedPackets: 0, topPackets: [], nextExecutablePacket: emptyNextExecutablePacket(), humanGates: 0, effectivityEvidenceLanes: null, effectivityApprovalRequiredLanes: null, effectivityHighSeverityLanes: null, parseError: packet.parseError || "" };
   const packets = Array.isArray(packet.packets) ? packet.packets : [];
   return {
     status: packets.length > 0 ? "present" : "empty",
@@ -106,6 +144,7 @@ function summarizeWorkPacket(packet) {
       status: clean(entry.status),
       priority: clean(entry.priority),
     })),
+    nextExecutablePacket: summarizeNextExecutablePacket(packet),
     humanGates: packets.filter((entry) => clean(entry.humanGate)).length,
     toolInstallNowCandidates: packet.evidenceSummary?.toolInstallNowCandidates ?? null,
     toolInstallApprovalRequired: packet.evidenceSummary?.toolInstallApprovalRequired ?? null,
@@ -336,6 +375,8 @@ function renderMarkdown(packet) {
   const topPackets = packet.evidence.workPacket.topPackets
     .map((item) => `- ${item.priority || "P?"} ${item.status || "unknown"} ${item.packetId || ""}: ${item.title}`)
     .join("\n") || "- None recorded.";
+  const nextPacket = packet.evidence.workPacket.nextExecutablePacket;
+  const nextPacketVerification = nextPacket.verification.map((item) => `- ${item}`).join("\n") || "- None recorded.";
   const outcomeCommand = packet.outcomeLedger.recordCommand
     ? `\`${packet.outcomeLedger.recordCommand}\``
     : "Pass `--packet-id <ops-wp-id>` to include a ready-to-run outcome command.";
@@ -378,6 +419,22 @@ ${dirtyFiles}
 ## Work Packet Window
 
 ${topPackets}
+
+## Next Executable Packet
+
+- Status: ${nextPacket.status || ""}
+- Packet ID: ${nextPacket.packetId || ""}
+- Title: ${nextPacket.title || ""}
+- Priority: ${nextPacket.priority || ""}
+- Owner: ${nextPacket.recommendedOwner || ""}
+- Safe next step: ${nextPacket.safeNextStep || ""}
+- Branch: ${nextPacket.suggestedBranchName || ""}
+- PR title: ${nextPacket.suggestedPrTitle || ""}
+- Source signals: ${nextPacket.sourceSignalCount}
+
+### Next Packet Verification
+
+${nextPacketVerification}
 
 ## Outcome Ledger
 

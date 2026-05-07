@@ -97,6 +97,23 @@ Likely impacts:
 
 This slice adds drift inventory tooling and documents current evidence. It intentionally does not reconcile, delete, reset, stash, or move any live host files.
 
+## Machine-Readable Manifest
+
+Use `make ops-host-drift-manifest` or the direct Node command below when a later slice needs a structured manifest instead of scraping this Markdown note:
+
+```bash
+node scripts/ops/host_drift_manifest.mjs --json --write
+```
+
+For a live-host capture without reading file contents, capture only path/status metadata first, then parse it locally:
+
+```bash
+ssh studiobrain 'git -C /home/wuff/monsoonfire-portal status --porcelain=v1 --untracked-files=all' > output/ops/host-drift/live-status.txt
+node scripts/ops/host_drift_manifest.mjs --status-file output/ops/host-drift/live-status.txt --json --write
+```
+
+The manifest compares path names with `studio-brain/host-drift-allowlist.json`, classifies paths as generated/artifact, source/config, sensitive path name, or unknown, and assigns approval classes such as `safe_with_backup`, `requires_human_approval`, `allowlisted_review_before_cleanup`, and `do_not_touch_security_review`. Sensitive-looking path names are redacted by default; use `--show-sensitive-paths` only in a restricted local review. It is still evidence only: no reset, clean, stash, checkout, delete, move, chmod, restart, or host mutation is performed.
+
 ## Systemd Drift Follow-Up
 
 Use `scripts/ops/systemd_drift_review.sh` or `make ops-systemd-drift` for the narrower host-unit check added after the idle-worker drop-in reconciliation. It compares tracked files under `config/studiobrain/systemd/` with installed paths on the host by normalized text checksum only:

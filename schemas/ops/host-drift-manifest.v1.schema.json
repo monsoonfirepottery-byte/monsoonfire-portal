@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/host-drift-manifest.v1.schema.json",
+  "title": "Studio Brain Host Drift Manifest v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "status",
+    "readOnly",
+    "safety",
+    "sources",
+    "git",
+    "summary",
+    "entries",
+    "safeNextSteps"
+  ],
+  "properties": {
+    "schema": { "const": "studiobrain-host-drift-manifest.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "safety": {
+      "type": "object",
+      "required": ["pathNamesOnly", "readsFileContents", "mutatesHost", "destructiveActions", "sensitivePathNamesRedacted"],
+      "properties": {
+        "pathNamesOnly": { "const": true },
+        "readsFileContents": { "const": false },
+        "mutatesHost": { "const": false },
+        "destructiveActions": { "const": false },
+        "sensitivePathNamesRedacted": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "object",
+      "required": ["repo", "statusSource", "statusReadStatus", "allowlistPath", "allowlistStatus", "allowlistGeneratedAt"],
+      "properties": {
+        "repo": { "type": "string" },
+        "statusSource": { "type": "string" },
+        "statusReadStatus": { "type": "string" },
+        "allowlistPath": { "type": "string" },
+        "allowlistStatus": { "type": "string" },
+        "allowlistGeneratedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "repo": { "type": "string" },
+        "branch": { "type": "string" },
+        "head": { "type": "string" },
+        "upstream": { "type": "string" },
+        "upstreamStatus": { "type": "string" },
+        "aheadBehind": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "dirtyPaths",
+        "entriesKept",
+        "truncated",
+        "classificationCounts",
+        "statusCounts",
+        "approvalCounts",
+        "allowlistCounts",
+        "allowlistEntries",
+        "expiredAllowlistMatches",
+        "errors"
+      ],
+      "properties": {
+        "dirtyPaths": { "type": "number", "minimum": 0 },
+        "entriesKept": { "type": "number", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "classificationCounts": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "statusCounts": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "approvalCounts": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "allowlistCounts": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "allowlistEntries": { "type": "number", "minimum": 0 },
+        "expiredAllowlistMatches": { "type": "number", "minimum": 0 },
+        "errors": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["status", "pathClass", "approval", "path", "pathRedacted", "allowlist"],
+        "properties": {
+          "status": { "type": "string" },
+          "pathClass": { "type": "string" },
+          "approval": { "type": "string" },
+          "path": { "type": "string" },
+          "pathRedacted": { "type": "boolean" },
+          "allowlist": {
+            "type": "object",
+            "required": ["status", "path", "owner", "reason", "expiresAt", "expired"],
+            "properties": {
+              "status": { "type": "string" },
+              "path": { "type": "string" },
+              "owner": { "type": "string" },
+              "reason": { "type": "string" },
+              "expiresAt": { "type": "string" },
+              "expired": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "safeNextSteps": { "type": "array", "items": { "type": "string" } },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" },
+    "artifacts": { "type": "object" }
+  },
+  "additionalProperties": false
+}

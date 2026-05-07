@@ -46,6 +46,7 @@ check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "scripts/ops/slice_ledger.mjs"
 check_file "scripts/ops/admin_effectivity_audit.mjs"
 check_file "scripts/ops/admin_effectivity_trend.mjs"
+check_file "scripts/ops/host_drift_manifest.mjs"
 check_file "scripts/ops/work_packet_quality_lint.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/tooling_findings_export.mjs"
@@ -78,6 +79,7 @@ for script in \
   "scripts/ops/slice_ledger.mjs" \
   "scripts/ops/admin_effectivity_audit.mjs" \
   "scripts/ops/admin_effectivity_trend.mjs" \
+  "scripts/ops/host_drift_manifest.mjs" \
   "scripts/ops/work_packet_quality_lint.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
   "scripts/ops/tooling_findings_export.mjs" \
@@ -134,6 +136,12 @@ if node --test "${REPO_ROOT}/scripts/ops/admin_effectivity_trend.test.mjs" >"${O
   pass "node --test scripts/ops/admin_effectivity_trend.test.mjs"
 else
   fail "node --test scripts/ops/admin_effectivity_trend.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/host_drift_manifest.test.mjs" >"${OUT_DIR}/host-drift-manifest.test.out" 2>&1; then
+  pass "node --test scripts/ops/host_drift_manifest.test.mjs"
+else
+  fail "node --test scripts/ops/host_drift_manifest.test.mjs"
 fi
 
 if node --test "${REPO_ROOT}/scripts/ops/work_packet_quality_lint.test.mjs" >"${OUT_DIR}/work-packet-quality-lint.test.out" 2>&1; then
@@ -216,6 +224,13 @@ if node "${REPO_ROOT}/scripts/ops/tooling_findings_export.mjs" --json --write >"
   pass "tooling_findings_export smoke"
 else
   fail "tooling_findings_export smoke"
+fi
+
+section "Host Drift Manifest Smoke"
+if node "${REPO_ROOT}/scripts/ops/host_drift_manifest.mjs" --json --write >"${OUT_DIR}/host-drift-manifest.json"; then
+  pass "host_drift_manifest smoke"
+else
+  fail "host_drift_manifest smoke"
 fi
 
 section "Artifact Schema Smoke"

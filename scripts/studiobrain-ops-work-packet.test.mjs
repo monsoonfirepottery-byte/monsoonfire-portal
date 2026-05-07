@@ -151,9 +151,25 @@ const freshInputs = {
       promotionCandidates: 2,
     },
   },
+  swarmPreflight: {
+    schema: "studiobrain-swarm-lane-preflight.v1",
+    generatedAt: "2026-05-07T08:46:12.000Z",
+    status: "pass",
+    readOnly: true,
+    lane: "tooling",
+    branch: "codex/ops-tooling",
+    base: "origin/main",
+    changedFiles: ["scripts/ops/tool.mjs"],
+    dirtyFiles: [],
+    outsideScope: [],
+    problems: [],
+    warnings: [],
+    recommendation: "lane is ready for scoped work",
+  },
   adminAuditPath: "output/ops/effectivity/admin-effectivity-audit-latest.json",
   sliceLedgerPath: "output/ops/effectivity/slice-ledger-latest.json",
   toolInventoryPath: "output/ops/effectivity/installed-tool-inventory-latest.json",
+  swarmPreflightPath: "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
 };
 
 test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", () => {
@@ -173,9 +189,11 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.constraints.noServiceRestart, true);
   assert.equal(report.evidenceSummary.risks, 2);
   assert.equal(report.evidenceSummary.backlogItems, 2);
-  assert.equal(report.evidenceSummary.freshSources, 3);
+  assert.equal(report.evidenceSummary.freshSources, 4);
   assert.equal(report.evidenceSummary.staleSources, 0);
   assert.equal(report.evidenceSummary.toolPromotionCandidates, 2);
+  assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
+  assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
   assert.equal(report.freshEvidence.adminAudit.freshness.stale, false);
   assert.ok(report.packets.length >= 2);
@@ -183,6 +201,7 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(report.packets.every((packet) => packet.constraints.readOnlyFirst));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"));
+  assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-swarm-preflight"));
   assert.equal(report.packets[0].priority, "P0");
   assert.ok(report.packets[0].humanGate.includes("PostgreSQL dump"));
   assert.ok(report.packets[0].safeNextStep.includes("restore-prerequisite"));
@@ -194,6 +213,7 @@ test("summarizeFreshEvidence degrades when ignored artifacts are missing", () =>
   assert.equal(fresh.adminAudit.status, "missing");
   assert.equal(fresh.sliceLedger.status, "missing");
   assert.equal(fresh.toolInventory.status, "missing");
+  assert.equal(fresh.swarmPreflight.status, "missing");
 });
 
 test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {
@@ -239,6 +259,47 @@ test("workPacketReportStatus warns when falling back to static docs only", () =>
   assert.equal(workPacketReportStatus(fresh), "pass");
 });
 
+test("workPacketReportStatus warns when swarm preflight is missing", () => {
+  const missingPreflight = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      swarmPreflight: null,
+    },
+    { maxPackets: 1 },
+  );
+
+  assert.equal(missingPreflight.freshEvidence.swarmPreflight.status, "missing");
+  assert.equal(workPacketReportStatus(missingPreflight), "warn");
+});
+
+test("failed swarm preflight gates packets and fails the report", () => {
+  const failedPreflight = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+      swarmPreflight: {
+        ...freshInputs.swarmPreflight,
+        status: "fail",
+        outsideScope: ["server/app.ts"],
+        problems: ["write scope has 1 file outside lane ownership"],
+        recommendation: "do not delegate this lane until the scope issue is fixed",
+      },
+    },
+    { maxPackets: 1 },
+  );
+
+  assert.equal(failedPreflight.evidenceSummary.swarmPreflightStatus, "fail");
+  assert.equal(failedPreflight.evidenceSummary.swarmPreflightOutsideScope, 1);
+  assert.equal(failedPreflight.packets[0].status, "approval_gated");
+  assert.ok(failedPreflight.packets[0].humanGate.includes("do not delegate"));
+  assert.equal(workPacketReportStatus(failedPreflight), "fail");
+});
+
 test("workPacketReportStatus warns when fresh evidence is stale", () => {
   const stale = buildOpsWorkPacket(
     {
@@ -255,7 +316,7 @@ test("workPacketReportStatus warns when fresh evidence is stale", () => {
   );
 
   assert.equal(stale.evidenceSummary.freshSources, 0);
-  assert.equal(stale.evidenceSummary.staleSources, 3);
+  assert.equal(stale.evidenceSummary.staleSources, 4);
   assert.equal(stale.freshEvidence.adminAudit.status, "stale");
   assert.equal(stale.freshEvidence.adminAudit.sourceStatus, "pass");
   assert.equal(stale.freshEvidence.adminAudit.freshness.stale, true);
@@ -272,6 +333,8 @@ test("runOpsWorkPacket returns a schema-compatible CLI report", () => {
     "output/ops/missing-slice-ledger.json",
     "--tool-inventory",
     "output/ops/missing-tool-inventory.json",
+    "--swarm-preflight",
+    "output/ops/missing-swarm-preflight.json",
   ]));
 
   assertWorkPacketReportContract(report);

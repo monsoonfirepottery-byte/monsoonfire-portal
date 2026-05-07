@@ -78,6 +78,14 @@ make ops-swarm-lane-preflight OPS_SWARM_LANE=docs OPS_SWARM_BASE=origin/main
 
 The preflight is read-only. It checks the branch, base ref, integration-base diff, dirty files, changed files, and rename sources against a lane-owned write scope so out-of-lane edits are caught before a worker starts. Use `--base origin/main` for delegation unless you are intentionally validating a stacked branch boundary.
 
+Work packets consume the latest preflight report by default:
+
+```bash
+node scripts/studiobrain-ops-work-packet.mjs --json --write --swarm-preflight output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json
+```
+
+Missing preflight evidence downgrades the packet report to `warn`; failed preflight evidence makes the report `fail` and marks packets `approval_gated` until the lane scope problem is fixed.
+
 ## Scoring
 
 - `usefulness`: average slice usefulness score, 0 to 1.

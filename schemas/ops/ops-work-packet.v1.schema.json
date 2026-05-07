@@ -11,14 +11,15 @@
     "purpose": { "type": "string" },
     "sources": {
       "type": "object",
-      "required": ["riskRegister", "backlog", "effectivity", "adminAudit", "sliceLedger", "toolInventory"],
+      "required": ["riskRegister", "backlog", "effectivity", "adminAudit", "sliceLedger", "toolInventory", "swarmPreflight"],
       "properties": {
         "riskRegister": { "type": "string" },
         "backlog": { "type": "string" },
         "effectivity": { "type": "string" },
         "adminAudit": { "type": "string" },
         "sliceLedger": { "type": "string" },
-        "toolInventory": { "type": "string" }
+        "toolInventory": { "type": "string" },
+        "swarmPreflight": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -36,7 +37,7 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
@@ -45,13 +46,16 @@
         "freshSources": { "type": "number", "minimum": 0 },
         "staleSources": { "type": "number", "minimum": 0 },
         "toolPromotionCandidates": { "type": ["number", "null"], "minimum": 0 },
-        "toolActionableFindings": { "type": ["number", "null"], "minimum": 0 }
+        "toolActionableFindings": { "type": ["number", "null"], "minimum": 0 },
+        "swarmPreflightStatus": { "type": "string" },
+        "swarmPreflightOutsideScope": { "type": ["number", "null"], "minimum": 0 },
+        "swarmPreflightProblems": { "type": ["number", "null"], "minimum": 0 }
       },
       "additionalProperties": false
     },
     "freshEvidence": {
       "type": "object",
-      "required": ["adminAudit", "sliceLedger", "toolInventory"],
+      "required": ["adminAudit", "sliceLedger", "toolInventory", "swarmPreflight"],
       "additionalProperties": true
     },
     "packets": {

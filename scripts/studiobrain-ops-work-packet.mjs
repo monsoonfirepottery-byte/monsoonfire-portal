@@ -20,6 +20,7 @@ const DEFAULT_EFFECTIVITY_DOC = resolve(REPO_ROOT, "docs", "ops", "16-effectivit
 const DEFAULT_ADMIN_AUDIT = resolve(REPO_ROOT, "output", "ops", "effectivity", "admin-effectivity-audit-latest.json");
 const DEFAULT_SLICE_LEDGER = resolve(REPO_ROOT, "output", "ops", "effectivity", "slice-ledger-latest.json");
 const DEFAULT_TOOL_INVENTORY = resolve(REPO_ROOT, "output", "ops", "effectivity", "installed-tool-inventory-latest.json");
+const DEFAULT_SWARM_PREFLIGHT = resolve(REPO_ROOT, "output", "ops", "swarm-lane-preflight", "swarm-lane-preflight-latest.json");
 const VALID_OUTCOMES = new Set([
   "used",
   "helpful",
@@ -279,10 +280,14 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
       : collectAcceptanceFallback(backlogItem.rawBody || "");
   const packetKey = [title, backlogItem.priority, risk?.title || "", risk?.safeNextStep || firstAcceptance(backlogItem)].join("|");
   const approvalGate = effectivity.remainingApprovalGates.find((gate) => overlapScore(gate, title) > 0) || "";
+  const preflightGate = freshEvidence?.swarmPreflight?.status === "fail"
+    ? freshEvidence.swarmPreflight.summary?.recommendation || "Fix failed swarm lane preflight before delegating this packet."
+    : "";
+  const humanGate = [approvalGate, preflightGate].filter(Boolean).join(" / ");
   return {
     packetId: `ops-wp-${stableHash(packetKey)}`,
     title,
-    status: approvalGate ? "approval_gated" : "ready",
+    status: humanGate ? "approval_gated" : "ready",
     priority: backlogItem.priority || "P?",
     priorityRank: priorityRank(backlogItem.priority),
     risk: backlogItem.risk || risk?.severity || "unknown",
@@ -317,7 +322,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
     suggestedBranchName: backlogItem.suggestedBranchName || "",
     suggestedPrTitle: backlogItem.suggestedPrTitle || "",
     verification: buildVerification({ ...backlogItem, acceptanceCriteria }, risk),
-    humanGate: approvalGate,
+    humanGate,
     constraints: {
       readOnlyFirst: true,
       noSecrets: true,
@@ -330,7 +335,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
 
 function freshSourceSignals(freshEvidence) {
   if (!freshEvidence) return [];
-  return [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory]
+  return [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory, freshEvidence.swarmPreflight]
     .filter((source) => source && source.status !== "missing")
     .map((source) => ({
       source: source.source,
@@ -423,6 +428,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
   const adminAudit = inputs.adminAudit || null;
   const sliceLedger = inputs.sliceLedger || null;
   const toolInventory = inputs.toolInventory || null;
+  const swarmPreflight = inputs.swarmPreflight || null;
   const unavailable = (source, path, status = "missing", summary = {}) => ({
     source,
     path,
@@ -487,6 +493,30 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
           toolInventory?.status || "missing",
           toolInventory?.parseError ? { parseError: toolInventory.parseError } : {},
         ),
+    swarmPreflight: swarmPreflight && swarmPreflight.status !== "invalid_json"
+      ? applyFreshness({
+          source: "fresh-swarm-preflight",
+          path: inputs.swarmPreflightPath || "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
+          status: clean(swarmPreflight.status) || "unknown",
+          generatedAt: clean(swarmPreflight.generatedAt),
+          summary: {
+            lane: swarmPreflight.lane || "",
+            branch: swarmPreflight.branch || "",
+            base: swarmPreflight.base || "",
+            changedFiles: Array.isArray(swarmPreflight.changedFiles) ? swarmPreflight.changedFiles.length : null,
+            dirtyFiles: Array.isArray(swarmPreflight.dirtyFiles) ? swarmPreflight.dirtyFiles.length : null,
+            outsideScope: Array.isArray(swarmPreflight.outsideScope) ? swarmPreflight.outsideScope.length : null,
+            problems: Array.isArray(swarmPreflight.problems) ? swarmPreflight.problems.length : null,
+            warnings: Array.isArray(swarmPreflight.warnings) ? swarmPreflight.warnings.length : null,
+            recommendation: swarmPreflight.recommendation || "",
+          },
+        }, options)
+      : unavailable(
+          "fresh-swarm-preflight",
+          inputs.swarmPreflightPath || "output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json",
+          swarmPreflight?.status || "missing",
+          swarmPreflight?.parseError ? { parseError: swarmPreflight.parseError } : {},
+        ),
   };
 }
 
@@ -498,7 +528,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
     maxAgeHours: options.maxAgeHours,
     now: options.now || options.generatedAt,
   });
-  const freshEvidenceSources = [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory];
+  const freshEvidenceSources = [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory, freshEvidence.swarmPreflight];
   const freshSources = freshEvidenceSources.filter((source) => !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status));
   const staleSources = freshEvidenceSources.filter((source) => ["invalid_timestamp", "stale"].includes(source.status));
   const packets = backlog
@@ -519,6 +549,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       adminAudit: freshEvidence.adminAudit.path,
       sliceLedger: freshEvidence.sliceLedger.path,
       toolInventory: freshEvidence.toolInventory.path,
+      swarmPreflight: freshEvidence.swarmPreflight.path,
     },
     constraints: {
       readOnlyFirst: true,
@@ -536,6 +567,9 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       staleSources: staleSources.length,
       toolPromotionCandidates: freshEvidence.toolInventory.summary.promotionCandidates ?? null,
       toolActionableFindings: freshEvidence.toolInventory.summary.actionableFindings ?? null,
+      swarmPreflightStatus: freshEvidence.swarmPreflight.status,
+      swarmPreflightOutsideScope: freshEvidence.swarmPreflight.summary.outsideScope ?? null,
+      swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,
     },
     freshEvidence,
     packets,
@@ -554,6 +588,7 @@ function parseArgs(argv) {
     adminAudit: DEFAULT_ADMIN_AUDIT,
     sliceLedger: DEFAULT_SLICE_LEDGER,
     toolInventory: DEFAULT_TOOL_INVENTORY,
+    swarmPreflight: DEFAULT_SWARM_PREFLIGHT,
     maxAgeHours: 24,
     maxPackets: 8,
     recordOutcome: "",
@@ -595,6 +630,7 @@ function parseArgs(argv) {
       "--admin-audit": "adminAudit",
       "--slice-ledger": "sliceLedger",
       "--tool-inventory": "toolInventory",
+      "--swarm-preflight": "swarmPreflight",
       "--record-outcome": "recordOutcome",
       "--outcome": "outcome",
       "--used-by": "usedBy",
@@ -605,7 +641,7 @@ function parseArgs(argv) {
     for (const [flag, key] of Object.entries(stringOptions)) {
       const value = read(flag);
       if (value !== null) {
-        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory"
+        args[key] = key === "outputRoot" || key === "artifact" || key === "latest" || key === "outcomes" || key === "adminAudit" || key === "sliceLedger" || key === "toolInventory" || key === "swarmPreflight"
           ? resolve(REPO_ROOT, value)
           : value;
         matched = true;
@@ -648,6 +684,7 @@ function printUsage() {
       "  --admin-audit <path>    Default: output/ops/effectivity/admin-effectivity-audit-latest.json.",
       "  --slice-ledger <path>   Default: output/ops/effectivity/slice-ledger-latest.json.",
       "  --tool-inventory <path> Default: output/ops/effectivity/installed-tool-inventory-latest.json.",
+      "  --swarm-preflight <path> Default: output/ops/swarm-lane-preflight/swarm-lane-preflight-latest.json.",
       "  --max-age-hours <n>     Warn when fresh-input artifacts are older than this. Default: 24.",
       "  --max-packets <n>       Default: 8.",
       "  --record-outcome <id>   Append an outcome ledger entry.",
@@ -682,6 +719,9 @@ function recordOutcome(options) {
 
 function workPacketReportStatus(packet) {
   if (packet.packets.length === 0) return "warn";
+  const preflightStatus = packet.freshEvidence?.swarmPreflight?.status;
+  if (preflightStatus === "fail") return "fail";
+  if (["missing", "invalid_json", "warn"].includes(preflightStatus)) return "warn";
   if ((packet.evidenceSummary?.staleSources ?? 0) > 0) return "warn";
   if ((packet.evidenceSummary?.freshSources ?? 0) === 0) return "warn";
   return "pass";
@@ -704,9 +744,11 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
       adminAudit: readJsonIfExists(options.adminAudit),
       sliceLedger: readJsonIfExists(options.sliceLedger),
       toolInventory: readJsonIfExists(options.toolInventory),
+      swarmPreflight: readJsonIfExists(options.swarmPreflight),
       adminAuditPath: toRepoRelative(options.adminAudit),
       sliceLedgerPath: toRepoRelative(options.sliceLedger),
       toolInventoryPath: toRepoRelative(options.toolInventory),
+      swarmPreflightPath: toRepoRelative(options.swarmPreflight),
     },
     {
       runId: options.runId,

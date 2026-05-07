@@ -9,6 +9,7 @@ const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_WORK_PACKET = resolve(REPO_ROOT, "output", "ops", "swarm", "latest-work-packet.json");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "swarm");
 const DESTRUCTIVE_TERMS = /\b(delete|drop|prune|rm\s+-rf|restart|rotate secret|flush|truncate|firewall|iptables|ufw)\b/i;
+const STALE_BACKLOG_STATUS_TERMS = /\b(merged|prepared|completed|complete|done|shipped|superseded|already)\b/i;
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -110,6 +111,10 @@ function pushFinding(findings, severity, code, packet, message) {
   });
 }
 
+function sourceSignals(packet) {
+  return Array.isArray(packet?.sourceSignals) ? packet.sourceSignals : [];
+}
+
 function lintPacket(packet, findings) {
   if (!/^\[[^\]]+\]\s+\S/.test(clean(packet.title))) pushFinding(findings, "warn", "weak-title-area", packet, "Packet title should start with an [area] prefix.");
   if (!/^P[0-3]$/.test(clean(packet.priority))) pushFinding(findings, "warn", "weak-priority", packet, "Packet priority should be P0, P1, P2, or P3.");
@@ -121,7 +126,15 @@ function lintPacket(packet, findings) {
   if (/[`]/.test(clean(packet.suggestedPrTitle))) pushFinding(findings, "warn", "markdown-wrapped-pr-title", packet, "suggestedPrTitle should be plain text, not markdown-wrapped.");
   if (clean(packet.safeNextStep).length < 20) pushFinding(findings, "warn", "weak-safe-next-step", packet, "safeNextStep is too short to steer an operator.");
   if (!Array.isArray(packet.verification) || packet.verification.length < 2) pushFinding(findings, "warn", "weak-verification", packet, "Packet should include at least two verification steps.");
-  if (!Array.isArray(packet.sourceSignals) || packet.sourceSignals.length < 3) pushFinding(findings, "warn", "weak-source-signal-count", packet, "Packet should cite at least three source signals.");
+  if (sourceSignals(packet).length < 3) pushFinding(findings, "warn", "weak-source-signal-count", packet, "Packet should cite at least three source signals.");
+  const backlogSignals = sourceSignals(packet).filter((signal) => clean(signal.source) === "backlog");
+  const backlogStatusText = backlogSignals.map((signal) => clean(signal.status)).filter(Boolean).join(" ");
+  if (backlogSignals.length > 0 && !backlogStatusText) {
+    pushFinding(findings, "warn", "missing-backlog-status", packet, "Backlog source signal is missing status/evidence text, so the packet is harder to age or retire.");
+  }
+  if (STALE_BACKLOG_STATUS_TERMS.test(backlogStatusText)) {
+    pushFinding(findings, "warn", "stale-backlog-status", packet, "Backlog status says the work may already be merged, prepared, completed, or superseded; refresh or retire the backlog item before execution.");
+  }
   if (!packet.constraints?.readOnlyFirst || !packet.constraints?.noSecrets || !packet.constraints?.noDataMutation) {
     pushFinding(findings, "fail", "unsafe-constraints", packet, "Packet constraints must preserve read-only-first, no-secrets, and no-data-mutation defaults.");
   }
@@ -172,6 +185,8 @@ function buildQualityReport(workPacket, options = {}) {
       findings: findings.length,
       warnings: warnCount,
       failures: failCount,
+      staleBacklogPackets: new Set(findings.filter((finding) => finding.code === "stale-backlog-status").map((finding) => finding.packetId || finding.title)).size,
+      missingBacklogStatusPackets: new Set(findings.filter((finding) => finding.code === "missing-backlog-status").map((finding) => finding.packetId || finding.title)).size,
       sourceSignalAuditStatus: clean(workPacket?.sourceSignalAudit?.status),
     },
     findings: findings.slice(0, 100),
@@ -196,6 +211,8 @@ Run ID: ${report.runId}
 - Findings: ${report.summary.findings}
 - Warnings: ${report.summary.warnings}
 - Failures: ${report.summary.failures}
+- Stale backlog packets: ${report.summary.staleBacklogPackets}
+- Missing backlog status packets: ${report.summary.missingBacklogStatusPackets}
 - Source signal audit: ${report.summary.sourceSignalAuditStatus || "unknown"}
 
 ## Findings

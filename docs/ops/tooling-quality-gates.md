@@ -24,6 +24,15 @@ The Makefile wrapper keeps installs off by default. Use `make ops-tooling-qualit
 - `powershell`: parses tracked `.ps1` files with `pwsh` or Windows PowerShell.
 - `sqlfluff`: runs PostgreSQL parser checks when `sqlfluff` is installed. With `--allow-install`, it can use `uv tool run --from sqlfluff`.
 
+## Workflow Validation
+
+Use pinned `actionlint` release binaries for GitHub workflow checks. The npm package name is not the official rhysd actionlint distribution and should not be used as an install path.
+
+- CI path: use the official `download-actionlint.bash` script pinned to an explicit version.
+- Windows local no-install path: download the pinned release with `gh release download`, verify attestation with `gh attestation verify`, expand to `%TEMP%`, and run `actionlint.exe`.
+- Persistent Windows path: `winget install --id rhysd.actionlint --exact`.
+- Avoid for this repo: `npx actionlint`, `go install` without Go already present, or Docker-based actionlint when Docker is unavailable locally.
+
 ## Promotion Rule
 
 Keep new validators report-only until they prove useful over about five slices:

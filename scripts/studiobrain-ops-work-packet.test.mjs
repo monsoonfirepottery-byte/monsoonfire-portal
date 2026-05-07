@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { buildOpsWorkPacket, comparePackets, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
+import { auditSourceSignals, buildOpsWorkPacket, comparePackets, normalizePacketsSourceSignals, outcomeHealthFromSummary, runOpsWorkPacket, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus } from "./studiobrain-ops-work-packet.mjs";
 import { validateJsonSchema } from "./ops/validate_ops_artifacts.mjs";
 
 const packetSchema = JSON.parse(readFileSync(resolve("schemas/ops/ops-work-packet.v1.schema.json"), "utf8"));
@@ -287,8 +287,14 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(report.nextExecutablePacket.safeNextStep);
   assert.equal(report.nextExecutablePacket.totalPackets, report.packets.length);
   assert.equal(report.nextExecutablePacket.approvalGatedCount, report.packets.filter((packet) => packet.status === "approval_gated").length);
+  assert.equal(report.sourceSignalAudit.status, "pass");
+  assert.equal(report.sourceSignalAudit.duplicateSignalsRemoved, 0);
+  assert.equal(report.sourceSignalAudit.missingClass, 0);
+  assert.equal(report.sourceSignalAudit.unknownClass, 0);
+  assert.ok(report.sourceSignalAudit.classificationCounts.backlog > 0);
   assert.ok(report.packets.every((packet) => packet.packetId.startsWith("ops-wp-")));
   assert.ok(report.packets.every((packet) => packet.constraints.readOnlyFirst));
+  assert.ok(report.packets.every((packet) => packet.sourceSignals.every((signal) => signal.signalClass)));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"));
   const adminSignal = report.packets[0].sourceSignals.find((signal) => signal.source === "fresh-admin-audit");
   assert.equal(adminSignal.signalClass, "approval_gate");
@@ -375,6 +381,53 @@ test("summarizeNextExecutablePacket gives a safe no-ready fallback", () => {
   assert.equal(summary.packetId, "");
   assert.equal(summary.approvalGatedCount, 1);
   assert.ok(summary.safeNextStep.includes("approval gates"));
+});
+
+test("source signal lint removes exact duplicates and flags classification gaps", () => {
+  const rawPackets = [
+    {
+      packetId: "ops-wp-unit",
+      title: "Unit packet",
+      sourceSignals: [
+        { source: "unit", signalClass: "fresh", path: "output/ops/unit.json", generatedAt: "2026-05-07T00:00:00.000Z", summary: { checks: 1 } },
+        { source: "unit", signalClass: "fresh", path: "output/ops/unit.json", generatedAt: "2026-05-07T00:00:00.000Z", summary: { checks: 1 } },
+        { source: "unit-missing" },
+        { source: "unit-unknown", signalClass: "mystery" },
+      ],
+    },
+  ];
+
+  const normalized = normalizePacketsSourceSignals(rawPackets);
+  const audit = auditSourceSignals(normalized.packets, normalized.duplicateSignals);
+
+  assert.equal(normalized.packets[0].sourceSignals.length, 3);
+  assert.equal(audit.status, "warn");
+  assert.equal(audit.duplicateSignalsRemoved, 1);
+  assert.equal(audit.missingClass, 1);
+  assert.equal(audit.unknownClass, 1);
+  assert.ok(audit.findings.some((finding) => finding.code === "duplicate-source-signal"));
+});
+
+test("workPacketReportStatus warns when source signal audit degrades", () => {
+  const report = buildOpsWorkPacket(
+    {
+      riskMarkdown,
+      backlogMarkdown,
+      effectivityMarkdown,
+      ...freshInputs,
+    },
+    { maxPackets: 1 },
+  );
+  const degraded = {
+    ...report,
+    sourceSignalAudit: {
+      ...report.sourceSignalAudit,
+      status: "warn",
+      duplicateSignalsRemoved: 1,
+    },
+  };
+
+  assert.equal(workPacketReportStatus(degraded), "warn");
 });
 
 test("summarizeFreshEvidence does not count invalid JSON as fresh", () => {

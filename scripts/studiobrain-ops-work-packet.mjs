@@ -33,6 +33,17 @@ const VALID_OUTCOMES = new Set([
   "blocked",
   "superseded",
 ]);
+const SOURCE_SIGNAL_CLASSES = new Set([
+  "approval_gate",
+  "backlog",
+  "coverage_gap",
+  "effectivity",
+  "evidence_gap",
+  "fresh",
+  "issue_ready_task",
+  "risk",
+  "tool_install_recommendation",
+]);
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -297,6 +308,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
     sourceSignals: [
       {
         source: "backlog",
+        signalClass: "backlog",
         path: backlogItem.sourcePath,
         id: backlogItem.id,
         status: backlogItem.status,
@@ -305,6 +317,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
       risk
         ? {
             source: "risk-register",
+            signalClass: "risk",
             path: risk.sourcePath,
             id: risk.id,
             severity: risk.severity,
@@ -314,6 +327,7 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
         : null,
       {
         source: "effectivity",
+        signalClass: "effectivity",
         path: effectivity.sourcePath,
         relevantNextSafeSlices: effectivity.nextSafeSlices.filter((slice) => overlapScore(slice, title) > 0),
       },
@@ -360,6 +374,7 @@ function makeToolingFindingPacket(task, freshEvidence) {
         : null,
       {
         source: "tooling-findings-task",
+        signalClass: "issue_ready_task",
         title,
         evidence: Array.isArray(task.evidence) ? task.evidence : [],
         files: Array.isArray(task.files) ? task.files : [],
@@ -439,6 +454,110 @@ function summarizeNextExecutablePacket(packets) {
     suggestedPrTitle: ready.suggestedPrTitle || "",
     verification: Array.isArray(ready.verification) ? ready.verification.slice(0, 3) : [],
     sourceSignalCount: Array.isArray(ready.sourceSignals) ? ready.sourceSignals.length : 0,
+  };
+}
+
+function sourceSignalDedupeKey(signal) {
+  return [
+    clean(signal.source),
+    clean(signal.path),
+    clean(signal.id),
+    clean(signal.signalClass),
+    clean(signal.status),
+    clean(signal.generatedAt),
+    clean(signal.title),
+    stableHash(JSON.stringify(signal.summary || {}), 8),
+  ].join("|");
+}
+
+function normalizePacketsSourceSignals(packets) {
+  const duplicateSignals = [];
+  const normalizedPackets = packets.map((packet) => {
+    const seen = new Set();
+    const sourceSignals = [];
+    for (const signal of Array.isArray(packet.sourceSignals) ? packet.sourceSignals : []) {
+      const key = sourceSignalDedupeKey(signal);
+      if (seen.has(key)) {
+        duplicateSignals.push({
+          packetId: clean(packet.packetId),
+          title: clean(packet.title),
+          source: clean(signal.source),
+          signalClass: clean(signal.signalClass),
+          key,
+        });
+        continue;
+      }
+      seen.add(key);
+      sourceSignals.push(signal);
+    }
+    return {
+      ...packet,
+      sourceSignals,
+    };
+  });
+  return {
+    packets: normalizedPackets,
+    duplicateSignals,
+  };
+}
+
+function auditSourceSignals(packets, duplicateSignals = []) {
+  const classificationCounts = {};
+  const findings = [];
+  let totalSignals = 0;
+  let missingClass = 0;
+  let unknownClass = 0;
+  for (const packet of Array.isArray(packets) ? packets : []) {
+    for (const signal of Array.isArray(packet.sourceSignals) ? packet.sourceSignals : []) {
+      totalSignals += 1;
+      const signalClass = clean(signal.signalClass);
+      if (!signalClass) {
+        missingClass += 1;
+        findings.push({
+          severity: "warn",
+          code: "missing-signal-class",
+          packetId: clean(packet.packetId),
+          title: clean(packet.title),
+          source: clean(signal.source),
+          message: "Source signal is missing signalClass.",
+        });
+        continue;
+      }
+      classificationCounts[signalClass] = (classificationCounts[signalClass] || 0) + 1;
+      if (!SOURCE_SIGNAL_CLASSES.has(signalClass)) {
+        unknownClass += 1;
+        findings.push({
+          severity: "warn",
+          code: "unknown-signal-class",
+          packetId: clean(packet.packetId),
+          title: clean(packet.title),
+          source: clean(signal.source),
+          signalClass,
+          message: `Source signal uses unknown signalClass: ${signalClass}`,
+        });
+      }
+    }
+  }
+  for (const duplicate of duplicateSignals.slice(0, 20)) {
+    findings.push({
+      severity: "warn",
+      code: "duplicate-source-signal",
+      packetId: duplicate.packetId,
+      title: duplicate.title,
+      source: duplicate.source,
+      signalClass: duplicate.signalClass,
+      message: "Exact duplicate source signal was removed from the emitted packet.",
+    });
+  }
+  return {
+    status: missingClass > 0 || unknownClass > 0 || duplicateSignals.length > 0 ? "warn" : "pass",
+    totalSignals,
+    duplicateSignalsRemoved: duplicateSignals.length,
+    missingClass,
+    unknownClass,
+    classificationCounts,
+    allowedClasses: Array.from(SOURCE_SIGNAL_CLASSES).sort(),
+    findings: findings.slice(0, 50),
   };
 }
 
@@ -849,6 +968,8 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
   ]
     .sort(comparePackets)
     .slice(0, Number(options.maxPackets || 8));
+  const normalized = normalizePacketsSourceSignals(packets);
+  const sourceSignalAudit = auditSourceSignals(normalized.packets, normalized.duplicateSignals);
 
   return {
     schema: "studiobrain-ops-work-packet.v1",
@@ -897,8 +1018,9 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,
     },
     freshEvidence,
-    nextExecutablePacket: summarizeNextExecutablePacket(packets),
-    packets,
+    nextExecutablePacket: summarizeNextExecutablePacket(normalized.packets),
+    sourceSignalAudit,
+    packets: normalized.packets,
   };
 }
 
@@ -1058,6 +1180,7 @@ function workPacketReportStatus(packet, outcomeHealth = { status: "pass" }) {
   if (["missing", "invalid_json", "warn"].includes(preflightStatus)) return "warn";
   const toolInstallStatus = packet.freshEvidence?.toolInstallRecommendations?.status;
   if (["missing", "invalid_json", "invalid_timestamp", "stale"].includes(toolInstallStatus)) return "warn";
+  if (packet.sourceSignalAudit?.status === "warn") return "warn";
   if ((packet.evidenceSummary?.staleSources ?? 0) > 0) return "warn";
   if ((packet.evidenceSummary?.freshSources ?? 0) === 0) return "warn";
   if (outcomeHealth.status === "warn") return "warn";
@@ -1132,7 +1255,7 @@ export function runOpsWorkPacket(rawArgs = process.argv.slice(2)) {
   return report;
 }
 
-export { buildOutcomeSummary, comparePackets, outcomeHealthFromSummary, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus };
+export { auditSourceSignals, buildOutcomeSummary, comparePackets, normalizePacketsSourceSignals, outcomeHealthFromSummary, summarizeFreshEvidence, summarizeNextExecutablePacket, workPacketReportStatus };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   try {

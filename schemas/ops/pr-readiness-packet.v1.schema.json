@@ -107,6 +107,26 @@
                 "additionalProperties": false
               }
             },
+            "nextExecutablePacket": {
+              "type": "object",
+              "required": ["status", "packetId", "title", "priority", "risk", "recommendedOwner", "safeNextStep", "suggestedBranchName", "suggestedPrTitle", "verification", "sourceSignalCount", "totalPackets", "approvalGatedCount"],
+              "properties": {
+                "status": { "type": "string" },
+                "packetId": { "type": "string" },
+                "title": { "type": "string" },
+                "priority": { "type": "string" },
+                "risk": { "type": "string" },
+                "recommendedOwner": { "type": "string" },
+                "safeNextStep": { "type": "string" },
+                "suggestedBranchName": { "type": "string" },
+                "suggestedPrTitle": { "type": "string" },
+                "verification": { "type": "array", "items": { "type": "string" } },
+                "sourceSignalCount": { "type": "number", "minimum": 0 },
+                "totalPackets": { "type": "number", "minimum": 0 },
+                "approvalGatedCount": { "type": "number", "minimum": 0 }
+              },
+              "additionalProperties": false
+            },
             "humanGates": { "type": "number", "minimum": 0 },
             "toolInstallNowCandidates": { "type": ["number", "null"], "minimum": 0 },
             "toolInstallApprovalRequired": { "type": ["number", "null"], "minimum": 0 },

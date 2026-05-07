@@ -45,6 +45,7 @@ check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "scripts/ops/slice_ledger.mjs"
 check_file "scripts/ops/admin_effectivity_audit.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
+check_file "scripts/ops/tooling_findings_export.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
 check_file "scripts/ops/tool_install_recommendations.mjs"
 check_file "scripts/ops/pr_readiness_packet.mjs"
@@ -71,6 +72,7 @@ for script in \
   "scripts/ops/slice_ledger.mjs" \
   "scripts/ops/admin_effectivity_audit.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
+  "scripts/ops/tooling_findings_export.mjs" \
   "scripts/ops/installed_tool_inventory.mjs" \
   "scripts/ops/tool_install_recommendations.mjs" \
   "scripts/ops/pr_readiness_packet.mjs"; do
@@ -118,6 +120,12 @@ else
   fail "node --test scripts/ops/tooling_quality_report.test.mjs"
 fi
 
+if node --test "${REPO_ROOT}/scripts/ops/tooling_findings_export.test.mjs" >"${OUT_DIR}/tooling-findings-export.test.out" 2>&1; then
+  pass "node --test scripts/ops/tooling_findings_export.test.mjs"
+else
+  fail "node --test scripts/ops/tooling_findings_export.test.mjs"
+fi
+
 if node --test "${REPO_ROOT}/scripts/ops/installed_tool_inventory.test.mjs" >"${OUT_DIR}/installed-tool-inventory.test.out" 2>&1; then
   pass "node --test scripts/ops/installed_tool_inventory.test.mjs"
 else
@@ -161,6 +169,13 @@ if node "${REPO_ROOT}/scripts/ops/tool_install_recommendations.mjs" --json --wri
   pass "tool_install_recommendations smoke"
 else
   fail "tool_install_recommendations smoke"
+fi
+
+section "Tooling Findings Export Smoke"
+if node "${REPO_ROOT}/scripts/ops/tooling_findings_export.mjs" --json --write >"${OUT_DIR}/tooling-findings-export.json"; then
+  pass "tooling_findings_export smoke"
+else
+  fail "tooling_findings_export smoke"
 fi
 
 section "Artifact Schema Smoke"

@@ -14,6 +14,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/tooling-quality-report.v1.schema.json",
   },
   {
+    id: "tooling-findings-export",
+    artifact: "output/ops/tooling-quality/tooling-findings-latest.json",
+    schema: "schemas/ops/tooling-findings-export.v1.schema.json",
+  },
+  {
     id: "installed-tool-inventory",
     artifact: "output/ops/effectivity/installed-tool-inventory-latest.json",
     schema: "schemas/ops/installed-tool-inventory.v1.schema.json",

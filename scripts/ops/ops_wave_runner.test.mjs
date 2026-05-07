@@ -32,6 +32,16 @@ test("buildWavePlan only enables ephemeral validator runners when requested", ()
   assert.equal(installPlan[0].commandText.includes("--allow-install"), true);
 });
 
+test("buildWavePlan exports tooling findings after tooling quality", () => {
+  const plan = buildWavePlan();
+  const qualityIndex = plan.findIndex((step) => step.id === "tooling-quality");
+  const findingsIndex = plan.findIndex((step) => step.id === "tooling-findings");
+
+  assert.ok(qualityIndex >= 0);
+  assert.ok(findingsIndex > qualityIndex);
+  assert.ok(plan[findingsIndex].commandText.includes("tooling_findings_export.mjs"));
+});
+
 test("runWave dry-run records skipped receipts without executing", () => {
   const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "work-packet"] }, () => {
     throw new Error("runner should not execute in dry-run mode");

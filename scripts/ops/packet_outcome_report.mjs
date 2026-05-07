@@ -11,6 +11,7 @@ const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "swarm");
 const DEFAULT_OUTCOMES = resolve(DEFAULT_OUTPUT_DIR, "outcomes.jsonl");
 const DEFAULT_WORK_PACKET = resolve(DEFAULT_OUTPUT_DIR, "latest-work-packet.json");
+const DEFAULT_PR_READINESS = resolve(REPO_ROOT, "output", "ops", "pr-readiness", "pr-readiness-latest.json");
 
 function usage() {
   return `Studio Brain packet outcome report
@@ -23,6 +24,7 @@ Options:
   --write                Write timestamped JSON/Markdown and latest artifacts.
   --outcomes <path>      Outcome JSONL path. Default: output/ops/swarm/outcomes.jsonl.
   --work-packet <path>   Latest work-packet artifact. Default: output/ops/swarm/latest-work-packet.json.
+  --pr-readiness <path>  Latest PR readiness artifact. Default: output/ops/pr-readiness/pr-readiness-latest.json.
   --output-dir <path>    Artifact directory. Default: output/ops/swarm.
   --run-id <id>          Stable run id. Default: packet-outcome timestamp.
 `;
@@ -58,6 +60,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     write: false,
     outcomes: DEFAULT_OUTCOMES,
     workPacket: DEFAULT_WORK_PACKET,
+    prReadiness: DEFAULT_PR_READINESS,
     outputDir: DEFAULT_OUTPUT_DIR,
     runId: "",
   };
@@ -78,6 +81,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const mappings = [
       ["--outcomes", "outcomes"],
       ["--work-packet", "workPacket"],
+      ["--pr-readiness", "prReadiness"],
       ["--output-dir", "outputDir"],
       ["--run-id", "runId"],
     ];
@@ -95,6 +99,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   }
   options.outcomes = resolve(REPO_ROOT, options.outcomes);
   options.workPacket = resolve(REPO_ROOT, options.workPacket);
+  options.prReadiness = resolve(REPO_ROOT, options.prReadiness);
   options.outputDir = resolve(REPO_ROOT, options.outputDir);
   return options;
 }
@@ -174,16 +179,45 @@ function outcomeLedgerRetention(outcomes, metadata = {}, summary = {}) {
   };
 }
 
+function outcomeAdoption(summary = {}, currentPackets = [], prReadiness = null) {
+  const totalOutcomes = summary.total ?? 0;
+  const prReadinessGeneratedAt = clean(prReadiness?.generatedAt);
+  const readinessPacketId = clean(prReadiness?.outcomeLedger?.packetId);
+  const hasReadinessEvidence = Boolean(prReadinessGeneratedAt || readinessPacketId);
+  const currentWindowPackets = currentPackets.length;
+  const needsRecords = hasReadinessEvidence && currentWindowPackets > 0 && totalOutcomes === 0;
+  const status = needsRecords
+    ? "needs_records"
+    : totalOutcomes > 0
+      ? "active"
+      : hasReadinessEvidence
+        ? "warming_up"
+        : "not_observed";
+  return {
+    status,
+    hasReadinessEvidence,
+    prReadinessGeneratedAt,
+    readinessPacketId,
+    currentWindowPackets,
+    totalOutcomes,
+    guidance: needsRecords
+      ? "Record at least one packet outcome after using a PR readiness packet so the loop can learn whether generated work packets were useful."
+      : "Continue recording packet outcomes whenever a packet materially steers a PR or is found stale, misleading, blocked, or superseded.",
+  };
+}
+
 function buildPacketOutcomeReport(inputs = {}, options = {}) {
   const generatedAt = clean(options.generatedAt) || nowIso();
   const runId = clean(options.runId) || `packet-outcome-${generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
   const outcomes = Array.isArray(inputs.outcomes) ? inputs.outcomes : [];
   const workPacket = inputs.workPacket || null;
+  const prReadiness = inputs.prReadiness || null;
   const currentPackets = currentPacketWindow(workPacket);
   const currentPacketIds = new Set(currentPackets.map((packet) => packet.packetId));
   const summary = buildOutcomeSummary(outcomes);
   const health = outcomeHealthFromSummary(summary);
   const ledgerRetention = outcomeLedgerRetention(outcomes, inputs.outcomeMetadata || inputs.metadata || {}, summary);
+  const adoption = outcomeAdoption(summary, currentPackets, prReadiness);
   const latestByPacket = annotateOutcomes(summary.latestByPacket || [], currentPacketIds);
   const orphanedLatestOutcomes = latestByPacket.filter((entry) => entry.packetId && !entry.inCurrentWindow);
   const latestOutcomePackets = latestByPacket.length;
@@ -198,7 +232,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
   };
   const status = workPacket?.status === "invalid_json"
     ? "fail"
-    : health.status === "warn" || packetChurn.status === "warn" || ledgerRetention.status === "warn"
+    : health.status === "warn" || packetChurn.status === "warn" || ledgerRetention.status === "warn" || adoption.status === "needs_records"
       ? "warn"
       : "pass";
 
@@ -211,6 +245,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
     sources: {
       outcomes: clean(options.outcomesPath) || repoRelative(DEFAULT_OUTCOMES),
       workPacket: clean(options.workPacketPath) || repoRelative(DEFAULT_WORK_PACKET),
+      prReadiness: clean(options.prReadinessPath) || repoRelative(DEFAULT_PR_READINESS),
     },
     currentPacketWindow: {
       generatedAt: clean(workPacket?.generatedAt),
@@ -223,6 +258,7 @@ function buildPacketOutcomeReport(inputs = {}, options = {}) {
     outcomeSummary: summary,
     outcomeHealth: health,
     ledgerRetention,
+    outcomeAdoption: adoption,
     packetChurn,
     latestByPacket,
     orphanedLatestOutcomes,
@@ -237,6 +273,7 @@ function renderMarkdown(report) {
   const warnings = [
     ...report.outcomeHealth.warnings,
     report.ledgerRetention.status === "warn" ? "outcome ledger retention review is recommended" : "",
+    report.outcomeAdoption.status === "needs_records" ? "packet outcome adoption needs at least one recorded outcome" : "",
   ].filter(Boolean).map((warning) => `- ${warning}`).join("\n") || "- None.";
   const topPackets = report.currentPacketWindow.topPackets
     .map((packet) => `- ${packet.priority || "P?"} ${packet.status || "unknown"} ${packet.packetId}: ${packet.title}`)
@@ -271,6 +308,16 @@ Run ID: ${report.runId}
 - Newest recorded: ${report.ledgerRetention.newestRecordedAt || "unknown"}
 - Compaction recommended: ${report.ledgerRetention.compactionRecommended}
 - Guidance: ${report.ledgerRetention.guidance}
+
+## Outcome Adoption
+
+- Status: ${report.outcomeAdoption.status}
+- PR readiness evidence: ${report.outcomeAdoption.hasReadinessEvidence}
+- PR readiness generated: ${report.outcomeAdoption.prReadinessGeneratedAt || "unknown"}
+- Readiness packet ID: ${report.outcomeAdoption.readinessPacketId || "none"}
+- Current window packets: ${report.outcomeAdoption.currentWindowPackets}
+- Total outcomes: ${report.outcomeAdoption.totalOutcomes}
+- Guidance: ${report.outcomeAdoption.guidance}
 
 ### Warnings
 
@@ -318,11 +365,13 @@ function main(argv = process.argv.slice(2)) {
       {
         ...readOutcomeLedger(options.outcomes),
         workPacket: readJsonIfExists(options.workPacket),
+        prReadiness: readJsonIfExists(options.prReadiness),
       },
       {
         runId: options.runId,
         outcomesPath: repoRelative(options.outcomes),
         workPacketPath: repoRelative(options.workPacket),
+        prReadinessPath: repoRelative(options.prReadiness),
       },
     );
     const artifacts = options.write ? writeArtifacts(options, report) : null;

@@ -94,10 +94,11 @@ Run the ordered safe wave when refreshing dependent latest artifacts:
 node scripts/ops/ops_wave_runner.mjs --json --write
 node scripts/ops/ops_wave_runner.mjs --dry-run --json --write
 node scripts/ops/ops_wave_runner.mjs --allow-tool-install --json --write
+node scripts/ops/ops_wave_runner.mjs --max-packets 8 --json --write
 ```
 
-The wave runner executes read-only checks in dependency order: preflight, tooling quality, tooling findings export, tool inventory, admin effectivity audit, work packet generation, preliminary artifact schema validation, PR readiness packet generation, then final artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
-The default run does not install or fetch missing optional validators. Use `--allow-tool-install` only on a tooling lane where ephemeral runners such as `npx` or `uv tool run` are acceptable; the mode still writes only under `output/ops`.
+The wave runner executes read-only checks in dependency order: preflight, tooling quality, tooling findings export, tool inventory, tool-install recommendation refresh, admin effectivity audit, work packet generation, preliminary artifact schema validation, PR readiness packet generation, then final artifact schema validation. Use it when a downstream command consumes a `*-latest.json` artifact from an upstream command.
+The default run does not install or fetch missing optional validators. Use `--allow-tool-install` only on a tooling lane where ephemeral runners such as `npx` or `uv tool run` are acceptable; the mode still writes only under `output/ops`. Use `--max-packets <n>` when the default three-packet window hides lower-priority ready work behind approval-gated P0/P1 tasks.
 Tooling findings export converts fresh `tooling-quality` findings into GitHub-copy-ready cleanup tasks, keeping validator output from becoming a one-off terminal observation.
 The effectivity audit compares tool inventory sources against the start of the selected slice window, so validators run during the wave are not falsely marked stale just because the slice ledger is appended after validation completes.
 

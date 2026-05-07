@@ -22,6 +22,7 @@ Options:
   --output-dir <path> Artifact directory. Default: output/ops/effectivity.
   --ledger <path>     Slice ledger path. Default: output/ops/effectivity/slice-ledger.jsonl.
   --last <number>     Slice window. Default: 5.
+  --slice-run-id <id> Filter slice ledger rows by run id before selecting the window.
   --run-id <id>       Stable run id. Default: admin-effectivity timestamp.
 `;
 }
@@ -72,6 +73,7 @@ function parseArgs(argv) {
     outputDir: DEFAULT_OUTPUT_DIR,
     ledger: DEFAULT_LEDGER,
     last: 5,
+    sliceRunId: "",
     runId: ""
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -92,6 +94,7 @@ function parseArgs(argv) {
       ["--output-dir", "outputDir"],
       ["--ledger", "ledger"],
       ["--last", "last"],
+      ["--slice-run-id", "sliceRunId"],
       ["--run-id", "runId"]
     ];
     let consumed = false;
@@ -172,6 +175,19 @@ function summarizeSlices(rows) {
   };
 }
 
+function rowTimestamp(row) {
+  return Date.parse(clean(row.completedAt) || clean(row.startedAt)) || 0;
+}
+
+function selectLedgerRows(rows, last, runId = "") {
+  const filtered = clean(runId) ? rows.filter((row) => clean(row.runId) === clean(runId)) : rows;
+  return filtered
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => rowTimestamp(left.row) - rowTimestamp(right.row) || left.index - right.index)
+    .slice(-last)
+    .map((entry) => entry.row);
+}
+
 function tryEffectivityReport() {
   if (!commandExists("bash")) {
     return { ok: false, status: "skipped", reason: "bash unavailable", report: null };
@@ -219,7 +235,7 @@ function buildAudit(options) {
   const generatedAt = nowIso();
   const runId = clean(options.runId) || `admin-effectivity-${generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
   const ledgerRows = readJsonl(options.ledger);
-  const selectedRows = ledgerRows.slice(-options.last);
+  const selectedRows = selectLedgerRows(ledgerRows, options.last, options.sliceRunId);
   const sliceSummary = summarizeSlices(selectedRows);
   const toolInventory = runJson(process.execPath, ["scripts/ops/installed_tool_inventory.mjs", "--json"]);
   const effectivityReport = tryEffectivityReport();
@@ -252,6 +268,9 @@ function buildAudit(options) {
     sections: {
       sliceLedger: {
         ledgerPath: repoRelative(options.ledger),
+        filter: {
+          runId: clean(options.sliceRunId)
+        },
         summary: sliceSummary,
         rows: selectedRows
       },

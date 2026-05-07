@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/ops-work-packet.v1.schema.json",
+  "title": "Studio Brain Ops Work Packet",
+  "type": "object",
+  "required": ["schema", "generatedAt", "runId", "purpose", "sources", "constraints", "evidenceSummary", "freshEvidence", "packets"],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-work-packet.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "purpose": { "type": "string" },
+    "sources": {
+      "type": "object",
+      "required": ["riskRegister", "backlog", "effectivity", "adminAudit", "sliceLedger", "toolInventory"],
+      "properties": {
+        "riskRegister": { "type": "string" },
+        "backlog": { "type": "string" },
+        "effectivity": { "type": "string" },
+        "adminAudit": { "type": "string" },
+        "sliceLedger": { "type": "string" },
+        "toolInventory": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["readOnlyFirst", "noSecrets", "noServiceRestart", "noDataMutation", "defaultOutputRoot"],
+      "properties": {
+        "readOnlyFirst": { "const": true },
+        "noSecrets": { "const": true },
+        "noServiceRestart": { "const": true },
+        "noDataMutation": { "const": true },
+        "defaultOutputRoot": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "evidenceSummary": {
+      "type": "object",
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "toolPromotionCandidates", "toolActionableFindings"],
+      "properties": {
+        "risks": { "type": "number", "minimum": 0 },
+        "backlogItems": { "type": "number", "minimum": 0 },
+        "effectivityNextSafeSlices": { "type": "number", "minimum": 0 },
+        "remainingApprovalGates": { "type": "number", "minimum": 0 },
+        "freshSources": { "type": "number", "minimum": 0 },
+        "toolPromotionCandidates": { "type": ["number", "null"], "minimum": 0 },
+        "toolActionableFindings": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "freshEvidence": {
+      "type": "object",
+      "required": ["adminAudit", "sliceLedger", "toolInventory"],
+      "additionalProperties": true
+    },
+    "packets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packetId", "title", "status", "priority", "risk", "recommendedOwner", "sourceSignals", "safeNextStep", "verification", "constraints"],
+        "properties": {
+          "packetId": { "type": "string", "pattern": "^ops-wp-" },
+          "title": { "type": "string" },
+          "status": { "enum": ["ready", "approval_gated"] },
+          "priority": { "type": "string" },
+          "priorityRank": { "type": "number" },
+          "risk": { "type": "string" },
+          "recommendedOwner": { "type": "string" },
+          "sourceSignals": { "type": "array" },
+          "why": { "type": "string" },
+          "safeNextStep": { "type": "string" },
+          "suggestedBranchName": { "type": "string" },
+          "suggestedPrTitle": { "type": "string" },
+          "verification": { "type": "array", "items": { "type": "string" } },
+          "humanGate": { "type": "string" },
+          "constraints": {
+            "type": "object",
+            "required": ["readOnlyFirst", "noSecrets", "noServiceRestart", "noDataMutation", "writeScope"],
+            "properties": {
+              "readOnlyFirst": { "const": true },
+              "noSecrets": { "const": true },
+              "noServiceRestart": { "const": true },
+              "noDataMutation": { "const": true },
+              "writeScope": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

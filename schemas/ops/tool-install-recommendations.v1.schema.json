@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/tool-install-recommendations.v1.schema.json",
+  "title": "Studio Brain Ops Tool Install Recommendations",
+  "type": "object",
+  "required": ["schema", "generatedAt", "status", "readOnly", "source", "summary", "recommendations"],
+  "properties": {
+    "schema": { "const": "studiobrain-ops-tool-install-recommendations.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "source": {
+      "type": "object",
+      "required": ["inventoryPath", "inventoryGeneratedAt", "inventoryStatus"],
+      "properties": {
+        "inventoryPath": { "type": "string" },
+        "inventoryGeneratedAt": { "type": ["string", "null"], "format": "date-time" },
+        "inventoryStatus": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["recommendations", "coverageGaps", "approvalRequired", "installNowCandidates"],
+      "properties": {
+        "recommendations": { "type": "integer", "minimum": 0 },
+        "coverageGaps": { "type": "integer", "minimum": 0 },
+        "approvalRequired": { "type": "integer", "minimum": 0 },
+        "installNowCandidates": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "priority", "acquisitionClass", "currentStatus", "coverageGaps", "actionableFindings", "reason", "expectedBenefit", "validationCommand", "installCommand", "approvalRequired", "destructive", "safetyNotes"],
+        "properties": {
+          "tool": { "type": "string" },
+          "priority": { "enum": ["P0", "P1", "P2", "P3"] },
+          "acquisitionClass": { "enum": ["ephemeral-runner", "persistent-install", "remote-lane", "not-yet-justified"] },
+          "currentStatus": { "type": "string" },
+          "coverageGaps": { "type": "integer", "minimum": 0 },
+          "actionableFindings": { "type": "integer", "minimum": 0 },
+          "reason": { "type": "string" },
+          "expectedBenefit": { "type": "string" },
+          "validationCommand": { "type": "string" },
+          "installCommand": { "type": ["string", "null"] },
+          "approvalRequired": { "type": "boolean" },
+          "destructive": { "type": "boolean" },
+          "safetyNotes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifactPath": { "type": "string" },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "jsonPath": { "type": "string" },
+        "markdownPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -19,6 +19,11 @@ const DEFAULT_ARTIFACTS = [
     schema: "schemas/ops/installed-tool-inventory.v1.schema.json",
   },
   {
+    id: "tool-install-recommendations",
+    artifact: "output/ops/effectivity/tool-install-recommendations-latest.json",
+    schema: "schemas/ops/tool-install-recommendations.v1.schema.json",
+  },
+  {
     id: "admin-effectivity-audit",
     artifact: "output/ops/effectivity/admin-effectivity-audit-latest.json",
     schema: "schemas/ops/admin-effectivity-audit.v1.schema.json",

@@ -32,6 +32,14 @@ test("buildWavePlan only enables ephemeral validator runners when requested", ()
   assert.equal(installPlan[0].commandText.includes("--allow-install"), true);
 });
 
+test("buildWavePlan lets callers widen the work-packet window", () => {
+  const defaultPlan = buildWavePlan({ steps: ["work-packet"] });
+  const widenedPlan = buildWavePlan({ steps: ["work-packet"], maxPackets: 12 });
+
+  assert.match(defaultPlan[0].commandText, /--max-packets 3$/);
+  assert.match(widenedPlan[0].commandText, /--max-packets 12$/);
+});
+
 test("buildWavePlan exports tooling findings after tooling quality", () => {
   const plan = buildWavePlan();
   const qualityIndex = plan.findIndex((step) => step.id === "tooling-quality");

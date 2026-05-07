@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "waves");
+const DEFAULT_WORK_PACKET_MAX_PACKETS = 3;
 
 const STEP_DEFINITIONS = [
   {
@@ -42,7 +43,7 @@ const STEP_DEFINITIONS = [
   },
   {
     id: "work-packet",
-    command: [process.execPath, "scripts/studiobrain-ops-work-packet.mjs", "--json", "--write", "--max-packets", "3"],
+    command: [process.execPath, "scripts/studiobrain-ops-work-packet.mjs", "--json", "--write"],
     expectedArtifacts: ["output/ops/swarm/latest-work-packet.json"],
   },
   {
@@ -90,6 +91,7 @@ Options:
   --steps <a,b,c>         Restrict to step ids.
   --skip <id>             Skip one step; repeatable.
   --allow-tool-install    Allow tooling-quality to use its ephemeral validator runners.
+  --max-packets <n>       Number of work packets to generate. Default: ${DEFAULT_WORK_PACKET_MAX_PACKETS}.
 `;
 }
 
@@ -113,6 +115,7 @@ function parseArgs(argv) {
     outputDir: DEFAULT_OUTPUT_DIR,
     steps: [],
     skip: [],
+    maxPackets: DEFAULT_WORK_PACKET_MAX_PACKETS,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = clean(argv[index]);
@@ -141,6 +144,7 @@ function parseArgs(argv) {
       ["--run-id", "runId"],
       ["--output-dir", "outputDir"],
       ["--steps", "steps"],
+      ["--max-packets", "maxPackets"],
     ];
     let consumed = false;
     for (const [flag, key] of mappings) {
@@ -161,6 +165,7 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${arg}`);
   }
   options.outputDir = resolve(REPO_ROOT, options.outputDir);
+  options.maxPackets = Math.max(1, Number(options.maxPackets) || DEFAULT_WORK_PACKET_MAX_PACKETS);
   options.runId ||= `ops-wave-${nowIso().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
   return options;
 }
@@ -173,9 +178,9 @@ function buildWavePlan(options = {}) {
   return STEP_DEFINITIONS
     .filter((step) => (only.size === 0 || only.has(step.id)) && !skip.has(step.id))
     .map((step, index) => {
-      const command = step.id === "tooling-quality" && options.allowToolInstall
-        ? [...step.command, "--allow-install"]
-        : step.command;
+      let command = step.command;
+      if (step.id === "tooling-quality" && options.allowToolInstall) command = [...command, "--allow-install"];
+      if (step.id === "work-packet") command = [...command, "--max-packets", String(options.maxPackets || DEFAULT_WORK_PACKET_MAX_PACKETS)];
       return {
         ...step,
         command,

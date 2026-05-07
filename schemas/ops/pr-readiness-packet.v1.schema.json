@@ -51,7 +51,7 @@
     },
     "evidence": {
       "type": "object",
-      "required": ["artifactValidation", "waveRunner", "workPacket", "sliceLedger", "toolInstall"],
+      "required": ["artifactValidation", "waveRunner", "workPacket", "packetOutcome", "sliceLedger", "toolInstall"],
       "properties": {
         "artifactValidation": {
           "type": "object",
@@ -114,6 +114,21 @@
             "effectivityApprovalRequiredLanes": { "type": ["number", "null"], "minimum": 0 },
             "effectivityHighSeverityLanes": { "type": ["number", "null"], "minimum": 0 },
             "parseError": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "packetOutcome": {
+          "type": "object",
+          "required": ["status", "generatedAt", "total", "maturity", "score", "orphanedRate", "resetRecommended", "warnings"],
+          "properties": {
+            "status": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "total": { "type": "number", "minimum": 0 },
+            "maturity": { "type": "string" },
+            "score": { "type": ["number", "null"], "minimum": 0 },
+            "orphanedRate": { "type": ["number", "null"], "minimum": 0 },
+            "resetRecommended": { "type": "boolean" },
+            "warnings": { "type": "array", "items": { "type": "string" } }
           },
           "additionalProperties": false
         },

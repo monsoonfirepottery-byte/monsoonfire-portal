@@ -274,11 +274,25 @@ function rowTimestamp(row) {
   return Date.parse(clean(row.completedAt) || clean(row.startedAt)) || 0;
 }
 
+function sliceSequence(row) {
+  const match = clean(row.sliceId).match(/-(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function compareRows(left, right) {
+  const leftSequence = sliceSequence(left.row);
+  const rightSequence = sliceSequence(right.row);
+  if (leftSequence !== null && rightSequence !== null && leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
+  return rowTimestamp(left.row) - rowTimestamp(right.row) || left.index - right.index;
+}
+
 function selectRecentRows(rows, last, runId = "") {
   const filtered = clean(runId) ? rows.filter((row) => clean(row.runId) === clean(runId)) : rows;
   return filtered
     .map((row, index) => ({ row, index }))
-    .sort((left, right) => rowTimestamp(left.row) - rowTimestamp(right.row) || left.index - right.index)
+    .sort(compareRows)
     .slice(-last)
     .map((entry) => entry.row);
 }

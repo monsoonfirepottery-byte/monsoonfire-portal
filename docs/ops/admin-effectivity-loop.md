@@ -57,8 +57,9 @@ The work-packet generator still uses the durable docs as its baseline, then enri
 - `--admin-audit output/ops/effectivity/admin-effectivity-audit-latest.json`
 - `--slice-ledger output/ops/effectivity/slice-ledger-latest.json`
 - `--tool-inventory output/ops/effectivity/installed-tool-inventory-latest.json`
+- `--max-age-hours 24`
 
-Missing or invalid fresh artifacts degrade to warnings and docs-only packet generation. The generator should not run the audit itself; run `make ops-admin-effectivity-audit` first when fresh steering is needed.
+Missing, invalid, or stale fresh artifacts degrade to warnings and docs-only packet generation. The generator should not run the audit itself; run `make ops-admin-effectivity-audit` first when fresh steering is needed.
 
 Validate generated ops artifacts against their committed schemas:
 

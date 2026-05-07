@@ -304,18 +304,37 @@ function selectRecentRows(rows, last, runId = "") {
   return orderedRows(rows, runId).slice(-last);
 }
 
+function isAuditRow(row) {
+  const title = clean(row.title).toLowerCase();
+  if (title.includes("effectivity audit") || title.includes("admin effectivity audit")) return true;
+  return Array.isArray(row.commands) && row.commands.some((command) => clean(command.command).includes("admin_effectivity_audit.mjs"));
+}
+
 function auditCadence(rows, interval = 5) {
   const countable = rows.filter((row) => row.status !== "noop" && !row.noOp?.detected);
   const total = countable.length;
-  const remainder = total % interval;
-  const slicesSinceLastAudit = total === 0 ? 0 : remainder === 0 ? interval : remainder;
-  const auditDue = total > 0 && remainder === 0;
+  const lastAuditIndex = countable.findLastIndex(isAuditRow);
+  const lastAuditSliceId = lastAuditIndex >= 0 ? countable[lastAuditIndex]?.sliceId || null : null;
+  const slicesSinceLastAudit = lastAuditIndex >= 0
+    ? total - lastAuditIndex - 1
+    : total === 0
+      ? 0
+      : total % interval === 0
+        ? interval
+        : total % interval;
+  const auditDue = total > 0 && slicesSinceLastAudit >= interval;
+  const nextAuditAt = lastAuditIndex >= 0
+    ? total + (interval - slicesSinceLastAudit)
+    : auditDue
+      ? total
+      : total + (interval - slicesSinceLastAudit);
   return {
     interval,
     countedSlices: total,
     slicesSinceLastAudit,
     auditDue,
-    nextAuditAt: auditDue ? total : total + (interval - slicesSinceLastAudit)
+    nextAuditAt,
+    lastAuditSliceId
   };
 }
 

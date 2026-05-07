@@ -44,7 +44,8 @@
         "countedSlices": { "type": "number", "minimum": 0 },
         "slicesSinceLastAudit": { "type": "number", "minimum": 0 },
         "auditDue": { "type": "boolean" },
-        "nextAuditAt": { "type": "number", "minimum": 1 }
+        "nextAuditAt": { "type": "number", "minimum": 1 },
+        "lastAuditSliceId": { "type": ["string", "null"] }
       },
       "additionalProperties": false
     },

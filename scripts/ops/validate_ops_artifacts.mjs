@@ -204,10 +204,12 @@ function referencedArtifactErrors(artifact) {
 function validateArtifact(definition, options = {}) {
   const artifactPath = resolve(REPO_ROOT, definition.artifact);
   const schemaPath = resolve(REPO_ROOT, definition.schema);
+  const maxAgeHours = Number(definition.maxAgeHours ?? options.maxAgeHours ?? 24);
   const check = {
     id: clean(definition.id),
     artifact: repoRelative(artifactPath),
     schema: repoRelative(schemaPath),
+    freshnessTier: clean(definition.freshnessTier),
     status: "missing",
     errors: [],
     warnings: [],
@@ -224,7 +226,7 @@ function validateArtifact(definition, options = {}) {
     const artifact = readJson(artifactPath);
     const schema = readJson(schemaPath);
     const errors = validateJsonSchema(artifact, schema);
-    const freshness = generatedAtWarning(artifact, options);
+    const freshness = generatedAtWarning(artifact, { ...options, maxAgeHours });
     const referenced = referencedArtifactErrors(artifact);
     const allErrors = [...errors, ...referenced.errors];
     const warnings = freshness.warnings;
@@ -235,7 +237,7 @@ function validateArtifact(definition, options = {}) {
       warnings,
       generatedAt: freshness.generatedAt,
       ageHours: freshness.ageHours,
-      maxAgeHours: Number(options.maxAgeHours ?? 24),
+      maxAgeHours,
       referencedArtifact: referenced.referencedArtifact,
     };
   } catch (error) {

@@ -336,12 +336,13 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
 function freshSourceSignals(freshEvidence) {
   if (!freshEvidence) return [];
   return [freshEvidence.adminAudit, freshEvidence.sliceLedger, freshEvidence.toolInventory, freshEvidence.swarmPreflight]
-    .filter((source) => source && source.status !== "missing")
+    .filter((source) => source && !["missing", "invalid_json", "invalid_timestamp", "stale"].includes(source.status))
     .map((source) => ({
       source: source.source,
       path: source.path,
       status: source.status,
       generatedAt: source.generatedAt || "",
+      signalClass: source.source === "fresh-tool-inventory" && (source.summary?.coverageGaps || 0) > 0 ? "coverage_gap" : "fresh",
       summary: source.summary,
     }));
 }
@@ -484,6 +485,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
             missingRequired: toolInventory.summary?.missingRequired ?? null,
             missingOptional: toolInventory.summary?.missingOptional ?? null,
             actionableFindings: toolInventory.summary?.actionableFindings ?? null,
+            coverageGaps: toolInventory.summary?.coverageGaps ?? null,
             promotionCandidates: toolInventory.summary?.promotionCandidates ?? null,
           },
         }, options)
@@ -567,6 +569,7 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       staleSources: staleSources.length,
       toolPromotionCandidates: freshEvidence.toolInventory.summary.promotionCandidates ?? null,
       toolActionableFindings: freshEvidence.toolInventory.summary.actionableFindings ?? null,
+      toolCoverageGaps: freshEvidence.toolInventory.summary.coverageGaps ?? null,
       swarmPreflightStatus: freshEvidence.swarmPreflight.status,
       swarmPreflightOutsideScope: freshEvidence.swarmPreflight.summary.outsideScope ?? null,
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,

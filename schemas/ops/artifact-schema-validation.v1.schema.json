@@ -88,6 +88,9 @@
           "schema": {
             "type": "string"
           },
+          "freshnessTier": {
+            "type": "string"
+          },
           "status": {
             "enum": [
               "pass",

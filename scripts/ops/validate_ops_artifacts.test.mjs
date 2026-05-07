@@ -85,6 +85,36 @@ test("buildReport warns when an artifact is schema-valid but stale", () => {
   }
 });
 
+test("buildReport applies per-artifact freshness thresholds before global defaults", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ops-artifact-tier-"));
+  try {
+    const schemaPath = join(dir, "schema.json");
+    const stalePath = join(dir, "stale.json");
+    writeFileSync(schemaPath, JSON.stringify({
+      type: "object",
+      required: ["schema", "generatedAt"],
+      properties: {
+        schema: { const: "artifact.v1" },
+        generatedAt: { type: "string", format: "date-time" }
+      },
+      additionalProperties: false,
+    }));
+    writeFileSync(stalePath, JSON.stringify({ schema: "artifact.v1", generatedAt: "2026-05-07T08:00:00.000Z" }));
+
+    const report = buildReport({
+      artifacts: [{ id: "loop", artifact: stalePath, schema: schemaPath, freshnessTier: "loop", maxAgeHours: 3 }],
+      now: "2026-05-07T12:00:00.000Z",
+      maxAgeHours: 24
+    });
+
+    assert.equal(report.status, "warn");
+    assert.equal(report.checks[0].freshnessTier, "loop");
+    assert.equal(report.checks[0].maxAgeHours, 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("buildReport fails when latest artifactPath points nowhere", () => {
   const dir = mkdtempSync(join(tmpdir(), "ops-artifact-latest-"));
   try {

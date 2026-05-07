@@ -38,7 +38,7 @@
     },
     "evidenceSummary": {
       "type": "object",
-      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems"],
+      "required": ["risks", "backlogItems", "effectivityNextSafeSlices", "remainingApprovalGates", "freshSources", "staleSources", "toolPromotionCandidates", "toolActionableFindings", "toolCoverageGaps", "toolInstallRecommendations", "toolInstallApprovalRequired", "toolInstallNowCandidates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes", "swarmPreflightStatus", "swarmPreflightOutsideScope", "swarmPreflightProblems"],
       "properties": {
         "risks": { "type": "number", "minimum": 0 },
         "backlogItems": { "type": "number", "minimum": 0 },
@@ -52,6 +52,9 @@
         "toolInstallRecommendations": { "type": ["number", "null"], "minimum": 0 },
         "toolInstallApprovalRequired": { "type": ["number", "null"], "minimum": 0 },
         "toolInstallNowCandidates": { "type": ["number", "null"], "minimum": 0 },
+        "effectivityEvidenceLanes": { "type": ["number", "null"], "minimum": 0 },
+        "effectivityApprovalRequiredLanes": { "type": ["number", "null"], "minimum": 0 },
+        "effectivityHighSeverityLanes": { "type": ["number", "null"], "minimum": 0 },
         "swarmPreflightStatus": { "type": "string" },
         "swarmPreflightOutsideScope": { "type": ["number", "null"], "minimum": 0 },
         "swarmPreflightProblems": { "type": ["number", "null"], "minimum": 0 }

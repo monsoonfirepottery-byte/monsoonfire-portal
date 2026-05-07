@@ -355,6 +355,10 @@ function freshSourceSignals(freshEvidence) {
 }
 
 function signalClassForSource(source) {
+  if (source.source === "fresh-admin-audit") {
+    if ((source.summary?.approvalRequiredEvidenceLanes || 0) > 0) return "approval_gate";
+    if ((source.summary?.highSeverityEvidenceLanes || 0) > 0) return "evidence_gap";
+  }
   if (source.source === "fresh-tool-inventory" && (source.summary?.coverageGaps || 0) > 0) return "coverage_gap";
   if (source.source === "fresh-tool-install-recommendations") {
     if ((source.summary?.installNowCandidates || 0) > 0) return "tool_install_recommendation";
@@ -454,6 +458,7 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
     generatedAt: "",
     summary,
   });
+  const effectivityEvidenceLanes = effectivityLanesFromAdminAudit(adminAudit);
   return {
     adminAudit: adminAudit && adminAudit.status !== "invalid_json"
       ? applyFreshness({
@@ -465,6 +470,16 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
             sliceWindow: adminAudit.sliceWindow || null,
             scores: adminAudit.scores || null,
             privilegedEvidence: adminAudit.sections?.effectivityReport?.report?.sections?.privilegedEvidence?.status || "",
+            effectivityEvidenceLanes: effectivityEvidenceLanes.length,
+            approvalRequiredEvidenceLanes: effectivityEvidenceLanes.filter((lane) => lane.approvalRequired).length,
+            highSeverityEvidenceLanes: effectivityEvidenceLanes.filter((lane) => clean(lane.severity) === "high").length,
+            topEvidenceLanes: effectivityEvidenceLanes.slice(0, 5).map((lane) => ({
+              id: clean(lane.id),
+              status: clean(lane.status),
+              severity: clean(lane.severity),
+              approvalRequired: Boolean(lane.approvalRequired),
+              safeNextStep: clean(lane.safeNextStep),
+            })),
           },
         }, options)
       : unavailable(
@@ -567,6 +582,11 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
   };
 }
 
+function effectivityLanesFromAdminAudit(adminAudit) {
+  const lanes = adminAudit?.sections?.effectivityReport?.report?.evidenceLanes;
+  return Array.isArray(lanes) ? lanes : [];
+}
+
 export function buildOpsWorkPacket(inputs = {}, options = {}) {
   const risks = parseRiskRegister(inputs.riskMarkdown || "");
   const backlog = parseBacklog(inputs.backlogMarkdown || "");
@@ -625,6 +645,9 @@ export function buildOpsWorkPacket(inputs = {}, options = {}) {
       toolInstallRecommendations: freshEvidence.toolInstallRecommendations.summary.recommendations ?? null,
       toolInstallApprovalRequired: freshEvidence.toolInstallRecommendations.summary.approvalRequired ?? null,
       toolInstallNowCandidates: freshEvidence.toolInstallRecommendations.summary.installNowCandidates ?? null,
+      effectivityEvidenceLanes: freshEvidence.adminAudit.summary.effectivityEvidenceLanes ?? null,
+      effectivityApprovalRequiredLanes: freshEvidence.adminAudit.summary.approvalRequiredEvidenceLanes ?? null,
+      effectivityHighSeverityLanes: freshEvidence.adminAudit.summary.highSeverityEvidenceLanes ?? null,
       swarmPreflightStatus: freshEvidence.swarmPreflight.status,
       swarmPreflightOutsideScope: freshEvidence.swarmPreflight.summary.outsideScope ?? null,
       swarmPreflightProblems: freshEvidence.swarmPreflight.summary.problems ?? null,

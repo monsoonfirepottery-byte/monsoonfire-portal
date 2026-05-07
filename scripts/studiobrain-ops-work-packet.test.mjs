@@ -128,6 +128,22 @@ const freshInputs = {
           sections: {
             privilegedEvidence: { status: "sudo_unavailable" },
           },
+          evidenceLanes: [
+            {
+              id: "backup_confidence",
+              status: "warn",
+              severity: "high",
+              approvalRequired: false,
+              safeNextStep: "Refresh backup evidence before backup changes.",
+            },
+            {
+              id: "privileged_evidence",
+              status: "sudo_unavailable",
+              severity: "medium",
+              approvalRequired: true,
+              safeNextStep: "Use the approval-gated privileged capture path.",
+            },
+          ],
         },
       },
     },
@@ -227,6 +243,9 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.equal(report.evidenceSummary.toolInstallRecommendations, 7);
   assert.equal(report.evidenceSummary.toolInstallApprovalRequired, 1);
   assert.equal(report.evidenceSummary.toolInstallNowCandidates, 2);
+  assert.equal(report.evidenceSummary.effectivityEvidenceLanes, 2);
+  assert.equal(report.evidenceSummary.effectivityApprovalRequiredLanes, 1);
+  assert.equal(report.evidenceSummary.effectivityHighSeverityLanes, 1);
   assert.equal(report.evidenceSummary.swarmPreflightStatus, "pass");
   assert.equal(report.evidenceSummary.swarmPreflightOutsideScope, 0);
   assert.equal(report.freshEvidence.adminAudit.status, "pass");
@@ -235,6 +254,9 @@ test("buildOpsWorkPacket creates bounded read-only packets from docs evidence", 
   assert.ok(report.packets.every((packet) => packet.packetId.startsWith("ops-wp-")));
   assert.ok(report.packets.every((packet) => packet.constraints.readOnlyFirst));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-admin-audit"));
+  const adminSignal = report.packets[0].sourceSignals.find((signal) => signal.source === "fresh-admin-audit");
+  assert.equal(adminSignal.signalClass, "approval_gate");
+  assert.equal(adminSignal.summary.topEvidenceLanes.length, 2);
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-inventory" && signal.signalClass === "coverage_gap"));
   assert.ok(report.packets[0].sourceSignals.some((signal) => signal.source === "fresh-tool-install-recommendations"));

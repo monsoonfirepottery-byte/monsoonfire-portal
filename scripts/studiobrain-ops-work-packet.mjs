@@ -49,6 +49,13 @@ function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
 }
 
+function plainSuggestion(value) {
+  return clean(value)
+    .replace(/^`+|`+$/g, "")
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -175,8 +182,8 @@ function parseBacklog(markdown, sourcePath = "docs/ops/02-kanban-backlog.md") {
       risk: parseListValue(section.body, "Risk"),
       status: parseListValue(section.body, "Status"),
       recommendedOwner: parseListValue(section.body, "Recommended owner"),
-      suggestedBranchName: parseListValue(section.body, "Suggested branch name"),
-      suggestedPrTitle: parseListValue(section.body, "Suggested PR title"),
+      suggestedBranchName: plainSuggestion(parseListValue(section.body, "Suggested branch name")),
+      suggestedPrTitle: plainSuggestion(parseListValue(section.body, "Suggested PR title")),
       acceptanceCriteria: collectBulletsAfter(section.body, "Acceptance criteria"),
       rawBody: section.body,
     }))
@@ -335,8 +342,8 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
     ].filter(Boolean),
     why: risk?.likelyImpact || backlogItem.status || "Issue-ready ops backlog item from current docs evidence.",
     safeNextStep: risk?.safeNextStep || firstAcceptance(backlogItem) || "Refresh the read-only evidence packet and attach it to the ops issue.",
-    suggestedBranchName: backlogItem.suggestedBranchName || "",
-    suggestedPrTitle: backlogItem.suggestedPrTitle || "",
+    suggestedBranchName: plainSuggestion(backlogItem.suggestedBranchName),
+    suggestedPrTitle: plainSuggestion(backlogItem.suggestedPrTitle),
     verification: buildVerification({ ...backlogItem, acceptanceCriteria }, risk),
     humanGate,
     constraints: {
@@ -352,7 +359,9 @@ function makePacket(backlogItem, risk, effectivity, freshEvidence) {
 function makeToolingFindingPacket(task, freshEvidence) {
   const title = clean(task.title);
   const priority = clean(task.priority) || "P2";
-  const packetKey = ["tooling-finding", title, clean(task.suggestedBranchName), clean(task.suggestedPrTitle)].join("|");
+  const suggestedBranchName = plainSuggestion(task.suggestedBranchName);
+  const suggestedPrTitle = plainSuggestion(task.suggestedPrTitle);
+  const packetKey = ["tooling-finding", title, suggestedBranchName, suggestedPrTitle].join("|");
   return {
     packetId: `ops-wp-${stableHash(packetKey)}`,
     title,
@@ -382,8 +391,8 @@ function makeToolingFindingPacket(task, freshEvidence) {
     ].filter(Boolean),
     why: clean(task.problem) || "Issue-ready tooling finding from the latest report-only validator output.",
     safeNextStep: clean(task.proposedFix) || "Make the smallest safe fix and rerun the targeted validator.",
-    suggestedBranchName: clean(task.suggestedBranchName),
-    suggestedPrTitle: clean(task.suggestedPrTitle),
+    suggestedBranchName,
+    suggestedPrTitle,
     verification: Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0
       ? task.acceptanceCriteria.map(clean)
       : [
@@ -897,8 +906,8 @@ function summarizeFreshEvidence(inputs = {}, options = {}) {
                   title: clean(task.title),
                   priority: clean(task.priority),
                   approvalRequired: Boolean(task.approvalRequired),
-                  suggestedBranchName: clean(task.suggestedBranchName),
-                  suggestedPrTitle: clean(task.suggestedPrTitle),
+                  suggestedBranchName: plainSuggestion(task.suggestedBranchName),
+                  suggestedPrTitle: plainSuggestion(task.suggestedPrTitle),
                 }))
               : [],
           },

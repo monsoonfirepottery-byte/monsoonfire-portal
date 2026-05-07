@@ -68,6 +68,51 @@
     "freshEvidence": {
       "type": "object",
       "required": ["adminAudit", "sliceLedger", "toolInventory", "toolInstallRecommendations", "toolingFindings", "swarmPreflight"],
+      "properties": {
+        "toolInstallRecommendations": {
+          "type": "object",
+          "required": ["source", "path", "status", "generatedAt", "summary"],
+          "properties": {
+            "source": { "const": "fresh-tool-install-recommendations" },
+            "path": { "type": "string" },
+            "status": { "type": "string" },
+            "sourceStatus": { "type": "string" },
+            "generatedAt": { "type": "string" },
+            "summary": {
+              "type": "object",
+              "required": ["recommendations", "coverageGaps", "approvalRequired", "installNowCandidates", "inventoryGeneratedAt", "inventoryStatus", "topRecommendations"],
+              "properties": {
+                "recommendations": { "type": ["number", "null"], "minimum": 0 },
+                "coverageGaps": { "type": ["number", "null"], "minimum": 0 },
+                "approvalRequired": { "type": ["number", "null"], "minimum": 0 },
+                "installNowCandidates": { "type": ["number", "null"], "minimum": 0 },
+                "inventoryGeneratedAt": { "type": "string" },
+                "inventoryStatus": { "type": "string" },
+                "topRecommendations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["tool", "priority", "acquisitionClass", "validationCommand", "approvalRequired"],
+                    "properties": {
+                      "tool": { "type": "string" },
+                      "priority": { "type": "string" },
+                      "acquisitionClass": { "type": "string" },
+                      "validationCommand": { "type": "string" },
+                      "approvalRequired": { "type": "boolean" }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "parseError": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            "freshness": { "type": "object" },
+            "upstreamFreshness": { "type": "object" }
+          },
+          "additionalProperties": false
+        }
+      },
       "additionalProperties": true
     },
     "packets": {
@@ -83,7 +128,21 @@
           "priorityRank": { "type": "number" },
           "risk": { "type": "string" },
           "recommendedOwner": { "type": "string" },
-          "sourceSignals": { "type": "array" },
+          "sourceSignals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": { "type": "string" },
+                "path": { "type": "string" },
+                "status": { "type": "string" },
+                "generatedAt": { "type": "string" },
+                "signalClass": { "type": "string" },
+                "summary": { "type": "object" }
+              },
+              "additionalProperties": true
+            }
+          },
           "why": { "type": "string" },
           "safeNextStep": { "type": "string" },
           "suggestedBranchName": { "type": "string" },

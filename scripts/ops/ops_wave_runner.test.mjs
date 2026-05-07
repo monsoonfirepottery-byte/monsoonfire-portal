@@ -42,6 +42,18 @@ test("buildWavePlan exports tooling findings after tooling quality", () => {
   assert.ok(plan[findingsIndex].commandText.includes("tooling_findings_export.mjs"));
 });
 
+test("buildWavePlan refreshes tool-install recommendations before work packets", () => {
+  const plan = buildWavePlan();
+  const inventoryIndex = plan.findIndex((step) => step.id === "tool-inventory");
+  const recommendationIndex = plan.findIndex((step) => step.id === "tool-install-recommendations");
+  const workPacketIndex = plan.findIndex((step) => step.id === "work-packet");
+
+  assert.ok(inventoryIndex >= 0);
+  assert.ok(recommendationIndex > inventoryIndex);
+  assert.ok(workPacketIndex > recommendationIndex);
+  assert.ok(plan[recommendationIndex].commandText.includes("tool_install_recommendations.mjs"));
+});
+
 test("runWave dry-run records skipped receipts without executing", () => {
   const manifest = runWave({ dryRun: true, runId: "unit-wave", steps: ["swarm-preflight", "work-packet"] }, () => {
     throw new Error("runner should not execute in dry-run mode");

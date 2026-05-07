@@ -31,6 +31,11 @@ const STEP_DEFINITIONS = [
     expectedArtifacts: ["output/ops/effectivity/installed-tool-inventory-latest.json"],
   },
   {
+    id: "tool-install-recommendations",
+    command: [process.execPath, "scripts/ops/tool_install_recommendations.mjs", "--json", "--write"],
+    expectedArtifacts: ["output/ops/effectivity/tool-install-recommendations-latest.json"],
+  },
+  {
     id: "admin-effectivity-audit",
     command: [process.execPath, "scripts/ops/admin_effectivity_audit.mjs", "--write", "--json"],
     expectedArtifacts: ["output/ops/effectivity/admin-effectivity-audit-latest.json"],

@@ -57,7 +57,7 @@
         },
         "workPacket": {
           "type": "object",
-          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "humanGates"],
+          "required": ["status", "generatedAt", "packets", "freshSources", "staleSources", "topPacket", "humanGates", "effectivityEvidenceLanes", "effectivityApprovalRequiredLanes", "effectivityHighSeverityLanes"],
           "properties": {
             "status": { "type": "string" },
             "generatedAt": { "type": "string" },
@@ -68,6 +68,9 @@
             "humanGates": { "type": "number", "minimum": 0 },
             "toolInstallNowCandidates": { "type": ["number", "null"], "minimum": 0 },
             "toolInstallApprovalRequired": { "type": ["number", "null"], "minimum": 0 },
+            "effectivityEvidenceLanes": { "type": ["number", "null"], "minimum": 0 },
+            "effectivityApprovalRequiredLanes": { "type": ["number", "null"], "minimum": 0 },
+            "effectivityHighSeverityLanes": { "type": ["number", "null"], "minimum": 0 },
             "parseError": { "type": "string" }
           },
           "additionalProperties": false

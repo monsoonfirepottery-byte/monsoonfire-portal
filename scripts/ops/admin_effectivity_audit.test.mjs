@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildInstalledToolsFreshness,
+  classifyEffectivityLanes,
   sourceFreshness
 } from "./admin_effectivity_audit.mjs";
 
@@ -60,4 +61,33 @@ test("buildInstalledToolsFreshness requires both inventory and tooling source fr
 
   assert.equal(fresh.status, "fresh");
   assert.equal(fresh.score, 1);
+});
+
+test("classifyEffectivityLanes turns degraded report sections into approval-aware lanes", () => {
+  const lanes = classifyEffectivityLanes({
+    sources: {
+      idleAudit: { exists: false, stale: true },
+    },
+    sections: {
+      idleWorker: { status: "unavailable", commandStatus: "warn" },
+      backup: { status: "warn", gaps: ["PostgreSQL dump artifacts not proven"] },
+      failedUnits: { status: "warn", trueFailedUnits: 2, commandStatus: "pass" },
+      privilegedEvidence: {
+        status: "sudo_unavailable",
+        summaryPresent: false,
+        note: "Privileged host capture evidence is absent.",
+        safeNextStep: "run the approval-gated collector",
+      },
+    },
+  });
+
+  assert.deepEqual(lanes.map((lane) => lane.id), [
+    "idle_worker_effectivity",
+    "backup_confidence",
+    "failed_units",
+    "privileged_evidence",
+  ]);
+  assert.equal(lanes.find((lane) => lane.id === "backup_confidence").severity, "high");
+  assert.equal(lanes.find((lane) => lane.id === "privileged_evidence").approvalRequired, true);
+  assert.ok(lanes.find((lane) => lane.id === "privileged_evidence").safeNextStep.includes("approval-gated"));
 });

@@ -64,6 +64,14 @@ The work-packet generator still uses the durable docs as its baseline, then enri
 
 Missing, invalid, or stale fresh artifacts degrade to warnings and docs-only packet generation. The generator should not run the audit itself; run `make ops-admin-effectivity-audit` first when fresh steering is needed.
 
+The local validation runner refreshes the work-packet window before packet outcome, quality lint, stale-backlog reporting, and PR readiness consume it:
+
+```bash
+bash scripts/ops/ops_ci_validate.sh
+```
+
+Set `OPS_CI_MAX_PACKETS=12` or another positive count when a wider packet window is needed for a swarm wave.
+
 Validate generated ops artifacts against their committed schemas:
 
 ```bash

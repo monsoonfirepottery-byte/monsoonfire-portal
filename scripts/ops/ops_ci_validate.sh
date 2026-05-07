@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${SOURCE_PATH}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${1:-${REPO_ROOT}/output/ops/ci-validate}"
 FAILURES=0
+OPS_CI_MAX_PACKETS="${OPS_CI_MAX_PACKETS:-8}"
 
 mkdir -p "${OUT_DIR}"
 
@@ -53,6 +54,7 @@ check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/tooling_findings_export.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
 check_file "scripts/ops/tool_install_recommendations.mjs"
+check_file "scripts/studiobrain-ops-work-packet.mjs"
 check_file "scripts/ops/pr_readiness_packet.mjs"
 check_file "scripts/ops/packet_outcome_report.mjs"
 check_file "scripts/ops/pr_stack_audit.mjs"
@@ -89,6 +91,7 @@ for script in \
   "scripts/ops/tooling_findings_export.mjs" \
   "scripts/ops/installed_tool_inventory.mjs" \
   "scripts/ops/tool_install_recommendations.mjs" \
+  "scripts/studiobrain-ops-work-packet.mjs" \
   "scripts/ops/pr_readiness_packet.mjs" \
   "scripts/ops/packet_outcome_report.mjs" \
   "scripts/ops/pr_stack_audit.mjs"; do
@@ -184,6 +187,12 @@ else
   fail "node --test scripts/ops/tool_install_recommendations.test.mjs"
 fi
 
+if node --test "${REPO_ROOT}/scripts/studiobrain-ops-work-packet.test.mjs" >"${OUT_DIR}/studiobrain-ops-work-packet.test.out" 2>&1; then
+  pass "node --test scripts/studiobrain-ops-work-packet.test.mjs"
+else
+  fail "node --test scripts/studiobrain-ops-work-packet.test.mjs"
+fi
+
 if node --test "${REPO_ROOT}/scripts/ops/pr_readiness_packet.test.mjs" >"${OUT_DIR}/pr-readiness-packet.test.out" 2>&1; then
   pass "node --test scripts/ops/pr_readiness_packet.test.mjs"
 else
@@ -271,6 +280,13 @@ if node "${REPO_ROOT}/scripts/ops/pr_stack_audit.mjs" --json --write >"${OUT_DIR
   pass "pr_stack_audit smoke"
 else
   fail "pr_stack_audit smoke"
+fi
+
+section "Work Packet Generation Smoke"
+if node "${REPO_ROOT}/scripts/studiobrain-ops-work-packet.mjs" --json --write --max-packets "${OPS_CI_MAX_PACKETS}" >"${OUT_DIR}/studiobrain-ops-work-packet.json"; then
+  pass "studiobrain-ops-work-packet smoke"
+else
+  fail "studiobrain-ops-work-packet smoke"
 fi
 
 section "Packet Outcome Report Smoke"

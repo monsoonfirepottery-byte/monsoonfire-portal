@@ -494,13 +494,28 @@ function buildOutcomeSummary(outcomes) {
   const staleOrMisleading = valid.filter((entry) => ["stale", "misleading"].includes(entry.outcome));
   const byOutcome = Object.fromEntries(Array.from(VALID_OUTCOMES).map((outcome) => [outcome, 0]));
   for (const entry of valid) byOutcome[entry.outcome] += 1;
+  const latestByPacket = new Map();
+  for (const entry of valid) {
+    const packetId = clean(entry.packetId);
+    if (packetId) latestByPacket.set(packetId, entry);
+  }
+  const latestPacketOutcomes = Array.from(latestByPacket.values());
+  const staleOrMisleadingPackets = latestPacketOutcomes.filter((entry) => ["stale", "misleading"].includes(clean(entry.outcome)));
+  const blockedPackets = latestPacketOutcomes.filter((entry) => clean(entry.outcome) === "blocked");
   const recent = valid.slice(-10);
+  const rate = (count) => (valid.length > 0 ? Number((count / valid.length).toFixed(3)) : 0);
   return {
     total: valid.length,
+    uniquePackets: latestByPacket.size,
     byOutcome,
     helpful: helpful.length,
+    helpfulRate: rate(helpful.length),
     staleOrMisleading: staleOrMisleading.length,
+    staleOrMisleadingRate: rate(staleOrMisleading.length),
     blocked: valid.filter((entry) => entry.outcome === "blocked").length,
+    staleOrMisleadingPackets,
+    blockedPackets,
+    latestByPacket: latestPacketOutcomes.slice(-10),
     recent,
     latest: recent,
   };

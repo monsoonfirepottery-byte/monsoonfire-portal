@@ -528,7 +528,7 @@ test("outcome ledger summaries expose by-outcome and recent receipts", () => {
       "--outcomes",
       outcomes,
     ]));
-    const report = silenceStdout(() => runOpsWorkPacket([
+    silenceStdout(() => runOpsWorkPacket([
       "--record-outcome",
       "ops-wp-test",
       "--outcome",
@@ -538,14 +538,31 @@ test("outcome ledger summaries expose by-outcome and recent receipts", () => {
       "--outcomes",
       outcomes,
     ]));
+    const report = silenceStdout(() => runOpsWorkPacket([
+      "--record-outcome",
+      "ops-wp-other",
+      "--outcome",
+      "blocked",
+      "--notes",
+      "needs approval",
+      "--outcomes",
+      outcomes,
+    ]));
 
-    assert.equal(report.outcomeSummary.total, 2);
+    assert.equal(report.outcomeSummary.total, 3);
+    assert.equal(report.outcomeSummary.uniquePackets, 2);
     assert.equal(report.outcomeSummary.byOutcome.helpful, 1);
     assert.equal(report.outcomeSummary.byOutcome.stale, 1);
+    assert.equal(report.outcomeSummary.byOutcome.blocked, 1);
     assert.equal(report.outcomeSummary.helpful, 1);
+    assert.equal(report.outcomeSummary.helpfulRate, 0.333);
     assert.equal(report.outcomeSummary.staleOrMisleading, 1);
-    assert.equal(report.outcomeSummary.recent.length, 2);
-    assert.equal(report.outcomeSummary.latest.length, 2);
+    assert.equal(report.outcomeSummary.staleOrMisleadingRate, 0.333);
+    assert.equal(report.outcomeSummary.staleOrMisleadingPackets[0].packetId, "ops-wp-test");
+    assert.equal(report.outcomeSummary.blockedPackets[0].packetId, "ops-wp-other");
+    assert.equal(report.outcomeSummary.latestByPacket.length, 2);
+    assert.equal(report.outcomeSummary.recent.length, 3);
+    assert.equal(report.outcomeSummary.latest.length, 3);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

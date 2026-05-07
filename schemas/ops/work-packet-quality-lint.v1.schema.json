@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/work-packet-quality-lint.v1.schema.json",
+  "title": "Studio Brain Work Packet Quality Lint v1",
+  "type": "object",
+  "required": ["schema", "generatedAt", "runId", "status", "readOnly", "sources", "summary", "findings"],
+  "properties": {
+    "schema": { "const": "studiobrain-work-packet-quality-lint.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "readOnly": { "const": true },
+    "sources": {
+      "type": "object",
+      "required": ["workPacket", "generatedAt"],
+      "properties": {
+        "workPacket": { "type": "string" },
+        "generatedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["packets", "readyPackets", "approvalGatedPackets", "findings", "warnings", "failures", "sourceSignalAuditStatus"],
+      "properties": {
+        "packets": { "type": "number", "minimum": 0 },
+        "readyPackets": { "type": "number", "minimum": 0 },
+        "approvalGatedPackets": { "type": "number", "minimum": 0 },
+        "findings": { "type": "number", "minimum": 0 },
+        "warnings": { "type": "number", "minimum": 0 },
+        "failures": { "type": "number", "minimum": 0 },
+        "sourceSignalAuditStatus": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "code", "packetId", "title", "message"],
+        "properties": {
+          "severity": { "enum": ["warn", "fail"] },
+          "code": { "type": "string" },
+          "packetId": { "type": "string" },
+          "title": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" },
+    "artifacts": { "type": "object" }
+  },
+  "additionalProperties": false
+}

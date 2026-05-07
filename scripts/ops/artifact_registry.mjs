@@ -58,8 +58,15 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/studiobrain-ops-work-packet.mjs --json --write --max-packets 8",
     producerStep: "work-packet",
     safeWriteRoot: "output/ops/swarm",
-    consumers: ["packet-outcome-report", "pr-readiness-packet"],
+    consumers: ["work-packet-quality-lint", "packet-outcome-report", "pr-readiness-packet"],
     requiredFor: ["next-slice-selection"],
+  },
+  "work-packet-quality-lint": {
+    producerCommand: "node scripts/ops/work_packet_quality_lint.mjs --json --write",
+    producerStep: "work-packet-quality",
+    safeWriteRoot: "output/ops/swarm",
+    consumers: ["pr-readiness-packet", "operator-handoff"],
+    requiredFor: ["work-packet-quality"],
   },
   "packet-outcome-report": {
     producerCommand: "node scripts/ops/packet_outcome_report.mjs --json --write",
@@ -152,6 +159,12 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "ops-work-packet",
     artifact: "output/ops/swarm/latest-work-packet.json",
     schema: "schemas/ops/ops-work-packet.v1.schema.json",
+    freshnessTier: "loop",
+  },
+  {
+    id: "work-packet-quality-lint",
+    artifact: "output/ops/swarm/work-packet-quality-latest.json",
+    schema: "schemas/ops/work-packet-quality-lint.v1.schema.json",
     freshnessTier: "loop",
   },
   {

@@ -47,6 +47,11 @@ const STEP_DEFINITIONS = [
     expectedArtifacts: ["output/ops/swarm/latest-work-packet.json"],
   },
   {
+    id: "packet-outcome-report",
+    command: [process.execPath, "scripts/ops/packet_outcome_report.mjs", "--json", "--write"],
+    expectedArtifacts: ["output/ops/swarm/packet-outcome-report-latest.json"],
+  },
+  {
     id: "artifact-validation-pre",
     command: [process.execPath, "scripts/ops/validate_ops_artifacts.mjs", "--json", "--write"],
     expectedArtifacts: ["output/ops/artifact-validation/artifact-schema-validation-latest.json"],

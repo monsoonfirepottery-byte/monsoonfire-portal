@@ -44,6 +44,18 @@ test("buildWavePlan lets callers widen the work-packet window", () => {
   assert.match(widenedPlan[0].commandText, /--max-packets 12$/);
 });
 
+test("buildWavePlan refreshes packet outcome report after work packets", () => {
+  const plan = buildWavePlan();
+  const workPacketIndex = plan.findIndex((step) => step.id === "work-packet");
+  const outcomeIndex = plan.findIndex((step) => step.id === "packet-outcome-report");
+  const validationIndex = plan.findIndex((step) => step.id === "artifact-validation-pre");
+
+  assert.ok(workPacketIndex >= 0);
+  assert.ok(outcomeIndex > workPacketIndex);
+  assert.ok(validationIndex > outcomeIndex);
+  assert.ok(plan[outcomeIndex].commandText.includes("packet_outcome_report.mjs"));
+});
+
 test("buildWavePlan exports tooling findings after tooling quality", () => {
   const plan = buildWavePlan();
   const qualityIndex = plan.findIndex((step) => step.id === "tooling-quality");

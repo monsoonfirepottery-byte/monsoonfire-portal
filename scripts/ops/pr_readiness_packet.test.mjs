@@ -61,6 +61,15 @@ const sliceLedger = {
   scores: { usefulness: 0.88, verification: 1 },
 };
 
+const packetOutcomeReport = {
+  schema: "studiobrain-ops-packet-outcome-report.v1",
+  generatedAt: "2026-05-07T12:02:30.000Z",
+  status: "pass",
+  outcomeSummary: { total: 2 },
+  outcomeHealth: { maturity: "warming_up", score: 1, warnings: [] },
+  packetChurn: { orphanedRate: 0, resetRecommended: false },
+};
+
 const toolInstallRecommendations = {
   schema: "studiobrain-ops-tool-install-recommendations.v1",
   generatedAt: "2026-05-07T12:03:00.000Z",
@@ -88,7 +97,7 @@ const toolInstallRecommendations = {
 
 test("buildPrReadinessPacket summarizes current evidence without executable install commands", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
 
@@ -100,6 +109,8 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.equal(packet.evidence.workPacket.freshSources, 5);
   assert.equal(packet.evidence.workPacket.readyPackets, 1);
   assert.equal(packet.evidence.workPacket.approvalGatedPackets, 1);
+  assert.equal(packet.evidence.packetOutcome.status, "pass");
+  assert.equal(packet.evidence.packetOutcome.total, 2);
   assert.equal(packet.outcomeLedger.packetId, "ops-wp-ready");
   assert.equal(packet.outcomeLedger.packetIdInSuggestedWindow, true);
   assert.equal(packet.outcomeLedger.validationStatus, "suggested");
@@ -116,6 +127,7 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
   assert.match(markdown, /Tool Recommendation Summary/);
   assert.match(markdown, /Work Packet Window/);
   assert.match(markdown, /Outcome Ledger/);
+  assert.match(markdown, /Packet outcomes/);
   assert.match(markdown, /ops-wp-ready/);
   assert.match(markdown, /--record-outcome ops-wp-ready/);
   assert.match(markdown, /workPacketMaxPackets=8/);
@@ -130,7 +142,7 @@ test("buildPrReadinessPacket summarizes current evidence without executable inst
 
 test("buildPrReadinessPacket warns when requested packet id is outside the latest window", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", packetId: "ops-wp-stale" },
   );
 
@@ -140,6 +152,33 @@ test("buildPrReadinessPacket warns when requested packet id is outside the lates
   assert.equal(packet.outcomeLedger.validationStatus, "outside_window");
   assert.ok(packet.warnings.some((warning) => warning.includes("not in the latest suggested packet window")));
   assert.match(renderMarkdown(packet), /Packet ID validation: outside_window/);
+});
+
+test("buildPrReadinessPacket surfaces degraded packet outcome churn", () => {
+  const packet = buildPrReadinessPacket({
+    gitState,
+    artifactValidation,
+    waveRunner,
+    workPacket,
+    packetOutcomeReport: {
+      ...packetOutcomeReport,
+      status: "warn",
+      outcomeSummary: { total: 4 },
+      outcomeHealth: { maturity: "evidence_ready", score: 0.55, warnings: ["blockedPackets=1"] },
+      packetChurn: { orphanedRate: 0.75, resetRecommended: true },
+    },
+    sliceLedger,
+    toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
+  });
+
+  assert.equal(packet.status, "warn");
+  assert.equal(packet.evidence.packetOutcome.status, "warn");
+  assert.equal(packet.evidence.packetOutcome.orphanedRate, 0.75);
+  assert.equal(packet.evidence.packetOutcome.resetRecommended, true);
+  assert.ok(packet.warnings.some((warning) => warning.includes("packet outcome report has warnings")));
+  assert.ok(packet.warnings.some((warning) => warning.includes("blockedPackets=1")));
+  assert.ok(packet.warnings.some((warning) => warning.includes("recording fresh current packet outcomes")));
+  assert.match(renderMarkdown(packet), /orphanedRate=0.75/);
 });
 
 test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet count", () => {
@@ -152,6 +191,7 @@ test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet 
       plan: [{ id: "work-packet", command: "node scripts/studiobrain-ops-work-packet.mjs --json --write --max-packets 1" }],
     },
     workPacket,
+    packetOutcomeReport,
     sliceLedger,
     toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
   });
@@ -163,7 +203,7 @@ test("buildPrReadinessPacket warns when dry-run wave evidence mismatches packet 
 
 test("buildPrReadinessPacket stays compatible with its JSON schema", () => {
   const packet = buildPrReadinessPacket(
-    { gitState, artifactValidation, waveRunner, workPacket, sliceLedger, toolInstallRecommendations },
+    { gitState, artifactValidation, waveRunner, workPacket, packetOutcomeReport, sliceLedger, toolInstallRecommendations },
     { generatedAt: "2026-05-07T12:10:00.000Z", pr: "#123", sliceIds: "slice-046,slice-047", packetId: "ops-wp-ready" },
   );
   const schema = JSON.parse(readFileSync("schemas/ops/pr-readiness-packet.v1.schema.json", "utf8"));
@@ -182,6 +222,7 @@ test("buildPrReadinessPacket fails on failing artifact validation", () => {
     },
     waveRunner,
     workPacket,
+    packetOutcomeReport,
     sliceLedger,
     toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
   });
@@ -196,6 +237,7 @@ test("buildPrReadinessPacket warns on dirty local state", () => {
     artifactValidation,
     waveRunner,
     workPacket,
+    packetOutcomeReport,
     sliceLedger,
     toolInstallRecommendations: { ...toolInstallRecommendations, summary: { recommendations: 1, installNowCandidates: 0, approvalRequired: 0 } },
   });

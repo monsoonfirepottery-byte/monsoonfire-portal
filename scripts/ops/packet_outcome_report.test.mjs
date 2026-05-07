@@ -14,6 +14,12 @@ const workPacket = {
   ],
 };
 
+const prReadiness = {
+  schema: "studiobrain-ops-pr-readiness-packet.v1",
+  generatedAt: "2026-05-07T12:05:00.000Z",
+  outcomeLedger: { packetId: "ops-wp-current" },
+};
+
 test("buildPacketOutcomeReport summarizes outcome health and orphaned packets", () => {
   const report = buildPacketOutcomeReport(
     {
@@ -37,6 +43,7 @@ test("buildPacketOutcomeReport summarizes outcome health and orphaned packets", 
   assert.equal(report.readOnly, true);
   assert.equal(report.outcomeSummary.total, 3);
   assert.equal(report.outcomeHealth.status, "warn");
+  assert.equal(report.outcomeAdoption.status, "active");
   assert.equal(report.ledgerRetention.status, "pass");
   assert.equal(report.ledgerRetention.historicalEntries, 0);
   assert.equal(report.currentPacketWindow.packets, 2);
@@ -94,6 +101,21 @@ test("buildPacketOutcomeReport reports retention pressure without deleting outco
   assert.equal(report.ledgerRetention.newestRecordedAt, "2026-05-07T12:04:00.000Z");
   assert.equal(report.ledgerRetention.compactionRecommended, true);
   assert.match(renderMarkdown(report), /Compaction recommended: true/);
+});
+
+test("buildPacketOutcomeReport warns when readiness exists but no outcomes were recorded", () => {
+  const report = buildPacketOutcomeReport(
+    { workPacket, prReadiness, outcomes: [] },
+    { generatedAt: "2026-05-07T12:10:00.000Z", runId: "packet-adoption-test" },
+  );
+
+  assert.equal(report.status, "warn");
+  assert.equal(report.outcomeAdoption.status, "needs_records");
+  assert.equal(report.outcomeAdoption.hasReadinessEvidence, true);
+  assert.equal(report.outcomeAdoption.readinessPacketId, "ops-wp-current");
+  assert.equal(report.outcomeAdoption.currentWindowPackets, 2);
+  assert.match(renderMarkdown(report), /Outcome Adoption/);
+  assert.match(renderMarkdown(report), /Status: needs_records/);
 });
 
 test("buildPacketOutcomeReport stays compatible with schema", () => {

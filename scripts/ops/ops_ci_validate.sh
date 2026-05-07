@@ -45,6 +45,7 @@ check_file "scripts/ops/swarm_lane_preflight.mjs"
 check_file "scripts/ops/ops_wave_runner.mjs"
 check_file "scripts/ops/slice_ledger.mjs"
 check_file "scripts/ops/admin_effectivity_audit.mjs"
+check_file "scripts/ops/admin_effectivity_trend.mjs"
 check_file "scripts/ops/tooling_quality_report.mjs"
 check_file "scripts/ops/tooling_findings_export.mjs"
 check_file "scripts/ops/installed_tool_inventory.mjs"
@@ -75,6 +76,7 @@ for script in \
   "scripts/ops/ops_wave_runner.mjs" \
   "scripts/ops/slice_ledger.mjs" \
   "scripts/ops/admin_effectivity_audit.mjs" \
+  "scripts/ops/admin_effectivity_trend.mjs" \
   "scripts/ops/tooling_quality_report.mjs" \
   "scripts/ops/tooling_findings_export.mjs" \
   "scripts/ops/installed_tool_inventory.mjs" \
@@ -124,6 +126,12 @@ if node --test "${REPO_ROOT}/scripts/ops/admin_effectivity_audit.test.mjs" >"${O
   pass "node --test scripts/ops/admin_effectivity_audit.test.mjs"
 else
   fail "node --test scripts/ops/admin_effectivity_audit.test.mjs"
+fi
+
+if node --test "${REPO_ROOT}/scripts/ops/admin_effectivity_trend.test.mjs" >"${OUT_DIR}/admin-effectivity-trend.test.out" 2>&1; then
+  pass "node --test scripts/ops/admin_effectivity_trend.test.mjs"
+else
+  fail "node --test scripts/ops/admin_effectivity_trend.test.mjs"
 fi
 
 if node --test "${REPO_ROOT}/scripts/ops/tooling_quality_report.test.mjs" >"${OUT_DIR}/tooling-quality-report.test.out" 2>&1; then
@@ -221,6 +229,13 @@ if node "${REPO_ROOT}/scripts/ops/packet_outcome_report.mjs" --json --write >"${
   pass "packet_outcome_report smoke"
 else
   fail "packet_outcome_report smoke"
+fi
+
+section "Admin Effectivity Trend Smoke"
+if node "${REPO_ROOT}/scripts/ops/admin_effectivity_trend.mjs" --json --write >"${OUT_DIR}/admin-effectivity-trend.json"; then
+  pass "admin_effectivity_trend smoke"
+else
+  fail "admin_effectivity_trend smoke"
 fi
 
 section "PR Stack Audit Smoke"

@@ -37,8 +37,15 @@ const PRODUCER_METADATA = {
     producerCommand: "node scripts/ops/admin_effectivity_audit.mjs --json --write --last 5 --slice-run-id admin-infra-20260507",
     producerStep: "admin-effectivity-audit",
     safeWriteRoot: "output/ops/effectivity",
-    consumers: ["ops-work-packet", "mission-control-admin-import"],
+    consumers: ["admin-effectivity-trend", "ops-work-packet", "mission-control-admin-import"],
     requiredFor: ["five-slice-audit"],
+  },
+  "admin-effectivity-trend": {
+    producerCommand: "node scripts/ops/admin_effectivity_trend.mjs --json --write --limit 10",
+    producerStep: "admin-effectivity-trend",
+    safeWriteRoot: "output/ops/effectivity",
+    consumers: ["operator-handoff", "five-slice-audit"],
+    requiredFor: ["trend-review"],
   },
   "slice-ledger-summary": {
     producerCommand: "node scripts/ops/slice_ledger.mjs --summary --last 5 --run-id admin-infra-20260507 --json",
@@ -127,6 +134,12 @@ const OPS_ARTIFACT_REGISTRY = [
     id: "admin-effectivity-audit",
     artifact: "output/ops/effectivity/admin-effectivity-audit-latest.json",
     schema: "schemas/ops/admin-effectivity-audit.v1.schema.json",
+    freshnessTier: "loop",
+  },
+  {
+    id: "admin-effectivity-trend",
+    artifact: "output/ops/effectivity/admin-effectivity-trend-latest.json",
+    schema: "schemas/ops/admin-effectivity-trend.v1.schema.json",
     freshnessTier: "loop",
   },
   {

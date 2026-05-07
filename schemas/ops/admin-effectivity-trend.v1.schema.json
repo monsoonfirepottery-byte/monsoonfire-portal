@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-brain.local/schemas/ops/admin-effectivity-trend.v1.schema.json",
+  "title": "Studio Brain Admin Effectivity Trend v1",
+  "type": "object",
+  "required": ["schema", "generatedAt", "runId", "status", "readOnly", "sources", "summary", "trend", "warnings", "audits"],
+  "properties": {
+    "schema": { "const": "studiobrain-admin-effectivity-trend.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "status": { "enum": ["pass", "warn"] },
+    "readOnly": { "const": true },
+    "sources": {
+      "type": "object",
+      "required": ["auditDir", "limit", "artifactsConsidered", "auditsIncluded"],
+      "properties": {
+        "auditDir": { "type": "string" },
+        "limit": { "type": "number", "minimum": 1 },
+        "artifactsConsidered": { "type": "number", "minimum": 0 },
+        "auditsIncluded": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["audits", "latestStatus", "statusCounts", "averageUsefulness", "averageVerification", "averageNoOpRate", "toolFreshnessPassRate", "workPacketOutcomePassRate"],
+      "properties": {
+        "audits": { "type": "number", "minimum": 0 },
+        "latestStatus": { "type": "string" },
+        "statusCounts": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
+        "averageUsefulness": { "type": ["number", "null"] },
+        "averageVerification": { "type": ["number", "null"] },
+        "averageNoOpRate": { "type": ["number", "null"] },
+        "toolFreshnessPassRate": { "type": ["number", "null"] },
+        "workPacketOutcomePassRate": { "type": ["number", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "trend": {
+      "type": "object",
+      "required": ["fromGeneratedAt", "toGeneratedAt", "fromSlice", "toSlice", "usefulnessDelta", "verificationDelta", "noOpRateDelta", "toolInventoryFreshnessDelta", "workPacketOutcomeHealthDelta"],
+      "properties": {
+        "fromGeneratedAt": { "type": "string" },
+        "toGeneratedAt": { "type": "string" },
+        "fromSlice": { "type": "string" },
+        "toSlice": { "type": "string" },
+        "usefulnessDelta": { "type": ["number", "null"] },
+        "verificationDelta": { "type": ["number", "null"] },
+        "noOpRateDelta": { "type": ["number", "null"] },
+        "toolInventoryFreshnessDelta": { "type": ["number", "null"] },
+        "workPacketOutcomeHealthDelta": { "type": ["number", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "audits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["artifact", "generatedAt", "runId", "status", "sliceWindow", "scores"],
+        "properties": {
+          "artifact": { "type": "string" },
+          "generatedAt": { "type": "string" },
+          "runId": { "type": "string" },
+          "status": { "type": "string" },
+          "sliceWindow": {
+            "type": "object",
+            "required": ["from", "to", "count"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "count": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": false
+          },
+          "scores": {
+            "type": "object",
+            "required": ["usefulness", "verification", "noOpRate", "blockedLaneClarity", "toolInventoryFreshness", "workPacketOutcomeHealth"],
+            "properties": {
+              "usefulness": { "type": ["number", "null"] },
+              "verification": { "type": ["number", "null"] },
+              "noOpRate": { "type": ["number", "null"] },
+              "blockedLaneClarity": { "type": ["number", "null"] },
+              "toolInventoryFreshness": { "type": ["number", "null"] },
+              "workPacketOutcomeHealth": { "type": ["number", "null"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifactPath": { "type": "string" },
+    "markdownPath": { "type": "string" },
+    "artifacts": { "type": "object" }
+  },
+  "additionalProperties": false
+}

@@ -32,7 +32,7 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
   - Safe command smoke checks pass or have documented local-tool limitations.
   - Runtime deploy/install actions remain separated from repo merge work.
   - The ops docs index points operators to the current post-merge handoff.
-- Status: follow-up prepared in `docs/ops/14-post-merge-verification.md`.
+- Status: verification handoff lives in `docs/ops/14-post-merge-verification.md`; run fresh smoke evidence before closing this loop.
 - Recommended owner: Codex
 - Suggested branch name: `codex/ops-admin-next`
 - Suggested PR title: `[ops] Add post-merge ops doctor handoff`
@@ -43,7 +43,7 @@ Post-merge note: the first ops-doctor stack has landed in `main`. The items belo
 - Priority: P0
 - Effort: M
 - Risk: low for diagnostics, high for any backup-path change
-- Status: backup evidence scripts and docs are merged; restore confidence still needs an approval-gated drill.
+- Status: backup evidence scripts and docs are in tree; restore confidence still needs an approval-gated drill and current artifact proof.
 - Evidence placeholder / known evidence:
   - Known: root-owned config/archive metadata was recorded as current on 2026-05-06 18:11 UTC in ops docs.
   - Known: PostgreSQL dump restore proof, Redis scope, MinIO scope, and current restore-drill evidence remain incomplete unless fresh verifier output is attached.
@@ -142,7 +142,7 @@ ops, reliability, backup, database, storage, docs
 - Priority: P1
 - Effort: M
 - Risk: low for diagnostics, medium for package changes
-- Status: diagnostic scripts and maintenance workflow are merged; package remediation remains approval-gated.
+- Status: diagnostic scripts and maintenance workflow are in tree; package remediation remains approval-gated.
 - Acceptance criteria:
   - `apt-daily-upgrade.service` OOM root cause is documented.
   - Failed `dailyaidecheck`, livepatch, and network-wait units have disposition: repair, disable intentionally, or ignore with reason.
@@ -157,7 +157,7 @@ ops, reliability, backup, database, storage, docs
 - Priority: P1
 - Effort: M
 - Risk: medium
-- Status: network exposure review is merged; any firewall, bind-address, or SSH hardening remains approval-gated.
+- Status: network exposure review is in tree; any firewall, bind-address, or SSH hardening remains approval-gated.
 - Acceptance criteria:
   - Current listeners are captured in a redacted report.
   - Legitimate PostgreSQL clients are identified.
@@ -193,7 +193,7 @@ ops, reliability, backup, database, storage, docs
   - Cleanup candidates are classified as safe to automate, safe with backup, service-window, approval-only, or do not touch.
   - The report captures growth deltas when prior snapshots exist.
   - No files are deleted, compressed, moved, or modified.
-- Status: read-only script prepared as `scripts/ops/import_pressure.sh`; live output shows two 22G PST files plus smaller zip archives under `/home/wuff/imports`, all classified `requires_human_approval`.
+- Status: read-only script is in tree as `scripts/ops/import_pressure.sh`; live output shows two 22G PST files plus smaller zip archives under `/home/wuff/imports`, all classified `requires_human_approval`.
 - Recommended owner: Codex, human
 - Suggested branch name: `codex/ops-import-pressure-report`
 - Suggested PR title: `[ops] Add import growth pressure report`
@@ -209,7 +209,7 @@ ops, reliability, backup, database, storage, docs
   - Each cleanup family is classified as safe to automate, safe with backup, requires service window, requires human approval, or do not touch.
   - The report does not delete, prune, truncate, move, compress, restart, or expose environment values.
   - The maintenance calendar requires this packet before cleanup proposals.
-- Status: read-only generator prepared as `scripts/ops/cleanup_candidates.sh` and wrapped by `make ops-cleanup-candidates`.
+- Status: read-only generator is in tree as `scripts/ops/cleanup_candidates.sh` and wrapped by `make ops-cleanup-candidates`.
 - Recommended owner: Codex, human
 - Suggested branch name: `codex/ops-cleanup-candidates`
 - Suggested PR title: `[ops] Add cleanup candidate generator`
@@ -397,6 +397,7 @@ ops, reliability, backup, database, storage, docs
 - Priority: P1
 - Effort: M
 - Risk: high
+- Status: human-gated hardening candidate; needs approved client list, privileged firewall evidence, rollback plan, and service window before any runtime change.
 - Acceptance criteria:
   - Approved client list exists.
   - Rollback and service-window plan exists.
@@ -425,6 +426,7 @@ ops, reliability, backup, database, storage, docs
 - Priority: P1
 - Effort: M
 - Risk: medium
+- Status: human-gated maintenance candidate; needs fresh package posture, current backup evidence, approved service window, and post-check plan.
 - Acceptance criteria:
   - Maintenance window is approved.
   - Pre-checks and rollback notes are captured.

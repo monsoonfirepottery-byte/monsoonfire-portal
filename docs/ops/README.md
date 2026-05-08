@@ -34,6 +34,7 @@ make ops-check
 make ops-inventory
 make ops-postgres-review
 make ops-docker-review
+make ops-docker-posture
 make ops-docker-tag-policy
 make ops-capacity
 make ops-import-pressure
@@ -64,9 +65,17 @@ make ops-dependency-remediation-packet
 make ops-dependency-upstream-watch
 make ops-dependency-zero-baseline
 make ops-postgres-snapshot
+make ops-postgres-top-queries
+make ops-postgres-query-tasks
+make ops-postgres-growth-snapshot
+make ops-postgres-autovacuum-stats
+make ops-postgres-roles-extensions
 make ops-idle-worker-effectivity
 make ops-effectivity-report
 make ops-evidence-freshness
+make ops-slice-ledger
+make ops-tool-inventory
+make ops-admin-effectivity-audit
 make ops-proactive-radar
 make ops-next-slice-selector
 make ops-pr-stack-readiness
@@ -79,6 +88,8 @@ make ops-incident-bundle
 make ops-incident-bundle-v2
 make ops-ci-validate
 make ops-post-deploy-verify
+make ops-docs
+make ops-backlog
 make ops-report
 ```
 
@@ -142,6 +153,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.
 
+`ops-privileged-evidence-capture` is intentionally not a normal safe command. It is the approval-gated host capture path for sudo-unavailable agents. Run it only under the narrow procedure in `22-privileged-evidence-capture.md`, with explicit owner approval and a bounded output directory.
+
 `ops-proactive-radar` is a read-only loop-start command. It looks for merge-blocked PRs, stacked draft PR pressure, stale ops artifacts, dirty worktree risk, and hidden ops scripts without printing secrets or mutating the host. It also reads `docs/ops/output-artifact-producers.json` so stale producer evidence points to exact `output/ops/...` paths and safe refresh commands.
 
 `ops-next-slice-selector` refreshes the proactive radar, then emits the single highest-ranked producer refresh task plus a short ranked preview. It writes under `output/ops/next-slice-selector` and never runs the selected refresh command for you.
@@ -165,6 +178,14 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-dependency-inventory` prints read-only local tool versions plus ops/studio package scripts. It is also included inside incident bundles and avoids reading `.env` values.
 
 `ops-postgres-snapshot` writes redacted PostgreSQL DBA evidence under `output/ops/postgres/<timestamp>` using direct `psql` or the local Studio Brain Postgres container when available. It wraps packets in read-only transactions and degrades to skipped reports when credentials, Docker, or PostgreSQL are unavailable.
+
+The specialist PostgreSQL targets `ops-postgres-top-queries`, `ops-postgres-query-tasks`, `ops-postgres-growth-snapshot`, `ops-postgres-autovacuum-stats`, and `ops-postgres-roles-extensions` run one read-only DBA packet at a time through `ops-postgres-sql`. Use them when a focused DBA artifact is easier to review than the full snapshot bundle. They do not change schema, roles, indexes, settings, or data.
+
+`ops-docker-posture` runs the Docker posture review directly when a focused container/config report is enough and the broader Docker review would be noisy. It is read-only and does not pull, restart, prune, or remove Docker resources.
+
+`ops-slice-ledger` summarizes recent slice work and evidence into a local automation ledger. `ops-admin-effectivity-audit` reviews whether the admin/ops loop is producing useful evidence rather than no-op churn. `ops-tool-inventory` captures local tool/version posture. These are local read-only operator aids.
+
+`ops-docs` and `ops-backlog` are convenience wrappers for regenerating or reviewing the durable Markdown ops artifacts; they do not approve any host mutation by themselves.
 
 `ops-output-retention` scans ignored `output/ops` artifacts for file count, total size, largest producers, stale files, and retention recommendations. It writes under `output/ops/output-retention` and never deletes, rotates, compresses, or prunes artifacts.
 

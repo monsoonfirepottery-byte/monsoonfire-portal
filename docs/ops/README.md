@@ -66,6 +66,7 @@ make ops-evidence-freshness
 make ops-proactive-radar
 make ops-next-slice-selector
 make ops-pr-stack-readiness
+make ops-pr-conflict-packets
 make ops-privileged-evidence-read
 make ops-privileged-evidence-capture-smoke
 make ops-work-packet
@@ -87,6 +88,7 @@ npm run ops:command-surface:guard
 npm run ops:command-manifest
 npm run ops:output:retention
 npm run ops:next-slice:selector
+npm run ops:pr-conflict:packets
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch
@@ -112,6 +114,7 @@ node scripts/ops/command_surface_guard.mjs --write
 node scripts/ops/ops_command_manifest.mjs --write
 node scripts/ops/output_retention_scanner.mjs --write
 node scripts/ops/next_slice_selector.mjs --refresh --write
+node scripts/ops/pr_conflict_packets.mjs --refresh --write
 node scripts/ops/dependency_security_scout.mjs --write
 node scripts/ops/dependency_remediation_packet.mjs --write
 node scripts/ops/dependency_upstream_watch.mjs --write
@@ -130,6 +133,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-next-slice-selector` refreshes the proactive radar, then emits the single highest-ranked producer refresh task plus a short ranked preview. It writes under `output/ops/next-slice-selector` and never runs the selected refresh command for you.
 
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.
+
+`ops-pr-conflict-packets` consumes the PR-stack packet and writes focused issue-ready conflict-resolution packets for dirty non-draft PRs under `output/ops/pr-conflict-packets`. It never rebases, force-pushes, closes PRs, deletes branches, or edits worktrees.
 
 `ops-evidence-freshness` checks whether the main ops evidence artifacts are recent enough to trust and writes issue-ready refresh tasks under `output/ops/evidence-freshness`.
 

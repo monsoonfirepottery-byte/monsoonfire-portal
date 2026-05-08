@@ -333,7 +333,9 @@ function buildReport(options) {
       safeNextStep: task.proposedFix
     }));
   const selectedTask = selectedProducerTask || fallbackTasks[0] || semanticTasks[0] || null;
-  const actionableTasks = [...tasks, ...fallbackTasks, ...semanticTasks].filter((task) => task.command || !["human-approval-review", "review-existing-packet"].includes(task.commandSafetyClass));
+  const nonActionableSafetyClasses = new Set(["human-approval-review", "review-existing-packet", "manual-planning"]);
+  const actionableTasks = [...tasks, ...fallbackTasks, ...semanticTasks].filter((task) => task.command || !nonActionableSafetyClasses.has(task.commandSafetyClass));
+  const hasManualReviewOnly = Boolean(selectedTask && selectedTask.commandSafetyClass === "manual-planning" && !actionableTasks.length);
   const staleProducerCount = Array.isArray(radarReport.sources?.producerArtifactFreshness)
     ? radarReport.sources.producerArtifactFreshness.filter((entry) => entry.stale).length
     : null;
@@ -346,6 +348,8 @@ function buildReport(options) {
       ? selectedTask
         ? selectedTask.commandSafetyClass === "human-approval-review" && !actionableTasks.length
           ? "blocked_on_approval"
+          : hasManualReviewOnly
+            ? "manual_review"
           : "action_ready"
         : "ok"
       : "blocked",

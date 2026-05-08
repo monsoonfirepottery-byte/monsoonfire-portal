@@ -8,60 +8,77 @@
   "producers": {
     "dependency-zero-baseline": {
       "outputPath": "output/ops/dependency-zero-baseline",
+      "refreshCommand": "make ops-dependency-zero-baseline",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-security-scout": {
       "outputPath": "output/ops/dependency-security-scout",
+      "refreshCommand": "make ops-dependency-security-scout",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-remediation": {
       "outputPath": "output/ops/dependency-remediation",
+      "refreshCommand": "make ops-dependency-remediation-packet",
       "freshnessDays": 7,
       "retentionClass": "decision-packet",
       "cleanupApproval": "human"
     },
     "dependency-upstream-watch": {
       "outputPath": "output/ops/dependency-upstream-watch",
+      "refreshCommand": "make ops-dependency-upstream-watch",
       "freshnessDays": 7,
       "retentionClass": "trend",
       "cleanupApproval": "human"
     },
     "pr-stack": {
       "outputPath": "output/ops/pr-stack",
+      "refreshCommand": "make ops-pr-stack-readiness",
       "freshnessDays": 1,
       "retentionClass": "ticket-evidence",
       "cleanupApproval": "human"
     },
+    "proactive-radar": {
+      "outputPath": "output/ops/proactive-radar",
+      "refreshCommand": "make ops-proactive-radar",
+      "freshnessDays": 1,
+      "retentionClass": "next-slice-evidence",
+      "cleanupApproval": "human"
+    },
     "output-retention": {
       "outputPath": "output/ops/output-retention",
+      "refreshCommand": "make ops-output-retention",
       "freshnessDays": 7,
       "retentionClass": "self-audit",
       "cleanupApproval": "human"
     },
     "command-manifest": {
       "outputPath": "output/ops/command-manifest",
+      "refreshCommand": "make ops-command-manifest",
       "freshnessDays": 7,
       "retentionClass": "tool-inventory",
       "cleanupApproval": "human"
     },
     "incidents": {
       "outputPath": "output/ops/incidents",
+      "refreshCommand": "make ops-incident-bundle",
       "freshnessDays": 30,
       "retentionClass": "incident",
       "cleanupApproval": "human"
     },
     "incidents-v2": {
       "outputPath": "output/ops/incidents-v2",
+      "refreshCommand": "make ops-incident-bundle-v2",
       "freshnessDays": 30,
       "retentionClass": "incident",
       "cleanupApproval": "human"
     },
     "privileged-evidence": {
       "outputPath": "output/ops/privileged-evidence",
+      "refreshCommand": "make ops-privileged-evidence-read",
       "freshnessDays": 7,
       "retentionClass": "approval-gated-evidence",
       "cleanupApproval": "human"

@@ -285,6 +285,75 @@ function countBy(rows, selector) {
   return counts;
 }
 
+function cleanupTasks(rows) {
+  const tasks = [];
+  const closeCandidates = rows.filter((pr) => pr.disposition?.action === "close_candidate");
+  if (closeCandidates.length) {
+    tasks.push({
+      title: "[ops] Review stale draft PR close candidates",
+      labels: ["ops", "cleanup", "docs"],
+      approvalRequired: true,
+      body: [
+        "## Problem",
+        `${closeCandidates.length} draft PR(s) are older than 7 days and still open.`,
+        "",
+        "## Evidence",
+        ...closeCandidates.map((pr) => `- #${pr.number} ${pr.title} (${pr.ageDays} days old): ${pr.url}`),
+        "",
+        "## Risk",
+        "Stale drafts add noise to PR readiness and can be mistaken for active work.",
+        "",
+        "## Proposed Fix",
+        "Confirm whether each draft has been superseded or captured in backlog, then close only with human approval.",
+        "",
+        "## Acceptance Criteria",
+        "- Each close candidate is marked keep, supersede, or close.",
+        "- Any useful work is copied into a fresh main-based slice or backlog item.",
+        "- Closed PRs have a comment pointing to the replacement or rationale.",
+        "",
+        "## Safety Notes",
+        "- Human approval required.",
+        "- Do not delete branches until the owner approves cleanup.",
+        "- Rollback is reopening the PR if the branch still exists."
+      ].join("\n")
+    });
+  }
+
+  const supersedeCandidates = rows.filter((pr) => pr.disposition?.action === "supersede_or_restack");
+  if (supersedeCandidates.length) {
+    const evidenceLines = supersedeCandidates.slice(0, 30).map((pr) => `- #${pr.number} ${pr.head} -> ${pr.base}; dependsOn=${pr.dependsOnPr ? `#${pr.dependsOnPr}` : "unknown"}`);
+    if (supersedeCandidates.length > 30) evidenceLines.push(`- ...and ${supersedeCandidates.length - 30} more.`);
+    tasks.push({
+      title: "[ops] Collapse or restack stacked draft PR chain",
+      labels: ["ops", "cleanup", "reliability"],
+      approvalRequired: true,
+      body: [
+        "## Problem",
+        `${supersedeCandidates.length} draft PR(s) are stacked on non-main branches.`,
+        "",
+        "## Evidence",
+        ...evidenceLines,
+        "",
+        "## Risk",
+        "Large stacked draft chains make merge order hard to reason about and can hide stale or superseded work.",
+        "",
+        "## Proposed Fix",
+        "Promote only the next useful slice from current main, then supersede or close obsolete drafts after human review.",
+        "",
+        "## Acceptance Criteria",
+        "- One next executable slice is identified from current main.",
+        "- Stale stacked drafts are marked keep, supersede, or close.",
+        "- No force-push, branch deletion, or PR closing happens without explicit approval.",
+        "",
+        "## Safety Notes",
+        "- Human approval required for closing PRs or deleting branches.",
+        "- Rollback is reopening a PR or restoring from the remote branch if preserved."
+      ].join("\n")
+    });
+  }
+  return tasks;
+}
+
 function buildChains(rows) {
   const byBase = new Map();
   for (const pr of rows) {
@@ -370,7 +439,8 @@ function buildReport(options) {
     chains: chains.map((chain) => chain.map((pr) => ({ number: pr.number, head: pr.head, base: pr.base, dependsOnPr: pr.dependsOnPr, childPrs: pr.childPrs, readiness: pr.readiness, blockers: pr.blockers, disposition: pr.disposition }))),
     orphans: orphans.map((pr) => ({ number: pr.number, head: pr.head, base: pr.base, dependsOnPr: pr.dependsOnPr, childPrs: pr.childPrs, readiness: pr.readiness, blockers: pr.blockers, disposition: pr.disposition })),
     pullRequests: classified,
-    recommendations
+    recommendations,
+    cleanupTasks: cleanupTasks(classified)
   };
 }
 
@@ -419,6 +489,23 @@ function renderMarkdown(report) {
   );
   for (const pr of report.pullRequests) {
     lines.push(`| #${pr.number} | ${pr.isDraft ? "yes" : "no"} | ${pr.ageDays ?? "?"} | ${pr.freshness?.bucket || "unknown"} | \`${pr.base}\` | ${pr.dependsOnPr ? `#${pr.dependsOnPr}` : ""} | ${pr.childPrs.length ? pr.childPrs.map((child) => `#${child}`).join(", ") : ""} | ${pr.disposition?.action || "unknown"} | ${pr.disposition?.approval || "unknown"} | ${pr.disposition?.reason || ""} |`);
+  }
+  lines.push(
+    "",
+    "## Cleanup Tasks",
+    ""
+  );
+  if (!report.cleanupTasks?.length) {
+    lines.push("- No cleanup tasks from current evidence.");
+  }
+  for (const task of report.cleanupTasks || []) {
+    lines.push(`### ${task.title}`);
+    lines.push("");
+    lines.push(`- Approval required: ${task.approvalRequired ? "yes" : "no"}`);
+    lines.push(`- Labels: ${task.labels.join(", ")}`);
+    lines.push("");
+    lines.push(task.body);
+    lines.push("");
   }
   lines.push(
     "",

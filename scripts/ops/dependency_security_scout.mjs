@@ -507,6 +507,11 @@ function buildReport(options) {
       auditHighCritical: highCritical,
       auditTotal: workspaces.reduce((acc, workspace) => acc + (workspace.audit?.counts?.total || 0), 0)
     },
+    issueExportPolicy: {
+      mode: "non_ok_only",
+      emitsForStatuses: ["warning", "degraded", "advisory"],
+      cleanStateMessage: "No issue-ready dependency tasks are emitted when the scout status is ok."
+    },
     workspaces,
     approvalBoundary: "This report does not approve dependency upgrades, npm audit fix, package installs, deploys, or lockfile changes."
   };
@@ -532,6 +537,12 @@ function renderMarkdown(report) {
     `- Workspaces checked: ${report.summary.workspaces}`,
     `- npm audit high/critical: ${report.summary.auditHighCritical}`,
     `- npm audit total: ${report.summary.auditTotal}`,
+    "",
+    "## Issue Export Policy",
+    "",
+    `- Mode: ${report.issueExportPolicy?.mode || "unknown"}`,
+    `- Emits for statuses: ${(report.issueExportPolicy?.emitsForStatuses || []).join(", ") || "unknown"}`,
+    `- Clean state: ${report.issueExportPolicy?.cleanStateMessage || "No dependency tasks emitted."}`,
     "",
     "## Dependabot Alerts",
     "",

@@ -64,6 +64,7 @@ make ops-idle-worker-effectivity
 make ops-effectivity-report
 make ops-evidence-freshness
 make ops-proactive-radar
+make ops-next-slice-selector
 make ops-pr-stack-readiness
 make ops-privileged-evidence-read
 make ops-privileged-evidence-capture-smoke
@@ -85,6 +86,7 @@ npm run ops:db-docker-backup:rollup
 npm run ops:command-surface:guard
 npm run ops:command-manifest
 npm run ops:output:retention
+npm run ops:next-slice:selector
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch
@@ -109,6 +111,7 @@ node scripts/ops/proactive_issue_radar.mjs --write
 node scripts/ops/command_surface_guard.mjs --write
 node scripts/ops/ops_command_manifest.mjs --write
 node scripts/ops/output_retention_scanner.mjs --write
+node scripts/ops/next_slice_selector.mjs --refresh --write
 node scripts/ops/dependency_security_scout.mjs --write
 node scripts/ops/dependency_remediation_packet.mjs --write
 node scripts/ops/dependency_upstream_watch.mjs --write
@@ -123,6 +126,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-privileged-evidence-capture-smoke` writes a non-root local smoke artifact under `output/ops/privileged-evidence` and is safe for development. Installing the host-side privileged collector, timer, group, or sudoers allowlist is intentionally separate and approval-gated; see `22-privileged-evidence-capture.md`.
 
 `ops-proactive-radar` is a read-only loop-start command. It looks for merge-blocked PRs, stacked draft PR pressure, stale ops artifacts, dirty worktree risk, and hidden ops scripts without printing secrets or mutating the host. It also reads `docs/ops/output-artifact-producers.json` so stale producer evidence points to exact `output/ops/...` paths and safe refresh commands.
+
+`ops-next-slice-selector` refreshes the proactive radar, then emits the single highest-ranked producer refresh task plus a short ranked preview. It writes under `output/ops/next-slice-selector` and never runs the selected refresh command for you.
 
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.
 

@@ -232,7 +232,7 @@ function newestFileMtime(root) {
   return newest;
 }
 
-function producerArtifactFreshness() {
+function producerArtifactFreshness(currentWrite = null) {
   const policyPath = resolve(REPO_ROOT, "docs", "ops", "output-artifact-producers.json");
   const policy = readJsonFile(policyPath, { default: {}, producers: {} });
   const defaults = policy.default || {};
@@ -246,6 +246,7 @@ function producerArtifactFreshness() {
     const resolvedOutput = outputPath ? resolve(REPO_ROOT, outputPath) : "";
     const latestJson = resolvedOutput ? resolve(resolvedOutput, "latest.json") : "";
     const latestMarkdown = resolvedOutput ? resolve(resolvedOutput, "latest.md") : "";
+    const isCurrentWrite = currentWrite && resolvedOutput && resolve(currentWrite.outputDir) === resolvedOutput;
     const latestFile = statFile(latestJson) || statFile(latestMarkdown) || newestFileMtime(resolvedOutput);
     const ageDays = latestFile ? (now - latestFile.mtimeMs) / 86_400_000 : null;
 
@@ -256,13 +257,13 @@ function producerArtifactFreshness() {
       retentionClass: clean(config.retentionClass) || "review",
       cleanupApproval: clean(config.cleanupApproval) || "human",
       freshnessDays,
-      exists: Boolean(resolvedOutput && existsSync(resolvedOutput)),
-      latestJson: latestJson && existsSync(latestJson) ? repoRelative(latestJson) : "",
-      latestMarkdown: latestMarkdown && existsSync(latestMarkdown) ? repoRelative(latestMarkdown) : "",
-      newestArtifact: latestFile?.path ? repoRelative(latestFile.path) : "",
-      newestAt: latestFile?.mtime ? latestFile.mtime.toISOString() : "",
-      ageDays: ageDays === null ? null : Number(ageDays.toFixed(1)),
-      stale: ageDays === null || ageDays > freshnessDays
+      exists: Boolean(isCurrentWrite || (resolvedOutput && existsSync(resolvedOutput))),
+      latestJson: latestJson && (isCurrentWrite || existsSync(latestJson)) ? repoRelative(latestJson) : "",
+      latestMarkdown: latestMarkdown && (isCurrentWrite || existsSync(latestMarkdown)) ? repoRelative(latestMarkdown) : "",
+      newestArtifact: isCurrentWrite ? repoRelative(latestJson) : latestFile?.path ? repoRelative(latestFile.path) : "",
+      newestAt: isCurrentWrite ? currentWrite.generatedAt : latestFile?.mtime ? latestFile.mtime.toISOString() : "",
+      ageDays: isCurrentWrite ? 0 : ageDays === null ? null : Number(ageDays.toFixed(1)),
+      stale: isCurrentWrite ? false : ageDays === null || ageDays > freshnessDays
     };
   });
 }
@@ -377,10 +378,15 @@ function buildProducerRefreshTasks(producerArtifacts) {
     .map((entry) => {
       const freshness = entry.ageDays === null ? "missing" : `${entry.ageDays} days old`;
       const refreshCommand = entry.refreshCommand || "not listed";
+      const commandSafetyClass = inferRefreshCommandSafety(refreshCommand);
+      const score = producerRefreshScore(entry, commandSafetyClass);
       return {
+        rank: 0,
+        score,
         title: `[ops] Refresh ${entry.producer} evidence artifact`,
         labels: ["ops", "docs", "reliability"],
         priority: entry.freshnessDays <= 1 ? "P2" : "P3",
+        commandSafetyClass,
         problem: `${entry.producer} evidence is ${freshness}; freshness threshold is ${entry.freshnessDays} days.`,
         evidence: `Producer ${entry.producer} expects ${entry.outputPath || "missing outputPath"}; latest artifact ${entry.newestArtifact || "not found"}.`,
         risk: "The ops doctor can recommend stale next actions when producer evidence is missing or outside its freshness window.",
@@ -392,7 +398,31 @@ function buildProducerRefreshTasks(producerArtifacts) {
         ],
         safetyNotes: `Cleanup approval remains ${entry.cleanupApproval || "human"}; rollback is to discard regenerated ignored output artifacts or revert any docs-only evidence update.`
       };
-    });
+    })
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .map((task, index) => ({ ...task, rank: index + 1 }));
+}
+
+function inferRefreshCommandSafety(command) {
+  const value = clean(command).toLowerCase();
+  if (!value || value === "not listed") return "unknown";
+  if (value.includes("privileged-evidence-capture") && !value.includes("smoke")) return "human_approval_required";
+  if (value.includes("incident") || value.includes("post-deploy")) return "read_only_live_probe";
+  if (value.includes("postgres") || value.includes("docker")) return "read_only_specialist";
+  return "read_only_local";
+}
+
+function producerRefreshScore(entry, commandSafetyClass) {
+  let score = 0;
+  if (entry.ageDays === null) score += 40;
+  if (entry.freshnessDays <= 1) score += 25;
+  else if (entry.freshnessDays <= 7) score += 15;
+  else score += 5;
+  if (commandSafetyClass === "read_only_local") score += 15;
+  if (commandSafetyClass === "read_only_specialist") score += 10;
+  if (commandSafetyClass === "read_only_live_probe") score += 5;
+  if (commandSafetyClass === "human_approval_required") score -= 30;
+  return score;
 }
 
 function buildReport(options) {
@@ -402,7 +432,7 @@ function buildReport(options) {
   const status = gitStatus();
   const prs = openPullRequests(repo);
   const freshness = artifactFreshness();
-  const producerArtifacts = producerArtifactFreshness();
+  const producerArtifacts = producerArtifactFreshness(options.write ? { outputDir: options.outputDir, generatedAt } : null);
   const scripts = scriptInventory();
   const findings = buildFindings({ prs, status, freshness, producerArtifacts, scripts });
   const producerRefreshTasks = buildProducerRefreshTasks(producerArtifacts);
@@ -499,8 +529,11 @@ function renderMarkdown(report) {
   for (const task of report.producerRefreshTasks) {
     lines.push(`### ${task.title}`);
     lines.push("");
+    lines.push(`- Rank: ${task.rank}`);
+    lines.push(`- Score: ${task.score}`);
     lines.push(`- Labels: ${task.labels.join(", ")}`);
     lines.push(`- Priority: ${task.priority}`);
+    lines.push(`- Command safety: ${task.commandSafetyClass}`);
     lines.push(`- Problem: ${task.problem}`);
     lines.push(`- Evidence: ${task.evidence}`);
     lines.push(`- Risk: ${task.risk}`);

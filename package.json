@@ -88,6 +88,7 @@
     "test:ops:command-surface": "node --test ./scripts/ops/command_surface_guard.test.mjs",
     "ops:dependency:security-scout": "node ./scripts/ops/dependency_security_scout.mjs --write --json",
     "ops:dependency:remediation-packet": "node ./scripts/ops/dependency_remediation_packet.mjs --write --json",
+    "ops:dependency:upstream-watch": "node ./scripts/ops/dependency_upstream_watch.mjs --write --json",
     "ops:docker:tag-policy": "node ./scripts/ops/docker_floating_tag_policy.mjs --write --json",
     "portal:smoke:native-browser:shadow": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod",
     "codex:browser:verify:portal": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod --app-handoff",

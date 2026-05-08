@@ -354,11 +354,13 @@ function firstLines(value) {
 function issueReadyTasks(report) {
   const tasks = [];
   const alertGroups = new Map();
+  const staleAlertGroups = new Map();
   for (const alert of report.github.alerts.alerts || []) {
     const key = `${alert.dependency}|${alert.manifestPath}`;
-    const existing = alertGroups.get(key) || [];
+    const target = alert.localPosture?.classification === "stale_alert_verify" ? staleAlertGroups : alertGroups;
+    const existing = target.get(key) || [];
     existing.push(alert);
-    alertGroups.set(key, existing);
+    target.set(key, existing);
   }
   for (const [key, alerts] of alertGroups.entries()) {
     const [dependency, manifestPath] = key.split("|");
@@ -385,6 +387,34 @@ function issueReadyTasks(report) {
         "## Safety Notes",
         "- This scout is read-only.",
         "- Dependency upgrades remain PR-gated and rollback is the previous lockfile commit."
+      ].join("\n"),
+      labels: ["ops", "security", "dependencies"]
+    });
+  }
+  for (const [key, alerts] of staleAlertGroups.entries()) {
+    const [dependency, manifestPath] = key.split("|");
+    tasks.push({
+      title: `[deps] Verify stale ${dependency} alert closure in ${manifestPath}`,
+      body: [
+        "## Problem",
+        `${alerts.length} GitHub Dependabot alert(s) remain open for \`${dependency}\`, but local read-only audit evidence no longer shows the package as vulnerable in \`${manifestPath}\`.`,
+        "",
+        "## Evidence",
+        ...alerts.map((alert) => `- #${alert.number}: ${alert.ghsaId || alert.cveId} ${alert.severity}; local posture=${alert.localPosture?.classification || "unknown"}; local audit=${alert.localPosture?.auditStatus || "unknown"}`),
+        "",
+        "## Risk",
+        "Operators can chase already-remediated dependency alerts while GitHub alert indexing catches up.",
+        "",
+        "## Proposed Fix",
+        "Re-run the dependency scout after GitHub refreshes. If the alert remains open, inspect the Dependabot alert details before opening another dependency PR.",
+        "",
+        "## Acceptance Criteria",
+        "- GitHub alert is closed, dismissed with rationale, or mapped to a still-active local audit finding.",
+        "- No duplicate dependency PR is opened while local audit remains clean.",
+        "",
+        "## Safety Notes",
+        "- This is a verification task only.",
+        "- No dependency install, update, override, or deploy is approved by this packet."
       ].join("\n"),
       labels: ["ops", "security", "dependencies"]
     });
@@ -427,6 +457,31 @@ function issueReadyTasks(report) {
   return tasks;
 }
 
+function enrichAlertPosture(alerts, workspaces) {
+  const byLockPath = new Map(workspaces.map((workspace) => [workspace.packageLock, workspace]));
+  return (alerts.alerts || []).map((alert) => {
+    const workspace = byLockPath.get(alert.manifestPath);
+    const affected = workspace?.audit?.affectedPackages || [];
+    let classification = "unknown_local_evidence";
+    if (workspace?.audit?.status === "clean") {
+      classification = "stale_alert_verify";
+    } else if (affected.includes(alert.dependency)) {
+      classification = "active_local_finding";
+    } else if (workspace?.audit?.status) {
+      classification = "not_in_local_audit";
+    }
+    return {
+      ...alert,
+      localPosture: {
+        classification,
+        workspace: workspace?.path || "",
+        auditStatus: workspace?.audit?.status || "unavailable",
+        localAffected: affected.includes(alert.dependency)
+      }
+    };
+  });
+}
+
 function buildReport(options) {
   const alerts = options.github ? githubAlerts(options.repo) : { status: "skipped_by_flag", alerts: [], error: "" };
   const prs = options.github ? dependabotPrs(options.repo) : { status: "skipped_by_flag", prs: [], error: "" };
@@ -434,14 +489,19 @@ function buildReport(options) {
     .map(workspaceSummary)
     .map((summary) => npmAuditWorkspace(summary, options.npmAudit));
   const highCritical = workspaces.reduce((acc, workspace) => acc + (workspace.audit?.counts?.high || 0) + (workspace.audit?.counts?.critical || 0), 0);
+  const enrichedAlerts = { ...alerts, alerts: enrichAlertPosture(alerts, workspaces) };
+  const staleAlerts = enrichedAlerts.alerts.filter((alert) => alert.localPosture?.classification === "stale_alert_verify").length;
+  const activeAlerts = enrichedAlerts.alerts.length - staleAlerts;
   const report = {
     schema: "studio-brain.ops.dependency-security-scout.v1",
     generatedAt: new Date().toISOString(),
     readOnly: true,
-    status: highCritical > 0 ? "warning" : (alerts.alerts || []).length > 0 ? "degraded" : "ok",
-    github: { alerts, dependabotPrs: prs },
+    status: highCritical > 0 ? "warning" : activeAlerts > 0 ? "degraded" : staleAlerts > 0 ? "advisory" : "ok",
+    github: { alerts: enrichedAlerts, dependabotPrs: prs },
     summary: {
-      openAlerts: (alerts.alerts || []).length,
+      openAlerts: enrichedAlerts.alerts.length,
+      activeAlerts,
+      staleAlerts,
       openDependabotPrs: (prs.prs || []).length,
       workspaces: workspaces.length,
       auditHighCritical: highCritical,
@@ -466,6 +526,8 @@ function renderMarkdown(report) {
     "## Summary",
     "",
     `- Open Dependabot alerts: ${report.summary.openAlerts}`,
+    `- Active Dependabot alerts by local evidence: ${report.summary.activeAlerts}`,
+    `- Stale-alert verification candidates: ${report.summary.staleAlerts}`,
     `- Open Dependabot PRs: ${report.summary.openDependabotPrs}`,
     `- Workspaces checked: ${report.summary.workspaces}`,
     `- npm audit high/critical: ${report.summary.auditHighCritical}`,
@@ -473,13 +535,13 @@ function renderMarkdown(report) {
     "",
     "## Dependabot Alerts",
     "",
-    "| Alert | Severity | Dependency | Manifest | Patched versions | Advisory |",
-    "| --- | --- | --- | --- | --- | --- |"
+    "| Alert | Severity | Dependency | Manifest | Local posture | Patched versions | Advisory |",
+    "| --- | --- | --- | --- | --- | --- | --- |"
   ];
   for (const alert of report.github.alerts.alerts || []) {
-    lines.push(`| #${alert.number} | ${alert.severity} | \`${alert.dependency}\` | \`${alert.manifestPath}\` | ${alert.patchedVersions || "unknown"} | ${alert.ghsaId || alert.cveId || ""} |`);
+    lines.push(`| #${alert.number} | ${alert.severity} | \`${alert.dependency}\` | \`${alert.manifestPath}\` | ${alert.localPosture?.classification || "unknown"} | ${alert.patchedVersions || "unknown"} | ${alert.ghsaId || alert.cveId || ""} |`);
   }
-  if (!(report.github.alerts.alerts || []).length) lines.push("| n/a | n/a | n/a | n/a | n/a | n/a |");
+  if (!(report.github.alerts.alerts || []).length) lines.push("| n/a | n/a | n/a | n/a | n/a | n/a | n/a |");
   lines.push("");
   lines.push("## Dependabot PRs");
   lines.push("");

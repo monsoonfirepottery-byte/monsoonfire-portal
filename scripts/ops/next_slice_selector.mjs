@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_RADAR = resolve(REPO_ROOT, "output", "ops", "proactive-radar", "latest.json");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "next-slice-selector");
+const SOURCE_SKEW_TOLERANCE_MS = 60_000;
 
 function clean(value) {
   return String(value ?? "").replace(/\r/g, "").trim();
@@ -131,7 +132,48 @@ function refreshRadar() {
   }
 }
 
-function packetArtifactFor(id) {
+function timeValue(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function producerFreshnessFor(radarReport, producer) {
+  const entries = Array.isArray(radarReport.sources?.producerArtifactFreshness)
+    ? radarReport.sources.producerArtifactFreshness
+    : [];
+  return entries.find((entry) => entry.producer === producer) || null;
+}
+
+function consistencyForPacket(id, value, radarReport) {
+  const sourceProducerMap = {
+    "non-draft-prs-not-mergeable": "pr-stack",
+    "large-stacked-draft-pr-backlog": "pr-stack"
+  };
+  const sourceProducer = sourceProducerMap[id] || "";
+  if (!sourceProducer) return { ok: true, severity: "none", warnings: [] };
+  const sourceFreshness = producerFreshnessFor(radarReport, sourceProducer);
+  const packetSourceGeneratedAt = value?.source?.generatedAt || "";
+  const packetSourceTime = timeValue(packetSourceGeneratedAt);
+  const sourceNewestAt = sourceFreshness?.newestAt || "";
+  const sourceNewestTime = timeValue(sourceNewestAt);
+  const warnings = [];
+  if (sourceFreshness?.stale) {
+    warnings.push(`${sourceProducer} producer is stale; packet may not reflect current PR state.`);
+  }
+  if (packetSourceTime !== null && sourceNewestTime !== null && packetSourceTime + SOURCE_SKEW_TOLERANCE_MS < sourceNewestTime) {
+    warnings.push(`packet source ${packetSourceGeneratedAt} is older than ${sourceProducer} latest ${sourceNewestAt}.`);
+  }
+  return {
+    ok: warnings.length === 0,
+    severity: warnings.length ? "medium" : "none",
+    sourceProducer,
+    packetSourceGeneratedAt,
+    sourceNewestAt,
+    warnings
+  };
+}
+
+function packetArtifactFor(id, radarReport) {
   const map = {
     "non-draft-prs-not-mergeable": resolve(REPO_ROOT, "output", "ops", "pr-conflict-packets", "latest.json"),
     "large-stacked-draft-pr-backlog": resolve(REPO_ROOT, "output", "ops", "pr-backlog-decision-packets", "latest.json")
@@ -151,17 +193,20 @@ function packetArtifactFor(id) {
   }
   const value = artifact.value || {};
   const packets = Array.isArray(value.packets) ? value.packets.length : Number(value.summary?.packets || 0);
+  const consistency = consistencyForPacket(id, value, radarReport);
   return {
     ok: true,
     path: repoRelative(path),
     status: value.status || "unknown",
     packets,
     generatedAt: value.generatedAt || "",
-    error: ""
+    sourceGeneratedAt: value.source?.generatedAt || "",
+    error: "",
+    consistency
   };
 }
 
-function taskFromRecommendation(recommendation, finding, rank) {
+function taskFromRecommendation(recommendation, finding, rank, radarReport) {
   const title = recommendation.title || finding?.title || "Investigate proactive radar finding";
   const commandMap = {
     "non-draft-prs-not-mergeable": "npm run ops:pr-conflict:packets",
@@ -171,8 +216,8 @@ function taskFromRecommendation(recommendation, finding, rank) {
     "ops-scripts-without-make-targets": "npm run ops:command-manifest:check"
   };
   const id = finding?.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const packetArtifact = packetArtifactFor(id);
-  const packetReady = packetArtifact?.ok && packetArtifact.packets > 0 && packetArtifact.status === "action_needed";
+  const packetArtifact = packetArtifactFor(id, radarReport);
+  const packetReady = packetArtifact?.ok && packetArtifact.packets > 0 && packetArtifact.status === "action_needed" && packetArtifact.consistency?.ok !== false;
   const command = commandMap[id] || "";
   const priorityScore = { P0: 100, P1: 80, P2: 60, P3: 40 };
   const severityScore = { critical: 100, high: 80, medium: 60, low: 40 };
@@ -197,6 +242,8 @@ function taskFromRecommendation(recommendation, finding, rank) {
     evidence: finding?.evidence || "",
     proposedFix: packetReady
       ? `Review ${packetArtifact.path}; it already contains ${packetArtifact.packets} current packet(s) generated at ${packetArtifact.generatedAt || "unknown time"}.`
+      : packetArtifact?.ok && packetArtifact.consistency?.ok === false && command
+        ? `Refresh ${packetArtifact.path} with \`${command}\`; ${packetArtifact.consistency.warnings.join(" ")}`
       : finding?.safeNextStep || recommendation.acceptanceCriteria?.[0] || title,
     safetyNotes: finding?.rollback || "No destructive action is authorized by this selector.",
     packetArtifact,
@@ -218,7 +265,7 @@ function semanticTasksFromRadar(radarReport) {
         || findingsById.get(id)
         || findings[index]
         || null;
-      return taskFromRecommendation(recommendation, finding, index + 1);
+      return taskFromRecommendation(recommendation, finding, index + 1, radarReport);
     })
     .sort((a, b) => b.score - a.score || a.rank - b.rank)
     .map((task, index) => ({ ...task, rank: index + 1 }));
@@ -233,6 +280,16 @@ function buildReport(options) {
   const nextProducerTask = radarReport.nextProducerRefreshTask || tasks[0] || null;
   const selectedProducerTask = nextProducerTask && String(nextProducerTask.title || "").includes("next-slice-selector") ? tasks[0] || null : nextProducerTask;
   const semanticTasks = semanticTasksFromRadar(radarReport);
+  const artifactConsistencyWarnings = semanticTasks
+    .filter((task) => task.packetArtifact?.consistency?.ok === false)
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      packetPath: task.packetArtifact.path,
+      severity: task.packetArtifact.consistency.severity,
+      warnings: task.packetArtifact.consistency.warnings,
+      safeNextStep: task.command ? `Run ${task.command}` : "Refresh packet evidence before review."
+    }));
   const selectedTask = selectedProducerTask || semanticTasks[0] || null;
   const staleProducerCount = Array.isArray(radarReport.sources?.producerArtifactFreshness)
     ? radarReport.sources.producerArtifactFreshness.filter((entry) => entry.stale).length
@@ -255,6 +312,7 @@ function buildReport(options) {
     nextTask: selectedTask,
     rankedPreview: [...tasks, ...semanticTasks].slice(0, 5),
     semanticTaskCount: semanticTasks.length,
+    artifactConsistencyWarnings,
     staleProducerCount,
     safeNextStep: selectedTask
       ? selectedTask.proposedFix || selectedTask.title
@@ -277,6 +335,7 @@ function renderMarkdown(report) {
     `- Radar status: ${report.source.radarStatus}`,
     `- Stale producer count: ${report.staleProducerCount ?? "unknown"}`,
     `- Semantic radar tasks: ${report.semanticTaskCount ?? 0}`,
+    `- Artifact consistency warnings: ${report.artifactConsistencyWarnings?.length ?? 0}`,
     `- Ignored selector self-tasks: ${report.ignoredSelfTasks}`,
     "",
     "## Next Task",
@@ -298,6 +357,16 @@ function renderMarkdown(report) {
     if (report.nextTask.evidence) lines.push(`- Evidence: ${report.nextTask.evidence}`);
     lines.push(`- Proposed fix: ${report.nextTask.proposedFix}`);
     lines.push(`- Safety notes: ${report.nextTask.safetyNotes}`);
+  }
+  lines.push("");
+  lines.push("## Artifact Consistency Warnings");
+  lines.push("");
+  if (!report.artifactConsistencyWarnings?.length) {
+    lines.push("- No artifact consistency warnings.");
+  } else {
+    for (const warning of report.artifactConsistencyWarnings) {
+      lines.push(`- ${warning.title}: ${warning.warnings.join(" ")} Safe next step: ${warning.safeNextStep}.`);
+    }
   }
   lines.push("");
   lines.push("## Ranked Preview");

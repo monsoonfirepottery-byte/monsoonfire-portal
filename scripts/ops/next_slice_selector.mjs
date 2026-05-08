@@ -192,13 +192,18 @@ function packetArtifactFor(id, radarReport) {
     };
   }
   const value = artifact.value || {};
-  const packets = Array.isArray(value.packets) ? value.packets.length : Number(value.summary?.packets || 0);
+  const packetRows = Array.isArray(value.packets) ? value.packets : [];
+  const packets = packetRows.length ? packetRows.length : Number(value.summary?.packets || 0);
+  const approvalRequiredPackets = packetRows.filter((packet) => packet.approvalRequired).length;
+  const allPacketsRequireApproval = packets > 0 && packetRows.length > 0 && approvalRequiredPackets === packetRows.length;
   const consistency = consistencyForPacket(id, value, radarReport);
   return {
     ok: true,
     path: repoRelative(path),
     status: value.status || "unknown",
     packets,
+    approvalRequiredPackets,
+    allPacketsRequireApproval,
     generatedAt: value.generatedAt || "",
     sourceGeneratedAt: value.source?.generatedAt || "",
     error: "",
@@ -218,6 +223,7 @@ function taskFromRecommendation(recommendation, finding, rank, radarReport) {
   const id = finding?.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const packetArtifact = packetArtifactFor(id, radarReport);
   const packetReady = packetArtifact?.ok && packetArtifact.packets > 0 && packetArtifact.status === "action_needed" && packetArtifact.consistency?.ok !== false;
+  const packetApprovalGate = packetReady && packetArtifact.allPacketsRequireApproval;
   const command = commandMap[id] || "";
   const priorityScore = { P0: 100, P1: 80, P2: 60, P3: 40 };
   const severityScore = { critical: 100, high: 80, medium: 60, low: 40 };
@@ -237,11 +243,11 @@ function taskFromRecommendation(recommendation, finding, rank, radarReport) {
     effort: recommendation.effort || "",
     risk: recommendation.risk || "low",
     command: packetReady ? "" : command,
-    commandSafetyClass: packetReady ? "review-existing-packet" : command ? "read-only-report" : "manual-planning",
+    commandSafetyClass: packetApprovalGate ? "human-approval-review" : packetReady ? "review-existing-packet" : command ? "read-only-report" : "manual-planning",
     problem: finding?.impact || finding?.title || "Radar reported an actionable operational issue.",
     evidence: finding?.evidence || "",
     proposedFix: packetReady
-      ? `Review ${packetArtifact.path}; it already contains ${packetArtifact.packets} current packet(s) generated at ${packetArtifact.generatedAt || "unknown time"}.`
+      ? `Review ${packetArtifact.path}; it already contains ${packetArtifact.packets} current packet(s) generated at ${packetArtifact.generatedAt || "unknown time"}${packetApprovalGate ? ", and every packet is approval-gated" : ""}.`
       : packetArtifact?.ok && packetArtifact.consistency?.ok === false && command
         ? `Refresh ${packetArtifact.path} with \`${command}\`; ${packetArtifact.consistency.warnings.join(" ")}`
       : finding?.safeNextStep || recommendation.acceptanceCriteria?.[0] || title,
@@ -290,7 +296,18 @@ function buildReport(options) {
       warnings: task.packetArtifact.consistency.warnings,
       safeNextStep: task.command ? `Run ${task.command}` : "Refresh packet evidence before review."
     }));
+  const approvalGates = semanticTasks
+    .filter((task) => task.commandSafetyClass === "human-approval-review")
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      packetPath: task.packetArtifact.path,
+      packets: task.packetArtifact.packets,
+      approvalRequiredPackets: task.packetArtifact.approvalRequiredPackets,
+      safeNextStep: task.proposedFix
+    }));
   const selectedTask = selectedProducerTask || semanticTasks[0] || null;
+  const actionableTasks = [...tasks, ...semanticTasks].filter((task) => task.command || !["human-approval-review", "review-existing-packet"].includes(task.commandSafetyClass));
   const staleProducerCount = Array.isArray(radarReport.sources?.producerArtifactFreshness)
     ? radarReport.sources.producerArtifactFreshness.filter((entry) => entry.stale).length
     : null;
@@ -299,7 +316,13 @@ function buildReport(options) {
     schema: "studio-brain.ops.next-slice-selector.v1",
     generatedAt,
     readOnly: true,
-    status: radar.ok ? selectedTask ? "action_ready" : "ok" : "blocked",
+    status: radar.ok
+      ? selectedTask
+        ? selectedTask.commandSafetyClass === "human-approval-review" && !actionableTasks.length
+          ? "blocked_on_approval"
+          : "action_ready"
+        : "ok"
+      : "blocked",
     source: {
       refreshedRadar: options.refresh,
       radarPath: repoRelative(options.radar),
@@ -312,7 +335,9 @@ function buildReport(options) {
     nextTask: selectedTask,
     rankedPreview: [...tasks, ...semanticTasks].slice(0, 5),
     semanticTaskCount: semanticTasks.length,
+    actionableTaskCount: actionableTasks.length,
     artifactConsistencyWarnings,
+    approvalGates,
     staleProducerCount,
     safeNextStep: selectedTask
       ? selectedTask.proposedFix || selectedTask.title
@@ -335,7 +360,9 @@ function renderMarkdown(report) {
     `- Radar status: ${report.source.radarStatus}`,
     `- Stale producer count: ${report.staleProducerCount ?? "unknown"}`,
     `- Semantic radar tasks: ${report.semanticTaskCount ?? 0}`,
+    `- Actionable task count: ${report.actionableTaskCount ?? 0}`,
     `- Artifact consistency warnings: ${report.artifactConsistencyWarnings?.length ?? 0}`,
+    `- Approval gates: ${report.approvalGates?.length ?? 0}`,
     `- Ignored selector self-tasks: ${report.ignoredSelfTasks}`,
     "",
     "## Next Task",
@@ -351,12 +378,22 @@ function renderMarkdown(report) {
     lines.push(`- Command safety: ${report.nextTask.commandSafetyClass}`);
     if (report.nextTask.command) lines.push(`- Suggested command: \`${report.nextTask.command}\``);
     if (report.nextTask.packetArtifact?.path) {
-      lines.push(`- Existing packet: ${report.nextTask.packetArtifact.path} (${report.nextTask.packetArtifact.status}; ${report.nextTask.packetArtifact.packets} packet(s))`);
+      lines.push(`- Existing packet: ${report.nextTask.packetArtifact.path} (${report.nextTask.packetArtifact.status}; ${report.nextTask.packetArtifact.packets} packet(s); ${report.nextTask.packetArtifact.approvalRequiredPackets || 0} approval-gated)`);
     }
     lines.push(`- Problem: ${report.nextTask.problem}`);
     if (report.nextTask.evidence) lines.push(`- Evidence: ${report.nextTask.evidence}`);
     lines.push(`- Proposed fix: ${report.nextTask.proposedFix}`);
     lines.push(`- Safety notes: ${report.nextTask.safetyNotes}`);
+  }
+  lines.push("");
+  lines.push("## Approval Gates");
+  lines.push("");
+  if (!report.approvalGates?.length) {
+    lines.push("- No approval-gated packet reviews.");
+  } else {
+    for (const gate of report.approvalGates) {
+      lines.push(`- ${gate.title}: ${gate.approvalRequiredPackets}/${gate.packets} packet(s) require approval. Packet: ${gate.packetPath}.`);
+    }
   }
   lines.push("");
   lines.push("## Artifact Consistency Warnings");

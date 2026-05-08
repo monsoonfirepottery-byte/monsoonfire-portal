@@ -464,6 +464,7 @@ function buildReport(options) {
     },
     findings,
     recommendations: buildRecommendations(findings),
+    nextProducerRefreshTask: producerRefreshTasks[0] || null,
     producerRefreshTasks
   };
 }
@@ -490,6 +491,7 @@ function renderMarkdown(report) {
     `- Ops scripts without Makefile target: ${report.sources.scriptInventory.withoutMakeTarget.length}`,
     `- Producer artifact paths tracked: ${report.sources.producerArtifactFreshness.length}`,
     `- Stale or missing producer artifact paths: ${report.sources.producerArtifactFreshness.filter((entry) => entry.stale).length}`,
+    `- Next producer refresh: ${report.nextProducerRefreshTask ? `${report.nextProducerRefreshTask.title} (${report.nextProducerRefreshTask.commandSafetyClass})` : "none"}`,
     "",
     "## Findings",
     ""

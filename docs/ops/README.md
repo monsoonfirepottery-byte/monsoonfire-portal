@@ -56,6 +56,7 @@ make ops-systemd-drift
 make ops-portal-bridge-review
 make ops-app-review
 make ops-dependency-review
+make ops-dependency-cadence
 make ops-dependency-security-scout
 make ops-dependency-remediation-packet
 make ops-dependency-upstream-watch
@@ -89,6 +90,7 @@ npm run ops:command-manifest
 npm run ops:output:retention
 npm run ops:next-slice:selector
 npm run ops:pr-conflict:packets
+npm run ops:dependency:cadence
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch
@@ -149,6 +151,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 The scanner reads producer freshness expectations from `docs/ops/output-artifact-producers.json`; missing producers fall back to a conservative 14-day review window and human-approved cleanup.
 
 `ops-dependency-security-scout` compares open Dependabot alerts, open Dependabot PR readiness, and local `npm audit` summaries across the repo's package surfaces. It writes issue-ready follow-up tasks under `output/ops/dependency-security-scout` and does not install, update, or fix packages.
+
+`ops-dependency-cadence` refreshes the dependency scout, upstream-watch, and zero-baseline producers, then writes one operator packet under `output/ops/dependency-cadence`. It does not install, update, audit-fix, override, remove, or rewrite dependencies.
 
 `ops-dependency-remediation-packet` turns high/critical npm audit findings into a read-only decision packet with dependency chains, owner-package candidates, latest-version hints, safe next steps, acceptance criteria, and rollback notes. It writes under `output/ops/dependency-remediation` and does not install, update, override, or remove dependencies.
 

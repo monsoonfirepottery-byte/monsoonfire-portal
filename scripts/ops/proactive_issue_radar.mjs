@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { buildManifest as buildCommandManifest } from "./ops_command_manifest.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
@@ -322,6 +323,28 @@ function scriptInventory() {
   });
 }
 
+function commandManifestInventory() {
+  try {
+    const manifest = buildCommandManifest();
+    const npmOnlyCommands = Array.isArray(manifest.npmOnlyCommands) ? manifest.npmOnlyCommands : [];
+    return {
+      ok: true,
+      error: "",
+      status: clean(manifest.status) || "unknown",
+      npmOnlyCommands,
+      unclassifiedNpmOnlyCommands: npmOnlyCommands.filter((command) => command.operatorClass === "unclassified_npm_only")
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: clean(error.message),
+      status: "unavailable",
+      npmOnlyCommands: [],
+      unclassifiedNpmOnlyCommands: []
+    };
+  }
+}
+
 function isOperatorFacingScript(basename, type) {
   if (type === "sql") return false;
   if (/\.test\.mjs$/i.test(basename)) return false;
@@ -362,7 +385,7 @@ function packetApprovalStateForFinding(id) {
   };
 }
 
-function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
+function buildFindings({ prs, status, freshness, producerArtifacts, scripts, commandManifest }) {
   const findings = [];
   const rows = prs.rows || [];
   const blockingMergeStates = new Set(["DIRTY", "UNSTABLE", "BEHIND", "BLOCKED"]);
@@ -372,6 +395,7 @@ function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
   const staleArtifacts = freshness.filter((entry) => entry.stale);
   const staleProducerArtifacts = producerArtifacts.filter((entry) => entry.stale);
   const hiddenScripts = scripts.filter((entry) => entry.operatorFacing && !entry.makeTarget);
+  const unclassifiedNpmOnlyCommands = commandManifest.unclassifiedNpmOnlyCommands || [];
 
   if (!prs.ok) {
     findings.push(makeFinding("high", "github-pr-visibility-unavailable", "GitHub PR visibility is unavailable", "GitHub", prs.error, "Merge and release risk cannot be assessed automatically.", "Restore gh auth/network and rerun the radar.", "No repo rollback; this is read-only."));
@@ -400,6 +424,11 @@ function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
   if (hiddenScripts.length) {
     findings.push(makeFinding("low", "ops-scripts-without-make-targets", "Some ops scripts lack Makefile wrappers", "scripts/ops", `${hiddenScripts.length} script(s) do not appear to have make targets.`, "Useful diagnostics may remain hidden from operators.", "Add wrappers or README direct-command entries for high-value scripts.", "Makefile/doc change only."));
   }
+  if (!commandManifest.ok) {
+    findings.push(makeFinding("medium", "ops-command-manifest-unavailable", "Ops command manifest is unavailable", "ops command surface", commandManifest.error || "command manifest build failed", "The radar cannot prove command safety classifications or detect newly ambiguous npm-only commands.", "Run `npm run ops:command-manifest:check` and fix the reported manifest error.", "No repo rollback; this is read-only evidence generation."));
+  } else if (unclassifiedNpmOnlyCommands.length) {
+    findings.push(makeFinding("low", "ops-npm-only-commands-unclassified", "Some npm-only ops commands are unclassified", "ops command surface", unclassifiedNpmOnlyCommands.map((command) => `${command.name} (${command.approvalClass || "unknown"})`).join(", "), "Operator-facing commands can appear without an explicit safety posture, making automation harder to trust.", "Classify the npm-only command in `scripts/ops/ops_command_manifest.mjs` or add an intentional Make wrapper/docs entry.", "Manifest-only change; rollback by reverting the classification patch."));
+  }
   return findings;
 }
 
@@ -418,7 +447,9 @@ function recommendationTitle(id, fallback) {
     "large-stacked-draft-pr-backlog": "Generate PR backlog decision packets for stacked drafts",
     "current-worktree-dirty": "Enforce clean-worktree lanes for ops slices",
     "stale-ops-artifacts": "Refresh stale ops evidence artifacts",
-    "ops-scripts-without-make-targets": "Expose hidden ops scripts through Makefile wrappers"
+    "ops-scripts-without-make-targets": "Expose hidden ops scripts through Makefile wrappers",
+    "ops-command-manifest-unavailable": "Restore ops command manifest generation",
+    "ops-npm-only-commands-unclassified": "Classify npm-only ops commands"
   };
   return titles[id] || `Investigate ${fallback.toLowerCase()}`;
 }
@@ -568,7 +599,8 @@ function buildReport(options) {
   const freshness = artifactFreshness();
   const producerArtifacts = producerArtifactFreshness(options.write ? { outputDir: options.outputDir, generatedAt } : null);
   const scripts = scriptInventory();
-  const findings = buildFindings({ prs, status, freshness, producerArtifacts, scripts });
+  const commandManifest = commandManifestInventory();
+  const findings = buildFindings({ prs, status, freshness, producerArtifacts, scripts, commandManifest });
   const approvalGateFindings = findings
     .map((finding) => packetApprovalStateForFinding(finding.id))
     .filter((state) => state?.allPacketsRequireApproval);
@@ -601,6 +633,13 @@ function buildReport(options) {
       scriptInventory: {
         count: scripts.length,
         withoutMakeTarget: scripts.filter((script) => script.operatorFacing && !script.makeTarget).map((script) => script.path)
+      },
+      commandManifest: {
+        ok: commandManifest.ok,
+        error: commandManifest.error,
+        status: commandManifest.status,
+        npmOnlyCommands: commandManifest.npmOnlyCommands.length,
+        unclassifiedNpmOnlyCommands: commandManifest.unclassifiedNpmOnlyCommands.map((command) => command.name)
       }
     },
     findings,
@@ -633,6 +672,8 @@ function renderMarkdown(report) {
     `- Local dirty paths: ${report.sources.gitStatus.dirtyCount ?? "unknown"}`,
     `- Ops scripts inventoried: ${report.sources.scriptInventory.count}`,
     `- Ops scripts without Makefile target: ${report.sources.scriptInventory.withoutMakeTarget.length}`,
+    `- Npm-only ops commands: ${report.sources.commandManifest.npmOnlyCommands}`,
+    `- Unclassified npm-only ops commands: ${report.sources.commandManifest.unclassifiedNpmOnlyCommands.length}`,
     `- Producer artifact paths tracked: ${report.sources.producerArtifactFreshness.length}`,
     `- Stale or missing producer artifact paths: ${report.sources.producerArtifactFreshness.filter((entry) => entry.stale).length}`,
     `- Next producer refresh: ${report.nextProducerRefreshTask ? `${report.nextProducerRefreshTask.title} (${report.nextProducerRefreshTask.commandSafetyClass})` : "none"}`,

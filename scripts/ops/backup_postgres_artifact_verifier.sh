@@ -116,6 +116,112 @@ console.log(`freshest_freshness: ${ageHours <= maxAgeHours ? "fresh" : "stale"}`
 NODE
 }
 
+freshest_artifact_path() {
+  local dir="$1"
+
+  if [ ! -d "${dir}" ] || ! command -v node >/dev/null 2>&1; then
+    return 0
+  fi
+
+  node - "${dir}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+const root = process.argv[2];
+const patterns = [/\.dump$/i, /\.backup$/i, /\.pgdump$/i, /\.tar$/i];
+
+function walk(dir, out = []) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full, out);
+    } else if (entry.isFile() && patterns.some((pattern) => pattern.test(entry.name))) {
+      try {
+        const stat = fs.statSync(full);
+        out.push({ path: full, mtimeMs: stat.mtimeMs, size: stat.size });
+      } catch {
+        // Ignore files that disappear or cannot be statted during the read-only walk.
+      }
+    }
+  }
+  return out;
+}
+
+const files = walk(root).sort((a, b) => b.mtimeMs - a.mtimeMs);
+if (files[0]) console.log(files[0].path);
+NODE
+}
+
+pg_restore_list_metadata() {
+  section "PostgreSQL Dump List Metadata"
+
+  local artifact_path
+  artifact_path="$(freshest_artifact_path "${POSTGRES_BACKUP_ROOT}" | head -n 1)"
+  printf 'artifact_root: %s\n' "${POSTGRES_BACKUP_ROOT}"
+
+  if [ -z "${artifact_path}" ]; then
+    printf 'list_check_status: no_custom_format_artifact\n'
+    printf 'notes: pg_restore --list supports custom, directory, and tar archives; plain SQL archives need separate restore-drill handling.\n'
+    return 0
+  fi
+
+  printf 'artifact_path: %s\n' "${artifact_path}"
+
+  if [ ! -r "${artifact_path}" ]; then
+    printf 'list_check_status: unreadable_or_permission_denied\n'
+    printf 'notes: artifact metadata exists but current user cannot read it without an approved privileged capture.\n'
+    return 0
+  fi
+
+  if ! command -v pg_restore >/dev/null 2>&1; then
+    printf 'list_check_status: skipped_pg_restore_unavailable\n'
+    printf 'notes: install or expose pg_restore on the inspection host, or capture this check from the PostgreSQL container if the artifact is mounted there.\n'
+    return 0
+  fi
+
+  local list_output
+  local list_status
+  list_output="$(pg_restore --list "${artifact_path}" 2>&1)"
+  list_status=$?
+
+  printf 'list_check_status: %s\n' "$([ "${list_status}" -eq 0 ] && printf readable || printf failed)"
+  printf 'pg_restore_list_exit_status: %s\n' "${list_status}"
+
+  if [ "${list_status}" -ne 0 ]; then
+    printf 'pg_restore_list_error: %s\n' "$(printf '%s\n' "${list_output}" | head -n 3 | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g')"
+    return 0
+  fi
+
+  local toc_total
+  local toc_schema
+  local toc_table_all
+  local toc_index
+  local toc_data
+  local toc_table
+  toc_total="$(printf '%s\n' "${list_output}" | wc -l | awk '{print $1}')"
+  toc_schema="$(printf '%s\n' "${list_output}" | grep -Ec '^[0-9]+; [0-9]+ [0-9]+ SCHEMA ' || true)"
+  toc_table_all="$(printf '%s\n' "${list_output}" | grep -Ec '^[0-9]+; [0-9]+ [0-9]+ TABLE ' || true)"
+  toc_index="$(printf '%s\n' "${list_output}" | grep -Ec '^[0-9]+; [0-9]+ [0-9]+ INDEX ' || true)"
+  toc_data="$(printf '%s\n' "${list_output}" | grep -Ec '^[0-9]+; [0-9]+ [0-9]+ TABLE DATA ' || true)"
+  toc_table=$((toc_table_all - toc_data))
+  if [ "${toc_table}" -lt 0 ]; then
+    toc_table=0
+  fi
+
+  printf 'toc_total_lines: %s\n' "${toc_total}"
+  printf 'toc_schema_lines: %s\n' "${toc_schema}"
+  printf 'toc_table_lines: %s\n' "${toc_table}"
+  printf 'toc_index_lines: %s\n' "${toc_index}"
+  printf 'toc_data_lines: %s\n' "${toc_data}"
+  printf 'notes: metadata-only pg_restore --list check; object names and row contents are not printed.\n'
+}
+
 container_readiness() {
   section "Container And Tool Readiness"
   printf 'container: %s\n' "${PG_CONTAINER}"
@@ -152,6 +258,8 @@ printf 'freshness_threshold_hours: %s\n' "${MAX_AGE_HOURS}"
 section "Freshest PostgreSQL Artifact"
 freshest_artifact "${POSTGRES_BACKUP_ROOT}"
 
+pg_restore_list_metadata
+
 section "Artifact Inventory"
 list_artifacts "custom-format dumps" "${POSTGRES_BACKUP_ROOT}" "*.dump" 10
 list_artifacts "sql archives" "${POSTGRES_BACKUP_ROOT}" "*.sql*" 10
@@ -162,5 +270,6 @@ container_readiness
 
 section "Verifier Result Interpretation"
 printf -- '- PASS candidate: a fresh non-empty PostgreSQL artifact plus pg_dump and pg_restore tool readiness.\n'
-printf -- '- GAP: missing or stale artifacts, missing container/tool readiness, or no restore drill summary.\n'
+printf -- '- STRONGER PASS candidate: a fresh artifact with readable pg_restore --list metadata plus pg_dump and pg_restore tool readiness.\n'
+printf -- '- GAP: missing or stale artifacts, missing or failed pg_restore list metadata, missing container/tool readiness, or no restore drill summary.\n'
 printf -- '- This verifier does not prove restore correctness; pair it with the restore-prerequisite drill packet.\n'

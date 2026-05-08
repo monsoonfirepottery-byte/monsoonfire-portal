@@ -132,6 +132,66 @@ function safeJsonParse(raw, fallback) {
   }
 }
 
+function packageNameFromLockPath(path) {
+  const parts = String(path || "").split("node_modules/");
+  const last = parts.at(-1) || "";
+  if (!last) return "";
+  const segments = last.split("/");
+  return last.startsWith("@") ? `${segments[0]}/${segments[1] || ""}` : segments[0];
+}
+
+function loadLockGraph(packageLockPath) {
+  if (!existsSync(packageLockPath)) return { packages: {}, reverseByName: new Map() };
+  const lock = safeJsonParse(readFileSync(packageLockPath, "utf8"), {});
+  const packages = lock.packages && typeof lock.packages === "object" ? lock.packages : {};
+  const reverseByName = new Map();
+  for (const [path, metadata] of Object.entries(packages)) {
+    const dependencyGroups = [
+      metadata?.dependencies,
+      metadata?.devDependencies,
+      metadata?.optionalDependencies,
+      metadata?.peerDependencies
+    ].filter((group) => group && typeof group === "object");
+    const dependencies = Object.assign({}, ...dependencyGroups);
+    for (const dependencyName of Object.keys(dependencies)) {
+      const parents = reverseByName.get(dependencyName) || [];
+      parents.push(path || "(root)");
+      reverseByName.set(dependencyName, parents);
+    }
+  }
+  return { packages, reverseByName };
+}
+
+function shortestDependencyChain(targetPath, graph) {
+  const normalizedTarget = targetPath || "";
+  const targetName = packageNameFromLockPath(normalizedTarget);
+  if (!targetName) return [];
+  const queue = [{ path: normalizedTarget, chain: [normalizedTarget] }];
+  const seen = new Set([normalizedTarget]);
+  while (queue.length) {
+    const current = queue.shift();
+    const currentName = packageNameFromLockPath(current.path);
+    const parents = graph.reverseByName.get(currentName) || [];
+    for (const parent of parents) {
+      const parentPath = parent === "(root)" ? "" : parent;
+      if (seen.has(parentPath)) continue;
+      const nextChain = [parentPath || "(root)", ...current.chain];
+      if (!parentPath) return nextChain;
+      seen.add(parentPath);
+      queue.push({ path: parentPath, chain: nextChain });
+    }
+  }
+  return [normalizedTarget];
+}
+
+function advisoryIds(vulnerability) {
+  const via = Array.isArray(vulnerability?.via) ? vulnerability.via : [];
+  return via
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => entry.url || entry.source || entry.title || entry.name)
+    .filter(Boolean);
+}
+
 function githubAlerts(repo) {
   if (!commandExists("gh")) {
     return { status: "skipped_gh_unavailable", alerts: [], error: "" };
@@ -249,7 +309,21 @@ function npmAuditWorkspace(summary, enabled) {
   });
   const audit = safeJsonParse(result.stdout, {});
   const counts = audit.metadata?.vulnerabilities || {};
-  const vulnerabilities = audit.vulnerabilities && typeof audit.vulnerabilities === "object" ? Object.keys(audit.vulnerabilities).sort() : [];
+  const vulnerabilityMap = audit.vulnerabilities && typeof audit.vulnerabilities === "object" ? audit.vulnerabilities : {};
+  const vulnerabilities = Object.keys(vulnerabilityMap).sort();
+  const graph = loadLockGraph(resolve(REPO_ROOT, summary.packageLock));
+  const vulnerableChains = vulnerabilities.map((name) => {
+    const vulnerability = vulnerabilityMap[name] || {};
+    const nodes = Array.isArray(vulnerability.nodes) ? vulnerability.nodes : [];
+    return {
+      name,
+      severity: vulnerability.severity || "",
+      range: vulnerability.range || "",
+      fixAvailable: Boolean(vulnerability.fixAvailable),
+      advisories: advisoryIds(vulnerability).slice(0, 5),
+      chains: nodes.slice(0, 5).map((node) => shortestDependencyChain(node, graph)).filter((chain) => chain.length > 0)
+    };
+  });
   summary.audit = {
     status: result.status === 0 ? "clean" : vulnerabilities.length > 0 ? "vulnerabilities_found" : "audit_error",
     exitStatus: result.status,
@@ -262,6 +336,7 @@ function npmAuditWorkspace(summary, enabled) {
       total: counts.total || 0
     },
     affectedPackages: vulnerabilities.slice(0, 30),
+    vulnerableChains,
     stderrSummary: firstLines(result.stderr || result.error)
   };
   return summary;
@@ -326,6 +401,10 @@ function issueReadyTasks(report) {
         "## Evidence",
         `- Counts: high=${counts.high || 0}, critical=${counts.critical || 0}, total=${counts.total || 0}`,
         `- Affected package sample: ${(workspace.audit.affectedPackages || []).join(", ") || "none"}`,
+        ...((workspace.audit.vulnerableChains || [])
+          .filter((item) => item.severity === "high" || item.severity === "critical")
+          .slice(0, 5)
+          .map((item) => `- Chain for ${item.name}: ${(item.chains?.[0] || []).join(" -> ") || "unresolved"}`)),
         "",
         "## Risk",
         "Local npm audit may reveal dependency risk that is not represented by currently open GitHub alerts.",
@@ -419,6 +498,20 @@ function renderMarkdown(report) {
     const counts = workspace.audit?.counts || {};
     lines.push(`| \`${workspace.path}\` | ${workspace.audit?.status || "unknown"} | ${counts.moderate || 0} | ${counts.high || 0} | ${counts.critical || 0} | ${counts.total || 0} | ${(workspace.audit?.affectedPackages || []).slice(0, 8).join(", ") || ""} |`);
   }
+  lines.push("");
+  lines.push("## Vulnerable Dependency Chains");
+  lines.push("");
+  lines.push("| Workspace | Package | Severity | Range | Chain | Advisories |");
+  lines.push("| --- | --- | --- | --- | --- | --- |");
+  let chainRows = 0;
+  for (const workspace of report.workspaces) {
+    for (const item of workspace.audit?.vulnerableChains || []) {
+      const chain = (item.chains?.[0] || []).join(" -> ");
+      lines.push(`| \`${workspace.path}\` | \`${item.name}\` | ${item.severity || ""} | \`${item.range || ""}\` | ${chain || "unresolved"} | ${(item.advisories || []).join(", ")} |`);
+      chainRows += 1;
+    }
+  }
+  if (!chainRows) lines.push("| n/a | n/a | n/a | n/a | n/a | n/a |");
   lines.push("");
   lines.push("## Issue-Ready Tasks");
   lines.push("");

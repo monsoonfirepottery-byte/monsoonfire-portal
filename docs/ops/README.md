@@ -159,6 +159,14 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 
 `ops-next-slice-selector` refreshes the proactive radar, then emits the single highest-ranked producer refresh task plus a short ranked preview. It writes under `output/ops/next-slice-selector` and never runs the selected refresh command for you.
 
+Selector statuses are intentionally conservative:
+
+- `action_ready`: a safe read-only command or producer refresh is available to run.
+- `blocked_on_approval`: the highest-value remaining work is represented by approval-gated packets, such as dirty PR conflict packets or stacked draft owner decisions.
+- `manual_review`: the next item is commandless planning/review work, not executable automation.
+- `ok`: no producer refresh or radar recommendation task is currently selected.
+- `blocked`: selector input could not be read or refreshed.
+
 `ops-producer-refresh` reads `docs/ops/output-artifact-producers.json` and creates a safe refresh plan for stale producer evidence. It is plan-only by default; pass `-- --execute` through npm, or run the node script with `--execute`, when you intentionally want it to run selected read-only refresh commands. Live probes and approval-gated commands are skipped unless explicitly included.
 
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.

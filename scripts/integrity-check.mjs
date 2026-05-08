@@ -270,6 +270,9 @@ function shouldNormalizeText(filePath) {
   if (/(^|\/)Caddyfile$/.test(normalized)) {
     return true;
   }
+  if (normalized.includes("/config/studiobrain/sudoers/")) {
+    return true;
+  }
   const ext = normalized.includes(".") ? `.${normalized.split(".").pop()}` : "";
   return TEXT_FILE_EXTENSIONS.has(ext);
 }

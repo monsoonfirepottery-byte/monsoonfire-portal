@@ -23,7 +23,10 @@ This directory is the durable operations surface for Studio Brain. It separates 
 | `20-swarm-slice-48-approval-backlog.md` | Issue-ready backlog entries for remaining approval gates. |
 | `21-swarm-slice-49-roadmap-30-60-90.md` | Refreshed 30/60/90 Studio Brain ops roadmap. |
 | `22-privileged-evidence-capture.md` | Approval-gated workaround for sudo-unavailable agents: a narrow root capture job plus read-only agent reader. |
+| `24-proactive-admin-loop-wave1.md` | First proactive admin loop plan: radar, selectors, effectivity, and loop closeout. |
+| `25-proactive-admin-loop-wave2.md` | Second proactive admin loop plan: dependency, producer, PR stack, and evidence refresh lanes. |
 | `26-dependency-security-cadence.md` | Daily/weekly dependency guard cadence, stale-alert handling, and safe lockfile refresh workflow. |
+| `27-proactive-admin-loop-wave3.md` | Third proactive admin loop plan: selector fixtures, command policy, producer schemas, host/DB/Docker semantics, and Mission Control import contracts. |
 
 ## Safe Commands
 

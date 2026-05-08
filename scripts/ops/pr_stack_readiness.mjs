@@ -164,6 +164,8 @@ function classify(pr) {
   if (!pr.isDraft && pr.mergeStateStatus === "DIRTY") blockers.push("non-draft DIRTY");
   if (!pr.isDraft && pr.mergeStateStatus === "UNSTABLE") blockers.push("checks pending or unstable");
   if (!pr.isDraft && pr.mergeStateStatus === "BEHIND") blockers.push("behind main");
+  if (!pr.isDraft && pr.mergeStateStatus === "BLOCKED") blockers.push("blocked by merge requirements");
+  if (!pr.isDraft && pr.mergeStateStatus === "UNKNOWN") blockers.push("unknown mergeability");
   if (pr.isDraft) blockers.push("draft");
   if (pr.baseRefName !== "main") blockers.push(`stacked on ${pr.baseRefName}`);
   if (age !== null && age > 7) blockers.push(`${age} days since update`);
@@ -205,6 +207,20 @@ function dispositionFor(pr) {
       action: "update_branch_or_rebase",
       approval: "codex",
       reason: "Non-draft PR is behind main; update from current main and rerun checks before merge."
+    };
+  }
+  if (!pr.isDraft && pr.mergeStateStatus === "BLOCKED") {
+    return {
+      action: "wait_for_required_checks_or_policy",
+      approval: "codex",
+      reason: "Non-draft PR is blocked by required checks, review policy, or merge requirements."
+    };
+  }
+  if (!pr.isDraft && pr.mergeStateStatus === "UNKNOWN") {
+    return {
+      action: "refresh_mergeability",
+      approval: "codex",
+      reason: "GitHub has not resolved mergeability; refresh the packet before acting."
     };
   }
   if (!pr.isDraft && pr.blockers.length === 0) {

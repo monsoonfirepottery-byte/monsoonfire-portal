@@ -85,14 +85,14 @@
     },
     "incidents": {
       "outputPath": "output/ops/incidents",
-      "refreshCommand": "make ops-incident-bundle",
+      "refreshCommand": "npm run ops:incident:bundle",
       "freshnessDays": 30,
       "retentionClass": "incident",
       "cleanupApproval": "human"
     },
     "incidents-v2": {
       "outputPath": "output/ops/incidents-v2",
-      "refreshCommand": "make ops-incident-bundle-v2",
+      "refreshCommand": "npm run ops:incident:bundle:v2",
       "freshnessDays": 30,
       "retentionClass": "incident",
       "cleanupApproval": "human"

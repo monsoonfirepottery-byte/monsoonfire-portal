@@ -228,6 +228,8 @@
     "backup:verify:freshness": "node ./scripts/studiobrain-backup-drill.mjs verify --freshness-only --json --strict",
     "backup:restore:drill": "node ./scripts/studiobrain-backup-drill.mjs restore-drill --strict",
     "incident:bundle": "node ./scripts/studiobrain-incident-bundle.mjs",
+    "ops:incident:bundle": "bash ./scripts/ops/incident_bundle.sh",
+    "ops:incident:bundle:v2": "bash ./scripts/ops/incident_bundle_v2.sh",
     "studio:observability:up": "node ./scripts/studiobrain-observability-bundle.mjs up",
     "studio:observability:down": "node ./scripts/studiobrain-observability-bundle.mjs down",
     "studio:observability:status": "node ./scripts/studiobrain-observability-bundle.mjs status",

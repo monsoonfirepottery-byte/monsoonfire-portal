@@ -36,6 +36,12 @@
       "retentionClass": "ticket-evidence",
       "cleanupApproval": "human"
     },
+    "proactive-radar": {
+      "outputPath": "output/ops/proactive-radar",
+      "freshnessDays": 1,
+      "retentionClass": "next-slice-evidence",
+      "cleanupApproval": "human"
+    },
     "output-retention": {
       "outputPath": "output/ops/output-retention",
       "freshnessDays": 7,

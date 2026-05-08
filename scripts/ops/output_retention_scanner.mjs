@@ -162,7 +162,8 @@ function groupByProducer(files) {
 function policyForProducer(policy, producer) {
   return {
     ...policy.default,
-    ...(policy.producers?.[producer] || {})
+    ...(policy.producers?.[producer] || {}),
+    explicit: Boolean(policy.producers?.[producer])
   };
 }
 
@@ -202,6 +203,15 @@ function buildReport(options) {
   }
 
   const findings = [];
+  const missingPolicyProducers = producers.filter((producer) => !producer.policy?.explicit);
+  if (missingPolicyProducers.length) {
+    findings.push({
+      severity: "low",
+      title: "Ops output producers are missing explicit retention policy",
+      evidence: missingPolicyProducers.map((producer) => producer.producer).join(", "),
+      safeNextStep: "Add producer entries to docs/ops/output-artifact-producers.json before relying on default retention."
+    });
+  }
   if (totalMb >= options.criticalMb) {
     findings.push({
       severity: "critical",
@@ -295,11 +305,11 @@ function renderMarkdown(report) {
   for (const finding of report.findings) {
     lines.push(`- ${finding.severity.toUpperCase()}: ${finding.title}; ${finding.evidence}; next: ${finding.safeNextStep}`);
   }
-  lines.push("", "## Producers", "", "| Producer | Files | Size MB | Newest age | Policy days | Policy status | Retention class | Stale files |", "| --- | ---: | ---: | ---: | ---: | --- | --- | ---: |");
+  lines.push("", "## Producers", "", "| Producer | Files | Size MB | Newest age | Policy days | Explicit policy | Policy status | Retention class | Stale files |", "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | ---: |");
   for (const producer of report.producers || []) {
-    lines.push(`| \`${producer.producer}\` | ${producer.files} | ${producer.sizeMb} | ${producer.newestAgeDays ?? "?"} | ${producer.policy?.freshnessDays ?? "?"} | ${producer.policyStatus || "unknown"} | ${producer.policy?.retentionClass || "unknown"} | ${producer.staleFiles} |`);
+    lines.push(`| \`${producer.producer}\` | ${producer.files} | ${producer.sizeMb} | ${producer.newestAgeDays ?? "?"} | ${producer.policy?.freshnessDays ?? "?"} | ${producer.policy?.explicit ? "yes" : "no"} | ${producer.policyStatus || "unknown"} | ${producer.policy?.retentionClass || "unknown"} | ${producer.staleFiles} |`);
   }
-  if (!(report.producers || []).length) lines.push("| n/a | 0 | 0 | n/a | n/a | n/a | n/a | 0 |");
+  if (!(report.producers || []).length) lines.push("| n/a | 0 | 0 | n/a | n/a | n/a | n/a | n/a | 0 |");
   lines.push("", "## Largest Files", "", "| Path | Size MB | Age days |", "| --- | ---: | ---: |");
   for (const file of report.largestFiles || []) {
     lines.push(`| \`${file.path}\` | ${file.sizeMb} | ${file.ageDays ?? "?"} |`);

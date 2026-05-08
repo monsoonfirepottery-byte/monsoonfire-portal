@@ -339,6 +339,29 @@ function makeFinding(severity, id, title, component, evidence, impact, safeNextS
   return { severity, id, title, component, evidence, impact, safeNextStep, rollback };
 }
 
+function packetApprovalStateForFinding(id) {
+  const paths = {
+    "non-draft-prs-not-mergeable": resolve(REPO_ROOT, "output", "ops", "pr-conflict-packets", "latest.json"),
+    "large-stacked-draft-pr-backlog": resolve(REPO_ROOT, "output", "ops", "pr-backlog-decision-packets", "latest.json")
+  };
+  const path = paths[id] || "";
+  if (!path) return null;
+  const report = readJsonFile(path, null);
+  if (!report) return { id, packetPath: repoRelative(path), ok: false, packets: 0, approvalRequiredPackets: 0, allPacketsRequireApproval: false };
+  const packets = Array.isArray(report.packets) ? report.packets : [];
+  const approvalRequiredPackets = packets.filter((packet) => packet.approvalRequired).length;
+  return {
+    id,
+    packetPath: repoRelative(path),
+    ok: true,
+    status: report.status || "unknown",
+    generatedAt: report.generatedAt || "",
+    packets: packets.length,
+    approvalRequiredPackets,
+    allPacketsRequireApproval: packets.length > 0 && approvalRequiredPackets === packets.length
+  };
+}
+
 function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
   const findings = [];
   const rows = prs.rows || [];
@@ -448,6 +471,41 @@ function buildProducerRefreshTasks(producerArtifacts) {
     .map((task, index) => ({ ...task, rank: index + 1 }));
 }
 
+function buildApprovalFallbackTasks(producerArtifacts, approvalGateFindings, producerRefreshTasks) {
+  if (!approvalGateFindings.length || producerRefreshTasks.length) return [];
+  const excluded = new Set(["pr-stack", "pr-conflict-packets", "pr-backlog-decision-packets", "proactive-radar", "next-slice-selector", "privileged-evidence"]);
+  return producerArtifacts
+    .filter((entry) => !excluded.has(entry.producer))
+    .filter((entry) => inferRefreshCommandSafety(entry.refreshCommand) !== "human_approval_required")
+    .map((entry) => {
+      const commandSafetyClass = inferRefreshCommandSafety(entry.refreshCommand);
+      const ageDays = entry.ageDays === null ? entry.freshnessDays : entry.ageDays;
+      const freshnessRatio = entry.freshnessDays ? Number((ageDays / entry.freshnessDays).toFixed(2)) : 0;
+      return {
+        rank: 0,
+        score: Math.round((freshnessRatio * 30) + (commandSafetyClass === "read_only_local" ? 20 : 10)),
+        title: `[ops] Refresh ${entry.producer} evidence while PR gates await approval`,
+        labels: ["ops", "reliability", "evidence"],
+        priority: "P3",
+        command: entry.refreshCommand,
+        commandSafetyClass,
+        problem: "PR-stack work is currently approval-gated, but the ops loop can still refresh safe operational evidence.",
+        evidence: `${approvalGateFindings.length} approval-gated PR-stack finding(s); ${entry.producer} evidence is ${entry.ageDays === null ? "missing" : `${entry.ageDays}d old`} with a ${entry.freshnessDays}d threshold.`,
+        risk: "Without a fallback lane, the loop can spin on human gates and stop producing fresh operational evidence.",
+        proposedFix: `Run \`${entry.refreshCommand}\`, then rerun \`npm run ops:next-slice:selector\` to keep the loop moving.`,
+        acceptanceCriteria: [
+          `${entry.outputPath || "producer output path"} has fresh JSON or Markdown evidence.`,
+          "Selector no longer treats the approval-gated PR packets as executable automation work.",
+          "No destructive cleanup, PR closure, branch deletion, or host mutation is executed."
+        ],
+        safetyNotes: `Read-only evidence refresh; cleanup approval remains ${entry.cleanupApproval || "human"}.`
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .slice(0, 5)
+    .map((task, index) => ({ ...task, rank: index + 1 }));
+}
+
 function inferRefreshCommandSafety(command) {
   const value = clean(command).toLowerCase();
   if (!value || value === "not listed") return "unknown";
@@ -480,7 +538,11 @@ function buildReport(options) {
   const producerArtifacts = producerArtifactFreshness(options.write ? { outputDir: options.outputDir, generatedAt } : null);
   const scripts = scriptInventory();
   const findings = buildFindings({ prs, status, freshness, producerArtifacts, scripts });
+  const approvalGateFindings = findings
+    .map((finding) => packetApprovalStateForFinding(finding.id))
+    .filter((state) => state?.allPacketsRequireApproval);
   const producerRefreshTasks = buildProducerRefreshTasks(producerArtifacts);
+  const approvalFallbackTasks = buildApprovalFallbackTasks(producerArtifacts, approvalGateFindings, producerRefreshTasks);
   return {
     schema: "studio-brain.ops.proactive-radar.v1",
     generatedAt,
@@ -511,9 +573,12 @@ function buildReport(options) {
       }
     },
     findings,
+    approvalGateFindings,
     recommendations: buildRecommendations(findings),
     nextProducerRefreshTask: producerRefreshTasks[0] || null,
-    producerRefreshTasks
+    producerRefreshTasks,
+    approvalFallbackTasks,
+    nextApprovalFallbackTask: approvalFallbackTasks[0] || null
   };
 }
 
@@ -540,6 +605,8 @@ function renderMarkdown(report) {
     `- Producer artifact paths tracked: ${report.sources.producerArtifactFreshness.length}`,
     `- Stale or missing producer artifact paths: ${report.sources.producerArtifactFreshness.filter((entry) => entry.stale).length}`,
     `- Next producer refresh: ${report.nextProducerRefreshTask ? `${report.nextProducerRefreshTask.title} (${report.nextProducerRefreshTask.commandSafetyClass})` : "none"}`,
+    `- Approval-gated findings: ${report.approvalGateFindings?.length || 0}`,
+    `- Next approval fallback: ${report.nextApprovalFallbackTask ? `${report.nextApprovalFallbackTask.title} (${report.nextApprovalFallbackTask.commandSafetyClass})` : "none"}`,
     "",
     "## Findings",
     ""
@@ -577,6 +644,26 @@ function renderMarkdown(report) {
   lines.push("");
   if (!report.producerRefreshTasks.length) lines.push("- No stale producer refresh tasks from current policy thresholds.");
   for (const task of report.producerRefreshTasks) {
+    lines.push(`### ${task.title}`);
+    lines.push("");
+    lines.push(`- Rank: ${task.rank}`);
+    lines.push(`- Score: ${task.score}`);
+    lines.push(`- Labels: ${task.labels.join(", ")}`);
+    lines.push(`- Priority: ${task.priority}`);
+    lines.push(`- Command safety: ${task.commandSafetyClass}`);
+    lines.push(`- Problem: ${task.problem}`);
+    lines.push(`- Evidence: ${task.evidence}`);
+    lines.push(`- Risk: ${task.risk}`);
+    lines.push(`- Proposed fix: ${task.proposedFix}`);
+    lines.push("- Acceptance criteria:");
+    for (const item of task.acceptanceCriteria) lines.push(`  - ${item}`);
+    lines.push(`- Safety notes: ${task.safetyNotes}`);
+    lines.push("");
+  }
+  lines.push("## Approval Fallback Tasks");
+  lines.push("");
+  if (!report.approvalFallbackTasks?.length) lines.push("- No approval fallback tasks from current evidence.");
+  for (const task of report.approvalFallbackTasks || []) {
     lines.push(`### ${task.title}`);
     lines.push("");
     lines.push(`- Rank: ${task.rank}`);

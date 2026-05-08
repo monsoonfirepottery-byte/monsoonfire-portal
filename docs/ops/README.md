@@ -46,6 +46,7 @@ make ops-db-docker-backup-rollup
 make ops-command-surface-guard
 make ops-command-manifest
 make ops-output-retention
+make ops-producer-refresh
 make ops-ubuntu-review
 make ops-host-failed-unit-trends
 make ops-package-posture
@@ -88,6 +89,7 @@ npm run ops:db-docker-backup:rollup
 npm run ops:command-surface:guard
 npm run ops:command-manifest
 npm run ops:output:retention
+npm run ops:producer:refresh
 npm run ops:next-slice:selector
 npm run ops:privileged-evidence:read
 npm run ops:pr-conflict:packets
@@ -118,6 +120,7 @@ node scripts/ops/proactive_issue_radar.mjs --write
 node scripts/ops/command_surface_guard.mjs --write
 node scripts/ops/ops_command_manifest.mjs --write
 node scripts/ops/output_retention_scanner.mjs --write
+node scripts/ops/producer_refresh_runner.mjs --write
 node scripts/ops/next_slice_selector.mjs --refresh --write
 node scripts/ops/pr_conflict_packets.mjs --refresh --write
 node scripts/ops/dependency_security_scout.mjs --write
@@ -136,6 +139,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-proactive-radar` is a read-only loop-start command. It looks for merge-blocked PRs, stacked draft PR pressure, stale ops artifacts, dirty worktree risk, and hidden ops scripts without printing secrets or mutating the host. It also reads `docs/ops/output-artifact-producers.json` so stale producer evidence points to exact `output/ops/...` paths and safe refresh commands.
 
 `ops-next-slice-selector` refreshes the proactive radar, then emits the single highest-ranked producer refresh task plus a short ranked preview. It writes under `output/ops/next-slice-selector` and never runs the selected refresh command for you.
+
+`ops-producer-refresh` reads `docs/ops/output-artifact-producers.json` and creates a safe refresh plan for stale producer evidence. It is plan-only by default; pass `-- --execute` through npm, or run the node script with `--execute`, when you intentionally want it to run selected read-only refresh commands. Live probes and approval-gated commands are skipped unless explicitly included.
 
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.
 

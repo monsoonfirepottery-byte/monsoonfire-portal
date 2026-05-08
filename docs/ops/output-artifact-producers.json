@@ -69,6 +69,13 @@
       "retentionClass": "self-audit",
       "cleanupApproval": "human"
     },
+    "producer-refresh-runner": {
+      "outputPath": "output/ops/producer-refresh-runner",
+      "refreshCommand": "npm run ops:producer:refresh",
+      "freshnessDays": 7,
+      "retentionClass": "self-audit",
+      "cleanupApproval": "human"
+    },
     "command-manifest": {
       "outputPath": "output/ops/command-manifest",
       "refreshCommand": "npm run ops:command-manifest",

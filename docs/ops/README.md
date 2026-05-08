@@ -40,6 +40,7 @@ make ops-backup-evidence
 make ops-postgres-backup-artifacts
 make ops-restore-prereq
 make ops-redis-minio-backup-evidence
+make ops-db-docker-backup-rollup
 make ops-ubuntu-review
 make ops-host-failed-unit-trends
 make ops-package-posture
@@ -71,6 +72,7 @@ Windows-friendly npm equivalent:
 npm run ops:proactive:radar
 npm run ops:pr-stack:readiness
 npm run ops:evidence:freshness
+npm run ops:db-docker-backup:rollup
 ```
 
 The scripts under `scripts/ops/` avoid environment dumps and degrade when Docker, PostgreSQL, or host-only tools are unavailable.
@@ -100,6 +102,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.
 
 `ops-evidence-freshness` checks whether the main ops evidence artifacts are recent enough to trust and writes issue-ready refresh tasks under `output/ops/evidence-freshness`.
+
+`ops-db-docker-backup-rollup` runs the existing read-only Docker, PostgreSQL, backup, Redis/MinIO, and restore-prerequisite packets, stores their text evidence under `output/ops/db-docker-backup`, and summarizes degraded lanes with issue-ready follow-up tasks.
 
 ## Approval Boundaries
 

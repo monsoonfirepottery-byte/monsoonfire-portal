@@ -281,12 +281,20 @@ function scriptInventory() {
   return scripts.map((path) => {
     const rel = repoRelative(path);
     const basename = rel.split("/").at(-1);
+    const type = basename.endsWith(".sql") ? "sql" : basename.endsWith(".mjs") ? "node" : "shell";
     return {
       path: rel,
-      type: basename.endsWith(".sql") ? "sql" : basename.endsWith(".mjs") ? "node" : "shell",
+      type,
+      operatorFacing: isOperatorFacingScript(basename, type),
       makeTarget: inferMakeTarget(makeText, basename)
     };
   });
+}
+
+function isOperatorFacingScript(basename, type) {
+  if (type === "sql") return false;
+  if (/\.test\.mjs$/i.test(basename)) return false;
+  return true;
 }
 
 function inferMakeTarget(makeText, basename) {
@@ -307,7 +315,7 @@ function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
   const stackedDrafts = rows.filter((pr) => pr.isDraft && pr.baseRefName && pr.baseRefName !== "main");
   const staleArtifacts = freshness.filter((entry) => entry.stale);
   const staleProducerArtifacts = producerArtifacts.filter((entry) => entry.stale);
-  const hiddenScripts = scripts.filter((entry) => !entry.makeTarget);
+  const hiddenScripts = scripts.filter((entry) => entry.operatorFacing && !entry.makeTarget);
 
   if (!prs.ok) {
     findings.push(makeFinding("high", "github-pr-visibility-unavailable", "GitHub PR visibility is unavailable", "GitHub", prs.error, "Merge and release risk cannot be assessed automatically.", "Restore gh auth/network and rerun the radar.", "No repo rollback; this is read-only."));
@@ -459,7 +467,7 @@ function buildReport(options) {
       producerArtifactFreshness: producerArtifacts,
       scriptInventory: {
         count: scripts.length,
-        withoutMakeTarget: scripts.filter((script) => !script.makeTarget).map((script) => script.path)
+        withoutMakeTarget: scripts.filter((script) => script.operatorFacing && !script.makeTarget).map((script) => script.path)
       }
     },
     findings,

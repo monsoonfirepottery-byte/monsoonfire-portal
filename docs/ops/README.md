@@ -57,11 +57,13 @@ make ops-systemd-drift
 make ops-portal-bridge-review
 make ops-app-review
 make ops-dependency-review
+make ops-dependency-inventory
 make ops-dependency-cadence
 make ops-dependency-security-scout
 make ops-dependency-remediation-packet
 make ops-dependency-upstream-watch
 make ops-dependency-zero-baseline
+make ops-postgres-snapshot
 make ops-idle-worker-effectivity
 make ops-effectivity-report
 make ops-evidence-freshness
@@ -100,6 +102,8 @@ npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch
 npm run ops:dependency:zero-baseline
+npm run ops:dependency:inventory
+npm run ops:postgres:snapshot
 npm run ops:docker:tag-policy
 npm run ops:incident:bundle
 npm run ops:incident:bundle:v2
@@ -157,6 +161,10 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-command-surface-guard` checks that documented `make`, `npm run`, and direct `scripts/ops` commands still resolve. It writes artifacts under `output/ops/command-surface-guard` and is meant to catch command-wrapper drift before PRs stack up.
 
 `ops-command-manifest` writes a machine-readable inventory of Make targets, npm wrappers, direct ops scripts, docs coverage, lane classification, approval class, and output producer policy links. It writes under `output/ops/command-manifest` and does not execute the cataloged commands.
+
+`ops-dependency-inventory` prints read-only local tool versions plus ops/studio package scripts. It is also included inside incident bundles and avoids reading `.env` values.
+
+`ops-postgres-snapshot` writes redacted PostgreSQL DBA evidence under `output/ops/postgres/<timestamp>` using direct `psql` or the local Studio Brain Postgres container when available. It wraps packets in read-only transactions and degrades to skipped reports when credentials, Docker, or PostgreSQL are unavailable.
 
 `ops-output-retention` scans ignored `output/ops` artifacts for file count, total size, largest producers, stale files, and retention recommendations. It writes under `output/ops/output-retention` and never deletes, rotates, compresses, or prunes artifacts.
 

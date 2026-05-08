@@ -172,7 +172,38 @@ function openPullRequests(repo) {
     "number,title,isDraft,mergeStateStatus,headRefName,baseRefName,updatedAt,url"
   ], 45_000);
   if (!result.ok) return { ok: false, error: result.error, rows: [] };
-  return { ok: true, error: "", rows: Array.isArray(result.json) ? result.json : [] };
+  const rows = Array.isArray(result.json) ? result.json : [];
+  const hydrated = hydrateUnknownMergeability(repo, rows);
+  return { ok: true, error: hydrated.error, rows: hydrated.rows, hydratedUnknown: hydrated.hydrated, hydrationFailures: hydrated.failures };
+}
+
+function hydrateUnknownMergeability(repo, rows) {
+  let hydrated = 0;
+  let failures = 0;
+  const nextRows = rows.map((row) => {
+    if (row.isDraft || row.mergeStateStatus !== "UNKNOWN") return row;
+    const result = runJson("gh", [
+      "pr",
+      "view",
+      String(row.number),
+      "--repo",
+      repo,
+      "--json",
+      "mergeStateStatus"
+    ], 20_000);
+    if (!result.ok || !result.json?.mergeStateStatus) {
+      failures += 1;
+      return { ...row, mergeStateHydration: "failed" };
+    }
+    hydrated += 1;
+    return { ...row, mergeStateStatus: result.json.mergeStateStatus, mergeStateHydration: "gh-pr-view" };
+  });
+  return {
+    rows: nextRows,
+    hydrated,
+    failures,
+    error: failures ? `${failures} UNKNOWN mergeability hydration attempt(s) failed` : ""
+  };
 }
 
 function walkFiles(root, predicate, out = []) {
@@ -311,7 +342,9 @@ function makeFinding(severity, id, title, component, evidence, impact, safeNextS
 function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
   const findings = [];
   const rows = prs.rows || [];
-  const dirtyNonDraft = rows.filter((pr) => !pr.isDraft && pr.mergeStateStatus !== "CLEAN");
+  const blockingMergeStates = new Set(["DIRTY", "UNSTABLE", "BEHIND", "BLOCKED"]);
+  const dirtyNonDraft = rows.filter((pr) => !pr.isDraft && blockingMergeStates.has(pr.mergeStateStatus));
+  const unknownNonDraft = rows.filter((pr) => !pr.isDraft && pr.mergeStateStatus === "UNKNOWN");
   const stackedDrafts = rows.filter((pr) => pr.isDraft && pr.baseRefName && pr.baseRefName !== "main");
   const staleArtifacts = freshness.filter((entry) => entry.stale);
   const staleProducerArtifacts = producerArtifacts.filter((entry) => entry.stale);
@@ -322,6 +355,9 @@ function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
   }
   if (dirtyNonDraft.length) {
     findings.push(makeFinding("high", "non-draft-prs-not-mergeable", "Non-draft PRs are not mergeable", "GitHub PR stack", dirtyNonDraft.map((pr) => `#${pr.number} ${pr.mergeStateStatus}`).join(", "), "Ready-looking PRs can remain blocked until release time.", "Create conflict-resolution packets in clean worktrees.", "No mutation required; do not close or rewrite PRs without approval."));
+  }
+  if (unknownNonDraft.length) {
+    findings.push(makeFinding("medium", "non-draft-pr-mergeability-unknown", "Non-draft PR mergeability is unknown", "GitHub PR stack", unknownNonDraft.map((pr) => `#${pr.number} UNKNOWN`).join(", "), "GitHub could not prove whether review-ready PRs are mergeable, so release readiness is uncertain.", "Rerun the radar or inspect each PR with `gh pr view <number> --json mergeStateStatus` before assigning blocker severity.", "No mutation required."));
   }
   if (stackedDrafts.length > 10) {
     findings.push(makeFinding("medium", "large-stacked-draft-pr-backlog", "Large stacked draft PR backlog", "GitHub PR stack", `${stackedDrafts.length} draft PR(s) target non-main bases.`, "Stack depth makes merge order and CI meaning hard to reason about.", "Run `npm run ops:pr-backlog:packets` to generate owner-decision packets, then close, restack, or promote only with owner review.", "Docs/report only."));
@@ -355,6 +391,7 @@ function recommendationTitle(id, fallback) {
   const titles = {
     "github-pr-visibility-unavailable": "Restore automated PR visibility",
     "non-draft-prs-not-mergeable": "Create conflict-resolution packets for dirty PRs",
+    "non-draft-pr-mergeability-unknown": "Refresh unknown non-draft PR mergeability",
     "large-stacked-draft-pr-backlog": "Generate PR backlog decision packets for stacked drafts",
     "current-worktree-dirty": "Enforce clean-worktree lanes for ops slices",
     "stale-ops-artifacts": "Refresh stale ops evidence artifacts",
@@ -461,7 +498,10 @@ function buildReport(options) {
         nonDraft: prs.rows.filter((pr) => !pr.isDraft).length,
         draft: prs.rows.filter((pr) => pr.isDraft).length,
         dirty: prs.rows.filter((pr) => pr.mergeStateStatus === "DIRTY").length,
-        unstable: prs.rows.filter((pr) => pr.mergeStateStatus === "UNSTABLE").length
+        unstable: prs.rows.filter((pr) => pr.mergeStateStatus === "UNSTABLE").length,
+        unknown: prs.rows.filter((pr) => pr.mergeStateStatus === "UNKNOWN").length,
+        hydratedUnknown: prs.hydratedUnknown || 0,
+        hydrationFailures: prs.hydrationFailures || 0
       },
       artifactFreshness: freshness,
       producerArtifactFreshness: producerArtifacts,

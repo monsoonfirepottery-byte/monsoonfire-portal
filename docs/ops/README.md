@@ -44,6 +44,7 @@ make ops-restore-prereq
 make ops-redis-minio-backup-evidence
 make ops-db-docker-backup-rollup
 make ops-command-surface-guard
+make ops-command-manifest
 make ops-output-retention
 make ops-ubuntu-review
 make ops-host-failed-unit-trends
@@ -82,6 +83,7 @@ npm run ops:pr-stack:readiness
 npm run ops:evidence:freshness
 npm run ops:db-docker-backup:rollup
 npm run ops:command-surface:guard
+npm run ops:command-manifest
 npm run ops:output:retention
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
@@ -105,6 +107,7 @@ bash scripts/ops/npm_audit_inventory.sh
 bash scripts/ops/effectivity_report.sh
 node scripts/ops/proactive_issue_radar.mjs --write
 node scripts/ops/command_surface_guard.mjs --write
+node scripts/ops/ops_command_manifest.mjs --write
 node scripts/ops/output_retention_scanner.mjs --write
 node scripts/ops/dependency_security_scout.mjs --write
 node scripts/ops/dependency_remediation_packet.mjs --write
@@ -128,6 +131,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-db-docker-backup-rollup` runs the existing read-only Docker, PostgreSQL, backup, Redis/MinIO, and restore-prerequisite packets, stores their text evidence under `output/ops/db-docker-backup`, and summarizes degraded lanes with issue-ready follow-up tasks.
 
 `ops-command-surface-guard` checks that documented `make`, `npm run`, and direct `scripts/ops` commands still resolve. It writes artifacts under `output/ops/command-surface-guard` and is meant to catch command-wrapper drift before PRs stack up.
+
+`ops-command-manifest` writes a machine-readable inventory of Make targets, npm wrappers, direct ops scripts, docs coverage, lane classification, approval class, and output producer policy links. It writes under `output/ops/command-manifest` and does not execute the cataloged commands.
 
 `ops-output-retention` scans ignored `output/ops` artifacts for file count, total size, largest producers, stale files, and retention recommendations. It writes under `output/ops/output-retention` and never deletes, rotates, compresses, or prunes artifacts.
 

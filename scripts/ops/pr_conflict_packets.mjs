@@ -111,6 +111,27 @@ function runNode(args) {
   };
 }
 
+function runGhJson(args) {
+  const result = spawnSync("gh", args, {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 45_000
+  });
+  if (result.error || result.status !== 0) {
+    return {
+      ok: false,
+      error: result.error?.message || result.stderr?.trim() || `gh exited ${result.status}`,
+      value: null
+    };
+  }
+  try {
+    return { ok: true, error: "", value: JSON.parse(result.stdout || "null") };
+  } catch (error) {
+    return { ok: false, error: `gh emitted invalid JSON: ${error.message}`, value: null };
+  }
+}
+
 function refreshPrStack() {
   const result = runNode(["scripts/ops/pr_stack_readiness.mjs", "--write", "--json"]);
   if (!result.ok) {
@@ -142,7 +163,76 @@ function isDirtyNonDraft(pr) {
   return !pr.isDraft && (pr.mergeStateStatus === "DIRTY" || (pr.blockers || []).some((item) => String(item).includes("DIRTY")));
 }
 
-function packetFor(pr) {
+function inferRepo(report) {
+  return report.repo || report.repository || "monsoonfirepottery-byte/monsoonfire-portal";
+}
+
+function fileEvidenceFor(pr, repo) {
+  const result = runGhJson([
+    "pr",
+    "view",
+    String(pr.number),
+    "--repo",
+    repo,
+    "--json",
+    "additions,deletions,changedFiles,commits,files"
+  ]);
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+      changedFiles: null,
+      additions: null,
+      deletions: null,
+      commits: [],
+      files: []
+    };
+  }
+  const value = result.value || {};
+  return {
+    ok: true,
+    error: "",
+    changedFiles: value.changedFiles ?? null,
+    additions: value.additions ?? null,
+    deletions: value.deletions ?? null,
+    commits: (Array.isArray(value.commits) ? value.commits : []).map((commit) => ({
+      oid: commit.oid || "",
+      headline: commit.messageHeadline || "",
+      committedDate: commit.committedDate || ""
+    })),
+    files: (Array.isArray(value.files) ? value.files : []).map((file) => ({
+      path: file.path || "",
+      additions: file.additions ?? null,
+      deletions: file.deletions ?? null
+    }))
+  };
+}
+
+function renderFileEvidence(fileEvidence) {
+  if (!fileEvidence?.ok) return `- File evidence: unavailable (${fileEvidence?.error || "unknown error"})`;
+  const lines = [
+    `- Changed files: ${fileEvidence.changedFiles ?? "unknown"}`,
+    `- Additions/deletions: ${fileEvidence.additions ?? "unknown"}/${fileEvidence.deletions ?? "unknown"}`
+  ];
+  if (fileEvidence.files.length) {
+    lines.push("- Files:");
+    for (const file of fileEvidence.files.slice(0, 20)) {
+      lines.push(`  - ${file.path} (+${file.additions ?? "?"}/-${file.deletions ?? "?"})`);
+    }
+    if (fileEvidence.files.length > 20) lines.push(`  - ...${fileEvidence.files.length - 20} more file(s) omitted`);
+  }
+  if (fileEvidence.commits.length) {
+    lines.push("- Commits:");
+    for (const commit of fileEvidence.commits.slice(0, 10)) {
+      lines.push(`  - ${commit.oid.slice(0, 12)} ${commit.headline} (${commit.committedDate || "unknown date"})`);
+    }
+    if (fileEvidence.commits.length > 10) lines.push(`  - ...${fileEvidence.commits.length - 10} more commit(s) omitted`);
+  }
+  return lines.join("\n");
+}
+
+function packetFor(pr, repo) {
+  const fileEvidence = fileEvidenceFor(pr, repo);
   return {
     title: `[ops] Resolve merge conflicts for PR #${pr.number}`,
     labels: ["ops", "reliability", "cleanup"],
@@ -160,6 +250,7 @@ function packetFor(pr) {
       updatedAt: pr.updatedAt || "",
       ageDays: pr.ageDays ?? null
     },
+    fileEvidence,
     body: `## Problem
 PR #${pr.number} is non-draft but currently not mergeable because GitHub reports ${pr.mergeStateStatus || "a dirty merge state"}.
 
@@ -168,6 +259,7 @@ PR #${pr.number} is non-draft but currently not mergeable because GitHub reports
 - Head/base: ${pr.head || "unknown"} -> ${pr.base || "unknown"}
 - Blockers: ${(pr.blockers || []).join(", ") || "DIRTY mergeability"}
 - Last updated: ${pr.updatedAt || "unknown"}
+${renderFileEvidence(fileEvidence)}
 
 ## Risk
 Leaving a non-draft dirty PR open creates release noise and can hide whether the work should be merged, rebuilt from current main, or superseded.
@@ -215,8 +307,10 @@ function buildReport(options) {
     };
   }
   const sourceReport = safeJsonParse(readFileSync(options.input, "utf8"), {});
+  const repo = inferRepo(sourceReport);
   const dirty = flattenPrs(sourceReport).filter(isDirtyNonDraft);
-  const packets = dirty.map(packetFor);
+  const packets = dirty.map((pr) => packetFor(pr, repo));
+  const fileEvidenceFailures = packets.filter((packet) => !packet.fileEvidence?.ok).length;
   return {
     schema: "studio-brain.ops.pr-conflict-packets.v1",
     generatedAt,
@@ -226,12 +320,14 @@ function buildReport(options) {
       refreshed: options.refresh,
       ok: true,
       error: "",
+      repo,
       input: repoRelative(options.input),
       generatedAt: sourceReport.generatedAt || ""
     },
     summary: {
       dirtyNonDraft: dirty.length,
-      packets: packets.length
+      packets: packets.length,
+      fileEvidenceFailures
     },
     packets,
     safeNextStep: packets.length

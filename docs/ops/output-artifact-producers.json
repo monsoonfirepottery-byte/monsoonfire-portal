@@ -13,6 +13,13 @@
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
+    "dependency-cadence": {
+      "outputPath": "output/ops/dependency-cadence",
+      "refreshCommand": "make ops-dependency-cadence",
+      "freshnessDays": 1,
+      "retentionClass": "latest-plus-history",
+      "cleanupApproval": "human"
+    },
     "dependency-security-scout": {
       "outputPath": "output/ops/dependency-security-scout",
       "refreshCommand": "make ops-dependency-security-scout",

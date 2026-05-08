@@ -9,6 +9,7 @@ Keep the dependency lane boring: verify the all-clean baseline regularly, distin
 ## Current Baseline
 
 - Baseline file: `docs/ops/dependency-zero-baseline.json`
+- Cadence packet command: `npm run ops:dependency:cadence`
 - Guard command: `npm run ops:dependency:zero-baseline`
 - Strict guard command: `node scripts/ops/dependency_zero_baseline_guard.mjs --strict --json`
 - Current expected state: Dependabot open alerts `0`, active local alerts `0`, stale alerts `0`, npm audit high/critical `0`, npm audit total `0`, upstream-watch items `0`
@@ -18,13 +19,14 @@ Keep the dependency lane boring: verify the all-clean baseline regularly, distin
 Run:
 
 ```bash
-npm run ops:dependency:zero-baseline
+npm run ops:dependency:cadence
 ```
 
 Acceptance:
 
 - `status` is `ok`.
 - `findings` is empty.
+- `output/ops/dependency-cadence/latest.md` exists and summarizes the scout, upstream-watch, and zero-baseline producers.
 - GitHub alert evidence is available unless this is an explicitly local-only run.
 
 If the command reports `unknown`, refresh GitHub CLI auth and npm registry access before treating the result as a security finding.
@@ -34,6 +36,7 @@ If the command reports `unknown`, refresh GitHub CLI auth and npm registry acces
 Run:
 
 ```bash
+npm run ops:dependency:cadence
 npm run ops:dependency:security-scout
 npm run ops:dependency:upstream-watch
 npm run ops:dependency:zero-baseline

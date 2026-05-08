@@ -131,6 +131,36 @@ function refreshRadar() {
   }
 }
 
+function packetArtifactFor(id) {
+  const map = {
+    "non-draft-prs-not-mergeable": resolve(REPO_ROOT, "output", "ops", "pr-conflict-packets", "latest.json"),
+    "large-stacked-draft-pr-backlog": resolve(REPO_ROOT, "output", "ops", "pr-backlog-decision-packets", "latest.json")
+  };
+  const path = map[id] || "";
+  if (!path) return null;
+  const artifact = readJson(path);
+  if (!artifact.ok) {
+    return {
+      ok: false,
+      path: repoRelative(path),
+      status: "missing",
+      packets: 0,
+      generatedAt: "",
+      error: artifact.error
+    };
+  }
+  const value = artifact.value || {};
+  const packets = Array.isArray(value.packets) ? value.packets.length : Number(value.summary?.packets || 0);
+  return {
+    ok: true,
+    path: repoRelative(path),
+    status: value.status || "unknown",
+    packets,
+    generatedAt: value.generatedAt || "",
+    error: ""
+  };
+}
+
 function taskFromRecommendation(recommendation, finding, rank) {
   const title = recommendation.title || finding?.title || "Investigate proactive radar finding";
   const commandMap = {
@@ -141,6 +171,8 @@ function taskFromRecommendation(recommendation, finding, rank) {
     "ops-scripts-without-make-targets": "npm run ops:command-manifest:check"
   };
   const id = finding?.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const packetArtifact = packetArtifactFor(id);
+  const packetReady = packetArtifact?.ok && packetArtifact.packets > 0 && packetArtifact.status === "action_needed";
   const command = commandMap[id] || "";
   const priorityScore = { P0: 100, P1: 80, P2: 60, P3: 40 };
   const severityScore = { critical: 100, high: 80, medium: 60, low: 40 };
@@ -159,12 +191,15 @@ function taskFromRecommendation(recommendation, finding, rank) {
     priority: recommendation.priority || "P2",
     effort: recommendation.effort || "",
     risk: recommendation.risk || "low",
-    command,
-    commandSafetyClass: command ? "read-only-report" : "manual-planning",
+    command: packetReady ? "" : command,
+    commandSafetyClass: packetReady ? "review-existing-packet" : command ? "read-only-report" : "manual-planning",
     problem: finding?.impact || finding?.title || "Radar reported an actionable operational issue.",
     evidence: finding?.evidence || "",
-    proposedFix: finding?.safeNextStep || recommendation.acceptanceCriteria?.[0] || title,
+    proposedFix: packetReady
+      ? `Review ${packetArtifact.path}; it already contains ${packetArtifact.packets} current packet(s) generated at ${packetArtifact.generatedAt || "unknown time"}.`
+      : finding?.safeNextStep || recommendation.acceptanceCriteria?.[0] || title,
     safetyNotes: finding?.rollback || "No destructive action is authorized by this selector.",
+    packetArtifact,
     suggestedBranchName: recommendation.suggestedBranchName || "",
     suggestedPrTitle: recommendation.suggestedPrTitle || "",
     acceptanceCriteria: recommendation.acceptanceCriteria || []
@@ -256,6 +291,9 @@ function renderMarkdown(report) {
     lines.push(`- Priority: ${report.nextTask.priority}`);
     lines.push(`- Command safety: ${report.nextTask.commandSafetyClass}`);
     if (report.nextTask.command) lines.push(`- Suggested command: \`${report.nextTask.command}\``);
+    if (report.nextTask.packetArtifact?.path) {
+      lines.push(`- Existing packet: ${report.nextTask.packetArtifact.path} (${report.nextTask.packetArtifact.status}; ${report.nextTask.packetArtifact.packets} packet(s))`);
+    }
     lines.push(`- Problem: ${report.nextTask.problem}`);
     if (report.nextTask.evidence) lines.push(`- Evidence: ${report.nextTask.evidence}`);
     lines.push(`- Proposed fix: ${report.nextTask.proposedFix}`);

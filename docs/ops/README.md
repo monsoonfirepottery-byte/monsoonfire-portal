@@ -54,6 +54,7 @@ make ops-portal-bridge-review
 make ops-app-review
 make ops-dependency-review
 make ops-dependency-security-scout
+make ops-dependency-remediation-packet
 make ops-idle-worker-effectivity
 make ops-effectivity-report
 make ops-evidence-freshness
@@ -78,6 +79,7 @@ npm run ops:evidence:freshness
 npm run ops:db-docker-backup:rollup
 npm run ops:command-surface:guard
 npm run ops:dependency:security-scout
+npm run ops:dependency:remediation-packet
 npm run ops:docker:tag-policy
 ```
 
@@ -97,6 +99,7 @@ bash scripts/ops/effectivity_report.sh
 node scripts/ops/proactive_issue_radar.mjs --write
 node scripts/ops/command_surface_guard.mjs --write
 node scripts/ops/dependency_security_scout.mjs --write
+node scripts/ops/dependency_remediation_packet.mjs --write
 node scripts/ops/docker_floating_tag_policy.mjs --write
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
@@ -117,6 +120,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-command-surface-guard` checks that documented `make`, `npm run`, and direct `scripts/ops` commands still resolve. It writes artifacts under `output/ops/command-surface-guard` and is meant to catch command-wrapper drift before PRs stack up.
 
 `ops-dependency-security-scout` compares open Dependabot alerts, open Dependabot PR readiness, and local `npm audit` summaries across the repo's package surfaces. It writes issue-ready follow-up tasks under `output/ops/dependency-security-scout` and does not install, update, or fix packages.
+
+`ops-dependency-remediation-packet` turns high/critical npm audit findings into a read-only decision packet with dependency chains, owner-package candidates, latest-version hints, safe next steps, acceptance criteria, and rollback notes. It writes under `output/ops/dependency-remediation` and does not install, update, override, or remove dependencies.
 
 `ops-docker-tag-policy` scans tracked Compose files and Dockerfiles for `latest`, `stable`, branch-like, broad major-only, and digest-pinned image references. It writes issue-ready follow-ups under `output/ops/docker-tag-policy` and does not pull, recreate, restart, or edit Docker resources.
 

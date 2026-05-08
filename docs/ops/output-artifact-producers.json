@@ -18,6 +18,12 @@
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
+    "dependency-remediation": {
+      "outputPath": "output/ops/dependency-remediation",
+      "freshnessDays": 7,
+      "retentionClass": "decision-packet",
+      "cleanupApproval": "human"
+    },
     "dependency-upstream-watch": {
       "outputPath": "output/ops/dependency-upstream-watch",
       "freshnessDays": 7,

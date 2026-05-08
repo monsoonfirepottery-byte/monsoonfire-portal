@@ -2,6 +2,7 @@
 set -u
 
 # Read-only disk pressure snapshot. Uses sudo only when passwordless sudo is already available.
+OPS_COMMAND_TIMEOUT_SECONDS="${OPS_COMMAND_TIMEOUT_SECONDS:-30}"
 
 section() {
   printf '\n## %s\n' "$1"
@@ -9,7 +10,11 @@ section() {
 
 run_shell() {
   printf '\n$ %s\n' "$1"
-  bash -lc "$1" 2>&1 || printf 'WARN: command failed: %s\n' "$1"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${OPS_COMMAND_TIMEOUT_SECONDS}" bash -lc "$1" 2>&1 || printf 'WARN: command failed or timed out after %ss: %s\n' "${OPS_COMMAND_TIMEOUT_SECONDS}" "$1"
+  else
+    bash -lc "$1" 2>&1 || printf 'WARN: command failed: %s\n' "$1"
+  fi
 }
 
 section "Filesystems"

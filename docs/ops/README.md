@@ -97,6 +97,8 @@ npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch
 npm run ops:dependency:zero-baseline
 npm run ops:docker:tag-policy
+npm run ops:incident:bundle
+npm run ops:incident:bundle:v2
 ```
 
 The scripts under `scripts/ops/` avoid environment dumps and degrade when Docker, PostgreSQL, or host-only tools are unavailable.

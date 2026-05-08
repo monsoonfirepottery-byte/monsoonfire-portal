@@ -41,6 +41,13 @@
       "retentionClass": "trend",
       "cleanupApproval": "human"
     },
+    "postgres": {
+      "outputPath": "output/ops/postgres",
+      "refreshCommand": "npm run ops:postgres:snapshot",
+      "freshnessDays": 7,
+      "retentionClass": "trend",
+      "cleanupApproval": "human"
+    },
     "pr-stack": {
       "outputPath": "output/ops/pr-stack",
       "refreshCommand": "npm run ops:pr-stack:readiness",

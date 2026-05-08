@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), "..", "..");
 const DEFAULT_SCAN_DIR = resolve(REPO_ROOT, "output", "ops");
 const DEFAULT_OUTPUT_DIR = resolve(REPO_ROOT, "output", "ops", "output-retention");
+const DEFAULT_PRODUCER_POLICY = resolve(REPO_ROOT, "docs", "ops", "output-artifact-producers.json");
 
 function usage() {
   return `Ops output retention scanner
@@ -20,6 +21,7 @@ Options:
   --write                 Write latest JSON and Markdown artifacts.
   --scan-dir <path>       Directory to scan. Default: output/ops.
   --output-dir <path>     Artifact directory. Default: output/ops/output-retention.
+  --producer-policy <path> Producer freshness policy. Default: docs/ops/output-artifact-producers.json.
   --warn-mb <number>      Warning threshold for total size. Default: 250.
   --critical-mb <number>  Critical threshold for total size. Default: 1000.
   --stale-days <number>   Stale artifact age threshold. Default: 14.
@@ -34,6 +36,7 @@ function parseArgs(argv) {
     write: false,
     scanDir: DEFAULT_SCAN_DIR,
     outputDir: DEFAULT_OUTPUT_DIR,
+    producerPolicy: DEFAULT_PRODUCER_POLICY,
     warnMb: 250,
     criticalMb: 1000,
     staleDays: 14
@@ -55,6 +58,7 @@ function parseArgs(argv) {
     const valueFlags = new Map([
       ["--scan-dir", "scanDir"],
       ["--output-dir", "outputDir"],
+      ["--producer-policy", "producerPolicy"],
       ["--warn-mb", "warnMb"],
       ["--critical-mb", "criticalMb"],
       ["--stale-days", "staleDays"]
@@ -79,6 +83,7 @@ function parseArgs(argv) {
   }
   options.scanDir = resolve(REPO_ROOT, options.scanDir);
   options.outputDir = resolve(REPO_ROOT, options.outputDir);
+  options.producerPolicy = resolve(REPO_ROOT, options.producerPolicy);
   options.warnMb = Number(options.warnMb);
   options.criticalMb = Number(options.criticalMb);
   options.staleDays = Number(options.staleDays);
@@ -87,6 +92,25 @@ function parseArgs(argv) {
 
 function repoRelative(path) {
   return relative(REPO_ROOT, path).replace(/\\/g, "/") || ".";
+}
+
+function safeJsonParse(raw, fallback) {
+  try {
+    return JSON.parse(raw || "");
+  } catch {
+    return fallback;
+  }
+}
+
+function readProducerPolicy(path) {
+  const fallback = {
+    schema: "studio-brain.ops.output-artifact-producers.v1",
+    default: { freshnessDays: 14, retentionClass: "review", cleanupApproval: "human" },
+    producers: {}
+  };
+  if (!existsSync(path)) return { ...fallback, status: "missing", path: repoRelative(path) };
+  const parsed = safeJsonParse(readFileSync(path, "utf8"), fallback);
+  return { ...fallback, ...parsed, status: "ok", path: repoRelative(path) };
 }
 
 function walk(dir, root = dir, files = []) {
@@ -135,8 +159,16 @@ function groupByProducer(files) {
   return [...groups.values()].sort((a, b) => b.sizeBytes - a.sizeBytes);
 }
 
+function policyForProducer(policy, producer) {
+  return {
+    ...policy.default,
+    ...(policy.producers?.[producer] || {})
+  };
+}
+
 function buildReport(options) {
   const generatedAt = new Date().toISOString();
+  const producerPolicy = readProducerPolicy(options.producerPolicy);
   if (!existsSync(options.scanDir)) {
     return {
       schema: "studio-brain.ops.output-retention.v1",
@@ -144,6 +176,7 @@ function buildReport(options) {
       readOnly: true,
       status: "ok",
       scanDir: repoRelative(options.scanDir),
+      producerPolicy,
       summary: { exists: false, files: 0, totalBytes: 0, totalMb: 0, staleFiles: 0 },
       producers: [],
       findings: [],
@@ -159,10 +192,13 @@ function buildReport(options) {
   const totalMb = Number((totalBytes / 1_048_576).toFixed(2));
   const producers = groupByProducer(filesWithAge);
   for (const producer of producers) {
+    const policy = policyForProducer(producerPolicy, producer.producer);
     producer.sizeMb = Number((producer.sizeBytes / 1_048_576).toFixed(2));
     producer.newestAgeDays = ageDays(producer.newestAt);
     producer.oldestAgeDays = ageDays(producer.oldestAt);
     producer.staleFiles = filesWithAge.filter((file) => file.relativePath.startsWith(`${producer.producer}/`) && file.ageDays !== null && file.ageDays > staleCutoff).length;
+    producer.policy = policy;
+    producer.policyStatus = producer.newestAgeDays !== null && producer.newestAgeDays > Number(policy.freshnessDays || 14) ? "stale" : "ok";
   }
 
   const findings = [];
@@ -189,6 +225,15 @@ function buildReport(options) {
       safeNextStep: "Classify artifacts as keep, archive, or cleanup-candidate; do not delete without approval."
     });
   }
+  const staleProducers = producers.filter((producer) => producer.policyStatus === "stale");
+  if (staleProducers.length) {
+    findings.push({
+      severity: "medium",
+      title: "Ops output producers are stale against policy",
+      evidence: staleProducers.map((producer) => `${producer.producer}: newest age ${producer.newestAgeDays}d > ${producer.policy.freshnessDays}d`).join("; "),
+      safeNextStep: "Run the producer command or mark the evidence lane intentionally dormant; do not delete artifacts as a freshness fix."
+    });
+  }
 
   return {
     schema: "studio-brain.ops.output-retention.v1",
@@ -196,6 +241,7 @@ function buildReport(options) {
     readOnly: true,
     status: findings.some((finding) => finding.severity === "critical") ? "critical" : findings.length ? "review" : "ok",
     scanDir: repoRelative(options.scanDir),
+    producerPolicy,
     thresholds: {
       warnMb: options.warnMb,
       criticalMb: options.criticalMb,
@@ -249,11 +295,11 @@ function renderMarkdown(report) {
   for (const finding of report.findings) {
     lines.push(`- ${finding.severity.toUpperCase()}: ${finding.title}; ${finding.evidence}; next: ${finding.safeNextStep}`);
   }
-  lines.push("", "## Producers", "", "| Producer | Files | Size MB | Newest age | Oldest age | Stale files |", "| --- | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("", "## Producers", "", "| Producer | Files | Size MB | Newest age | Policy days | Policy status | Retention class | Stale files |", "| --- | ---: | ---: | ---: | ---: | --- | --- | ---: |");
   for (const producer of report.producers || []) {
-    lines.push(`| \`${producer.producer}\` | ${producer.files} | ${producer.sizeMb} | ${producer.newestAgeDays ?? "?"} | ${producer.oldestAgeDays ?? "?"} | ${producer.staleFiles} |`);
+    lines.push(`| \`${producer.producer}\` | ${producer.files} | ${producer.sizeMb} | ${producer.newestAgeDays ?? "?"} | ${producer.policy?.freshnessDays ?? "?"} | ${producer.policyStatus || "unknown"} | ${producer.policy?.retentionClass || "unknown"} | ${producer.staleFiles} |`);
   }
-  if (!(report.producers || []).length) lines.push("| n/a | 0 | 0 | n/a | n/a | 0 |");
+  if (!(report.producers || []).length) lines.push("| n/a | 0 | 0 | n/a | n/a | n/a | n/a | 0 |");
   lines.push("", "## Largest Files", "", "| Path | Size MB | Age days |", "| --- | ---: | ---: |");
   for (const file of report.largestFiles || []) {
     lines.push(`| \`${file.path}\` | ${file.sizeMb} | ${file.ageDays ?? "?"} |`);

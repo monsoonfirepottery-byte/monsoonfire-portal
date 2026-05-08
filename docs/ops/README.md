@@ -51,6 +51,7 @@ make ops-systemd-drift
 make ops-portal-bridge-review
 make ops-app-review
 make ops-dependency-review
+make ops-dependency-security-scout
 make ops-idle-worker-effectivity
 make ops-effectivity-report
 make ops-evidence-freshness
@@ -73,6 +74,7 @@ npm run ops:proactive:radar
 npm run ops:pr-stack:readiness
 npm run ops:evidence:freshness
 npm run ops:db-docker-backup:rollup
+npm run ops:dependency:security-scout
 ```
 
 The scripts under `scripts/ops/` avoid environment dumps and degrade when Docker, PostgreSQL, or host-only tools are unavailable.
@@ -89,6 +91,7 @@ bash scripts/ops/cleanup_candidates.sh --import-target /home/wuff/imports
 bash scripts/ops/npm_audit_inventory.sh
 bash scripts/ops/effectivity_report.sh
 node scripts/ops/proactive_issue_radar.mjs --write
+node scripts/ops/dependency_security_scout.mjs --write
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 node scripts/studiobrain-ops-work-packet.mjs --write
@@ -104,6 +107,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-evidence-freshness` checks whether the main ops evidence artifacts are recent enough to trust and writes issue-ready refresh tasks under `output/ops/evidence-freshness`.
 
 `ops-db-docker-backup-rollup` runs the existing read-only Docker, PostgreSQL, backup, Redis/MinIO, and restore-prerequisite packets, stores their text evidence under `output/ops/db-docker-backup`, and summarizes degraded lanes with issue-ready follow-up tasks.
+
+`ops-dependency-security-scout` compares open Dependabot alerts, open Dependabot PR readiness, and local `npm audit` summaries across the repo's package surfaces. It writes issue-ready follow-up tasks under `output/ops/dependency-security-scout` and does not install, update, or fix packages.
 
 ## Approval Boundaries
 

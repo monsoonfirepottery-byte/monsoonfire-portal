@@ -118,7 +118,44 @@ function fetchPullRequests(repo) {
     "number,title,isDraft,mergeStateStatus,headRefName,baseRefName,updatedAt,url"
   ]);
   if (!result.ok) return { ok: false, error: result.error, rows: [] };
-  return { ok: true, error: "", rows: Array.isArray(result.json) ? result.json : [] };
+  const rows = Array.isArray(result.json) ? result.json : [];
+  const hydrated = hydrateUnknownMergeability(repo, rows);
+  return {
+    ok: true,
+    error: hydrated.error,
+    rows: hydrated.rows,
+    hydratedUnknown: hydrated.hydrated,
+    hydrationFailures: hydrated.failures
+  };
+}
+
+function hydrateUnknownMergeability(repo, rows) {
+  let hydrated = 0;
+  let failures = 0;
+  const nextRows = rows.map((row) => {
+    if (row.isDraft || row.mergeStateStatus !== "UNKNOWN") return row;
+    const result = runJson("gh", [
+      "pr",
+      "view",
+      String(row.number),
+      "--repo",
+      repo,
+      "--json",
+      "mergeStateStatus"
+    ]);
+    if (!result.ok || !result.json?.mergeStateStatus) {
+      failures += 1;
+      return { ...row, mergeStateHydration: "failed" };
+    }
+    hydrated += 1;
+    return { ...row, mergeStateStatus: result.json.mergeStateStatus, mergeStateHydration: "gh-pr-view" };
+  });
+  return {
+    rows: nextRows,
+    hydrated,
+    failures,
+    error: failures ? `${failures} UNKNOWN mergeability hydration attempt(s) failed` : ""
+  };
 }
 
 function ageDays(updatedAt) {
@@ -422,7 +459,13 @@ function buildReport(options) {
     readOnly: true,
     repo: options.repo,
     status: prs.ok ? dirtyNonDraft.length ? "blocked" : stackedDrafts.length ? "triage_needed" : "ok" : "unavailable",
-    source: { ok: prs.ok, error: prs.error, count: classified.length },
+    source: {
+      ok: prs.ok,
+      error: prs.error,
+      count: classified.length,
+      hydratedUnknown: prs.hydratedUnknown || 0,
+      hydrationFailures: prs.hydrationFailures || 0
+    },
     summary: {
       open: classified.length,
       nonDraft: classified.filter((pr) => !pr.isDraft).length,
@@ -453,6 +496,8 @@ function renderMarkdown(report) {
     `- Status: ${report.status}`,
     `- Repo: ${report.repo}`,
     `- Read-only: ${report.readOnly ? "yes" : "no"}`,
+    `- Hydrated unknown non-draft mergeability: ${report.source.hydratedUnknown ?? 0}`,
+    `- Mergeability hydration failures: ${report.source.hydrationFailures ?? 0}`,
     "",
     "## Summary",
     "",

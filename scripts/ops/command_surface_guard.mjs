@@ -155,6 +155,19 @@ function makeFinding(severity, id, title, component, evidence, impact, action) {
   return { severity, id, title, component, evidence, impact, recommendedAction: action };
 }
 
+const INTENTIONALLY_UNDOCUMENTED_MAKE_TARGETS = new Map([
+  ["ops-admin-effectivity-audit", "internal/admin evidence lane; npm wrapper remains the documented fallback"],
+  ["ops-docker-posture", "lower-level Docker packet covered by the documented ops-docker-review command"],
+  ["ops-postgres-autovacuum-stats", "specialist DBA SQL wrapper covered by the documented ops-postgres-review entry point"],
+  ["ops-postgres-growth-snapshot", "specialist DBA SQL wrapper covered by the documented ops-postgres-review entry point"],
+  ["ops-postgres-query-tasks", "specialist DBA SQL wrapper covered by the documented ops-postgres-review entry point"],
+  ["ops-postgres-roles-extensions", "specialist DBA SQL wrapper covered by the documented ops-postgres-review entry point"],
+  ["ops-postgres-top-queries", "specialist DBA SQL wrapper covered by the documented ops-postgres-review entry point"],
+  ["ops-privileged-evidence-capture", "approval-gated host capture command; only the smoke/read path belongs in the quick command list"],
+  ["ops-slice-ledger", "internal loop bookkeeping command"],
+  ["ops-tool-inventory", "internal tool evidence command"]
+]);
+
 function buildReport() {
   const makePath = resolve(REPO_ROOT, "Makefile");
   const packagePath = resolve(REPO_ROOT, "package.json");
@@ -204,8 +217,18 @@ function buildReport() {
   }
 
   const internalMakeTargets = new Set(["ops-postgres-sql", "ops-docs", "ops-backlog"]);
+  const classifiedMakeTargets = [];
   for (const target of makefile.targets) {
-    if (!readmeMake.has(target) && !internalMakeTargets.has(target)) {
+    if (readmeMake.has(target) || internalMakeTargets.has(target)) continue;
+    if (INTENTIONALLY_UNDOCUMENTED_MAKE_TARGETS.has(target)) {
+      classifiedMakeTargets.push({
+        target,
+        classification: "intentionally_undocumented",
+        reason: INTENTIONALLY_UNDOCUMENTED_MAKE_TARGETS.get(target)
+      });
+      continue;
+    }
+    if (!readmeMake.has(target)) {
       findings.push(makeFinding("medium", "make-target-undocumented", "Ops Make target is not listed in docs", "Makefile/docs/ops/README.md", `${target} is defined in Makefile but absent from the README command list.`, "Useful diagnostics can be hidden from the operator runbook.", "Add the target to docs/ops/README.md or classify it as internal in this guard."));
     }
   }
@@ -265,13 +288,15 @@ function buildReport() {
       readmeMakeCommands: readme.makeCommands.length,
       readmeNpmCommands: readme.npmCommands.length,
       readmeDirectCommands: readme.directCommands.length,
+      classifiedMakeTargets: classifiedMakeTargets.length,
       highFindings: findings.filter((finding) => finding.severity === "high").length,
       mediumFindings: findings.filter((finding) => finding.severity === "medium").length
     },
     surfaces: {
       makefile,
       packageScripts,
-      readme
+      readme,
+      classifiedMakeTargets
     },
     findings
   };
@@ -293,6 +318,7 @@ function renderMarkdown(report) {
     `- README make commands: ${report.summary.readmeMakeCommands}`,
     `- README npm commands: ${report.summary.readmeNpmCommands}`,
     `- README direct commands: ${report.summary.readmeDirectCommands}`,
+    `- Classified undocumented Make targets: ${report.summary.classifiedMakeTargets}`,
     `- High findings: ${report.summary.highFindings}`,
     `- Medium findings: ${report.summary.mediumFindings}`,
     "",
@@ -312,6 +338,15 @@ function renderMarkdown(report) {
       lines.push(`- Recommended action: ${finding.recommendedAction}`);
       lines.push("");
     }
+  }
+
+  if (report.surfaces.classifiedMakeTargets?.length) {
+    lines.push("## Classified Targets");
+    lines.push("");
+    for (const item of report.surfaces.classifiedMakeTargets) {
+      lines.push(`- \`${item.target}\`: ${item.reason}`);
+    }
+    lines.push("");
   }
 
   lines.push("## Safety Notes");

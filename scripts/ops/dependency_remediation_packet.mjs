@@ -216,6 +216,42 @@ function normalizeVia(via) {
   });
 }
 
+function majorOf(version) {
+  const match = String(version || "").match(/^v?(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function requestedMajorRange(spec) {
+  const text = String(spec || "").trim();
+  const match = text.match(/(?:\^|~|>=|>|=)?\s*(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function compatibilityNotes(chain, latestHints) {
+  const notes = [];
+  for (let index = 1; index < chain.length; index += 1) {
+    const node = chain[index];
+    const parent = chain[index - 1];
+    const requested = parent?.dependencies?.[node.name] || "";
+    const hint = latestHints[node.name];
+    const latestMajor = majorOf(hint?.version);
+    const requestedMajor = requestedMajorRange(requested);
+    if (hint?.status !== "ok" || latestMajor === null || requestedMajor === null) continue;
+    if (latestMajor !== requestedMajor) {
+      notes.push({
+        package: node.name,
+        currentVersion: node.version || "",
+        latestVersion: hint.version,
+        requestedBy: parent.name,
+        requestedRange: requested,
+        risk: "major_mismatch",
+        note: `Latest ${node.name}@${hint.version} is outside ${parent.name}'s requested range ${requested}. Treat overrides as higher risk and require owner-tool smoke tests.`
+      });
+    }
+  }
+  return notes;
+}
+
 function buildFindings(audit, lock, options) {
   const graph = buildLockGraph(lock);
   const allowed = new Set(options.includeModerate ? ["moderate", "high", "critical"] : ["high", "critical"]);
@@ -228,6 +264,7 @@ function buildFindings(audit, lock, options) {
       const nearestParent = chain.length > 1 ? chain[chain.length - 2] : null;
       const packagesForHints = [...new Set([directOwner?.name, nearestParent?.name, vulnerability.name].filter(Boolean))];
       const latestHints = Object.fromEntries(packagesForHints.map((name) => [name, npmLatest(name, options.npmView)]));
+      const compatibility = compatibilityNotes(chain, latestHints);
       return {
         name: vulnerability.name,
         severity: vulnerability.severity,
@@ -236,15 +273,16 @@ function buildFindings(audit, lock, options) {
         fixAvailable: vulnerability.fixAvailable ?? false,
         nodes: vulnerability.nodes || [],
         via: normalizeVia(vulnerability.via),
-        chain: chain.map((node) => ({
+        chain: chain.map((node, index) => ({
           name: node.name,
           version: node.version,
           path: node.path || "(root)",
-          requested: chain[chain.indexOf(node) - 1]?.dependencies?.[node.name] || ""
+          requested: chain[index - 1]?.dependencies?.[node.name] || ""
         })),
         directOwner: directOwner ? { name: directOwner.name, version: directOwner.version } : null,
         nearestParent: nearestParent ? { name: nearestParent.name, version: nearestParent.version } : null,
-        latestHints
+        latestHints,
+        compatibility
       };
     });
 }
@@ -303,6 +341,14 @@ function markdown(report) {
       lines.push(`- \`${name}\`: ${hint.status === "ok" ? `latest \`${hint.version}\`` : `\`${hint.status}\``}`);
     }
     lines.push("");
+    if (finding.compatibility?.length) {
+      lines.push("Compatibility notes:");
+      lines.push("");
+      for (const note of finding.compatibility) {
+        lines.push(`- \`${note.package}\`: ${note.note}`);
+      }
+      lines.push("");
+    }
     lines.push("### Recommended Safe Next Step");
     lines.push("");
     if (finding.isDirect) {

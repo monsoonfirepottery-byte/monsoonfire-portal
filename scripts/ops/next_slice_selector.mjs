@@ -277,6 +277,31 @@ function semanticTasksFromRadar(radarReport) {
     .map((task, index) => ({ ...task, rank: index + 1 }));
 }
 
+function fallbackTasksFromRadar(radarReport) {
+  const tasks = Array.isArray(radarReport.approvalFallbackTasks) ? radarReport.approvalFallbackTasks : [];
+  return tasks.map((task, index) => ({
+    rank: index + 1,
+    score: task.score || 30,
+    id: `approval-fallback-${index + 1}`,
+    source: "proactive-radar-approval-fallback",
+    title: task.title || "Refresh fallback ops evidence",
+    type: "ops",
+    priority: task.priority || "P3",
+    effort: "S",
+    risk: "low",
+    command: task.command || "",
+    commandSafetyClass: task.commandSafetyClass || (task.command ? "read-only-report" : "manual-planning"),
+    problem: task.problem || "Primary radar findings are approval-gated.",
+    evidence: task.evidence || "",
+    proposedFix: task.proposedFix || task.title || "Refresh fallback evidence.",
+    safetyNotes: task.safetyNotes || "No destructive action is authorized by this selector.",
+    packetArtifact: null,
+    suggestedBranchName: "",
+    suggestedPrTitle: "",
+    acceptanceCriteria: task.acceptanceCriteria || []
+  }));
+}
+
 function buildReport(options) {
   const generatedAt = nowIso();
   const radar = options.refresh ? refreshRadar() : readJson(options.radar);
@@ -286,6 +311,7 @@ function buildReport(options) {
   const nextProducerTask = radarReport.nextProducerRefreshTask || tasks[0] || null;
   const selectedProducerTask = nextProducerTask && String(nextProducerTask.title || "").includes("next-slice-selector") ? tasks[0] || null : nextProducerTask;
   const semanticTasks = semanticTasksFromRadar(radarReport);
+  const fallbackTasks = fallbackTasksFromRadar(radarReport);
   const artifactConsistencyWarnings = semanticTasks
     .filter((task) => task.packetArtifact?.consistency?.ok === false)
     .map((task) => ({
@@ -306,8 +332,8 @@ function buildReport(options) {
       approvalRequiredPackets: task.packetArtifact.approvalRequiredPackets,
       safeNextStep: task.proposedFix
     }));
-  const selectedTask = selectedProducerTask || semanticTasks[0] || null;
-  const actionableTasks = [...tasks, ...semanticTasks].filter((task) => task.command || !["human-approval-review", "review-existing-packet"].includes(task.commandSafetyClass));
+  const selectedTask = selectedProducerTask || fallbackTasks[0] || semanticTasks[0] || null;
+  const actionableTasks = [...tasks, ...fallbackTasks, ...semanticTasks].filter((task) => task.command || !["human-approval-review", "review-existing-packet"].includes(task.commandSafetyClass));
   const staleProducerCount = Array.isArray(radarReport.sources?.producerArtifactFreshness)
     ? radarReport.sources.producerArtifactFreshness.filter((entry) => entry.stale).length
     : null;
@@ -333,8 +359,9 @@ function buildReport(options) {
     },
     ignoredSelfTasks: allTasks.length - tasks.length,
     nextTask: selectedTask,
-    rankedPreview: [...tasks, ...semanticTasks].slice(0, 5),
+    rankedPreview: [...tasks, ...fallbackTasks, ...semanticTasks].slice(0, 5),
     semanticTaskCount: semanticTasks.length,
+    fallbackTaskCount: fallbackTasks.length,
     actionableTaskCount: actionableTasks.length,
     artifactConsistencyWarnings,
     approvalGates,
@@ -360,6 +387,7 @@ function renderMarkdown(report) {
     `- Radar status: ${report.source.radarStatus}`,
     `- Stale producer count: ${report.staleProducerCount ?? "unknown"}`,
     `- Semantic radar tasks: ${report.semanticTaskCount ?? 0}`,
+    `- Approval fallback tasks: ${report.fallbackTaskCount ?? 0}`,
     `- Actionable task count: ${report.actionableTaskCount ?? 0}`,
     `- Artifact consistency warnings: ${report.artifactConsistencyWarnings?.length ?? 0}`,
     `- Approval gates: ${report.approvalGates?.length ?? 0}`,

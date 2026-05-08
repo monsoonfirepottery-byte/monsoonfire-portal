@@ -131,14 +131,74 @@ function refreshRadar() {
   }
 }
 
+function taskFromRecommendation(recommendation, finding, rank) {
+  const title = recommendation.title || finding?.title || "Investigate proactive radar finding";
+  const commandMap = {
+    "non-draft-prs-not-mergeable": "npm run ops:pr-conflict:packets",
+    "large-stacked-draft-pr-backlog": "npm run ops:pr-backlog:packets",
+    "stale-ops-producer-artifacts": "npm run ops:producer:refresh -- --execute --json",
+    "stale-ops-artifacts": "npm run ops:report",
+    "ops-scripts-without-make-targets": "npm run ops:command-manifest:check"
+  };
+  const id = finding?.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const command = commandMap[id] || "";
+  const priorityScore = { P0: 100, P1: 80, P2: 60, P3: 40 };
+  const severityScore = { critical: 100, high: 80, medium: 60, low: 40 };
+  const score = Math.max(
+    priorityScore[recommendation.priority] || 0,
+    severityScore[finding?.severity] || 0,
+    10
+  );
+  return {
+    rank,
+    score,
+    id,
+    source: "proactive-radar-recommendation",
+    title,
+    type: recommendation.type || "ops",
+    priority: recommendation.priority || "P2",
+    effort: recommendation.effort || "",
+    risk: recommendation.risk || "low",
+    command,
+    commandSafetyClass: command ? "read-only-report" : "manual-planning",
+    problem: finding?.impact || finding?.title || "Radar reported an actionable operational issue.",
+    evidence: finding?.evidence || "",
+    proposedFix: finding?.safeNextStep || recommendation.acceptanceCriteria?.[0] || title,
+    safetyNotes: finding?.rollback || "No destructive action is authorized by this selector.",
+    suggestedBranchName: recommendation.suggestedBranchName || "",
+    suggestedPrTitle: recommendation.suggestedPrTitle || "",
+    acceptanceCriteria: recommendation.acceptanceCriteria || []
+  };
+}
+
+function semanticTasksFromRadar(radarReport) {
+  const findings = Array.isArray(radarReport.findings) ? radarReport.findings : [];
+  const recommendations = Array.isArray(radarReport.recommendations) ? radarReport.recommendations : [];
+  const findingsByTitle = new Map(findings.map((finding) => [finding.title, finding]));
+  const findingsById = new Map(findings.map((finding) => [finding.id, finding]));
+  return recommendations
+    .map((recommendation, index) => {
+      const id = recommendation.suggestedBranchName?.replace(/^codex\/ops-/, "") || "";
+      const finding = findingsByTitle.get(recommendation.title)
+        || findingsById.get(id)
+        || findings[index]
+        || null;
+      return taskFromRecommendation(recommendation, finding, index + 1);
+    })
+    .sort((a, b) => b.score - a.score || a.rank - b.rank)
+    .map((task, index) => ({ ...task, rank: index + 1 }));
+}
+
 function buildReport(options) {
   const generatedAt = nowIso();
   const radar = options.refresh ? refreshRadar() : readJson(options.radar);
   const radarReport = radar.value || {};
   const allTasks = Array.isArray(radarReport.producerRefreshTasks) ? radarReport.producerRefreshTasks : [];
   const tasks = allTasks.filter((task) => !String(task.title || "").includes("next-slice-selector"));
-  const nextTask = radarReport.nextProducerRefreshTask || tasks[0] || null;
-  const selectedTask = nextTask && String(nextTask.title || "").includes("next-slice-selector") ? tasks[0] || null : nextTask;
+  const nextProducerTask = radarReport.nextProducerRefreshTask || tasks[0] || null;
+  const selectedProducerTask = nextProducerTask && String(nextProducerTask.title || "").includes("next-slice-selector") ? tasks[0] || null : nextProducerTask;
+  const semanticTasks = semanticTasksFromRadar(radarReport);
+  const selectedTask = selectedProducerTask || semanticTasks[0] || null;
   const staleProducerCount = Array.isArray(radarReport.sources?.producerArtifactFreshness)
     ? radarReport.sources.producerArtifactFreshness.filter((entry) => entry.stale).length
     : null;
@@ -147,7 +207,7 @@ function buildReport(options) {
     schema: "studio-brain.ops.next-slice-selector.v1",
     generatedAt,
     readOnly: true,
-    status: radar.ok ? nextTask ? "action_ready" : "ok" : "blocked",
+    status: radar.ok ? selectedTask ? "action_ready" : "ok" : "blocked",
     source: {
       refreshedRadar: options.refresh,
       radarPath: repoRelative(options.radar),
@@ -158,12 +218,13 @@ function buildReport(options) {
     },
     ignoredSelfTasks: allTasks.length - tasks.length,
     nextTask: selectedTask,
-    rankedPreview: tasks.slice(0, 5),
+    rankedPreview: [...tasks, ...semanticTasks].slice(0, 5),
+    semanticTaskCount: semanticTasks.length,
     staleProducerCount,
     safeNextStep: selectedTask
       ? selectedTask.proposedFix || selectedTask.title
       : radar.ok
-        ? "No producer refresh task is currently selected."
+        ? "No producer refresh or radar recommendation task is currently selected."
         : "Run npm run ops:proactive:radar, then rerun this selector.",
     rollback: "No rollback needed; selector writes only ignored output artifacts when --write is used."
   };
@@ -180,6 +241,7 @@ function renderMarkdown(report) {
     `- Radar refreshed: ${report.source.refreshedRadar ? "yes" : "no"}`,
     `- Radar status: ${report.source.radarStatus}`,
     `- Stale producer count: ${report.staleProducerCount ?? "unknown"}`,
+    `- Semantic radar tasks: ${report.semanticTaskCount ?? 0}`,
     `- Ignored selector self-tasks: ${report.ignoredSelfTasks}`,
     "",
     "## Next Task",
@@ -193,14 +255,16 @@ function renderMarkdown(report) {
     lines.push(`- Score: ${report.nextTask.score}`);
     lines.push(`- Priority: ${report.nextTask.priority}`);
     lines.push(`- Command safety: ${report.nextTask.commandSafetyClass}`);
+    if (report.nextTask.command) lines.push(`- Suggested command: \`${report.nextTask.command}\``);
     lines.push(`- Problem: ${report.nextTask.problem}`);
+    if (report.nextTask.evidence) lines.push(`- Evidence: ${report.nextTask.evidence}`);
     lines.push(`- Proposed fix: ${report.nextTask.proposedFix}`);
     lines.push(`- Safety notes: ${report.nextTask.safetyNotes}`);
   }
   lines.push("");
   lines.push("## Ranked Preview");
   lines.push("");
-  if (!report.rankedPreview.length) lines.push("- No ranked producer refresh tasks.");
+  if (!report.rankedPreview.length) lines.push("- No ranked producer refresh or semantic radar tasks.");
   for (const task of report.rankedPreview) {
     lines.push(`- #${task.rank} score ${task.score}: ${task.title} (${task.commandSafetyClass})`);
   }

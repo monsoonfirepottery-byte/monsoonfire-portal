@@ -473,6 +473,7 @@ function buildProducerRefreshTasks(producerArtifacts) {
 
 function buildApprovalFallbackTasks(producerArtifacts, approvalGateFindings, producerRefreshTasks) {
   if (!approvalGateFindings.length || producerRefreshTasks.length) return [];
+  const minimumActionableScore = 10;
   const excluded = new Set(["pr-stack", "pr-conflict-packets", "pr-backlog-decision-packets", "proactive-radar", "next-slice-selector", "privileged-evidence"]);
   return producerArtifacts
     .filter((entry) => !excluded.has(entry.producer))
@@ -481,16 +482,18 @@ function buildApprovalFallbackTasks(producerArtifacts, approvalGateFindings, pro
       const commandSafetyClass = inferRefreshCommandSafety(entry.refreshCommand);
       const ageDays = entry.ageDays === null ? entry.freshnessDays : entry.ageDays;
       const freshnessRatio = entry.freshnessDays ? Number((ageDays / entry.freshnessDays).toFixed(2)) : 0;
+      const valueSignal = approvalFallbackValueSignal(entry.producer);
+      const score = approvalFallbackScore(entry, commandSafetyClass, valueSignal);
       return {
         rank: 0,
-        score: Math.round((freshnessRatio * 30) + (commandSafetyClass === "read_only_local" ? 20 : 10)),
+        score,
         title: `[ops] Refresh ${entry.producer} evidence while PR gates await approval`,
         labels: ["ops", "reliability", "evidence"],
         priority: "P3",
         command: entry.refreshCommand,
         commandSafetyClass,
         problem: "PR-stack work is currently approval-gated, but the ops loop can still refresh safe operational evidence.",
-        evidence: `${approvalGateFindings.length} approval-gated PR-stack finding(s); ${entry.producer} evidence is ${entry.ageDays === null ? "missing" : `${entry.ageDays}d old`} with a ${entry.freshnessDays}d threshold.`,
+        evidence: `${approvalGateFindings.length} approval-gated PR-stack finding(s); ${entry.producer} evidence is ${entry.ageDays === null ? "missing" : `${entry.ageDays}d old`} with a ${entry.freshnessDays}d threshold; value signal: ${valueSignal.reason}; freshness ratio: ${freshnessRatio}.`,
         risk: "Without a fallback lane, the loop can spin on human gates and stop producing fresh operational evidence.",
         proposedFix: `Run \`${entry.refreshCommand}\`, then rerun \`npm run ops:next-slice:selector\` to keep the loop moving.`,
         acceptanceCriteria: [
@@ -501,9 +504,37 @@ function buildApprovalFallbackTasks(producerArtifacts, approvalGateFindings, pro
         safetyNotes: `Read-only evidence refresh; cleanup approval remains ${entry.cleanupApproval || "human"}.`
       };
     })
+    .filter((task) => task.score >= minimumActionableScore)
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
     .slice(0, 5)
     .map((task, index) => ({ ...task, rank: index + 1 }));
+}
+
+function approvalFallbackValueSignal(producer) {
+  const values = {
+    "output-retention": { score: 35, reason: "prevents artifact sprawl while keeping cleanup approval-gated" },
+    "command-manifest": { score: 32, reason: "keeps operator command inventory discoverable and auditable" },
+    "producer-refresh-runner": { score: 30, reason: "audits the evidence producer loop itself" },
+    "incidents-v2": { score: 28, reason: "captures broad incident-ready evidence without host mutation" },
+    "incidents": { score: 24, reason: "captures incident evidence for older consumers" },
+    "dependency-remediation": { score: 22, reason: "turns dependency findings into issue-ready remediation packets" },
+    "dependency-upstream-watch": { score: 20, reason: "watches upstream drift without changing dependencies" },
+    "ci-validate": { score: 18, reason: "checks ops script and redaction guard health" },
+    "dependency-cadence": { score: 16, reason: "rolls up dependency safety producers" },
+    "dependency-security-scout": { score: 16, reason: "refreshes security advisory evidence" },
+    "dependency-zero-baseline": { score: 14, reason: "checks for newly introduced dependency findings" }
+  };
+  return values[producer] || { score: 10, reason: "keeps a safe ops evidence lane moving" };
+}
+
+function approvalFallbackScore(entry, commandSafetyClass, valueSignal) {
+  const safetyScore = commandSafetyClass === "read_only_local" ? 15 : commandSafetyClass === "read_only_specialist" ? 10 : commandSafetyClass === "read_only_live_probe" ? 6 : 0;
+  if (entry.ageDays === null) return valueSignal.score + safetyScore + 45;
+
+  const freshnessRatio = entry.freshnessDays ? entry.ageDays / entry.freshnessDays : 0;
+  const freshnessScore = Math.round(Math.min(1, Math.max(0, freshnessRatio)) * 40);
+  const justRefreshedPenalty = freshnessRatio < 0.05 ? 45 : freshnessRatio < 0.25 ? 20 : 0;
+  return Math.max(0, valueSignal.score + safetyScore + freshnessScore - justRefreshedPenalty);
 }
 
 function inferRefreshCommandSafety(command) {

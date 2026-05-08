@@ -68,6 +68,13 @@ for needle in \
   fi
 done
 
+section "Ops Command Surface"
+if node "${REPO_ROOT}/scripts/ops/command_surface_guard.mjs" --json --write --output-dir "${OUT_DIR}/command-surface-guard" >"${OUT_DIR}/command-surface-guard.json"; then
+  pass "documented ops commands resolve"
+else
+  fail "documented ops commands resolve"
+fi
+
 section "Redacted Bundle Smoke"
 SMOKE_DIR="${OUT_DIR}/incident-bundle-v2-smoke.$(date -u +%Y%m%dT%H%M%SZ).$$"
 INCIDENT_BUNDLE_V2_SMOKE=1 INCIDENT_INCLUDE_POST_DEPLOY=0 INCIDENT_INCLUDE_LOGS=0 bash "${REPO_ROOT}/scripts/ops/incident_bundle_v2.sh" "${SMOKE_DIR}" >"${OUT_DIR}/incident-bundle-v2-smoke.out" 2>&1

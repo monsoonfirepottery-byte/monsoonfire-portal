@@ -55,6 +55,13 @@
       "retentionClass": "ticket-evidence",
       "cleanupApproval": "human"
     },
+    "pr-backlog-decision-packets": {
+      "outputPath": "output/ops/pr-backlog-decision-packets",
+      "refreshCommand": "npm run ops:pr-backlog:packets",
+      "freshnessDays": 1,
+      "retentionClass": "ticket-evidence",
+      "cleanupApproval": "human"
+    },
     "proactive-radar": {
       "outputPath": "output/ops/proactive-radar",
       "refreshCommand": "npm run ops:proactive:radar",

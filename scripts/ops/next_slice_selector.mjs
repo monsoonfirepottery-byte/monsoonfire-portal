@@ -164,7 +164,7 @@ function buildReport(options) {
       ? selectedTask.proposedFix || selectedTask.title
       : radar.ok
         ? "No producer refresh task is currently selected."
-        : "Run make ops-proactive-radar, then rerun this selector.",
+        : "Run npm run ops:proactive:radar, then rerun this selector.",
     rollback: "No rollback needed; selector writes only ignored output artifacts when --write is used."
   };
 }

@@ -390,7 +390,7 @@ function buildProducerRefreshTasks(producerArtifacts) {
         problem: `${entry.producer} evidence is ${freshness}; freshness threshold is ${entry.freshnessDays} days.`,
         evidence: `Producer ${entry.producer} expects ${entry.outputPath || "missing outputPath"}; latest artifact ${entry.newestArtifact || "not found"}.`,
         risk: "The ops doctor can recommend stale next actions when producer evidence is missing or outside its freshness window.",
-        proposedFix: `Run the read-only refresh command \`${refreshCommand}\`, then rerun \`make ops-proactive-radar\` to confirm the artifact is fresh.`,
+        proposedFix: `Run the read-only refresh command \`${refreshCommand}\`, then rerun \`npm run ops:proactive:radar\` to confirm the artifact is fresh.`,
         acceptanceCriteria: [
           `${entry.outputPath || "producer output path"} exists with latest JSON or Markdown evidence.`,
           `Radar reports ${entry.producer} as fresh.`,

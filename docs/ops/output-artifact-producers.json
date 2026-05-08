@@ -85,7 +85,7 @@
     },
     "privileged-evidence": {
       "outputPath": "output/ops/privileged-evidence",
-      "refreshCommand": "make ops-privileged-evidence-read",
+      "refreshCommand": "npm run ops:privileged-evidence:read",
       "freshnessDays": 7,
       "retentionClass": "approval-gated-evidence",
       "cleanupApproval": "human"

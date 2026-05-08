@@ -23,6 +23,7 @@ This directory is the durable operations surface for Studio Brain. It separates 
 | `20-swarm-slice-48-approval-backlog.md` | Issue-ready backlog entries for remaining approval gates. |
 | `21-swarm-slice-49-roadmap-30-60-90.md` | Refreshed 30/60/90 Studio Brain ops roadmap. |
 | `22-privileged-evidence-capture.md` | Approval-gated workaround for sudo-unavailable agents: a narrow root capture job plus read-only agent reader. |
+| `26-dependency-security-cadence.md` | Daily/weekly dependency guard cadence, stale-alert handling, and safe lockfile refresh workflow. |
 
 ## Safe Commands
 
@@ -56,6 +57,7 @@ make ops-dependency-review
 make ops-dependency-security-scout
 make ops-dependency-remediation-packet
 make ops-dependency-upstream-watch
+make ops-dependency-zero-baseline
 make ops-idle-worker-effectivity
 make ops-effectivity-report
 make ops-evidence-freshness
@@ -82,6 +84,7 @@ npm run ops:command-surface:guard
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch
+npm run ops:dependency:zero-baseline
 npm run ops:docker:tag-policy
 ```
 
@@ -103,6 +106,7 @@ node scripts/ops/command_surface_guard.mjs --write
 node scripts/ops/dependency_security_scout.mjs --write
 node scripts/ops/dependency_remediation_packet.mjs --write
 node scripts/ops/dependency_upstream_watch.mjs --write
+node scripts/ops/dependency_zero_baseline_guard.mjs --write
 node scripts/ops/docker_floating_tag_policy.mjs --write
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
@@ -127,6 +131,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-dependency-remediation-packet` turns high/critical npm audit findings into a read-only decision packet with dependency chains, owner-package candidates, latest-version hints, safe next steps, acceptance criteria, and rollback notes. It writes under `output/ops/dependency-remediation` and does not install, update, override, or remove dependencies.
 
 `ops-dependency-upstream-watch` checks high/critical npm audit chains against read-only npm registry version metadata and classifies whether the chain has a normal update candidate, still needs upstream movement, or would require a higher-risk override experiment. It writes under `output/ops/dependency-upstream-watch` and does not install, update, override, or remove dependencies.
+
+`ops-dependency-zero-baseline` compares the current dependency scout and upstream-watch output against `docs/ops/dependency-zero-baseline.json`, the all-clean baseline recorded after the `basic-ftp` lockfile refresh. It writes under `output/ops/dependency-zero-baseline`; use `node scripts/ops/dependency_zero_baseline_guard.mjs --strict` when a non-zero exit should fail a guard job. It does not run `npm audit fix`, install, update, override, or remove dependencies.
 
 `ops-docker-tag-policy` scans tracked Compose files and Dockerfiles for `latest`, `stable`, branch-like, broad major-only, and digest-pinned image references. It writes issue-ready follow-ups under `output/ops/docker-tag-policy` and does not pull, recreate, restart, or edit Docker resources.
 

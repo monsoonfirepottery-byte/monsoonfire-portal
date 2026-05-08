@@ -371,6 +371,30 @@ function buildRecommendations(findings) {
   }));
 }
 
+function buildProducerRefreshTasks(producerArtifacts) {
+  return producerArtifacts
+    .filter((entry) => entry.stale)
+    .map((entry) => {
+      const freshness = entry.ageDays === null ? "missing" : `${entry.ageDays} days old`;
+      const refreshCommand = entry.refreshCommand || "not listed";
+      return {
+        title: `[ops] Refresh ${entry.producer} evidence artifact`,
+        labels: ["ops", "docs", "reliability"],
+        priority: entry.freshnessDays <= 1 ? "P2" : "P3",
+        problem: `${entry.producer} evidence is ${freshness}; freshness threshold is ${entry.freshnessDays} days.`,
+        evidence: `Producer ${entry.producer} expects ${entry.outputPath || "missing outputPath"}; latest artifact ${entry.newestArtifact || "not found"}.`,
+        risk: "The ops doctor can recommend stale next actions when producer evidence is missing or outside its freshness window.",
+        proposedFix: `Run the read-only refresh command \`${refreshCommand}\`, then rerun \`make ops-proactive-radar\` to confirm the artifact is fresh.`,
+        acceptanceCriteria: [
+          `${entry.outputPath || "producer output path"} exists with latest JSON or Markdown evidence.`,
+          `Radar reports ${entry.producer} as fresh.`,
+          "No destructive cleanup or host mutation is executed."
+        ],
+        safetyNotes: `Cleanup approval remains ${entry.cleanupApproval || "human"}; rollback is to discard regenerated ignored output artifacts or revert any docs-only evidence update.`
+      };
+    });
+}
+
 function buildReport(options) {
   const generatedAt = nowIso();
   const runId = clean(options.runId) || `proactive-radar-${generatedAt.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
@@ -381,6 +405,7 @@ function buildReport(options) {
   const producerArtifacts = producerArtifactFreshness();
   const scripts = scriptInventory();
   const findings = buildFindings({ prs, status, freshness, producerArtifacts, scripts });
+  const producerRefreshTasks = buildProducerRefreshTasks(producerArtifacts);
   return {
     schema: "studio-brain.ops.proactive-radar.v1",
     generatedAt,
@@ -408,7 +433,8 @@ function buildReport(options) {
       }
     },
     findings,
-    recommendations: buildRecommendations(findings)
+    recommendations: buildRecommendations(findings),
+    producerRefreshTasks
   };
 }
 
@@ -465,6 +491,23 @@ function renderMarkdown(report) {
     lines.push(`- Suggested PR title: ${recommendation.suggestedPrTitle}`);
     lines.push("- Acceptance criteria:");
     for (const item of recommendation.acceptanceCriteria) lines.push(`  - ${item}`);
+    lines.push("");
+  }
+  lines.push("## Producer Refresh Tasks");
+  lines.push("");
+  if (!report.producerRefreshTasks.length) lines.push("- No stale producer refresh tasks from current policy thresholds.");
+  for (const task of report.producerRefreshTasks) {
+    lines.push(`### ${task.title}`);
+    lines.push("");
+    lines.push(`- Labels: ${task.labels.join(", ")}`);
+    lines.push(`- Priority: ${task.priority}`);
+    lines.push(`- Problem: ${task.problem}`);
+    lines.push(`- Evidence: ${task.evidence}`);
+    lines.push(`- Risk: ${task.risk}`);
+    lines.push(`- Proposed fix: ${task.proposedFix}`);
+    lines.push("- Acceptance criteria:");
+    for (const item of task.acceptanceCriteria) lines.push(`  - ${item}`);
+    lines.push(`- Safety notes: ${task.safetyNotes}`);
     lines.push("");
   }
   const stale = report.sources.artifactFreshness.filter((entry) => entry.stale);

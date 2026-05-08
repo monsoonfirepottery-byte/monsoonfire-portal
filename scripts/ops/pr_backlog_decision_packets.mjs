@@ -116,6 +116,86 @@ function dependencyLine(pr) {
   return `- #${pr.number} ${pr.head || "unknown"} -> ${pr.base || "unknown"}; dependsOn=${pr.dependsOnPr ? `#${pr.dependsOnPr}` : "none"}; children=${children}`;
 }
 
+function compactPrLabel(pr) {
+  return `#${pr.number} ${pr.head || pr.title || "(unknown)"}`;
+}
+
+function ageRange(prs) {
+  const ages = prs.map((pr) => pr.ageDays).filter((age) => Number.isFinite(age));
+  if (!ages.length) return { oldestDays: null, newestDays: null };
+  return { oldestDays: Math.max(...ages), newestDays: Math.min(...ages) };
+}
+
+function findRoot(pr, byNumber) {
+  let current = pr;
+  const seen = new Set();
+  while (current?.dependsOnPr && !seen.has(current.number)) {
+    seen.add(current.number);
+    const parent = byNumber.get(current.dependsOnPr);
+    if (!parent) break;
+    current = parent;
+  }
+  return current || pr;
+}
+
+function cohortAction(cohort) {
+  if (cohort.dirtyNonDrafts > 0) return "Handle dirty non-draft blockers before stack work.";
+  if (cohort.root?.base === "main" && cohort.root?.isDraft && cohort.root.ageDays !== null && cohort.root.ageDays > 7) {
+    return "Decide whether the stale main-based root should be kept, rebuilt, superseded, or closed.";
+  }
+  if (cohort.stackedDrafts > 20) return "Pick one fresh, current-main rebuild slice instead of trying to revive the full stack.";
+  return "Review the root and first two descendants, then mark the rest keep, rebuild, supersede, or close.";
+}
+
+function buildStackCohorts(prs) {
+  const byNumber = new Map(prs.map((pr) => [pr.number, pr]));
+  const groups = new Map();
+  for (const pr of prs) {
+    if (!pr.isDraft || pr.base === "main") continue;
+    const root = findRoot(pr, byNumber);
+    const key = String(root.number || pr.dependsOnPr || pr.base || "unknown");
+    if (!groups.has(key)) groups.set(key, { root, prs: [] });
+    groups.get(key).prs.push(pr);
+  }
+  return Array.from(groups.values())
+    .map((group) => {
+      const sorted = group.prs.sort((a, b) => a.number - b.number);
+      const ages = ageRange(sorted);
+      const cohort = {
+        root: group.root ? {
+          number: group.root.number,
+          title: group.root.title || "",
+          head: group.root.head || "",
+          base: group.root.base || "",
+          url: group.root.url || "",
+          isDraft: Boolean(group.root.isDraft),
+          ageDays: group.root.ageDays ?? null,
+          disposition: group.root.disposition?.action || "unknown"
+        } : null,
+        prCount: sorted.length,
+        stackedDrafts: sorted.filter((pr) => pr.isDraft && pr.base !== "main").length,
+        staleOver7Days: sorted.filter((pr) => pr.ageDays !== null && pr.ageDays > 7).length,
+        dirtyNonDrafts: sorted.filter((pr) => !pr.isDraft && pr.mergeStateStatus === "DIRTY").length,
+        oldestDays: ages.oldestDays,
+        newestDays: ages.newestDays,
+        firstPr: sorted[0] ? { number: sorted[0].number, head: sorted[0].head, base: sorted[0].base, dependsOnPr: sorted[0].dependsOnPr } : null,
+        lastPr: sorted.at(-1) ? { number: sorted.at(-1).number, head: sorted.at(-1).head, base: sorted.at(-1).base, dependsOnPr: sorted.at(-1).dependsOnPr } : null,
+        samplePrs: sorted.slice(0, 8).map((pr) => ({ number: pr.number, head: pr.head, base: pr.base, dependsOnPr: pr.dependsOnPr, ageDays: pr.ageDays, disposition: pr.disposition?.action || "unknown" }))
+      };
+      cohort.safeNextStep = cohortAction(cohort);
+      return cohort;
+    })
+    .sort((a, b) => b.prCount - a.prCount || (a.root?.number || 0) - (b.root?.number || 0));
+}
+
+function cohortLine(cohort) {
+  const root = cohort.root ? `root #${cohort.root.number} ${cohort.root.head || cohort.root.title || "(unknown)"}` : "root unknown";
+  const age = cohort.oldestDays === null ? "age unknown" : `oldest ${cohort.oldestDays}d`;
+  const first = cohort.firstPr ? `first ${compactPrLabel(cohort.firstPr)}` : "first unknown";
+  const last = cohort.lastPr ? `last ${compactPrLabel(cohort.lastPr)}` : "last unknown";
+  return `- ${root}: ${cohort.prCount} stacked draft(s), ${age}; ${first}; ${last}; next=${cohort.safeNextStep}`;
+}
+
 function limitEvidence(lines, limit = 30) {
   if (lines.length <= limit) return lines;
   return [...lines.slice(0, limit), `- ...and ${lines.length - limit} more.`];
@@ -156,6 +236,7 @@ function buildPackets(prs, sourceReport) {
   const staleDrafts = prs.filter((pr) => pr.isDraft && pr.ageDays !== null && pr.ageDays > 7);
   const closeCandidates = prs.filter((pr) => pr.disposition?.action === "close_candidate");
   const stackedDrafts = prs.filter((pr) => pr.isDraft && pr.base !== "main");
+  const stackCohorts = buildStackCohorts(prs);
   const staleMainDrafts = prs.filter((pr) => pr.isDraft && pr.base === "main" && pr.ageDays !== null && pr.ageDays > 7);
   const unstableNonDrafts = prs.filter((pr) => !pr.isDraft && pr.mergeStateStatus === "UNSTABLE");
   const dirtyNonDrafts = prs.filter((pr) => !pr.isDraft && pr.mergeStateStatus === "DIRTY");
@@ -182,13 +263,18 @@ function buildPackets(prs, sourceReport) {
       priority: "P2",
       labels: ["ops", "reliability", "cleanup"],
       prCount: stackedDrafts.length,
-      evidence: limitEvidence(stackedDrafts.map(dependencyLine)),
+      evidence: [
+        ...limitEvidence(stackCohorts.map(cohortLine), 12),
+        "",
+        "Dependency sample:",
+        ...limitEvidence(stackedDrafts.map(dependencyLine), 18)
+      ],
       problem: `${stackedDrafts.length} draft PR(s) target non-main branches, creating a stacked backlog that is hard to resume safely.`,
       risk: "Large draft stacks make merge order unclear, increase conflict risk, and can keep obsolete work looking operationally current.",
-      proposedFix: "Identify the next useful slice from current main, rebuild it as a small PR, then mark remaining stack items keep, supersede, or close after review.",
-      acceptanceCriteria: ["The next executable PR-stack slice is identified from current main.", "Stack roots and child PRs are documented with dependency evidence.", "No force-push, close, or branch delete happens without human approval."],
+      proposedFix: "Choose one cohort at a time, identify the current-main slice worth salvaging, rebuild it as a small PR, then mark remaining stack items keep, supersede, or close after review.",
+      acceptanceCriteria: ["Stacked drafts are grouped into root cohorts with counts, ages, sample PRs, and safe next steps.", "The next executable PR-stack slice is identified from current main.", "No force-push, close, or branch delete happens without human approval."],
       safetyNotes: ["This packet is read-only and decision-only.", "Use clean worktrees for any future rebuilds.", "Rollback for a bad decision is reopening/restoring the affected PR branch if preserved."],
-      nextStep: "Pick one stack root to revalidate from current main before touching any draft branches."
+      nextStep: stackCohorts[0] ? `Start with root #${stackCohorts[0].root?.number || "unknown"}; ${stackCohorts[0].safeNextStep}` : "Pick one stack root to revalidate from current main before touching any draft branches."
     }));
   }
 
@@ -249,16 +335,18 @@ function buildPackets(prs, sourceReport) {
       staleDrafts: staleDrafts.length,
       closeCandidates: closeCandidates.length,
       stackedDrafts: stackedDrafts.length,
+      stackCohorts: stackCohorts.length,
       staleMainDrafts: staleMainDrafts.length,
       unstableNonDrafts: unstableNonDrafts.length,
       dirtyNonDrafts: dirtyNonDrafts.length,
       packets: packets.length
-    }
+    },
+    stackCohorts
   };
 }
 
 function emptySummary() {
-  return { open: 0, drafts: 0, nonDraft: 0, staleDrafts: 0, closeCandidates: 0, stackedDrafts: 0, staleMainDrafts: 0, unstableNonDrafts: 0, dirtyNonDrafts: 0, packets: 0 };
+  return { open: 0, drafts: 0, nonDraft: 0, staleDrafts: 0, closeCandidates: 0, stackedDrafts: 0, stackCohorts: 0, staleMainDrafts: 0, unstableNonDrafts: 0, dirtyNonDrafts: 0, packets: 0 };
 }
 
 function buildReport(options) {
@@ -289,7 +377,7 @@ function buildReport(options) {
   }
   const sourceReport = safeJsonParse(readFileSync(options.input, "utf8"), {});
   const prs = Array.isArray(sourceReport.pullRequests) ? sourceReport.pullRequests : [];
-  const { packets, summary } = buildPackets(prs, sourceReport);
+  const { packets, summary, stackCohorts } = buildPackets(prs, sourceReport);
   return {
     schema: "studio-brain.ops.pr-backlog-decision-packets.v1",
     generatedAt,
@@ -297,6 +385,7 @@ function buildReport(options) {
     status: packets.length ? "action_needed" : "ok",
     source: { refreshed: options.refresh, ok: true, error: "", input: repoRelative(options.input), generatedAt: sourceReport.generatedAt || "", status: sourceReport.status || "unknown" },
     summary,
+    stackCohorts,
     packets,
     safeNextStep: packets.length ? "Use these packets to make keep, rebuild, supersede, or close decisions; do not mutate PRs without human approval." : "No PR backlog decision packets are currently needed."
   };
@@ -312,6 +401,7 @@ function renderMarkdown(report) {
     `- Open PRs: ${report.summary.open}`,
     `- Draft PRs: ${report.summary.drafts}`,
     `- Stacked drafts: ${report.summary.stackedDrafts}`,
+    `- Stack cohorts: ${report.summary.stackCohorts || 0}`,
     `- Close candidates: ${report.summary.closeCandidates}`,
     `- Dirty non-draft PRs: ${report.summary.dirtyNonDrafts}`,
     "",
@@ -319,9 +409,26 @@ function renderMarkdown(report) {
     "",
     "This packet is read-only. It does not close PRs, rebase branches, force-push, delete branches, check out worktrees, or modify repository state.",
     "",
-    "## Packets",
+    "## Stack Cohorts",
     ""
   ];
+  if (!report.stackCohorts?.length) {
+    lines.push("No stacked draft cohorts detected.", "");
+  } else {
+    lines.push("| Root | Count | Oldest | Newest | First | Last | Safe next step |");
+    lines.push("| --- | ---: | ---: | ---: | --- | --- | --- |");
+    for (const cohort of report.stackCohorts) {
+      const root = cohort.root ? `#${cohort.root.number} \`${cohort.root.head || "unknown"}\`` : "unknown";
+      const first = cohort.firstPr ? `#${cohort.firstPr.number} \`${cohort.firstPr.head || "unknown"}\`` : "";
+      const last = cohort.lastPr ? `#${cohort.lastPr.number} \`${cohort.lastPr.head || "unknown"}\`` : "";
+      lines.push(`| ${root} | ${cohort.prCount} | ${cohort.oldestDays ?? "?"} | ${cohort.newestDays ?? "?"} | ${first} | ${last} | ${cohort.safeNextStep} |`);
+    }
+    lines.push("");
+  }
+  lines.push(
+    "## Packets",
+    ""
+  );
   if (!report.packets.length) {
     lines.push("No PR backlog decision packets are currently needed.", "");
     return `${lines.join("\n")}\n`;

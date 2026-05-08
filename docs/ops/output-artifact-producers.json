@@ -48,6 +48,13 @@
       "retentionClass": "ticket-evidence",
       "cleanupApproval": "human"
     },
+    "pr-conflict-packets": {
+      "outputPath": "output/ops/pr-conflict-packets",
+      "refreshCommand": "npm run ops:pr-conflict:packets",
+      "freshnessDays": 1,
+      "retentionClass": "ticket-evidence",
+      "cleanupApproval": "human"
+    },
     "proactive-radar": {
       "outputPath": "output/ops/proactive-radar",
       "refreshCommand": "npm run ops:proactive:radar",

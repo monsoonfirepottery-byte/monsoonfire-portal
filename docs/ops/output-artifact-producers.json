@@ -48,6 +48,13 @@
       "retentionClass": "next-slice-evidence",
       "cleanupApproval": "human"
     },
+    "next-slice-selector": {
+      "outputPath": "output/ops/next-slice-selector",
+      "refreshCommand": "make ops-next-slice-selector",
+      "freshnessDays": 1,
+      "retentionClass": "next-slice-evidence",
+      "cleanupApproval": "human"
+    },
     "output-retention": {
       "outputPath": "output/ops/output-retention",
       "refreshCommand": "make ops-output-retention",

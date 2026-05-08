@@ -88,6 +88,7 @@
     "ops:command-manifest": "node ./scripts/ops/ops_command_manifest.mjs --write --json",
     "ops:command-manifest:check": "node ./scripts/ops/ops_command_manifest.mjs --check --json",
     "ops:output:retention": "node ./scripts/ops/output_retention_scanner.mjs --write --json",
+    "ops:next-slice:selector": "node ./scripts/ops/next_slice_selector.mjs --refresh --write --json",
     "test:ops:command-surface": "node --test ./scripts/ops/command_surface_guard.test.mjs ./scripts/ops/ops_command_manifest.test.mjs",
     "ops:dependency:security-scout": "node ./scripts/ops/dependency_security_scout.mjs --write --json",
     "ops:dependency:remediation-packet": "node ./scripts/ops/dependency_remediation_packet.mjs --write --json",

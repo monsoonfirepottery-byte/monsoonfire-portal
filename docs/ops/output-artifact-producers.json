@@ -8,72 +8,79 @@
   "producers": {
     "dependency-zero-baseline": {
       "outputPath": "output/ops/dependency-zero-baseline",
-      "refreshCommand": "make ops-dependency-zero-baseline",
+      "refreshCommand": "npm run ops:dependency:zero-baseline",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-cadence": {
       "outputPath": "output/ops/dependency-cadence",
-      "refreshCommand": "make ops-dependency-cadence",
+      "refreshCommand": "npm run ops:dependency:cadence",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-security-scout": {
       "outputPath": "output/ops/dependency-security-scout",
-      "refreshCommand": "make ops-dependency-security-scout",
+      "refreshCommand": "npm run ops:dependency:security-scout",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-remediation": {
       "outputPath": "output/ops/dependency-remediation",
-      "refreshCommand": "make ops-dependency-remediation-packet",
+      "refreshCommand": "npm run ops:dependency:remediation-packet",
       "freshnessDays": 7,
       "retentionClass": "decision-packet",
       "cleanupApproval": "human"
     },
     "dependency-upstream-watch": {
       "outputPath": "output/ops/dependency-upstream-watch",
-      "refreshCommand": "make ops-dependency-upstream-watch",
+      "refreshCommand": "npm run ops:dependency:upstream-watch",
       "freshnessDays": 7,
       "retentionClass": "trend",
       "cleanupApproval": "human"
     },
     "pr-stack": {
       "outputPath": "output/ops/pr-stack",
-      "refreshCommand": "make ops-pr-stack-readiness",
+      "refreshCommand": "npm run ops:pr-stack:readiness",
       "freshnessDays": 1,
       "retentionClass": "ticket-evidence",
       "cleanupApproval": "human"
     },
     "proactive-radar": {
       "outputPath": "output/ops/proactive-radar",
-      "refreshCommand": "make ops-proactive-radar",
+      "refreshCommand": "npm run ops:proactive:radar",
       "freshnessDays": 1,
       "retentionClass": "next-slice-evidence",
       "cleanupApproval": "human"
     },
     "next-slice-selector": {
       "outputPath": "output/ops/next-slice-selector",
-      "refreshCommand": "make ops-next-slice-selector",
+      "refreshCommand": "npm run ops:next-slice:selector",
       "freshnessDays": 1,
       "retentionClass": "next-slice-evidence",
       "cleanupApproval": "human"
     },
     "output-retention": {
       "outputPath": "output/ops/output-retention",
-      "refreshCommand": "make ops-output-retention",
+      "refreshCommand": "npm run ops:output:retention",
       "freshnessDays": 7,
       "retentionClass": "self-audit",
       "cleanupApproval": "human"
     },
     "command-manifest": {
       "outputPath": "output/ops/command-manifest",
-      "refreshCommand": "make ops-command-manifest",
+      "refreshCommand": "npm run ops:command-manifest",
       "freshnessDays": 7,
       "retentionClass": "tool-inventory",
+      "cleanupApproval": "human"
+    },
+    "ci-validate": {
+      "outputPath": "output/ops/ci-validate",
+      "refreshCommand": "bash scripts/ops/ops_ci_validate.sh",
+      "freshnessDays": 7,
+      "retentionClass": "self-audit",
       "cleanupApproval": "human"
     },
     "incidents": {

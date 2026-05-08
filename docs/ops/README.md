@@ -33,6 +33,7 @@ make ops-check
 make ops-inventory
 make ops-postgres-review
 make ops-docker-review
+make ops-docker-tag-policy
 make ops-capacity
 make ops-import-pressure
 make ops-cleanup-candidates
@@ -75,6 +76,7 @@ npm run ops:pr-stack:readiness
 npm run ops:evidence:freshness
 npm run ops:db-docker-backup:rollup
 npm run ops:dependency:security-scout
+npm run ops:docker:tag-policy
 ```
 
 The scripts under `scripts/ops/` avoid environment dumps and degrade when Docker, PostgreSQL, or host-only tools are unavailable.
@@ -92,6 +94,7 @@ bash scripts/ops/npm_audit_inventory.sh
 bash scripts/ops/effectivity_report.sh
 node scripts/ops/proactive_issue_radar.mjs --write
 node scripts/ops/dependency_security_scout.mjs --write
+node scripts/ops/docker_floating_tag_policy.mjs --write
 bash scripts/ops/privileged_evidence_read.sh
 bash scripts/ops/privileged_evidence_capture.sh --smoke --output-dir output/ops/privileged-evidence
 node scripts/studiobrain-ops-work-packet.mjs --write
@@ -109,6 +112,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-db-docker-backup-rollup` runs the existing read-only Docker, PostgreSQL, backup, Redis/MinIO, and restore-prerequisite packets, stores their text evidence under `output/ops/db-docker-backup`, and summarizes degraded lanes with issue-ready follow-up tasks.
 
 `ops-dependency-security-scout` compares open Dependabot alerts, open Dependabot PR readiness, and local `npm audit` summaries across the repo's package surfaces. It writes issue-ready follow-up tasks under `output/ops/dependency-security-scout` and does not install, update, or fix packages.
+
+`ops-docker-tag-policy` scans tracked Compose files and Dockerfiles for `latest`, `stable`, branch-like, broad major-only, and digest-pinned image references. It writes issue-ready follow-ups under `output/ops/docker-tag-policy` and does not pull, recreate, restart, or edit Docker resources.
 
 ## Approval Boundaries
 

@@ -7,46 +7,55 @@
   },
   "producers": {
     "dependency-zero-baseline": {
+      "outputPath": "output/ops/dependency-zero-baseline",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-security-scout": {
+      "outputPath": "output/ops/dependency-security-scout",
       "freshnessDays": 1,
       "retentionClass": "latest-plus-history",
       "cleanupApproval": "human"
     },
     "dependency-upstream-watch": {
+      "outputPath": "output/ops/dependency-upstream-watch",
       "freshnessDays": 7,
       "retentionClass": "trend",
       "cleanupApproval": "human"
     },
     "pr-stack": {
+      "outputPath": "output/ops/pr-stack",
       "freshnessDays": 1,
       "retentionClass": "ticket-evidence",
       "cleanupApproval": "human"
     },
     "output-retention": {
+      "outputPath": "output/ops/output-retention",
       "freshnessDays": 7,
       "retentionClass": "self-audit",
       "cleanupApproval": "human"
     },
     "command-manifest": {
+      "outputPath": "output/ops/command-manifest",
       "freshnessDays": 7,
       "retentionClass": "tool-inventory",
       "cleanupApproval": "human"
     },
     "incidents": {
+      "outputPath": "output/ops/incidents",
       "freshnessDays": 30,
       "retentionClass": "incident",
       "cleanupApproval": "human"
     },
     "incidents-v2": {
+      "outputPath": "output/ops/incidents-v2",
       "freshnessDays": 30,
       "retentionClass": "incident",
       "cleanupApproval": "human"
     },
     "privileged-evidence": {
+      "outputPath": "output/ops/privileged-evidence",
       "freshnessDays": 7,
       "retentionClass": "approval-gated-evidence",
       "cleanupApproval": "human"

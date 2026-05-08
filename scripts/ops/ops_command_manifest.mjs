@@ -171,6 +171,59 @@ function inferLane(command, recipe, scriptRefs) {
   return "ops";
 }
 
+function classifyNpmOnlyCommand(script) {
+  const name = clean(script.name);
+  const command = clean(script.command);
+
+  if (name === "ops:cockpit:reset" || name === "ops:cockpit:reset:force") {
+    return {
+      lane: "sre",
+      approvalClass: "destructive_local_state",
+      operatorClass: "approval_gated_local_reset",
+      reason: "removes local ops-cockpit and heartbeat artifacts; command requires explicit confirmation for force mode"
+    };
+  }
+  if (name === "ops:cockpit:stop") {
+    return {
+      lane: "sre",
+      approvalClass: "local_state_change",
+      operatorClass: "manual_local_lifecycle",
+      reason: "updates local ops-cockpit state and records a stop event; no host service restart is implied"
+    };
+  }
+  if (name === "ops:cockpit:start" || name === "ops:cockpit:status" || name === "ops:cockpit:bundle") {
+    return {
+      lane: "sre",
+      approvalClass: "read_only_local",
+      operatorClass: "local_cockpit_utility",
+      reason: "reads or regenerates local ops-cockpit evidence under output paths"
+    };
+  }
+  if (name === "ops:portal:bridge:smoke") {
+    return {
+      lane: "sre",
+      approvalClass: "read_only_local",
+      operatorClass: "local_build_smoke",
+      reason: "builds the local Studio Brain UI and runs a Playwright bridge smoke against generated fixture HTML"
+    };
+  }
+  if (name === "ops:portal:public:smoke") {
+    return {
+      lane: "sre",
+      approvalClass: "read_only_live_probe",
+      operatorClass: "authenticated_public_smoke",
+      reason: "mints a staff token and probes the public portal route; no deploy or mutation is performed"
+    };
+  }
+
+  return {
+    lane: inferLane(name, command, referencedOpsScripts(command)),
+    approvalClass: inferApprovalClass(name, command, referencedOpsScripts(command)),
+    operatorClass: "unclassified_npm_only",
+    reason: "npm-only ops command without a Make wrapper classification"
+  };
+}
+
 function normalizeProducerPolicies(raw) {
   if (Array.isArray(raw?.producers)) return raw.producers;
   if (raw?.producers && typeof raw.producers === "object") {
@@ -237,6 +290,18 @@ function buildManifest() {
   });
 
   const makeCommandByName = new Map(commands.map((command) => [command.name, command]));
+  const npmOnlyCommands = (packageScripts.scripts || [])
+    .filter((script) => !commands.some((command) => command.npmWrappers.includes(script.name)))
+    .map((script) => {
+      const classification = classifyNpmOnlyCommand(script);
+      return {
+        name: script.name,
+        documented: readmeNpm.has(script.name),
+        directScriptRefs: referencedOpsScripts(script.command),
+        ...classification
+      };
+    });
+
   for (const npmCommand of readme.npmCommands) {
     if (!packageScriptByName.has(npmCommand)) {
       findings.push({
@@ -294,18 +359,14 @@ function buildManifest() {
       documentedNpmCommands: readme.npmCommands.length,
       documentedDirectCommands: readme.directCommands.length,
       approvalGatedCommands: approvalGated.length,
+      npmOnlyCommands: npmOnlyCommands.length,
+      npmOnlyApprovalGated: npmOnlyCommands.filter((command) => command.approvalClass.includes("destructive") || command.approvalClass.includes("approval")).length,
       producerPolicies: producers.length,
       highFindings: findings.filter((finding) => finding.severity === "high").length,
       byLane
     },
     commands,
-    npmOnlyCommands: (packageScripts.scripts || [])
-      .filter((script) => !commands.some((command) => command.npmWrappers.includes(script.name)))
-      .map((script) => ({
-        name: script.name,
-        documented: readmeNpm.has(script.name),
-        directScriptRefs: referencedOpsScripts(script.command)
-      })),
+    npmOnlyCommands,
     producerPolicies: producers.map((producer) => ({
       id: producer.id,
       outputPath: producer.outputPath || producer.path || "",
@@ -334,6 +395,8 @@ function renderMarkdown(report) {
     `- documented npm commands: ${report.summary.documentedNpmCommands}`,
     `- documented direct commands: ${report.summary.documentedDirectCommands}`,
     `- approval-gated commands: ${report.summary.approvalGatedCommands}`,
+    `- npm-only commands: ${report.summary.npmOnlyCommands}`,
+    `- npm-only approval/destructive commands: ${report.summary.npmOnlyApprovalGated}`,
     `- producer policies: ${report.summary.producerPolicies}`,
     `- high findings: ${report.summary.highFindings}`,
     "",
@@ -353,6 +416,19 @@ function renderMarkdown(report) {
     lines.push(`- \`${command.name}\` (${command.lane}, ${command.approvalClass}, ${docs})`);
     lines.push(`  - scripts: ${scripts}`);
     lines.push(`  - npm wrappers: ${wrappers}`);
+  }
+
+  lines.push("", "## Npm-Only Commands", "");
+  if (!report.npmOnlyCommands.length) {
+    lines.push("No npm-only ops commands.");
+  } else {
+    for (const command of report.npmOnlyCommands) {
+      const docs = command.documented ? "documented" : "not in quick docs";
+      const scripts = command.directScriptRefs.length ? command.directScriptRefs.join(", ") : "none";
+      lines.push(`- \`${command.name}\` (${command.lane}, ${command.approvalClass}, ${command.operatorClass}, ${docs})`);
+      lines.push(`  - scripts: ${scripts}`);
+      lines.push(`  - classification: ${command.reason}`);
+    }
   }
 
   lines.push("", "## Findings", "");

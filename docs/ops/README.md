@@ -52,6 +52,7 @@ make ops-app-review
 make ops-dependency-review
 make ops-idle-worker-effectivity
 make ops-effectivity-report
+make ops-evidence-freshness
 make ops-proactive-radar
 make ops-pr-stack-readiness
 make ops-privileged-evidence-read
@@ -69,6 +70,7 @@ Windows-friendly npm equivalent:
 ```bash
 npm run ops:proactive:radar
 npm run ops:pr-stack:readiness
+npm run ops:evidence:freshness
 ```
 
 The scripts under `scripts/ops/` avoid environment dumps and degrade when Docker, PostgreSQL, or host-only tools are unavailable.
@@ -96,6 +98,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-proactive-radar` is a read-only loop-start command. It looks for merge-blocked PRs, stacked draft PR pressure, stale ops artifacts, dirty worktree risk, and hidden ops scripts without printing secrets or mutating the host.
 
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.
+
+`ops-evidence-freshness` checks whether the main ops evidence artifacts are recent enough to trust and writes issue-ready refresh tasks under `output/ops/evidence-freshness`.
 
 ## Approval Boundaries
 

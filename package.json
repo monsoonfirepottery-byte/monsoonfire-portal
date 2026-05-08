@@ -98,6 +98,8 @@
     "ops:dependency:remediation-packet": "node ./scripts/ops/dependency_remediation_packet.mjs --write --json",
     "ops:dependency:upstream-watch": "node ./scripts/ops/dependency_upstream_watch.mjs --write --json",
     "ops:dependency:zero-baseline": "node ./scripts/ops/dependency_zero_baseline_guard.mjs --write --json",
+    "ops:dependency:inventory": "bash ./scripts/ops/dependency_inventory.sh",
+    "ops:postgres:snapshot": "bash ./scripts/ops/postgres_readonly_snapshot_runner.sh",
     "ops:privileged-evidence:read": "bash ./scripts/ops/privileged_evidence_read.sh",
     "ops:docker:tag-policy": "node ./scripts/ops/docker_floating_tag_policy.mjs --write --json",
     "portal:smoke:native-browser:shadow": "node ./scripts/native-browser-shadow-verifier.mjs --surface portal --base-url https://portal.monsoonfire.com --output-dir output/native-browser/portal/prod --shadow-of verify.portal.smoke --canonical-artifact-root output/playwright/portal/prod",

@@ -3,7 +3,7 @@ SHELL := /bin/bash
 PG_CONTAINER ?= studiobrain_postgres
 PGDATABASE ?= monsoonfire_studio_os
 
-.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-docker-review ops-docker-posture ops-docker-tag-policy ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-db-docker-backup-rollup ops-command-surface-guard ops-command-manifest ops-output-retention ops-producer-refresh ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-dependency-cadence ops-dependency-security-scout ops-dependency-remediation-packet ops-dependency-upstream-watch ops-dependency-zero-baseline ops-idle-worker-effectivity ops-effectivity-report ops-evidence-freshness ops-slice-ledger ops-tool-inventory ops-admin-effectivity-audit ops-proactive-radar ops-next-slice-selector ops-pr-stack-readiness ops-pr-conflict-packets ops-pr-backlog-packets ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
+.PHONY: ops-check ops-inventory ops-postgres-review ops-postgres-sql ops-postgres-top-queries ops-postgres-query-tasks ops-postgres-growth-snapshot ops-postgres-autovacuum-stats ops-postgres-roles-extensions ops-postgres-snapshot ops-docker-review ops-docker-posture ops-docker-tag-policy ops-capacity ops-import-pressure ops-cleanup-candidates ops-backup-evidence ops-postgres-backup-artifacts ops-restore-prereq ops-redis-minio-backup-evidence ops-db-docker-backup-rollup ops-command-surface-guard ops-command-manifest ops-output-retention ops-producer-refresh ops-ubuntu-review ops-host-failed-unit-trends ops-package-posture ops-time-sync ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review ops-dependency-review ops-dependency-inventory ops-dependency-cadence ops-dependency-security-scout ops-dependency-remediation-packet ops-dependency-upstream-watch ops-dependency-zero-baseline ops-idle-worker-effectivity ops-effectivity-report ops-evidence-freshness ops-slice-ledger ops-tool-inventory ops-admin-effectivity-audit ops-proactive-radar ops-next-slice-selector ops-pr-stack-readiness ops-pr-conflict-packets ops-pr-backlog-packets ops-privileged-evidence-read ops-privileged-evidence-capture ops-privileged-evidence-capture-smoke ops-work-packet ops-incident-bundle ops-incident-bundle-v2 ops-ci-validate ops-post-deploy-verify ops-docs ops-backlog ops-report
 
 ops-check: ops-inventory ops-docker-review ops-capacity ops-cleanup-candidates ops-backup-evidence ops-ubuntu-review ops-network-review ops-host-drift ops-systemd-drift ops-portal-bridge-review ops-app-review
 
@@ -45,6 +45,9 @@ ops-postgres-autovacuum-stats:
 
 ops-postgres-roles-extensions:
 	$(MAKE) ops-postgres-sql SQL=scripts/ops/postgres_roles_extensions_security_packet.sql
+
+ops-postgres-snapshot:
+	bash scripts/ops/postgres_readonly_snapshot_runner.sh
 
 ops-docker-review:
 	bash scripts/ops/docker_inventory.sh
@@ -122,6 +125,9 @@ ops-app-review:
 
 ops-dependency-review:
 	bash scripts/ops/npm_audit_inventory.sh
+
+ops-dependency-inventory:
+	bash scripts/ops/dependency_inventory.sh
 
 ops-dependency-cadence:
 	node scripts/ops/dependency_cadence_packet.mjs --refresh --write

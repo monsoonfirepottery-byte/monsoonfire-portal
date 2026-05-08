@@ -127,6 +127,37 @@ function ageDays(updatedAt) {
   return Number(((Date.now() - time) / 86_400_000).toFixed(1));
 }
 
+function freshnessFor(age) {
+  if (age === null) {
+    return {
+      bucket: "unknown",
+      recommendedAction: "Confirm the PR updatedAt timestamp from GitHub."
+    };
+  }
+  if (age > 7) {
+    return {
+      bucket: "old_7d",
+      recommendedAction: "Review for close, supersede, or explicit keep decision."
+    };
+  }
+  if (age > 3) {
+    return {
+      bucket: "stale_72h",
+      recommendedAction: "Refresh evidence before promoting or stacking more work."
+    };
+  }
+  if (age > 1) {
+    return {
+      bucket: "watch_24h",
+      recommendedAction: "Keep visible; refresh if it blocks merge order."
+    };
+  }
+  return {
+    bucket: "fresh",
+    recommendedAction: "No freshness action needed."
+  };
+}
+
 function classify(pr) {
   const age = ageDays(pr.updatedAt);
   const blockers = [];
@@ -146,6 +177,7 @@ function classify(pr) {
     mergeStateStatus: pr.mergeStateStatus,
     updatedAt: pr.updatedAt,
     ageDays: age,
+    freshness: freshnessFor(age),
     blockers,
     readiness: blockers.length === 0 ? "ready_to_review" : blockers.some((item) => item.includes("DIRTY")) ? "blocked" : "needs_triage"
   };
@@ -316,7 +348,8 @@ function buildReport(options) {
       staleOver7Days: stale.length,
       chainCount: chains.length,
       orphanCount: orphans.length,
-      dispositions: countBy(classified, (pr) => pr.disposition?.action)
+      dispositions: countBy(classified, (pr) => pr.disposition?.action),
+      freshnessBuckets: countBy(classified, (pr) => pr.freshness?.bucket)
     },
     chains: chains.map((chain) => chain.map((pr) => ({ number: pr.number, head: pr.head, base: pr.base, dependsOnPr: pr.dependsOnPr, childPrs: pr.childPrs, readiness: pr.readiness, blockers: pr.blockers, disposition: pr.disposition }))),
     orphans: orphans.map((pr) => ({ number: pr.number, head: pr.head, base: pr.base, dependsOnPr: pr.dependsOnPr, childPrs: pr.childPrs, readiness: pr.readiness, blockers: pr.blockers, disposition: pr.disposition })),
@@ -355,13 +388,21 @@ function renderMarkdown(report) {
   }
   lines.push(
     "",
+    "## Freshness Summary",
+    ""
+  );
+  for (const [bucket, count] of Object.entries(report.summary.freshnessBuckets || {}).sort((a, b) => a[0].localeCompare(b[0]))) {
+    lines.push(`- ${bucket}: ${count}`);
+  }
+  lines.push(
+    "",
     "## Triage Packet",
     "",
-    "| PR | Draft | Base | Depends on | Children | Disposition | Approval | Reason |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    "| PR | Draft | Age | Freshness | Base | Depends on | Children | Disposition | Approval | Reason |",
+    "| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |"
   );
   for (const pr of report.pullRequests) {
-    lines.push(`| #${pr.number} | ${pr.isDraft ? "yes" : "no"} | \`${pr.base}\` | ${pr.dependsOnPr ? `#${pr.dependsOnPr}` : ""} | ${pr.childPrs.length ? pr.childPrs.map((child) => `#${child}`).join(", ") : ""} | ${pr.disposition?.action || "unknown"} | ${pr.disposition?.approval || "unknown"} | ${pr.disposition?.reason || ""} |`);
+    lines.push(`| #${pr.number} | ${pr.isDraft ? "yes" : "no"} | ${pr.ageDays ?? "?"} | ${pr.freshness?.bucket || "unknown"} | \`${pr.base}\` | ${pr.dependsOnPr ? `#${pr.dependsOnPr}` : ""} | ${pr.childPrs.length ? pr.childPrs.map((child) => `#${child}`).join(", ") : ""} | ${pr.disposition?.action || "unknown"} | ${pr.disposition?.approval || "unknown"} | ${pr.disposition?.reason || ""} |`);
   }
   lines.push(
     "",

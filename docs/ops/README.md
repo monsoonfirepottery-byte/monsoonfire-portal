@@ -87,6 +87,7 @@ npm run ops:command-surface:guard
 npm run ops:command-manifest
 npm run ops:output:retention
 npm run ops:next-slice:selector
+npm run ops:privileged-evidence:read
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
 npm run ops:dependency:upstream-watch

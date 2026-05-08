@@ -8,6 +8,7 @@ SOURCE_PATH="${BASH_SOURCE[0]:-${0}}"
 SCRIPT_DIR="$(cd "$(dirname "${SOURCE_PATH}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." 2>/dev/null && pwd || pwd)"
 EVIDENCE_ROOT="${STUDIO_BRAIN_PRIVILEGED_EVIDENCE_DIR:-/var/lib/studio-brain/ops-evidence}"
+OUTPUT_DIR="${REPO_ROOT}/output/ops/privileged-evidence"
 RUN_SELECTOR="latest"
 LIST_ONLY=0
 SUMMARY_ONLY=0
@@ -41,6 +42,60 @@ require_value() {
     usage >&2
     exit 2
   fi
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+}
+
+write_latest_artifacts() {
+  status="$1"
+  reason="${2:-}"
+  run_dir="${3:-}"
+  mkdir -p "${OUTPUT_DIR}" 2>/dev/null || return 0
+
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date)"
+  file_count=0
+  summary_present=false
+  if [ -n "${run_dir}" ] && [ -d "${run_dir}" ]; then
+    file_count="$(find "${run_dir}" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+    if [ -f "${run_dir}/summary.json" ]; then
+      summary_present=true
+    fi
+  fi
+
+  cat > "${OUTPUT_DIR}/latest.json" <<EOF
+{
+  "schema": "studio-brain.ops.privileged-evidence-read.v1",
+  "generatedAt": "$(json_escape "${generated_at}")",
+  "readOnly": true,
+  "status": "$(json_escape "${status}")",
+  "reason": "$(json_escape "${reason}")",
+  "evidenceRoot": "$(json_escape "${EVIDENCE_ROOT}")",
+  "runSelector": "$(json_escape "${RUN_SELECTOR}")",
+  "runDir": "$(json_escape "${run_dir}")",
+  "summaryPresent": ${summary_present},
+  "fileCount": ${file_count},
+  "safeNextStep": "If status is unavailable or missing, run the approval-gated collector or install the root-owned timer; do not bypass sudo or mutate host state from this reader."
+}
+EOF
+
+  cat > "${OUTPUT_DIR}/latest.md" <<EOF
+# Privileged Evidence Read
+
+- Generated: ${generated_at}
+- Status: ${status}
+- Reason: ${reason:-none}
+- Evidence root: ${EVIDENCE_ROOT}
+- Run selector: ${RUN_SELECTOR}
+- Run dir: ${run_dir:-none}
+- Summary present: ${summary_present}
+- File count: ${file_count}
+
+## Safety
+
+This reader is read-only. If privileged evidence is unavailable or missing, the safe next step is an approval-gated capture path, not sudo bypass or host mutation from the agent lane.
+EOF
 }
 
 while [ "$#" -gt 0 ]; do
@@ -94,12 +149,13 @@ done
 
 if [ ! -d "${EVIDENCE_ROOT}" ]; then
   fallback="${REPO_ROOT}/output/ops/privileged-evidence"
-  if [ -d "${fallback}" ]; then
+  if [ -d "${fallback}" ] && { [ -L "${fallback}/latest" ] || [ -d "${fallback}/latest" ] || [ -f "${fallback}/latest.path" ] || find "${fallback}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; }; then
     EVIDENCE_ROOT="${fallback}"
   fi
 fi
 
 if [ ! -d "${EVIDENCE_ROOT}" ]; then
+  write_latest_artifacts "unavailable" "privileged evidence directory is not readable" ""
   cat <<EOF
 status: unavailable
 reason: privileged evidence directory is not readable
@@ -145,6 +201,7 @@ else
 fi
 
 if [ -z "${RUN_DIR}" ] || [ ! -d "${RUN_DIR}" ]; then
+  write_latest_artifacts "missing" "no privileged evidence run was found" ""
   cat <<EOF
 status: missing
 reason: no privileged evidence run was found
@@ -183,6 +240,8 @@ if [ "${LIST_ONLY}" = "1" ]; then
   find "${RUN_DIR}" -maxdepth 1 -type f -printf '%f\t%s bytes\n' 2>/dev/null | sort
   exit 0
 fi
+
+write_latest_artifacts "available" "" "${RUN_DIR}"
 
 printf 'status: available\n'
 printf 'evidence_root: %s\n' "${EVIDENCE_ROOT}"

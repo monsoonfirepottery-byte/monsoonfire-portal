@@ -316,7 +316,7 @@ function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
     findings.push(makeFinding("high", "non-draft-prs-not-mergeable", "Non-draft PRs are not mergeable", "GitHub PR stack", dirtyNonDraft.map((pr) => `#${pr.number} ${pr.mergeStateStatus}`).join(", "), "Ready-looking PRs can remain blocked until release time.", "Create conflict-resolution packets in clean worktrees.", "No mutation required; do not close or rewrite PRs without approval."));
   }
   if (stackedDrafts.length > 10) {
-    findings.push(makeFinding("medium", "large-stacked-draft-pr-backlog", "Large stacked draft PR backlog", "GitHub PR stack", `${stackedDrafts.length} draft PR(s) target non-main bases.`, "Stack depth makes merge order and CI meaning hard to reason about.", "Generate a merge-order/readiness packet and close, restack, or promote only with owner review.", "Docs/report only."));
+    findings.push(makeFinding("medium", "large-stacked-draft-pr-backlog", "Large stacked draft PR backlog", "GitHub PR stack", `${stackedDrafts.length} draft PR(s) target non-main bases.`, "Stack depth makes merge order and CI meaning hard to reason about.", "Run `npm run ops:pr-backlog:packets` to generate owner-decision packets, then close, restack, or promote only with owner review.", "Docs/report only."));
   }
   if (status.ok && status.dirtyCount > 0) {
     findings.push(makeFinding("medium", "current-worktree-dirty", "Current worktree has local changes", "Local repository", `${status.dirtyCount} changed path(s) on ${status.branch}.`, "Implementation from this checkout may mix unrelated changes.", "Use a clean worktree from origin/main for ops slices.", "Leave the dirty checkout untouched."));
@@ -347,7 +347,7 @@ function recommendationTitle(id, fallback) {
   const titles = {
     "github-pr-visibility-unavailable": "Restore automated PR visibility",
     "non-draft-prs-not-mergeable": "Create conflict-resolution packets for dirty PRs",
-    "large-stacked-draft-pr-backlog": "Generate merge-order readiness for stacked draft PRs",
+    "large-stacked-draft-pr-backlog": "Generate PR backlog decision packets for stacked drafts",
     "current-worktree-dirty": "Enforce clean-worktree lanes for ops slices",
     "stale-ops-artifacts": "Refresh stale ops evidence artifacts",
     "ops-scripts-without-make-targets": "Expose hidden ops scripts through Makefile wrappers"

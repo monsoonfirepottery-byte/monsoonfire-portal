@@ -69,6 +69,7 @@ make ops-proactive-radar
 make ops-next-slice-selector
 make ops-pr-stack-readiness
 make ops-pr-conflict-packets
+make ops-pr-backlog-packets
 make ops-privileged-evidence-read
 make ops-privileged-evidence-capture-smoke
 make ops-work-packet
@@ -93,6 +94,7 @@ npm run ops:producer:refresh
 npm run ops:next-slice:selector
 npm run ops:privileged-evidence:read
 npm run ops:pr-conflict:packets
+npm run ops:pr-backlog:packets
 npm run ops:dependency:cadence
 npm run ops:dependency:security-scout
 npm run ops:dependency:remediation-packet
@@ -145,6 +147,8 @@ bash scripts/ops/incident_bundle_v2.sh output/ops/incidents-v2/manual-smoke
 `ops-pr-stack-readiness` is a read-only GitHub PR-stack packet. It groups open PRs by stack, identifies dirty non-draft PRs, stale PRs, and non-main draft chains, and writes artifacts under `output/ops/pr-stack`.
 
 `ops-pr-conflict-packets` consumes the PR-stack packet and writes focused issue-ready conflict-resolution packets for dirty non-draft PRs under `output/ops/pr-conflict-packets`. It never rebases, force-pushes, closes PRs, deletes branches, or edits worktrees.
+
+`ops-pr-backlog-packets` consumes the PR-stack packet and writes grouped owner-decision packets for stale drafts, stacked draft chains, unstable non-draft PRs, and dirty-PR handoffs under `output/ops/pr-backlog-decision-packets`. It is read-only and never closes PRs, rebases branches, force-pushes, deletes branches, or edits worktrees.
 
 `ops-evidence-freshness` checks whether the main ops evidence artifacts are recent enough to trust and writes issue-ready refresh tasks under `output/ops/evidence-freshness`.
 

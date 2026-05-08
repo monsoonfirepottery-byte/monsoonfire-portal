@@ -1,0 +1,50 @@
+{
+  "schema": "studio-brain.ops.output-artifact-producers.v1",
+  "default": {
+    "freshnessDays": 14,
+    "retentionClass": "review",
+    "cleanupApproval": "human"
+  },
+  "producers": {
+    "dependency-zero-baseline": {
+      "freshnessDays": 1,
+      "retentionClass": "latest-plus-history",
+      "cleanupApproval": "human"
+    },
+    "dependency-security-scout": {
+      "freshnessDays": 1,
+      "retentionClass": "latest-plus-history",
+      "cleanupApproval": "human"
+    },
+    "dependency-upstream-watch": {
+      "freshnessDays": 7,
+      "retentionClass": "trend",
+      "cleanupApproval": "human"
+    },
+    "pr-stack": {
+      "freshnessDays": 1,
+      "retentionClass": "ticket-evidence",
+      "cleanupApproval": "human"
+    },
+    "output-retention": {
+      "freshnessDays": 7,
+      "retentionClass": "self-audit",
+      "cleanupApproval": "human"
+    },
+    "incidents": {
+      "freshnessDays": 30,
+      "retentionClass": "incident",
+      "cleanupApproval": "human"
+    },
+    "incidents-v2": {
+      "freshnessDays": 30,
+      "retentionClass": "incident",
+      "cleanupApproval": "human"
+    },
+    "privileged-evidence": {
+      "freshnessDays": 7,
+      "retentionClass": "approval-gated-evidence",
+      "cleanupApproval": "human"
+    }
+  }
+}

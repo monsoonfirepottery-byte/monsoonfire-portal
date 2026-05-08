@@ -218,6 +218,7 @@ function buildManifest() {
       .map((producer) => ({
         id: producer.id,
         outputPath: producer.outputPath || producer.path || "",
+        refreshCommand: producer.refreshCommand || "",
         freshnessDays: producer.freshnessDays ?? null,
         retentionClass: producer.retentionClass || producer.retention || "unspecified"
       }));
@@ -308,6 +309,7 @@ function buildManifest() {
     producerPolicies: producers.map((producer) => ({
       id: producer.id,
       outputPath: producer.outputPath || producer.path || "",
+      refreshCommand: producer.refreshCommand || "",
       freshnessDays: producer.freshnessDays ?? null,
       retentionClass: producer.retentionClass || producer.retention || "unspecified"
     })),

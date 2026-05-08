@@ -252,6 +252,7 @@ function producerArtifactFreshness() {
     return {
       producer,
       outputPath: outputPath || "",
+      refreshCommand: clean(config.refreshCommand) || "",
       retentionClass: clean(config.retentionClass) || "review",
       cleanupApproval: clean(config.cleanupApproval) || "human",
       freshnessDays,
@@ -324,7 +325,7 @@ function buildFindings({ prs, status, freshness, producerArtifacts, scripts }) {
       staleArtifacts.length ? `${staleArtifacts.length} tracked docs stale/missing` : "",
       staleProducerArtifacts.length ? `${staleProducerArtifacts.length} producer output path(s) stale/missing` : "",
       ...staleArtifacts.slice(0, 3).map((entry) => `${entry.path} ${entry.exists ? `${entry.ageDays}d old` : "missing"}`),
-      ...staleProducerArtifacts.slice(0, 5).map((entry) => `${entry.producer} -> ${entry.outputPath || "missing outputPath"} ${entry.ageDays === null ? "missing" : `${entry.ageDays}d old`} threshold=${entry.freshnessDays}d`)
+      ...staleProducerArtifacts.slice(0, 5).map((entry) => `${entry.producer} -> ${entry.outputPath || "missing outputPath"} ${entry.ageDays === null ? "missing" : `${entry.ageDays}d old`} threshold=${entry.freshnessDays}d refresh=${entry.refreshCommand || "not listed"}`)
     ].filter(Boolean).join("; ");
     findings.push(makeFinding("medium", "stale-ops-artifacts", "Ops evidence artifacts may be stale", "docs/ops and output/ops", evidence, "Recommendations may be based on outdated evidence.", "Refresh the named docs or producer outputs with read-only scripts.", "Docs/output-only update; git history preserves old evidence."));
   }
@@ -479,7 +480,7 @@ function renderMarkdown(report) {
   if (!staleProducers.length) lines.push("- No stale producer output paths from policy thresholds.");
   for (const entry of staleProducers) {
     const freshness = entry.ageDays === null ? "missing" : `${entry.ageDays} days old`;
-    lines.push(`- ${entry.producer}: ${entry.outputPath || "missing outputPath"} (${freshness}; threshold ${entry.freshnessDays} days; retention ${entry.retentionClass})`);
+    lines.push(`- ${entry.producer}: ${entry.outputPath || "missing outputPath"} (${freshness}; threshold ${entry.freshnessDays} days; refresh \`${entry.refreshCommand || "not listed"}\`; retention ${entry.retentionClass})`);
   }
   lines.push("");
   return `${lines.join("\n")}\n`;

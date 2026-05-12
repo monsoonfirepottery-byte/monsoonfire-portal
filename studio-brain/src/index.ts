@@ -21,11 +21,14 @@ import { createRoborockTransportFromEnv } from "./connectors/roborockTransport";
 import { ConnectorRegistry } from "./connectors/registry";
 import { createPilotWriteExecutor } from "./capabilities/pilotWriteExecutor";
 import { SwarmOrchestrator, deriveSwarmRunId } from "./swarm/orchestrator";
+import { LocalAdvisoryOrchestrator } from "./swarm/localAdvisoryOrchestrator";
+import { createStudioBrainLlmRouterFromEnv } from "./llm/router";
 import { createLocalRegistryClient, createRemoteRegistryClient, type SkillRegistryClient } from "./skills/registry";
 import { createSkillSandbox, type SkillSandboxClient } from "./skills/sandbox";
 import { createMemoryService } from "./memory/service";
 import { createPostgresMemoryStoreAdapter } from "./memory/postgresAdapter";
 import { createEmbeddingAdapterFromEnv } from "./memory/embedding";
+import { checkOllamaHealth } from "./llm/ollamaProvider";
 import { acquireProcessLock, type ProcessLockHandle } from "./runtime/processLock";
 import { createKilnAidReadOnlyProvider } from "./kiln/adapters/kilnaid/provider";
 import { PostgresKilnStore } from "./kiln/postgresStore";
@@ -192,6 +195,7 @@ async function main(): Promise<void> {
   let redisConnection: RedisConnection | null = null;
   let eventBus: SwarmEventBus | null = null;
   let orchestrator: SwarmOrchestrator | null = null;
+  let localAdvisoryOrchestrator: LocalAdvisoryOrchestrator | null = null;
   let swarmRunId = "";
 
   if (env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED) {
@@ -241,6 +245,21 @@ async function main(): Promise<void> {
         role: "coordinator",
       },
     });
+
+    if (env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED) {
+      localAdvisoryOrchestrator = new LocalAdvisoryOrchestrator({
+        bus: eventBus,
+        logger,
+        router: createStudioBrainLlmRouterFromEnv(env),
+        config: {
+          swarmId: env.STUDIO_BRAIN_SWARM_ID,
+          runId: swarmRunId,
+          intervalMs: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_INTERVAL_MS,
+          initialDelayMs: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_INITIAL_DELAY_MS,
+        },
+      });
+      localAdvisoryOrchestrator.start();
+    }
   }
 
   const skillSandbox = await (async () => {
@@ -734,6 +753,21 @@ async function main(): Promise<void> {
         },
       },
       {
+        label: "ollama",
+        enabled:
+          Boolean(process.env.STUDIO_BRAIN_OLLAMA_BASE_URL)
+          || env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED
+          || env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED,
+        run: async () =>
+          checkOllamaHealth({
+            baseUrl: env.STUDIO_BRAIN_OLLAMA_BASE_URL,
+            defaultModel: env.STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL,
+            heavyModel: env.STUDIO_BRAIN_OLLAMA_HEAVY_MODEL,
+            expressionModel: env.STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL,
+            timeoutMs: Math.min(env.STUDIO_BRAIN_OLLAMA_TIMEOUT_MS, 10_000),
+          }),
+      },
+      {
         label: "skill_registry",
         enabled: true,
         run: async () => skillRegistry.healthcheck(),
@@ -778,6 +812,19 @@ async function main(): Promise<void> {
       scheduler: { ...schedulerState },
       supportEmail: { ...supportEmailState },
       kilnWatch: { ...kilnWatchState },
+      localOrchestrator: localAdvisoryOrchestrator?.getState() ?? {
+        enabled: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED,
+        intervalMs: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_INTERVAL_MS,
+        initialDelayMs: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_INITIAL_DELAY_MS,
+        nextRunAt: null,
+        lastRunStartedAt: null,
+        lastRunCompletedAt: null,
+        lastRunDurationMs: null,
+        totalRuns: 0,
+        totalFailures: 0,
+        consecutiveFailures: 0,
+        lastFailureMessage: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED && !eventBus ? "event bus disabled" : null,
+      },
       retention: {
         enabled: env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE,
         retentionDays: env.STUDIO_BRAIN_RETENTION_DAYS,
@@ -788,6 +835,19 @@ async function main(): Promise<void> {
       scheduler: { ...schedulerState },
       supportEmail: { ...supportEmailState },
       kilnWatch: { ...kilnWatchState },
+      localOrchestrator: localAdvisoryOrchestrator?.getState() ?? {
+        enabled: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED,
+        intervalMs: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_INTERVAL_MS,
+        initialDelayMs: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_INITIAL_DELAY_MS,
+        nextRunAt: null,
+        lastRunStartedAt: null,
+        lastRunCompletedAt: null,
+        lastRunDurationMs: null,
+        totalRuns: 0,
+        totalFailures: 0,
+        consecutiveFailures: 0,
+        lastFailureMessage: env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED && !eventBus ? "event bus disabled" : null,
+      },
       retention: {
         enabled: env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE,
         retentionDays: env.STUDIO_BRAIN_RETENTION_DAYS,
@@ -959,6 +1019,11 @@ async function main(): Promise<void> {
         else resolve();
       });
     });
+
+    if (localAdvisoryOrchestrator) {
+      localAdvisoryOrchestrator.stop();
+      localAdvisoryOrchestrator = null;
+    }
 
     if (orchestrator) {
       await orchestrator.stop();

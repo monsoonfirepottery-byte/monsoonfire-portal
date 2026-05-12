@@ -7,6 +7,7 @@ import {
 import { resolveSupportPolicy } from "./policyResolver";
 import { assessSupportRisk } from "./risk";
 import { buildSupportConversationKey, decideSupportAction, determineProposalCapabilityId } from "./service";
+import { createStudioBrainLlmRouterFromEnv, isStudioBrainLlmConfigured } from "../llm/router";
 import type {
   SupportDecision,
   SupportMailboxMessage,
@@ -38,7 +39,7 @@ export type SupportDiscordDraft = {
   reply: string;
   replyMode: "template" | "model" | "human_review";
   usedModel: boolean;
-  model: { provider: "openai"; version: string } | null;
+  model: { provider: "openai.responses" | "ollama.chat" | "local.expression"; version: string } | null;
   policySlug: string | null;
   decision: SupportDecision;
   humanReviewRequired: boolean;
@@ -245,76 +246,58 @@ async function runNuancedModelDraft(input: {
   risk: SupportRiskAssessment;
   templateReply: string;
   emberContextSummary?: string | null;
-  apiKey: string;
+  apiKey?: string | null;
   model: string;
   fetchImpl: typeof fetch;
-}): Promise<string | null> {
-  const response = await input.fetchImpl("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${input.apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
+}): Promise<{ text: string; provider: "openai.responses" | "ollama.chat" | "local.expression"; model: string } | null> {
+  try {
+    const router = createStudioBrainLlmRouterFromEnv(process.env, {
+      openAiApiKey: input.apiKey,
+      fetchImpl: input.fetchImpl,
+    });
+    const result = await router.generate({
+      purpose: "quota_fallback",
       model: input.model,
-      input: [
+      messages: [
         {
           role: "system",
           content: [
-            {
-              type: "input_text",
-              text: [
-                buildSupportAgentSystemPrompt("discord"),
-                "Write one concise Discord reply in 2 to 4 sentences.",
-                "Be warm, calm, and plainspoken.",
-                "Do not pretend to be human.",
-                "Do not promise refunds, access codes, exceptions, guarantees, or staff-only outcomes.",
-                "If human review is needed, say so plainly and briefly.",
-                "Do not mention policy slugs, JSON, risk classifications, or internal tooling.",
-                "No markdown bullets, no signature block, no emojis.",
-              ].join("\n"),
-            },
-          ],
+            buildSupportAgentSystemPrompt("discord"),
+            "Write one concise Discord reply in 2 to 4 sentences.",
+            "Be warm, calm, and plainspoken.",
+            "Do not pretend to be human.",
+            "Do not promise refunds, access codes, exceptions, guarantees, or staff-only outcomes.",
+            "If human review is needed, say so plainly and briefly.",
+            "Do not mention policy slugs, JSON, risk classifications, or internal tooling.",
+            "No markdown bullets, no signature block, no emojis.",
+          ].join("\n"),
         },
         {
           role: "user",
           content: [
-            {
-              type: "input_text",
-              text: [
-                `Member question: ${clip(input.question, 1_200)}`,
-                `Policy path: ${input.policy.policySlug ?? "unresolved"}`,
-                `Allowed low-risk actions: ${listToEnglish(input.policy.allowedLowRiskActions) || "none"}`,
-                `Blocked actions: ${listToEnglish(input.policy.blockedActions) || "none"}`,
-                `Warm-touch boundary: ${input.policy.warmTouchPlaybook?.boundary ?? supportBoundary(input.policy.policySlug)}`,
-                `Warm-touch next step: ${input.policy.warmTouchPlaybook?.nextStep ?? "A human teammate can follow up if needed."}`,
-                `Risk state: ${input.risk.state}`,
-                input.emberContextSummary ? `Existing Ember context: ${clip(input.emberContextSummary, 800)}` : "",
-                `Baseline safe reply: ${input.templateReply}`,
-              ].join("\n"),
-            },
-          ],
+            `Member question: ${clip(input.question, 1_200)}`,
+            `Policy path: ${input.policy.policySlug ?? "unresolved"}`,
+            `Allowed low-risk actions: ${listToEnglish(input.policy.allowedLowRiskActions) || "none"}`,
+            `Blocked actions: ${listToEnglish(input.policy.blockedActions) || "none"}`,
+            `Warm-touch boundary: ${input.policy.warmTouchPlaybook?.boundary ?? supportBoundary(input.policy.policySlug)}`,
+            `Warm-touch next step: ${input.policy.warmTouchPlaybook?.nextStep ?? "A human teammate can follow up if needed."}`,
+            `Risk state: ${input.risk.state}`,
+            input.emberContextSummary ? `Existing Ember context: ${clip(input.emberContextSummary, 800)}` : "",
+            `Baseline safe reply: ${input.templateReply}`,
+          ].join("\n"),
         },
       ],
-      max_output_tokens: 220,
-    }),
-  });
-  if (!response.ok) {
+      maxOutputTokens: 220,
+      allowTools: false,
+      allowExternalWrites: false,
+      allowPublish: false,
+      capabilities: [],
+    });
+    const text = clean(result.text);
+    return text ? { text, provider: result.provider, model: result.model } : null;
+  } catch {
     return null;
   }
-  const payload = (await response.json()) as {
-    output_text?: string;
-    output?: Array<{ content?: Array<{ text?: string }> }>;
-  };
-  const text =
-    clean(payload.output_text)
-    || clean(
-      payload.output
-        ?.flatMap((part) => part.content ?? [])
-        .map((part) => part.text ?? "")
-        .join(" "),
-    );
-  return text || null;
 }
 
 export function getSupportAgentProfile(): Pick<
@@ -400,7 +383,7 @@ export async function draftDiscordSupportReply(
   const apiKey = clean(options.apiKey ?? process.env.STUDIO_BRAIN_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY);
   const model = clean(options.model) || SUPPORT_AGENT_PERSONA.draftingPolicy.suggestedModel;
   const shouldUseModel =
-    Boolean(apiKey)
+    (Boolean(apiKey) || isStudioBrainLlmConfigured(process.env))
     && baseReply.replyMode === "template"
     && shouldUseModelDraft({
       question,
@@ -412,6 +395,7 @@ export async function draftDiscordSupportReply(
 
   let reply = baseReply.reply;
   let usedModel = false;
+  let usedModelInfo: SupportDiscordDraft["model"] = null;
   if (shouldUseModel) {
     const drafted = await runNuancedModelDraft({
       question,
@@ -424,8 +408,9 @@ export async function draftDiscordSupportReply(
       fetchImpl: options.fetchImpl ?? fetch,
     });
     if (drafted) {
-      reply = drafted;
+      reply = drafted.text;
       usedModel = true;
+      usedModelInfo = { provider: drafted.provider, version: drafted.model };
     }
   }
 
@@ -441,7 +426,7 @@ export async function draftDiscordSupportReply(
     reply,
     replyMode: usedModel ? "model" : baseReply.replyMode,
     usedModel,
-    model: usedModel ? { provider: "openai", version: model } : null,
+    model: usedModelInfo,
     policySlug: policy.policySlug,
     decision: disposition.decision,
     humanReviewRequired: baseReply.humanReviewRequired,

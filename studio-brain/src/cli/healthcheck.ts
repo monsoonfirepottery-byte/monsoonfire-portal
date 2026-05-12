@@ -6,6 +6,7 @@ import { collectBackendHealth, renderHealthTable } from "../connectivity/healthc
 import { buildRedisClient } from "../connectivity/redis";
 import { createRedisStreamEventBus } from "../swarm/bus/eventBus";
 import { createVectorStore } from "../connectivity/vectorStore";
+import { checkOllamaHealth } from "../llm/ollamaProvider";
 
 function parseArtifactPort(endpoint: string, fallback: number): number {
   try {
@@ -123,6 +124,21 @@ async function run(): Promise<void> {
         const vectorStore = await createVectorStore(logger);
         return vectorStore.healthcheck();
       },
+    },
+    {
+      label: "ollama",
+      enabled:
+        Boolean(process.env.STUDIO_BRAIN_OLLAMA_BASE_URL)
+        || env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED
+        || env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED,
+      run: async () =>
+        checkOllamaHealth({
+          baseUrl: env.STUDIO_BRAIN_OLLAMA_BASE_URL,
+          defaultModel: env.STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL,
+          heavyModel: env.STUDIO_BRAIN_OLLAMA_HEAVY_MODEL,
+          expressionModel: env.STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL,
+          timeoutMs: Math.min(env.STUDIO_BRAIN_OLLAMA_TIMEOUT_MS, 10_000),
+        }),
     },
   ] as const;
 

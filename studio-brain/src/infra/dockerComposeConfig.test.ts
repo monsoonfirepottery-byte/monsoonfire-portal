@@ -45,4 +45,5 @@ test("docker-compose includes required backend services", async () => {
   assert.ok(services.includes("postgres"), "postgres service missing from compose config");
   assert.ok(services.includes("redis"), "redis service missing from compose config");
   assert.ok(services.includes("minio"), "minio service missing from compose config");
+  assert.ok(services.includes("studiobrain_ollama"), "studiobrain_ollama service missing from compose config");
 });

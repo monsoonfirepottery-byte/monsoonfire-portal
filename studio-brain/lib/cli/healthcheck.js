@@ -8,6 +8,7 @@ const healthcheck_1 = require("../connectivity/healthcheck");
 const redis_1 = require("../connectivity/redis");
 const eventBus_1 = require("../swarm/bus/eventBus");
 const vectorStore_1 = require("../connectivity/vectorStore");
+const ollamaProvider_1 = require("../llm/ollamaProvider");
 function parseArtifactPort(endpoint, fallback) {
     try {
         const parsed = new URL(endpoint);
@@ -106,6 +107,19 @@ async function run() {
                 const vectorStore = await (0, vectorStore_1.createVectorStore)(logger);
                 return vectorStore.healthcheck();
             },
+        },
+        {
+            label: "ollama",
+            enabled: Boolean(process.env.STUDIO_BRAIN_OLLAMA_BASE_URL)
+                || env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED
+                || env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED,
+            run: async () => (0, ollamaProvider_1.checkOllamaHealth)({
+                baseUrl: env.STUDIO_BRAIN_OLLAMA_BASE_URL,
+                defaultModel: env.STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL,
+                heavyModel: env.STUDIO_BRAIN_OLLAMA_HEAVY_MODEL,
+                expressionModel: env.STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL,
+                timeoutMs: Math.min(env.STUDIO_BRAIN_OLLAMA_TIMEOUT_MS, 10_000),
+            }),
         },
     ];
     const report = await (0, healthcheck_1.collectBackendHealth)(checks.map((check) => ({

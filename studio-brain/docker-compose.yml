@@ -116,6 +116,42 @@ services:
         max-size: 8m
         max-file: "2"
 
+  studiobrain_ollama:
+    image: ollama/ollama:latest
+    container_name: studiobrain_ollama
+    restart: unless-stopped
+    profiles: ["local-models"]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-10m}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_MAX_QUEUE: ${OLLAMA_MAX_QUEUE:-8}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - studiobrain_ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 28G
+        reservations:
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: 16m
+        max-file: "3"
+
 volumes:
   postgres_data:
   minio_data:
+  studiobrain_ollama_models:

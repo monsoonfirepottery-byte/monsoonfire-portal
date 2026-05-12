@@ -10,6 +10,7 @@ const persona_1 = require("./persona");
 const policyResolver_1 = require("./policyResolver");
 const risk_1 = require("./risk");
 const service_1 = require("./service");
+const router_1 = require("../llm/router");
 const DISCORD_PROVIDER = "discord";
 const NUANCED_QUESTION_PATTERN = /\b(sorry|apolog(?:y|ize|ies)|confused|not sure|any chance|would it be okay|does that work|could i|can i|thank you|thanks)\b/i;
 function clean(value) {
@@ -173,66 +174,55 @@ function buildTemplateReply(input) {
     };
 }
 async function runNuancedModelDraft(input) {
-    const response = await input.fetchImpl("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-            authorization: `Bearer ${input.apiKey}`,
-            "content-type": "application/json",
-        },
-        body: JSON.stringify({
+    try {
+        const router = (0, router_1.createStudioBrainLlmRouterFromEnv)(process.env, {
+            openAiApiKey: input.apiKey,
+            fetchImpl: input.fetchImpl,
+        });
+        const result = await router.generate({
+            purpose: "quota_fallback",
             model: input.model,
-            input: [
+            messages: [
                 {
                     role: "system",
                     content: [
-                        {
-                            type: "input_text",
-                            text: [
-                                (0, persona_1.buildSupportAgentSystemPrompt)("discord"),
-                                "Write one concise Discord reply in 2 to 4 sentences.",
-                                "Be warm, calm, and plainspoken.",
-                                "Do not pretend to be human.",
-                                "Do not promise refunds, access codes, exceptions, guarantees, or staff-only outcomes.",
-                                "If human review is needed, say so plainly and briefly.",
-                                "Do not mention policy slugs, JSON, risk classifications, or internal tooling.",
-                                "No markdown bullets, no signature block, no emojis.",
-                            ].join("\n"),
-                        },
-                    ],
+                        (0, persona_1.buildSupportAgentSystemPrompt)("discord"),
+                        "Write one concise Discord reply in 2 to 4 sentences.",
+                        "Be warm, calm, and plainspoken.",
+                        "Do not pretend to be human.",
+                        "Do not promise refunds, access codes, exceptions, guarantees, or staff-only outcomes.",
+                        "If human review is needed, say so plainly and briefly.",
+                        "Do not mention policy slugs, JSON, risk classifications, or internal tooling.",
+                        "No markdown bullets, no signature block, no emojis.",
+                    ].join("\n"),
                 },
                 {
                     role: "user",
                     content: [
-                        {
-                            type: "input_text",
-                            text: [
-                                `Member question: ${clip(input.question, 1_200)}`,
-                                `Policy path: ${input.policy.policySlug ?? "unresolved"}`,
-                                `Allowed low-risk actions: ${listToEnglish(input.policy.allowedLowRiskActions) || "none"}`,
-                                `Blocked actions: ${listToEnglish(input.policy.blockedActions) || "none"}`,
-                                `Warm-touch boundary: ${input.policy.warmTouchPlaybook?.boundary ?? supportBoundary(input.policy.policySlug)}`,
-                                `Warm-touch next step: ${input.policy.warmTouchPlaybook?.nextStep ?? "A human teammate can follow up if needed."}`,
-                                `Risk state: ${input.risk.state}`,
-                                input.emberContextSummary ? `Existing Ember context: ${clip(input.emberContextSummary, 800)}` : "",
-                                `Baseline safe reply: ${input.templateReply}`,
-                            ].join("\n"),
-                        },
-                    ],
+                        `Member question: ${clip(input.question, 1_200)}`,
+                        `Policy path: ${input.policy.policySlug ?? "unresolved"}`,
+                        `Allowed low-risk actions: ${listToEnglish(input.policy.allowedLowRiskActions) || "none"}`,
+                        `Blocked actions: ${listToEnglish(input.policy.blockedActions) || "none"}`,
+                        `Warm-touch boundary: ${input.policy.warmTouchPlaybook?.boundary ?? supportBoundary(input.policy.policySlug)}`,
+                        `Warm-touch next step: ${input.policy.warmTouchPlaybook?.nextStep ?? "A human teammate can follow up if needed."}`,
+                        `Risk state: ${input.risk.state}`,
+                        input.emberContextSummary ? `Existing Ember context: ${clip(input.emberContextSummary, 800)}` : "",
+                        `Baseline safe reply: ${input.templateReply}`,
+                    ].join("\n"),
                 },
             ],
-            max_output_tokens: 220,
-        }),
-    });
-    if (!response.ok) {
+            maxOutputTokens: 220,
+            allowTools: false,
+            allowExternalWrites: false,
+            allowPublish: false,
+            capabilities: [],
+        });
+        const text = clean(result.text);
+        return text ? { text, provider: result.provider, model: result.model } : null;
+    }
+    catch {
         return null;
     }
-    const payload = (await response.json());
-    const text = clean(payload.output_text)
-        || clean(payload.output
-            ?.flatMap((part) => part.content ?? [])
-            .map((part) => part.text ?? "")
-            .join(" "));
-    return text || null;
 }
 function getSupportAgentProfile() {
     return {
@@ -293,7 +283,7 @@ async function draftDiscordSupportReply(input, options = {}) {
     });
     const apiKey = clean(options.apiKey ?? process.env.STUDIO_BRAIN_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY);
     const model = clean(options.model) || persona_1.SUPPORT_AGENT_PERSONA.draftingPolicy.suggestedModel;
-    const shouldUseModel = Boolean(apiKey)
+    const shouldUseModel = (Boolean(apiKey) || (0, router_1.isStudioBrainLlmConfigured)(process.env))
         && baseReply.replyMode === "template"
         && shouldUseModelDraft({
             question,
@@ -304,6 +294,7 @@ async function draftDiscordSupportReply(input, options = {}) {
         });
     let reply = baseReply.reply;
     let usedModel = false;
+    let usedModelInfo = null;
     if (shouldUseModel) {
         const drafted = await runNuancedModelDraft({
             question,
@@ -316,8 +307,9 @@ async function draftDiscordSupportReply(input, options = {}) {
             fetchImpl: options.fetchImpl ?? fetch,
         });
         if (drafted) {
-            reply = drafted;
+            reply = drafted.text;
             usedModel = true;
+            usedModelInfo = { provider: drafted.provider, version: drafted.model };
         }
     }
     return {
@@ -332,7 +324,7 @@ async function draftDiscordSupportReply(input, options = {}) {
         reply,
         replyMode: usedModel ? "model" : baseReply.replyMode,
         usedModel,
-        model: usedModel ? { provider: "openai", version: model } : null,
+        model: usedModelInfo,
         policySlug: policy.policySlug,
         decision: disposition.decision,
         humanReviewRequired: baseReply.humanReviewRequired,

@@ -176,3 +176,57 @@ function createBundle() {
         (0, node_fs_1.rmSync)(tempRoot, { recursive: true, force: true });
     }
 });
+(0, node_test_1.default)("association scout can use Ollama fallback when OpenAI key is missing", async () => {
+    const fetchImpl = async (url) => {
+        strict_1.default.equal(String(url).endsWith("/api/chat"), true);
+        return new Response(JSON.stringify({
+            message: {
+                content: JSON.stringify({
+                    theme: "local fallback association",
+                    summary: "The local fallback can draft association proposals without raw persistence.",
+                    confidence: 0.74,
+                    contradictions: [],
+                    followUpQueries: ["local fallback association"],
+                    intents: [
+                        {
+                            type: "connection_note",
+                            confidence: 0.76,
+                            title: "local fallback note",
+                            explanation: "Tie the two memories together as an advisory connection.",
+                            memoryIds: ["mem-1", "mem-2"],
+                            targetIds: [],
+                            relationType: null,
+                            query: null,
+                            recommendation: null,
+                        },
+                    ],
+                }),
+            },
+        }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+        });
+    };
+    const availability = (0, associationScout_1.describeAssociationScoutEnv)({
+        STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_ENABLED: "true",
+        STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_PROVIDER: "openai-api",
+        STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MODEL: "gpt-5.4-mini",
+        STUDIO_BRAIN_OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+        STUDIO_BRAIN_LLM_FALLBACK_ON: "missing_key",
+    });
+    strict_1.default.equal(availability.available, true);
+    strict_1.default.equal(availability.reason, null);
+    const scout = (0, associationScout_1.createAssociationScoutFromEnv)({
+        STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_ENABLED: "true",
+        STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_PROVIDER: "openai-api",
+        STUDIO_BRAIN_MEMORY_CONSOLIDATION_ASSOCIATION_SCOUT_MODEL: "gpt-5.4-mini",
+        STUDIO_BRAIN_OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+        STUDIO_BRAIN_OLLAMA_HEAVY_MODEL: "qwen3.6:27b",
+        STUDIO_BRAIN_LLM_FALLBACK_ON: "missing_key",
+    }, { fetchImpl });
+    const proposal = await scout?.scout(createBundle());
+    strict_1.default.ok(proposal);
+    strict_1.default.equal(proposal?.provider, "ollama.chat");
+    strict_1.default.equal(proposal?.model, "qwen3.6:27b");
+    strict_1.default.equal(proposal?.intents[0]?.type, "connection_note");
+});

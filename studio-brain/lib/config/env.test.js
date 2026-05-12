@@ -67,15 +67,34 @@ function withPatchedEnv(patch, run) {
 (0, node_test_1.default)("swarm infra defaults parse cleanly", () => {
     withPatchedEnv({
         STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED: "true",
+        STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED: "true",
         STUDIO_BRAIN_SKILL_ALLOWLIST: "vision,planner",
         STUDIO_BRAIN_SKILL_DENYLIST: "bad-skill@1.0.0",
         STUDIO_BRAIN_VECTOR_STORE_ENABLED: "1",
     }, () => {
         const env = (0, env_1.readEnv)();
         strict_1.default.equal(env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED, true);
+        strict_1.default.equal(env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED, true);
         strict_1.default.deepEqual(env.STUDIO_BRAIN_SKILL_ALLOWLIST, ["vision", "planner"]);
         strict_1.default.deepEqual(env.STUDIO_BRAIN_SKILL_DENYLIST, ["bad-skill@1.0.0"]);
         strict_1.default.equal(env.STUDIO_BRAIN_VECTOR_STORE_ENABLED, true);
+    });
+});
+(0, node_test_1.default)("local model router env parses fallback and sandbox controls", () => {
+    withPatchedEnv({
+        STUDIO_BRAIN_OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+        STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL: "gemma4:e4b",
+        STUDIO_BRAIN_OLLAMA_HEAVY_MODEL: "qwen3.6:27b",
+        STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL: "hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M",
+        STUDIO_BRAIN_LLM_FALLBACK_ON: "missing_key,quota,rate_limit,timeout,5xx",
+        STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED: "true",
+        STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH: "false",
+    }, () => {
+        const env = (0, env_1.readEnv)();
+        strict_1.default.equal(env.STUDIO_BRAIN_OLLAMA_BASE_URL, "http://127.0.0.1:11434");
+        strict_1.default.deepEqual(env.STUDIO_BRAIN_LLM_FALLBACK_ON, ["missing_key", "quota", "rate_limit", "timeout", "5xx"]);
+        strict_1.default.equal(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED, true);
+        strict_1.default.equal(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH, false);
     });
 });
 (0, node_test_1.default)("boolean env coercion supports 1/0", () => {

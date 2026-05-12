@@ -3,6 +3,10 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import {
+  createStudioBrainLlmRouterFromEnv,
+  hasStudioBrainLlmLocalFallbackConfigured,
+} from "../llm/router";
 
 const ASSOCIATION_SCOUT_REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const ASSOCIATION_SCOUT_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
@@ -395,7 +399,7 @@ function resolveAssociationScoutResolvedProvider(
   const codexExecutable = resolveAssociationScoutCodexExecutable(env);
   if (codexExecutableLooksPresent(codexExecutable)) return "codex-cli";
   const { apiKey } = resolveAssociationScoutApiKey(env);
-  if (apiKey) return "openai-api";
+  if (apiKey || hasStudioBrainLlmLocalFallbackConfigured(env)) return "openai-api";
   return null;
 }
 
@@ -579,43 +583,32 @@ async function callOpenAiAssociationScout(input: {
   timeoutMs: number;
   maxOutputTokens: number;
   fetchImpl: typeof fetch;
+  env?: NodeJS.ProcessEnv;
 }): Promise<AssociationScoutProposal | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
-  try {
-    const response = await input.fetchImpl("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${input.apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: input.model,
-        input: buildScoutPrompt(input.bundle),
-        max_output_tokens: input.maxOutputTokens,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "studio_brain_association_scout",
-            strict: true,
-            schema: ASSOCIATION_SCOUT_RESPONSE_JSON_SCHEMA,
-          },
-        },
-      }),
-      signal: controller.signal,
-    });
-    const responseText = await response.text();
-    if (!response.ok) {
-      throw new Error(`association scout failed (${response.status}): ${clip(responseText, 600)}`);
-    }
-    const payload = JSON.parse(responseText) as unknown;
-    const outputText = extractResponseText(payload);
-    if (!outputText) return null;
-    const parsed = associationScoutResponseSchema.parse(JSON.parse(outputText));
-    return normalizeAssociationScoutProposal(parsed, "openai.responses", input.model);
-  } finally {
-    clearTimeout(timer);
-  }
+  const router = createStudioBrainLlmRouterFromEnv(input.env ?? process.env, {
+    openAiApiKey: input.apiKey,
+    fetchImpl: input.fetchImpl,
+  });
+  const result = await router.generate({
+    purpose: "quota_fallback",
+    input: buildScoutPrompt(input.bundle),
+    model: input.model,
+    maxOutputTokens: input.maxOutputTokens,
+    timeoutMs: input.timeoutMs,
+    responseFormat: {
+      name: "studio_brain_association_scout",
+      strict: true,
+      schema: ASSOCIATION_SCOUT_RESPONSE_JSON_SCHEMA,
+    },
+    capabilities: [],
+    allowTools: false,
+    allowExternalWrites: false,
+    allowPublish: false,
+  });
+  const outputText = extractResponseText({ output_text: result.text }) || result.text;
+  if (!outputText) return null;
+  const parsed = associationScoutResponseSchema.parse(JSON.parse(outputText));
+  return normalizeAssociationScoutProposal(parsed, result.provider, result.model);
 }
 
 async function callCodexAssociationScout(input: {
@@ -728,9 +721,10 @@ export function describeAssociationScoutEnv(
   }
 
   if (resolvedProvider === "openai-api") {
+    const localFallbackConfigured = hasStudioBrainLlmLocalFallbackConfigured(env);
     return {
       enabled,
-      available: Boolean(apiKey),
+      available: Boolean(apiKey) || localFallbackConfigured,
       model,
       provider,
       resolvedProvider,
@@ -738,7 +732,7 @@ export function describeAssociationScoutEnv(
       codexExecutable: codexExecutable || null,
       reasoningEffort,
       executionRoot,
-      reason: apiKey ? null : "missing-api-key",
+      reason: apiKey || localFallbackConfigured ? null : "missing-api-key",
     };
   }
 
@@ -802,10 +796,6 @@ export function createAssociationScoutFromEnv(
     };
   }
 
-  if (!apiKey) {
-    return null;
-  }
-
   return {
     async scout(bundle: AssociationScoutBundle): Promise<AssociationScoutProposal | null> {
       if (!bundle.rows.length) return null;
@@ -816,6 +806,7 @@ export function createAssociationScoutFromEnv(
         timeoutMs,
         maxOutputTokens,
         fetchImpl,
+        env,
       });
     },
   };

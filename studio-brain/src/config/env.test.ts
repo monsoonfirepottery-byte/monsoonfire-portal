@@ -71,6 +71,7 @@ test("swarm infra defaults parse cleanly", () => {
   withPatchedEnv(
     {
       STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED: "true",
+      STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED: "true",
       STUDIO_BRAIN_SKILL_ALLOWLIST: "vision,planner",
       STUDIO_BRAIN_SKILL_DENYLIST: "bad-skill@1.0.0",
       STUDIO_BRAIN_VECTOR_STORE_ENABLED: "1",
@@ -78,9 +79,31 @@ test("swarm infra defaults parse cleanly", () => {
     () => {
       const env = readEnv();
       assert.equal(env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED, true);
+      assert.equal(env.STUDIO_BRAIN_LOCAL_ORCHESTRATOR_ENABLED, true);
       assert.deepEqual(env.STUDIO_BRAIN_SKILL_ALLOWLIST, ["vision", "planner"]);
       assert.deepEqual(env.STUDIO_BRAIN_SKILL_DENYLIST, ["bad-skill@1.0.0"]);
       assert.equal(env.STUDIO_BRAIN_VECTOR_STORE_ENABLED, true);
+    }
+  );
+});
+
+test("local model router env parses fallback and sandbox controls", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+      STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL: "gemma4:e4b",
+      STUDIO_BRAIN_OLLAMA_HEAVY_MODEL: "qwen3.6:27b",
+      STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL: "hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M",
+      STUDIO_BRAIN_LLM_FALLBACK_ON: "missing_key,quota,rate_limit,timeout,5xx",
+      STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED: "true",
+      STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH: "false",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_OLLAMA_BASE_URL, "http://127.0.0.1:11434");
+      assert.deepEqual(env.STUDIO_BRAIN_LLM_FALLBACK_ON, ["missing_key", "quota", "rate_limit", "timeout", "5xx"]);
+      assert.equal(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED, true);
+      assert.equal(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH, false);
     }
   );
 });

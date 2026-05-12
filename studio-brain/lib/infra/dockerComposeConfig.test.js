@@ -40,4 +40,5 @@ function parseServices(raw) {
     strict_1.default.ok(services.includes("postgres"), "postgres service missing from compose config");
     strict_1.default.ok(services.includes("redis"), "redis service missing from compose config");
     strict_1.default.ok(services.includes("minio"), "minio service missing from compose config");
+    strict_1.default.ok(services.includes("studiobrain_ollama"), "studiobrain_ollama service missing from compose config");
 });

@@ -60,7 +60,7 @@ function normalizeConfig(config) {
         ollamaDefaultModel: (0, types_1.cleanText)(config.ollamaDefaultModel) || "gemma4:e4b",
         ollamaHeavyModel: (0, types_1.cleanText)(config.ollamaHeavyModel) || "qwen3.6:27b",
         ollamaExpressionModel: (0, types_1.cleanText)(config.ollamaExpressionModel)
-            || "hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M",
+            || "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
         ollamaKeepAlive: (0, types_1.cleanText)(config.ollamaKeepAlive) || "10m",
         ollamaContextWindow: Math.max(1_024, Math.min(config.ollamaContextWindow ?? 8_192, 131_072)),
         timeoutMs: Math.max(500, Math.min(config.timeoutMs ?? 120_000, 600_000)),
@@ -156,7 +156,7 @@ function createStudioBrainLlmRouterFromEnv(env = process.env, options = {}) {
         ollamaDefaultModel: (0, types_1.cleanText)(env.STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL) || "gemma4:e4b",
         ollamaHeavyModel: (0, types_1.cleanText)(env.STUDIO_BRAIN_OLLAMA_HEAVY_MODEL) || "qwen3.6:27b",
         ollamaExpressionModel: (0, types_1.cleanText)(env.STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL)
-            || "hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M",
+            || "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
         ollamaKeepAlive: (0, types_1.cleanText)(env.STUDIO_BRAIN_OLLAMA_KEEP_ALIVE) || "10m",
         ollamaContextWindow: numberValue(env.STUDIO_BRAIN_OLLAMA_CONTEXT_WINDOW, 8_192),
         timeoutMs: numberValue(env.STUDIO_BRAIN_OLLAMA_TIMEOUT_MS, 120_000),

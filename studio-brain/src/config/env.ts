@@ -129,7 +129,7 @@ const EnvSchema = z.object({
   STUDIO_BRAIN_OLLAMA_BASE_URL: z.string().default("http://127.0.0.1:11434"),
   STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL: z.string().default("gemma4:e4b"),
   STUDIO_BRAIN_OLLAMA_HEAVY_MODEL: z.string().default("qwen3.6:27b"),
-  STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL: z.string().default("hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M"),
+  STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL: z.string().default("fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M"),
   STUDIO_BRAIN_OLLAMA_KEEP_ALIVE: z.string().default("10m"),
   STUDIO_BRAIN_OLLAMA_CONTEXT_WINDOW: z.coerce.number().int().min(1_024).max(131_072).default(8_192),
   STUDIO_BRAIN_OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(500).max(600_000).default(120_000),

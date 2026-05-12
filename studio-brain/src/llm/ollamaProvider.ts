@@ -103,6 +103,7 @@ export function createOllamaChatProvider(options: OllamaChatProviderOptions): St
         const body: Record<string, unknown> = {
           model,
           stream: false,
+          think: false,
           keep_alive: keepAlive,
           messages: buildOllamaMessages(request),
           options: {

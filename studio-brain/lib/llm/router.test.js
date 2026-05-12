@@ -120,4 +120,6 @@ const router_1 = require("./router");
     strict_1.default.equal(Object.prototype.hasOwnProperty.call(result.audit, "rawPrompt"), false);
     strict_1.default.equal(Object.prototype.hasOwnProperty.call(result.audit, "rawOutput"), false);
     strict_1.default.match(JSON.stringify(body), /private local expression sandbox/i);
+    strict_1.default.ok(body);
+    strict_1.default.equal(body.think, false);
 });

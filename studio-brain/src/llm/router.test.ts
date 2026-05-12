@@ -126,4 +126,6 @@ test("private expression strips tools, writes, publish power, and raw persistenc
   assert.equal(Object.prototype.hasOwnProperty.call(result.audit, "rawPrompt"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(result.audit, "rawOutput"), false);
   assert.match(JSON.stringify(body), /private local expression sandbox/i);
+  assert.ok(body);
+  assert.equal((body as Record<string, unknown>).think, false);
 });

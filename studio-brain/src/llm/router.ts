@@ -101,7 +101,7 @@ function normalizeConfig(config: StudioBrainLlmRouterConfig): RequiredConfig {
     ollamaHeavyModel: cleanText(config.ollamaHeavyModel) || "qwen3.6:27b",
     ollamaExpressionModel:
       cleanText(config.ollamaExpressionModel)
-      || "hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M",
+      || "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
     ollamaKeepAlive: cleanText(config.ollamaKeepAlive) || "10m",
     ollamaContextWindow: Math.max(1_024, Math.min(config.ollamaContextWindow ?? 8_192, 131_072)),
     timeoutMs: Math.max(500, Math.min(config.timeoutMs ?? 120_000, 600_000)),
@@ -214,7 +214,7 @@ export function createStudioBrainLlmRouterFromEnv(
     ollamaHeavyModel: cleanText(env.STUDIO_BRAIN_OLLAMA_HEAVY_MODEL) || "qwen3.6:27b",
     ollamaExpressionModel:
       cleanText(env.STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL)
-      || "hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M",
+      || "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
     ollamaKeepAlive: cleanText(env.STUDIO_BRAIN_OLLAMA_KEEP_ALIVE) || "10m",
     ollamaContextWindow: numberValue(env.STUDIO_BRAIN_OLLAMA_CONTEXT_WINDOW, 8_192),
     timeoutMs: numberValue(env.STUDIO_BRAIN_OLLAMA_TIMEOUT_MS, 120_000),

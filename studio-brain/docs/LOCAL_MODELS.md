@@ -12,7 +12,7 @@ Studio Brain runs local LLMs through the `studiobrain_ollama` Docker Compose pro
 
 - Default orchestrator: `gemma4:e4b`
 - Heavy fallback: `qwen3.6:27b`
-- Private expression sandbox: `hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M`
+- Private expression sandbox: `fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M`
 - Optional structured fallback for later benchmarking: `ibm/granite4.1:8b`
 
 ## Start Fresh
@@ -31,7 +31,7 @@ Manual start:
 docker compose --profile local-models up -d studiobrain_ollama
 docker compose --profile local-models exec -T studiobrain_ollama ollama pull gemma4:e4b
 docker compose --profile local-models exec -T studiobrain_ollama ollama pull qwen3.6:27b
-docker compose --profile local-models exec -T studiobrain_ollama ollama pull hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M
+docker compose --profile local-models exec -T studiobrain_ollama ollama pull fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M
 curl http://127.0.0.1:11434/api/version
 ```
 
@@ -45,10 +45,12 @@ Set these in the Studio Brain runtime environment when enabling local models:
 STUDIO_BRAIN_OLLAMA_BASE_URL=http://127.0.0.1:11434
 STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL=gemma4:e4b
 STUDIO_BRAIN_OLLAMA_HEAVY_MODEL=qwen3.6:27b
-STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL=hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M
+STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL=fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M
 STUDIO_BRAIN_LLM_FALLBACK_ON=missing_key,quota,rate_limit,timeout,5xx
 STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED=true
 STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH=false
 ```
+
+The raw Hugging Face `hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M` tag currently pulls but does not load under Ollama `0.23.2` on the Studio Brain host because the GGUF path hits `unknown model architecture: 'qwen35'`. The selected Ollama-library expression model is a bridge-patched Qwen3.6 uncensored variant and is the runtime default until raw HF GGUF support catches up.
 
 `/health/dependencies` reports Ollama reachability, selected models, loaded models, and fallback readiness whenever Ollama is explicitly configured or local expression/orchestrator mode is enabled.

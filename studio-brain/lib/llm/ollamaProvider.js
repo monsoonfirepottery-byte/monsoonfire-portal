@@ -66,6 +66,7 @@ function createOllamaChatProvider(options) {
                 const body = {
                     model,
                     stream: false,
+                    think: false,
                     keep_alive: keepAlive,
                     messages: buildOllamaMessages(request),
                     options: {

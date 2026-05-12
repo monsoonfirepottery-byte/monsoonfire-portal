@@ -94,6 +94,8 @@ test("local model router env parses fallback and sandbox controls", () => {
       STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL: "gemma4:e4b",
       STUDIO_BRAIN_OLLAMA_HEAVY_MODEL: "qwen3.6:27b",
       STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL: "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
+      STUDIO_BRAIN_OLLAMA_MAX_OUTPUT_TOKENS: "512",
+      STUDIO_BRAIN_OLLAMA_NUM_THREAD: "2",
       STUDIO_BRAIN_LLM_FALLBACK_ON: "missing_key,quota,rate_limit,timeout,5xx",
       STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED: "true",
       STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH: "false",
@@ -101,6 +103,8 @@ test("local model router env parses fallback and sandbox controls", () => {
     () => {
       const env = readEnv();
       assert.equal(env.STUDIO_BRAIN_OLLAMA_BASE_URL, "http://127.0.0.1:11434");
+      assert.equal(env.STUDIO_BRAIN_OLLAMA_MAX_OUTPUT_TOKENS, 512);
+      assert.equal(env.STUDIO_BRAIN_OLLAMA_NUM_THREAD, 2);
       assert.deepEqual(env.STUDIO_BRAIN_LLM_FALLBACK_ON, ["missing_key", "quota", "rate_limit", "timeout", "5xx"]);
       assert.equal(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED, true);
       assert.equal(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH, false);

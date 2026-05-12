@@ -122,4 +122,34 @@ const router_1 = require("./router");
     strict_1.default.match(JSON.stringify(body), /private local expression sandbox/i);
     strict_1.default.ok(body);
     strict_1.default.equal(body.think, false);
+    const options = body.options ?? {};
+    strict_1.default.equal(options.num_predict, 512);
+    strict_1.default.equal(options.num_thread, 2);
+});
+(0, node_test_1.default)("local fallback clamps Ollama generation and thread options", async () => {
+    let body = null;
+    const fetchImpl = async (_url, init) => {
+        body = JSON.parse(String(init?.body ?? "{}"));
+        return new Response(JSON.stringify({ message: { content: "capped local ok" } }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+        });
+    };
+    const router = (0, router_1.createStudioBrainLlmRouter)({
+        openAiApiKey: "",
+        fallbackOn: ["missing_key"],
+        ollamaMaxOutputTokens: 64,
+        ollamaNumThread: 2,
+        fetchImpl,
+    });
+    const result = await router.generate({
+        purpose: "quota_fallback",
+        input: "hello",
+        maxOutputTokens: 999,
+    });
+    strict_1.default.equal(result.provider, "ollama.chat");
+    strict_1.default.ok(body);
+    const options = body.options ?? {};
+    strict_1.default.equal(options.num_predict, 64);
+    strict_1.default.equal(options.num_thread, 2);
 });

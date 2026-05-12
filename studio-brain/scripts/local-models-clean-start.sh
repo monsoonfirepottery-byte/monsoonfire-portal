@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 DEFAULT_MODEL="${STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL:-gemma4:e4b}"
 HEAVY_MODEL="${STUDIO_BRAIN_OLLAMA_HEAVY_MODEL:-qwen3.6:27b}"
 EXPRESSION_MODEL="${STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL:-fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M}"
+OLLAMA_NUM_THREAD="${STUDIO_BRAIN_OLLAMA_NUM_THREAD:-2}"
 CONFIG_PATH="$HOME/.ollama/config.json"
 
 if [[ -f "$CONFIG_PATH" ]]; then
@@ -31,9 +32,10 @@ smoke_model() {
   local expected="$2"
   local payload
 
-  payload="$(printf '{"model":%s,"prompt":%s,"stream":false,"think":false,"options":{"num_predict":24,"num_ctx":256,"temperature":0}}' \
+  payload="$(printf '{"model":%s,"prompt":%s,"stream":false,"think":false,"options":{"num_predict":24,"num_ctx":256,"num_thread":%s,"temperature":0}}' \
     "$(printf '%s' "$model" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
-    "$(printf '%s' "Reply with exactly: $expected" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")"
+    "$(printf '%s' "Reply with exactly: $expected" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "$OLLAMA_NUM_THREAD")"
   printf 'Smoke prompt for %s\n' "$model"
   response="$(printf '%s' "$payload" | curl -fsS --max-time 420 http://127.0.0.1:11434/api/generate \
     -H 'Content-Type: application/json' \

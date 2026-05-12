@@ -46,10 +46,15 @@ STUDIO_BRAIN_OLLAMA_BASE_URL=http://127.0.0.1:11434
 STUDIO_BRAIN_OLLAMA_DEFAULT_MODEL=gemma4:e4b
 STUDIO_BRAIN_OLLAMA_HEAVY_MODEL=qwen3.6:27b
 STUDIO_BRAIN_OLLAMA_EXPRESSION_MODEL=fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M
+STUDIO_BRAIN_OLLAMA_CONTEXT_WINDOW=8192
+STUDIO_BRAIN_OLLAMA_MAX_OUTPUT_TOKENS=512
+STUDIO_BRAIN_OLLAMA_NUM_THREAD=2
 STUDIO_BRAIN_LLM_FALLBACK_ON=missing_key,quota,rate_limit,timeout,5xx
 STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED=true
 STUDIO_BRAIN_LOCAL_EXPRESSION_ALLOW_PUBLISH=false
 ```
+
+The CPU-only host should keep `STUDIO_BRAIN_OLLAMA_NUM_THREAD=2` and `STUDIO_BRAIN_OLLAMA_MAX_OUTPUT_TOKENS=512` as the default smart-thermal posture. Raise those only for deliberate benchmark windows while watching `sensors`; lower them before enabling frequent background orchestration.
 
 The raw Hugging Face `hf.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced:IQ2_M` tag currently pulls but does not load under Ollama `0.23.2` on the Studio Brain host because the GGUF path hits `unknown model architecture: 'qwen35'`. The selected Ollama-library expression model is a bridge-patched Qwen3.6 uncensored variant and is the runtime default until raw HF GGUF support catches up.
 

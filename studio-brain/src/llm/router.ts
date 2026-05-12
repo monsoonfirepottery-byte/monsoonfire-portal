@@ -19,6 +19,8 @@ export type StudioBrainLlmRouterConfig = {
   ollamaExpressionModel?: string | null;
   ollamaKeepAlive?: string | null;
   ollamaContextWindow?: number;
+  ollamaMaxOutputTokens?: number;
+  ollamaNumThread?: number;
   timeoutMs?: number;
   fallbackOn?: StudioBrainLlmFallbackReason[];
   localExpressionEnabled?: boolean;
@@ -58,6 +60,12 @@ function numberValue(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function boundedInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(Math.trunc(parsed), max));
+}
+
 function fallbackReasonsFromConfig(value: unknown): StudioBrainLlmFallbackReason[] {
   const allowed = new Set<StudioBrainLlmFallbackReason>([
     "missing_key",
@@ -85,6 +93,8 @@ type RequiredConfig = {
   ollamaExpressionModel: string;
   ollamaKeepAlive: string;
   ollamaContextWindow: number;
+  ollamaMaxOutputTokens: number;
+  ollamaNumThread: number;
   timeoutMs: number;
   fallbackOn: Set<StudioBrainLlmFallbackReason>;
   localExpressionEnabled: boolean;
@@ -104,6 +114,8 @@ function normalizeConfig(config: StudioBrainLlmRouterConfig): RequiredConfig {
       || "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
     ollamaKeepAlive: cleanText(config.ollamaKeepAlive) || "10m",
     ollamaContextWindow: Math.max(1_024, Math.min(config.ollamaContextWindow ?? 8_192, 131_072)),
+    ollamaMaxOutputTokens: boundedInt(config.ollamaMaxOutputTokens, 512, 16, 4_096),
+    ollamaNumThread: boundedInt(config.ollamaNumThread, 2, 1, 64),
     timeoutMs: Math.max(500, Math.min(config.timeoutMs ?? 120_000, 600_000)),
     fallbackOn: new Set(config.fallbackOn?.length ? config.fallbackOn : DEFAULT_FALLBACK_REASONS),
     localExpressionEnabled: config.localExpressionEnabled === true,
@@ -124,6 +136,8 @@ async function localFallback(input: {
     timeoutMs: input.config.timeoutMs,
     keepAlive: input.config.ollamaKeepAlive,
     contextWindow: input.config.ollamaContextWindow,
+    maxOutputTokens: input.config.ollamaMaxOutputTokens,
+    numThread: input.config.ollamaNumThread,
     fetchImpl: input.config.fetchImpl,
   });
   const result = await provider.generate({
@@ -162,6 +176,8 @@ export function createStudioBrainLlmRouter(configInput: StudioBrainLlmRouterConf
           timeoutMs: config.timeoutMs,
           keepAlive: config.ollamaKeepAlive,
           contextWindow: config.ollamaContextWindow,
+          maxOutputTokens: config.ollamaMaxOutputTokens,
+          numThread: config.ollamaNumThread,
           fetchImpl: config.fetchImpl,
         });
         const result = await provider.generate(sandboxed);
@@ -217,6 +233,8 @@ export function createStudioBrainLlmRouterFromEnv(
       || "fredrezones55/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive:IQ2_M",
     ollamaKeepAlive: cleanText(env.STUDIO_BRAIN_OLLAMA_KEEP_ALIVE) || "10m",
     ollamaContextWindow: numberValue(env.STUDIO_BRAIN_OLLAMA_CONTEXT_WINDOW, 8_192),
+    ollamaMaxOutputTokens: numberValue(env.STUDIO_BRAIN_OLLAMA_MAX_OUTPUT_TOKENS, 512),
+    ollamaNumThread: numberValue(env.STUDIO_BRAIN_OLLAMA_NUM_THREAD, 2),
     timeoutMs: numberValue(env.STUDIO_BRAIN_OLLAMA_TIMEOUT_MS, 120_000),
     fallbackOn: fallbackReasonsFromConfig(env.STUDIO_BRAIN_LLM_FALLBACK_ON),
     localExpressionEnabled: boolValue(env.STUDIO_BRAIN_LOCAL_EXPRESSION_ENABLED, false),

@@ -6,6 +6,12 @@ const types_1 = require("./types");
 function normalizeBaseUrl(baseUrl) {
     return ((0, types_1.cleanText)(baseUrl) || "http://127.0.0.1:11434").replace(/\/+$/g, "");
 }
+function boundedInt(value, fallback, min, max) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed))
+        return fallback;
+    return Math.max(min, Math.min(Math.trunc(parsed), max));
+}
 function buildOllamaMessages(request) {
     const messages = (0, types_1.messagesFromRequest)(request).filter((message) => message.content.length > 0);
     if (!request.responseFormat)
@@ -56,12 +62,17 @@ function createOllamaChatProvider(options) {
     const defaultTimeoutMs = Math.max(500, Math.min(options.timeoutMs ?? 120_000, 600_000));
     const keepAlive = (0, types_1.cleanText)(options.keepAlive) || "10m";
     const contextWindow = Math.max(1_024, Math.min(options.contextWindow ?? 8_192, 131_072));
+    const defaultMaxOutputTokens = boundedInt(options.maxOutputTokens, 512, 16, 4_096);
+    const numThread = boundedInt(options.numThread, 2, 1, 64);
     return {
         id: "ollama.chat",
         async generate(request) {
             const startedAt = Date.now();
             const timeoutMs = Math.max(500, Math.min(request.timeoutMs ?? defaultTimeoutMs, 600_000));
             const model = (0, types_1.cleanText)(request.model) || defaultModel;
+            const maxOutputTokens = request.maxOutputTokens === undefined
+                ? defaultMaxOutputTokens
+                : Math.min(boundedInt(request.maxOutputTokens, defaultMaxOutputTokens, 1, 4_096), defaultMaxOutputTokens);
             try {
                 const body = {
                     model,
@@ -71,6 +82,8 @@ function createOllamaChatProvider(options) {
                     messages: buildOllamaMessages(request),
                     options: {
                         num_ctx: contextWindow,
+                        num_predict: maxOutputTokens,
+                        num_thread: numThread,
                     },
                 };
                 if (request.temperature !== undefined) {

@@ -15,6 +15,8 @@ export type OllamaChatProviderOptions = {
   timeoutMs?: number;
   keepAlive?: string | null;
   contextWindow?: number;
+  maxOutputTokens?: number;
+  numThread?: number;
   fetchImpl?: typeof fetch;
 };
 
@@ -36,6 +38,13 @@ export type OllamaHealth = {
 function normalizeBaseUrl(baseUrl: string | null | undefined): string {
   return (cleanText(baseUrl) || "http://127.0.0.1:11434").replace(/\/+$/g, "");
 }
+
+function boundedInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(Math.trunc(parsed), max));
+}
+
 function buildOllamaMessages(request: StudioBrainLlmRequest): StudioBrainLlmMessage[] {
   const messages = messagesFromRequest(request).filter((message) => message.content.length > 0);
   if (!request.responseFormat) return messages;
@@ -92,6 +101,8 @@ export function createOllamaChatProvider(options: OllamaChatProviderOptions): St
   const defaultTimeoutMs = Math.max(500, Math.min(options.timeoutMs ?? 120_000, 600_000));
   const keepAlive = cleanText(options.keepAlive) || "10m";
   const contextWindow = Math.max(1_024, Math.min(options.contextWindow ?? 8_192, 131_072));
+  const defaultMaxOutputTokens = boundedInt(options.maxOutputTokens, 512, 16, 4_096);
+  const numThread = boundedInt(options.numThread, 2, 1, 64);
 
   return {
     id: "ollama.chat",
@@ -99,6 +110,9 @@ export function createOllamaChatProvider(options: OllamaChatProviderOptions): St
       const startedAt = Date.now();
       const timeoutMs = Math.max(500, Math.min(request.timeoutMs ?? defaultTimeoutMs, 600_000));
       const model = cleanText(request.model) || defaultModel;
+      const maxOutputTokens = request.maxOutputTokens === undefined
+        ? defaultMaxOutputTokens
+        : Math.min(boundedInt(request.maxOutputTokens, defaultMaxOutputTokens, 1, 4_096), defaultMaxOutputTokens);
       try {
         const body: Record<string, unknown> = {
           model,
@@ -108,6 +122,8 @@ export function createOllamaChatProvider(options: OllamaChatProviderOptions): St
           messages: buildOllamaMessages(request),
           options: {
             num_ctx: contextWindow,
+            num_predict: maxOutputTokens,
+            num_thread: numThread,
           },
         };
         if (request.temperature !== undefined) {

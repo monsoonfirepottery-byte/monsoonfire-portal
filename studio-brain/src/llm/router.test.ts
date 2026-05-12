@@ -128,4 +128,37 @@ test("private expression strips tools, writes, publish power, and raw persistenc
   assert.match(JSON.stringify(body), /private local expression sandbox/i);
   assert.ok(body);
   assert.equal((body as Record<string, unknown>).think, false);
+  const options = (body as { options?: Record<string, unknown> }).options ?? {};
+  assert.equal(options.num_predict, 512);
+  assert.equal(options.num_thread, 2);
+});
+
+test("local fallback clamps Ollama generation and thread options", async () => {
+  let body: Record<string, unknown> | null = null;
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    return new Response(JSON.stringify({ message: { content: "capped local ok" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const router = createStudioBrainLlmRouter({
+    openAiApiKey: "",
+    fallbackOn: ["missing_key"],
+    ollamaMaxOutputTokens: 64,
+    ollamaNumThread: 2,
+    fetchImpl,
+  });
+
+  const result = await router.generate({
+    purpose: "quota_fallback",
+    input: "hello",
+    maxOutputTokens: 999,
+  });
+
+  assert.equal(result.provider, "ollama.chat");
+  assert.ok(body);
+  const options = (body as { options?: Record<string, unknown> }).options ?? {};
+  assert.equal(options.num_predict, 64);
+  assert.equal(options.num_thread, 2);
 });

@@ -6,6 +6,7 @@ Use this runbook when Codex needs durable direct access to the Studio Brain Ubun
 
 - CLI access helper: `scripts/studiobrain-host-access.py`
 - Remote ops wrapper: `scripts/studiobrain-ops.py`
+- Host doctor: `scripts/studiobrain-doctor.mjs`
 - Deploy path: `scripts/deploy-studio-brain-host.py`
 - Shared SSH/fail2ban logic: `scripts/lib/studiobrain_host_access.py`
 - Remote fail2ban installer: `scripts/install-studiobrain-fail2ban-sshd.sh`
@@ -19,6 +20,7 @@ npm run studio:host:access:bootstrap
 npm run studio:host:fail2ban:install
 npm run studio:host:relay:status
 npm run studio:host:deploy
+npm run studio:doctor
 npm run studio:ops:install
 npm run studio:ops:status
 ```
@@ -75,6 +77,8 @@ Optional keys:
 
 ## Notes
 
+- Use `npm run studio:doctor` or `npm run studio:ops:status` from `/home/wuff/monsoonfire-portal` on the Studio Brain host for the normal health gate. It emits compact JSON for operators and agent consumers, writes `output/studio-brain/audits/studio-doctor-latest.json`, and keeps the full raw status artifact at `output/studio-brain/audits/studio-status-latest.json`. If a workstation run reports a fallback env authority failure, rerun on the host or provide the real Studio Brain env file before trusting the result.
+- `npm run studio:ops:remote-status` preserves the Python remote-ops wrapper status command. Use it only when testing that wrapper itself; it depends on the Python host-access stack and is not the normal host-local doctor path.
 - The SSH helper disables agent and implicit key probing during password auth, which avoids the "too many authentication failures" foot-gun that can trip fail2ban.
 - On Windows, treat `C:\Windows\System32\OpenSSH\ssh.exe` as the authoritative SSH client for Studio Brain. Do not rely on whichever `ssh.exe` happens to be first on `PATH`; Git-for-Windows and MSYS clients can behave differently.
 - The tracked fail2ban file only keeps loopback by default. The installer injects the current management IP allowlist at install time so the repo does not fossilize one old laptop address.

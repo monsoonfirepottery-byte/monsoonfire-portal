@@ -5,6 +5,7 @@ Use this runbook for the broader Studio Brain host-control stack that sits behin
 ## Source of truth
 
 - Browser control tower: `docs/runbooks/STUDIO_BRAIN_CONTROL_TOWER_V2.md`
+- Host doctor: `scripts/studiobrain-doctor.mjs`
 - Wrapper CLI: `scripts/studiobrain-ops.py`
 - Linux wrapper: `scripts/studiobrain-ops.sh`
 - Bootstrap script: `scripts/install-studiobrain-ops-stack.sh`
@@ -40,6 +41,7 @@ npm run studio:ops:sync
 npm run studio:ops:deploy
 npm run studio:ops:install
 npm run studio:ops:reconcile
+npm run studio:doctor
 npm run studio:ops:status
 npm run studio:ops:tmux:ensure
 npm run studio:ops:tmux:attach:cmd
@@ -56,6 +58,9 @@ Primary daily operator surface:
 - Browser route: `https://portal.monsoonfire.com/staff/cockpit/control-tower`
 - Short alias: `https://portal.monsoonfire.com/staff/control-tower`
 - Wrapper shortcut: `npm run studio:ops:browser:url`
+- Health gate: `npm run studio:doctor`
+
+`studio:doctor` is the host-native doctor path. It wraps `scripts/studiobrain-status.mjs`, defaults to `live_host_authoritative`, writes compact JSON and Markdown under `output/studio-brain/audits/`, and exits non-zero when the host is not safe for guarded operations. Run it from `/home/wuff/monsoonfire-portal` on the Studio Brain host for authoritative results. Workstation runs are still useful, but a fallback env failure means the command did not have live host authority. `studio:ops:status` is an alias for the same doctor output so agent workflows such as Asper can consume one predictable JSON contract. The Python wrapper status command remains available as `npm run studio:ops:remote-status` when the remote-ops wrapper itself is under test.
 
 From the `scripts/` directory on Linux:
 

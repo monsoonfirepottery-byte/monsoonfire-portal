@@ -7,7 +7,8 @@ Use this as an operating rhythm. Treat risky actions as approval-gated.
 - `curl -fsS http://192.168.1.226:8787/healthz`
 - `curl -fsS http://192.168.1.226:8787/readyz`
 - `make ops-app-review` when working from the host or through the local Mission Control tunnel.
-- `npm run studio:ops:status`
+- `npm run studio:doctor` from `/home/wuff/monsoonfire-portal` on the Studio Brain host.
+- `npm run studio:ops:status` is the agent-compatible alias for the same doctor output.
 - `systemctl --failed --no-pager`
 - Confirm `studio-brain-healthcheck.timer`, `studio-brain-disk-alert.timer`, `studio-brain-reboot-watch.timer`, `studio-brain-idle-worker.timer`, and `studio-brain-idle-worker-overnight.timer` are active.
 - Review backup freshness evidence.

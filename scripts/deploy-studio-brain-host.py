@@ -49,6 +49,7 @@ DEFAULT_LOCAL_GOOGLE_ADC_PATH = (
     else Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
 )
 STATIC_SUPPORT_PATHS = (
+    REPO_ROOT / "package.json",
     REPO_ROOT / ".governance" / "planning",
     REPO_ROOT / "contracts" / "planning.schema.json",
     REPO_ROOT / "scripts" / "open-memory-consolidate.mjs",
@@ -70,6 +71,7 @@ STATIC_SUPPORT_PATHS = (
     REPO_ROOT / "scripts" / "lib" / "codex-session-memory-utils.mjs",
     REPO_ROOT / "scripts" / "lib" / "hybrid-memory-utils.mjs",
     REPO_ROOT / "scripts" / "lib" / "pst-memory-utils.mjs",
+    REPO_ROOT / "scripts" / "studiobrain-doctor.mjs",
     REPO_ROOT / "scripts" / "studio-brain-discord-action-runner.mjs",
     REPO_ROOT / "scripts" / "install-studiobrain-fail2ban-sshd.sh",
     REPO_ROOT / "scripts" / "install-studiobrain-discord-relay.sh",

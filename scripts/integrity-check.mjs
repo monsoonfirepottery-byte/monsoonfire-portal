@@ -11,6 +11,7 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 
 const DEFAULT_TARGET_FILES = [
+  "package.json",
   "studio-brain/.env.network.profile",
   "studio-brain/.env.contract.schema.json",
   "studio-brain/docker-compose.yml",
@@ -37,6 +38,7 @@ const DEFAULT_TARGET_FILES = [
   "scripts/lib/studiobrain-posture-policy.mjs",
   "scripts/start-emulators.mjs",
   "scripts/studiobrain-network-check.mjs",
+  "scripts/studiobrain-doctor.mjs",
   "scripts/studiobrain-status.mjs",
   "scripts/studiobrain-backup-drill.mjs",
   "scripts/studiobrain-incident-bundle.mjs",

@@ -5,6 +5,7 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
 ## Restart App Safely
 
 1. Capture current state:
+   - `npm run studio:doctor`
    - `npm run studio:ops:status`
    - `curl -fsS http://192.168.1.226:8787/healthz`
    - `curl -fsS http://192.168.1.226:8787/readyz`
@@ -18,6 +19,8 @@ These runbooks are written for cautious operation. Prefer read-only diagnostics 
    - `/api/status` scheduler and latest job status
 6. Rollback:
    - If restart fails after a deploy, redeploy the last known-good artifact or restore the previous service command from systemd history.
+
+`studio:doctor` is the normal host gate and `studio:ops:status` is kept as an alias for agent/operator compatibility. Use `studio:ops:remote-status` only when validating the Python remote-ops wrapper itself.
 
 ## Restart Docker Stack Safely
 

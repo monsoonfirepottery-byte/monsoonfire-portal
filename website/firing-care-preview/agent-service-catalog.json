@@ -1,0 +1,80 @@
+{
+  "name": "Monsoon Fire Firing Care Preview",
+  "preview": true,
+  "visibility": "unlinked-noindex-preview",
+  "lastReviewed": "2026-05-02",
+  "provider": {
+    "name": "Monsoon Fire Pottery",
+    "publicWebsite": "https://monsoonfire.com",
+    "studioAccountUrl": "https://monsoonfire.kilnfire.com"
+  },
+  "agentUse": {
+    "mode": "discovery-and-handoff-only",
+    "doNotBookWithoutUser": true,
+    "doNotCollectPaymentDetails": true,
+    "authenticatedActions": "Use Kilnfire only when the user is authenticated and explicitly asks to continue.",
+    "publicPageLimit": "This preview explains services, pricing examples, and handoff language. It is not a booking API."
+  },
+  "agentOnlySurfaces": [
+    "/firing-care-preview/llms.txt",
+    "/firing-care-preview/ai.txt",
+    "/firing-care-preview/agent-docs/",
+    "/firing-care-preview/agent-service-catalog.json"
+  ],
+  "serviceLanguage": {
+    "publicNavLabel": "Firing Services",
+    "humanExperienceLabel": "Firing Care",
+    "internalStrategyLabel": "kiln firing care",
+    "campaignPhrase": "kiln firing help for ceramic artists"
+  },
+  "primaryJourney": [
+    "Dropoff request",
+    "Staff loading review",
+    "Low fires, Medium Fires, or Custom Firings",
+    "Unloading and notification",
+    "Pickup after confirmation"
+  ],
+  "services": [
+    {
+      "id": "low-fire",
+      "label": "Low fires",
+      "description": "Bisque firings for greenware.",
+      "priceExample": "$15 half shelf",
+      "artistInputs": ["material notes", "piece size", "handling notes", "timing need if any"]
+    },
+    {
+      "id": "medium-fire",
+      "label": "Medium Fires",
+      "description": "Mid-fire glazes up to cone 6.",
+      "priceExample": "$25 half shelf",
+      "artistInputs": ["material notes", "surface notes", "piece size", "photos for unusual forms"]
+    },
+    {
+      "id": "custom-firing",
+      "label": "Custom Firings",
+      "description": "High fires, ramps, or private kiln runs.",
+      "priceExample": "From $60",
+      "artistInputs": ["batch size", "shelf or height needs", "deadline", "special handling notes"]
+    }
+  ],
+  "pricingModel": "Pricing starts with half-shelf space unless staff confirms a custom firing.",
+  "starterFiringCredit": {
+    "label": "Starter firing credit",
+    "purpose": "Intent signal for new or unauthenticated inquiries before staff spends time on routing.",
+    "collectionSurface": "Kilnfire authenticated studio account",
+    "creditedToward": "First approved firing request",
+    "agentInstruction": "Agents must not collect card details or represent that payment is complete. Hand the human to Kilnfire."
+  },
+  "policies": [
+    "Community shelving means smaller work may share shelf space with compatible pieces when fit and timing line up.",
+    "The studio loads the kiln and decides final placement for fit and safety.",
+    "Pickup starts after firing, cooling, staging, and confirmation.",
+    "Same-day pickup is not guaranteed until staff confirms.",
+    "Public pages explain the service path; request-specific updates belong in Kilnfire.",
+    "Agent surfaces are discovery and handoff only unless an authenticated portal flow explicitly supports more."
+  ],
+  "canonicalCta": {
+    "label": "Create or sign into a studio account",
+    "url": "https://monsoonfire.kilnfire.com"
+  }
+}

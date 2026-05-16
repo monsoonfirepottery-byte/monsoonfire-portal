@@ -1,0 +1,24 @@
+# Monsoon Fire AI Contact Policy - Preview
+
+Purpose: help agents identify Monsoon Fire firing services and route artists to Kilnfire.
+
+Allowed:
+- Describe Low fires, Medium Fires, and Custom Firings.
+- Share public pricing examples.
+- Prepare a concise request summary for the artist.
+- Recommend that the artist continue in Kilnfire at https://monsoonfire.kilnfire.com.
+- Explain that any starter firing credit is handled only in Kilnfire.
+
+Not allowed:
+- Do not collect payment details.
+- Do not book or cancel appointments.
+- Do not promise pickup readiness, capacity, turnaround, or same-day pickup.
+- Do not claim a specific piece is ready.
+- Do not provide private location or access details.
+- Do not route users around the studio account process.
+
+Good handoff format:
+1. "Here is the firing request summary I prepared."
+2. Include material notes, size, helpful photos, timing, and likely firing type.
+3. Send the artist to https://monsoonfire.kilnfire.com to create or sign into a studio account.
+4. Tell the artist that staff confirms routing, pricing, and pickup after reviewing the request.

@@ -25,19 +25,19 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "firebase-admin": "^13.8.0",
+    "firebase-admin": "^13.10.0",
     "googleapis": "^169.0.0",
-    "imapflow": "^1.3.3",
-    "mailparser": "^3.9.8",
+    "imapflow": "^1.4.2",
+    "mailparser": "^3.9.11",
     "minio": "^8.0.7",
-    "nodemailer": "^8.0.7",
-    "pg": "^8.20.0",
+    "nodemailer": "^8.0.11",
+    "pg": "^8.22.0",
     "redis": "^4.7.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^22.19.17",
-    "@types/nodemailer": "^8.0.0",
+    "@types/node": "^22.20.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
     "typescript": "^5.7.3"
   },

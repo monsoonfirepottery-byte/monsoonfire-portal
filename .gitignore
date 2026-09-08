@@ -32,6 +32,9 @@ tmp/
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.venv/
+laindex-data/
 
 # Local import/runtime datasets
 imports/

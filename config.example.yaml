@@ -1,0 +1,18 @@
+database: laindex-data/index.sqlite3
+user_agent: "MonsoonFire-LAIndex/0.1 (personal local index; contact: configure-me)"
+request_delay_seconds: 2.0
+cache_ttl_hours: 12
+location:
+  state: AZ
+  east_boundary_longitude: -112.05
+  allowed_cities: [Surprise, Peoria, Glendale, Phoenix, Goodyear, Avondale, Tolleson]
+  denied_cities: [Mesa, Gilbert, Chandler, Queen Creek, Tempe, Scottsdale]
+limits: {max_all_in: 100, estimated_tax_percent: 9.2}
+pickup: {start: 2026-09-10, end: 2026-09-12}
+hunts:
+  pottery:
+    positive: {kiln: 35, pottery: 20, ceramic: 15, pugmill: 35, "slab roller": 35, "ball mill": 30, compressor: 18, pump: 15}
+    negative: {decor: -15, planter: -8}
+  door_hardware:
+    positive: {"matte black": 30, "door lever": 25, "round rose": 35, "round escutcheon": 35, "keyed entry": 25, lockset: 20, deadbolt: 20}
+    negative: {brass: -30, chrome: -20, nickel: -15, cabinet: -35, shower: -35, appliance: -35, dummy: -20, "rectangular backplate": -30}

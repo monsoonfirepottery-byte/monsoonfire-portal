@@ -1054,6 +1054,223 @@ export const staffBatchArtifactCleanup = onRequest(
 );
 
 // -----------------------------
+// Staff batch deletion and materials payment email actions
+// -----------------------------
+export const staffDeleteUnloadedBatch = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+
+  const parsed = parseBody(z.object({ batchId: z.string().trim().min(1).max(128) }), req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const batchId = parsed.data.batchId;
+  const batchRef = batchDoc(batchId);
+  const auditRef = db.collection("batchDeletionAudit").doc(batchId);
+  try {
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(batchRef);
+      if (!snapshot.exists) throw new Error("BATCH_NOT_FOUND");
+      const data = snapshot.data() ?? {};
+      const state = safeString(data.state).trim().toUpperCase() || safeString(data.status, "UNKNOWN").trim().toUpperCase();
+      const canDelete = ["DRAFT", "SUBMITTED", "SHELVED", "DELETION_PENDING"].includes(state);
+      const hasKilnAssignment =
+        Boolean(safeString(data.currentKilnId).trim()) || Boolean(safeString(data.currentKilnName).trim());
+      if (!canDelete || data.isClosed === true || hasKilnAssignment) {
+        throw new Error("BATCH_NOT_ELIGIBLE_FOR_DELETION");
+      }
+
+      const requestedAt = nowTs();
+      transaction.set(
+        auditRef,
+        {
+          batchId,
+          title: safeString(data.title, safeString(data.collectionName, "Untitled batch")),
+          ownerUid: safeString(data.ownerUid) || null,
+          stateBeforeDeletion: state,
+          requestedByUid: auth.uid,
+          requestedByEmail: safeString(auth.decoded.email) || null,
+          requestedAt,
+        },
+        { merge: true }
+      );
+      transaction.set(
+        batchRef,
+        { state: "DELETION_PENDING", deletionRequestedAt: requestedAt, updatedAt: requestedAt },
+        { merge: true }
+      );
+    });
+
+    await db.recursiveDelete(batchRef);
+    await auditRef.set({ deletedAt: nowTs(), deletionStatus: "deleted" }, { merge: true });
+    res.status(200).json({ ok: true, batchId, message: "Unloaded batch deleted." });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "BATCH_NOT_FOUND") {
+      res.status(404).json({ ok: false, message: "Batch not found." });
+      return;
+    }
+    if (message === "BATCH_NOT_ELIGIBLE_FOR_DELETION") {
+      res.status(409).json({ ok: false, message: "Only open batches that have not been loaded into a kiln can be deleted." });
+      return;
+    }
+    logger.error("staffDeleteUnloadedBatch failed", { batchId, message });
+    res.status(500).json({ ok: false, message: "Unable to delete this unloaded batch." });
+  }
+});
+
+export const resendMaterialsPaymentEmail = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+
+  const parsed = parseBody(z.object({ orderId: z.string().trim().min(1).max(128) }), req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "resendMaterialsPaymentEmail",
+    max: 5,
+    windowMs: 10 * 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Please wait before resending another payment email." });
+    return;
+  }
+
+  const orderId = parsed.data.orderId;
+  const orderRef = db.collection("materialsOrders").doc(orderId);
+  try {
+    const snapshot = await orderRef.get();
+    if (!snapshot.exists) {
+      res.status(404).json({ ok: false, message: "Material order not found." });
+      return;
+    }
+    const order = snapshot.data() ?? {};
+    const status = safeString(order.status).trim().toLowerCase();
+    if (status !== "checkout_pending") {
+      res.status(409).json({ ok: false, message: "Payment email is available only for unpaid checkout orders." });
+      return;
+    }
+
+    const paymentUrl = safeString(order.checkoutUrl).trim();
+    try {
+      const parsedUrl = new URL(paymentUrl);
+      if (parsedUrl.protocol !== "https:" || parsedUrl.hostname !== "checkout.stripe.com") {
+        throw new Error("invalid");
+      }
+    } catch {
+      res.status(409).json({ ok: false, message: "This order has no valid Stripe checkout link to resend." });
+      return;
+    }
+
+    let email = safeString(order.email).trim();
+    const uid = safeString(order.uid).trim();
+    if (!email && uid) {
+      try {
+        email = safeString((await adminAuth.getUser(uid)).email).trim();
+      } catch {
+        email = "";
+      }
+    }
+    if (!email) {
+      res.status(409).json({ ok: false, message: "No customer email is available for this order." });
+      return;
+    }
+
+    const displayName = safeString(order.displayName).trim();
+    const items = Array.isArray(order.items)
+      ? order.items
+          .map((entry) => {
+            const item = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+            const name = safeString(item.name, "Studio materials").trim() || "Studio materials";
+            const quantity = Math.max(1, asInt(item.quantity, 1));
+            return `• ${name} × ${quantity}`;
+          })
+          .join("\n")
+      : "";
+    const totalCents = Math.max(0, asInt(order.totalCents, 0));
+    const greeting = displayName ? `Hi ${displayName},` : "Hello,";
+    const textBody = [
+      greeting,
+      "",
+      `Here is the payment link for your Monsoon Fire materials order ${orderId}.`,
+      items || null,
+      `Amount due: ${(totalCents / 100).toFixed(2)}`,
+      "",
+      "Use this secure Stripe link to pay:",
+      paymentUrl,
+      "",
+      "This email is for payment only. Pickup instructions will be sent separately when your order is ready.",
+      "",
+      "Thank you,",
+      "Monsoon Fire Pottery",
+    ].filter((line): line is string => typeof line === "string").join("\n");
+
+    const createdAt = nowTs();
+    const mailRef = db.collection("mail").doc();
+    const auditRef = orderRef.collection("communicationEvents").doc(mailRef.id);
+    const batch = db.batch();
+    batch.set(mailRef, {
+      to: email,
+      message: {
+        subject: "Payment link for your Monsoon Fire order",
+        text: textBody,
+      },
+      data: { orderId, communicationType: "payment_link_resend" },
+      createdAt,
+    });
+    batch.set(auditRef, {
+      type: "payment_link_email_queued",
+      recipient: email,
+      actorUid: auth.uid,
+      createdAt,
+      mailId: mailRef.id,
+    });
+    await batch.commit();
+
+    res.status(200).json({ ok: true, orderId, message: "Payment email queued." });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("resendMaterialsPaymentEmail failed", { orderId, message });
+    res.status(500).json({ ok: false, message: "Unable to resend the payment email." });
+  }
+});
+
+// -----------------------------
 // Integrations: PATs (integration tokens)
 // -----------------------------
 export const createIntegrationToken = onRequest(
@@ -2552,25 +2769,43 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
   const batchId = safeString(parsed.data.batchId);
   const kilnId = safeString(parsed.data.kilnId);
   const kilnName = safeString(parsed.data.kilnName);
-  const batchSnap = await batchDoc(batchId).get();
-  if (!batchSnap.exists) {
-    res.status(404).json({ ok: false, message: "Batch not found" });
-    return;
+  const t = nowTs();
+  let batch: Record<string, unknown>;
+  try {
+    batch = await db.runTransaction(async (transaction) => {
+      const batchSnap = await transaction.get(batchDoc(batchId));
+      if (!batchSnap.exists) throw new Error("BATCH_NOT_FOUND");
+      const current = batchSnap.data() ?? {};
+      const currentState = safeString(current.state).trim().toUpperCase() || safeString(current.status, "UNKNOWN").trim().toUpperCase();
+      if (currentState === "DELETION_PENDING") throw new Error("BATCH_DELETION_PENDING");
+      if (current.isClosed === true) throw new Error("BATCH_ALREADY_CLOSED");
+      transaction.set(
+        batchDoc(batchId),
+        {
+          state: "LOADED" as BatchState,
+          updatedAt: t,
+          currentKilnId: kilnId,
+          currentKilnName: kilnName || null,
+        },
+        { merge: true }
+      );
+      return current;
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "BATCH_NOT_FOUND") {
+      res.status(404).json({ ok: false, message: "Batch not found" });
+      return;
+    }
+    if (message === "BATCH_DELETION_PENDING" || message === "BATCH_ALREADY_CLOSED") {
+      res.status(409).json({ ok: false, message: "This batch is no longer available to load." });
+      return;
+    }
+    throw error;
   }
-  const batch = batchSnap.data() as Record<string, unknown>;
+
   const ownerUid = safeString(batch.ownerUid);
   const batchTitle = safeString(batch.title);
-
-  const t = nowTs();
-  await batchDoc(batchId).set(
-    {
-      state: "LOADED" as BatchState,
-      updatedAt: t,
-      currentKilnId: kilnId,
-      currentKilnName: kilnName || null,
-    },
-    { merge: true }
-  );
 
   await addTimelineEvent({
     batchId,

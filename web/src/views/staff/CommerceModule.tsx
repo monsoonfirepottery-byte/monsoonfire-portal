@@ -190,16 +190,41 @@ export default function CommerceModule({
                           const isSettled =
                             normalizedStatus === "paid" || normalizedStatus === "picked_up";
                           const link = isSettled ? o.receiptUrl : o.checkoutUrl;
+                          const canResendPaymentEmail = normalizedStatus === "checkout_pending" && Boolean(o.checkoutUrl);
                           const label = isSettled ? "Copy receipt link" : "Copy checkout link";
-                          return link ? (
-                          <button
-                            className="btn btn-ghost btn-small"
-                            onClick={() => void copy(link)}
-                          >
-                            {label}
-                          </button>
-                          ) : (
-                          <span className="staff-mini">-</span>
+                          return (
+                            <>
+                              {link ? (
+                                <button
+                                  className="btn btn-ghost btn-small"
+                                  onClick={() => void copy(link)}
+                                >
+                                  {label}
+                                </button>
+                              ) : (
+                                <span className="staff-mini">-</span>
+                              )}
+                              {canResendPaymentEmail ? (
+                                <button
+                                  className="btn btn-secondary btn-small"
+                                  type="button"
+                                  disabled={Boolean(busy)}
+                                  onClick={() => {
+                                    const confirmed = window.confirm(
+                                      `Resend the payment email for order ${o.id}? It will go to the customer email saved on the order.`
+                                    );
+                                    if (!confirmed) return;
+                                    void run("resendMaterialsPaymentEmail", async () => {
+                                      await client.postJson("resendMaterialsPaymentEmail", { orderId: o.id });
+                                      await loadCommerce();
+                                      setStatus(`Payment email queued for order ${o.id}.`);
+                                    });
+                                  }}
+                                >
+                                  {busy === "resendMaterialsPaymentEmail" ? "Sending..." : "Resend payment email"}
+                                </button>
+                              ) : null}
+                            </>
                           );
                         })()}
                       </td>

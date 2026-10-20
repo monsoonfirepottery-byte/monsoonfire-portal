@@ -173,10 +173,11 @@ function consistencyForPacket(id, value, radarReport) {
   };
 }
 
-function packetArtifactFor(id, radarReport) {
+function packetArtifactFor(id, radarReport, packetArtifactPaths = {}) {
   const map = {
     "non-draft-prs-not-mergeable": resolve(REPO_ROOT, "output", "ops", "pr-conflict-packets", "latest.json"),
-    "large-stacked-draft-pr-backlog": resolve(REPO_ROOT, "output", "ops", "pr-backlog-decision-packets", "latest.json")
+    "large-stacked-draft-pr-backlog": resolve(REPO_ROOT, "output", "ops", "pr-backlog-decision-packets", "latest.json"),
+    ...packetArtifactPaths
   };
   const path = map[id] || "";
   if (!path) return null;
@@ -211,7 +212,7 @@ function packetArtifactFor(id, radarReport) {
   };
 }
 
-function taskFromRecommendation(recommendation, finding, rank, radarReport) {
+function taskFromRecommendation(recommendation, finding, rank, radarReport, packetArtifactPaths = {}) {
   const title = recommendation.title || finding?.title || "Investigate proactive radar finding";
   const commandMap = {
     "non-draft-prs-not-mergeable": "npm run ops:pr-conflict:packets",
@@ -221,7 +222,7 @@ function taskFromRecommendation(recommendation, finding, rank, radarReport) {
     "ops-scripts-without-make-targets": "npm run ops:command-manifest:check"
   };
   const id = finding?.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const packetArtifact = packetArtifactFor(id, radarReport);
+  const packetArtifact = packetArtifactFor(id, radarReport, packetArtifactPaths);
   const packetReady = packetArtifact?.ok && packetArtifact.packets > 0 && packetArtifact.status === "action_needed" && packetArtifact.consistency?.ok !== false;
   const packetApprovalGate = packetReady && packetArtifact.allPacketsRequireApproval;
   const command = commandMap[id] || "";
@@ -259,7 +260,7 @@ function taskFromRecommendation(recommendation, finding, rank, radarReport) {
   };
 }
 
-function semanticTasksFromRadar(radarReport) {
+function semanticTasksFromRadar(radarReport, packetArtifactPaths = {}) {
   const findings = Array.isArray(radarReport.findings) ? radarReport.findings : [];
   const recommendations = Array.isArray(radarReport.recommendations) ? radarReport.recommendations : [];
   const findingsByTitle = new Map(findings.map((finding) => [finding.title, finding]));
@@ -271,7 +272,7 @@ function semanticTasksFromRadar(radarReport) {
         || findingsById.get(id)
         || findings[index]
         || null;
-      return taskFromRecommendation(recommendation, finding, index + 1, radarReport);
+      return taskFromRecommendation(recommendation, finding, index + 1, radarReport, packetArtifactPaths);
     })
     .sort((a, b) => b.score - a.score || a.rank - b.rank)
     .map((task, index) => ({ ...task, rank: index + 1 }));
@@ -310,7 +311,7 @@ function buildReport(options) {
   const tasks = allTasks.filter((task) => !String(task.title || "").includes("next-slice-selector"));
   const nextProducerTask = radarReport.nextProducerRefreshTask || tasks[0] || null;
   const selectedProducerTask = nextProducerTask && String(nextProducerTask.title || "").includes("next-slice-selector") ? tasks[0] || null : nextProducerTask;
-  const semanticTasks = semanticTasksFromRadar(radarReport);
+  const semanticTasks = semanticTasksFromRadar(radarReport, options.packetArtifactPaths);
   const fallbackTasks = fallbackTasksFromRadar(radarReport);
   const artifactConsistencyWarnings = semanticTasks
     .filter((task) => task.packetArtifact?.consistency?.ok === false)
@@ -474,4 +475,8 @@ function main() {
   }
 }
 
-main();
+export { buildReport, renderMarkdown };
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main();
+}

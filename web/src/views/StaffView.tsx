@@ -2114,6 +2114,16 @@ function normalizeBatchState(status: string): string {
   return status.trim().toUpperCase().replace(/\s+/g, "_");
 }
 
+function isPreloadBatchDeletable(batch: Pick<BatchRecord, "status" | "isClosed" | "currentKilnId" | "currentKilnName">): boolean {
+  const state = normalizeBatchState(batch.status);
+  return (
+    !batch.isClosed &&
+    !batch.currentKilnId.trim() &&
+    !batch.currentKilnName.trim() &&
+    ["DRAFT", "SUBMITTED", "SHELVED", "DELETION_PENDING"].includes(state)
+  );
+}
+
 function memberRoleLabel(role: MemberRoleValue): string {
   if (role === "admin") return "Admin";
   if (role === "staff") return "Staff";
@@ -7041,6 +7051,23 @@ export default function StaffView({
     run,
   ]);
 
+  const handleDeleteBatch = (batch: BatchRecord) => {
+    if (!isPreloadBatchDeletable(batch)) return;
+    const confirmation = window.confirm(
+      `Delete "${batch.title}" (${batch.id})? This permanently removes the ticket and its piece and timeline records. Only tickets that have not been loaded into a kiln can be deleted.`
+    );
+    if (!confirmation) return;
+
+    void run("staffDeleteUnloadedBatch", async () => {
+      await client.postJson("staffDeleteUnloadedBatch", { batchId: batch.id });
+      setSelectedBatchId((current) => (current === batch.id ? "" : current));
+      setBatchPieces([]);
+      setBatchTimeline([]);
+      await loadBatches();
+      setStatus(`Deleted unloaded ticket ${batch.id}.`);
+    });
+  };
+
   const batchAction = (name: BatchActionName) => {
     if (!selectedBatchId) return;
     if (!batchActionAvailability[name]) {
@@ -7425,12 +7452,13 @@ export default function StaffView({
                   <th>Owner UID</th>
                   <th>Kiln</th>
                   <th>Updated</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>No batches match current filters.</td>
+                    <td colSpan={7}>No batches match current filters.</td>
                   </tr>
                 ) : (
                   filteredBatches.map((batch) => (
@@ -7472,6 +7500,23 @@ export default function StaffView({
                       <td><code>{batch.ownerUid || "-"}</code></td>
                       <td>{batch.currentKilnName || batch.currentKilnId || "-"}</td>
                       <td>{when(batch.updatedAtMs)}</td>
+                      <td>
+                        {isPreloadBatchDeletable(batch) ? (
+                          <button
+                            className="btn btn-ghost btn-small"
+                            type="button"
+                            disabled={Boolean(busy)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteBatch(batch);
+                            }}
+                          >
+                            {batch.status === "DELETION_PENDING" ? "Retry delete" : "Delete"}
+                          </button>
+                        ) : (
+                          <span className="staff-mini">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}

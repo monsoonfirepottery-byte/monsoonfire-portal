@@ -1181,7 +1181,11 @@ export const resendMaterialsPaymentEmail = onRequest({ region: REGION, timeoutSe
     }
     const order = snapshot.data() ?? {};
     const status = safeString(order.status).trim().toLowerCase();
-    if (status !== "checkout_pending") {
+    const paymentStatus = safeString(order.paymentStatus).trim().toLowerCase();
+    if (
+      status !== "checkout_pending" ||
+      ["paid", "picked_up", "payment_succeeded", "invoice_paid"].includes(paymentStatus)
+    ) {
       res.status(409).json({ ok: false, message: "Payment email is available only for unpaid checkout orders." });
       return;
     }

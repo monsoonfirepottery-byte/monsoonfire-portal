@@ -1,29 +1,32 @@
-# Monsoon Fire Website — llms.txt
-Updated: 2026-02-22
-Scope: Public marketing website discovery for AI agents.
-Safety: Public, read-only guidance only. No secrets, private hosts, or privileged actions.
+# Monsoon Fire Pottery - Firing Care
 
-## Start Here
-- [Authoritative] https://monsoonfire.com/agent-docs/
-- [Authoritative] https://monsoonfire.com/
-- [Authoritative] https://monsoonfire.com/services/
-- [Authoritative] https://monsoonfire.com/kiln-firing/
-- [Authoritative] https://monsoonfire.com/memberships/
-- [Authoritative] https://monsoonfire.com/support/
-- [Authoritative] https://monsoonfire.com/contact/
-- [Authoritative] https://monsoonfire.com/policies/
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md
-- [Advisory] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/policies/AGENT_POLICY_ACTIONS.md
+This is the public Monsoon Fire kiln firing care site. Use this file for public agent discovery and safe handoff only.
 
-## Authority Model
-- Authoritative: Maintained contract docs and deployed production pages.
-- Advisory: Supporting context that may lag behind contract updates.
+Canonical human handoff:
+- Create or sign into a studio account: https://monsoonfire.kilnfire.com
 
-## Discovery Files
-- https://monsoonfire.com/ai.txt
-- https://monsoonfire.com/robots.txt
-- https://monsoonfire.com/sitemap.xml
+What Monsoon Fire offers:
+- Low Temp Firings: low-temperature bisque, low-fire glazes, and earthenware. Example: $15 half shelf.
+- Mid Temp Firings: midfire glazes and stonewares. Example: $25 half shelf.
+- Custom Firings: high fires, ramps, or private kiln runs. Example: from $60.
+- Pricing starts with half-shelf space unless staff confirms a custom firing.
+
+Starter firing credit:
+- A starter firing credit may be collected inside Kilnfire for new requests.
+- It applies toward the first approved firing.
+- Agents must not collect card details, mark payment complete, or claim a booking exists.
+
+Policy notes:
+- Community shelving means smaller work may share shelf space with compatible pieces when fit and timing line up.
+- Staff loads the kiln and decides final placement.
+- Pickup starts after firing, cooling, staging, confirmation, and a pickup appointment.
+- Same-day pickup is not guaranteed until staff confirms.
+
+Agent behavior:
+- You may summarize services, draft a clear request, and lead the user to Kilnfire.
+- You may ask the user for material notes, size, photos, handling notes, timing needs, and whether the request sounds like Low Temp Firings, Mid Temp Firings, or Custom Firings.
+- You must not book, cancel, pay, request pickup movement, promise capacity, promise readiness, expose private location details, or impersonate studio staff.
+
+Related public files:
+- /ai.txt
+- /agent-service-catalog.json

@@ -16,10 +16,34 @@ const SCANNED_EXTENSIONS = new Set([
   ".config",
   ".ps1",
 ]);
-const LEGACY_HOST_PATTERNS = [
-  "monsoonfire.kilnfire.com",
-  "https://monsoonfire.kilnfire.com",
-];
+const ACCOUNT_HANDOFF_HOST = "monsoonfire.kilnfire.com";
+const ACCOUNT_HANDOFF_URL = `https://${ACCOUNT_HANDOFF_HOST}`;
+const ALLOWED_ACCOUNT_HANDOFF_FILES = new Set([
+  "index.html",
+  "firing-services/index.html",
+  "support-pickup/index.html",
+  "agent-service-catalog.json",
+  "ai.txt",
+  "llms.txt",
+  "scripts/deploy-namecheap-website.mjs",
+  "ncsitebuilder/index.html",
+  "ncsitebuilder/firing-services/index.html",
+  "ncsitebuilder/support-pickup/index.html",
+  "ncsitebuilder/agent-service-catalog.json",
+  "ncsitebuilder/ai.txt",
+  "ncsitebuilder/llms.txt",
+]);
+const ACCOUNT_HANDOFF_PATTERN = /(?:https?:\/\/)?monsoonfire\.kilnfire\.com(?:\/[^\s"'<>)]*)?/g;
+const FOOTER_HANDOFF_TARGET = 'data-portal-target="footer-studio-account"';
+
+function isFooterAccountHandoff(contents, matchIndex) {
+  const anchorStart = contents.lastIndexOf("<a", matchIndex);
+  const anchorEnd = contents.indexOf("</a>", matchIndex);
+  if (anchorStart === -1 || anchorEnd === -1) return false;
+
+  const anchor = contents.slice(anchorStart, anchorEnd);
+  return anchor.includes(FOOTER_HANDOFF_TARGET) && anchor.includes(">Studio account");
+}
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -42,18 +66,24 @@ async function walk(directory) {
   return files;
 }
 
-test("website source never references the legacy kilnfire host", async () => {
+test("website source only references Kilnfire as the intentional account handoff host", async () => {
   const files = await walk(WEBSITE_ROOT);
   const offenders = [];
 
   for (const file of files) {
     const contents = await readFile(file, "utf8");
-    for (const pattern of LEGACY_HOST_PATTERNS) {
-      if (contents.includes(pattern)) {
-        offenders.push(`${path.relative(WEBSITE_ROOT, file)} :: ${pattern}`);
+    const relative = path.relative(WEBSITE_ROOT, file).replace(/\\/g, "/");
+    const matches = contents.matchAll(ACCOUNT_HANDOFF_PATTERN);
+    for (const found of matches) {
+      const match = found[0];
+      const isExactProductionHost = match === ACCOUNT_HANDOFF_URL || match === ACCOUNT_HANDOFF_HOST;
+      const isAllowedFile = ALLOWED_ACCOUNT_HANDOFF_FILES.has(relative);
+      const isAllowedFooterHandoff = relative.endsWith(".html") && isFooterAccountHandoff(contents, found.index ?? -1);
+      if (!isExactProductionHost || (!isAllowedFile && !isAllowedFooterHandoff)) {
+        offenders.push(`${relative} :: ${match}`);
       }
     }
   }
 
-  assert.deepEqual(offenders, [], `Legacy kilnfire host references found:\n${offenders.join("\n")}`);
+  assert.deepEqual(offenders, [], `Unexpected Kilnfire host references found:\n${offenders.join("\n")}`);
 });

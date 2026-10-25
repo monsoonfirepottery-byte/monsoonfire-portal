@@ -1,35 +1,46 @@
+DirectoryIndex index.html index.php
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # Never rewrite well-known association files
+  # Never rewrite well-known association files or static assets.
   RewriteRule ^\.well-known/ - [L]
-
-  # Never rewrite assets folder
   RewriteRule ^assets/ - [L]
 
-  # If file exists, serve it
+  # Firing-care preview is now the production site.
+  RewriteRule ^firing-care-preview/?$ / [R=301,L,NC]
+  RewriteRule ^firing-care-preview/firing-services/?$ /firing-services/ [R=301,L,NC]
+  RewriteRule ^firing-care-preview/support-pickup/?$ /support-pickup/ [R=301,L,NC]
+
+  # Retire the old marketing routes into the v2 equivalents.
+  RewriteRule ^(?:services|kiln-firing|Kiln-Rentals)/?$ /firing-services/ [R=301,L,NC]
+  RewriteRule ^(?:support|contact|faq|Community-Guide)/?$ /support-pickup/ [R=301,L,NC]
+
+  # These old public surfaces have no v2 equivalent.
+  RewriteRule ^(?:memberships|classes|supplies|gallery|kiln-status|Memberships|Classes|Store|Gallery)/?$ - [G,L,NC]
+
+  # If a file exists, serve it.
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
 
-  # If directory exists, serve it
+  # If a directory exists, serve it.
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
-
-  # SPA fallback
-  RewriteRule ^ index.html [L]
 </IfModule>
 
-
-
 <IfModule mod_headers.c>
-  # Vite build output is content-hashed under /assets. Cache aggressively.
-  <FilesMatch "^assets/.*\\.(js|css|map|png|jpg|jpeg|gif|svg|webp|ico|woff2?)$">
+  # V2 CSS/JS are query-versioned but not content-hashed; keep them fresh.
+  <FilesMatch "^assets/.*\.(js|css|map)$">
+    Header set Cache-Control "public, max-age=3600"
+  </FilesMatch>
+
+  # Images can be cached aggressively.
+  <FilesMatch "^assets/.*\.(png|jpg|jpeg|gif|svg|webp|avif|ico|woff2?)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 
-  # Keep HTML fresh to pick up new deployments quickly.
-  <FilesMatch "^index\\.html$">
+  # Keep documents and discovery files fresh after cutover.
+  <FilesMatch "\.(html|json|txt|xml)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>
-

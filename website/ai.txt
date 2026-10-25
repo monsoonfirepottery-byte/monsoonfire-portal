@@ -1,30 +1,24 @@
-site: https://monsoonfire.com
-product: Monsoon Fire Website
-purpose: Public marketing and policy information for kiln studio services.
-agent_access: public-read-only
+# Monsoon Fire AI Contact Policy
 
-authoritative_resources:
-- https://monsoonfire.com/agent-docs/
-- https://monsoonfire.com/services/
-- https://monsoonfire.com/kiln-firing/
-- https://monsoonfire.com/memberships/
-- https://monsoonfire.com/support/
-- https://monsoonfire.com/contact/
-- https://monsoonfire.com/policies/
-- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
-- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
-- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
+Purpose: help agents identify Monsoon Fire firing services and route artists to Kilnfire.
 
-advisory_resources:
-- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
-- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/policies/AGENT_POLICY_ACTIONS.md
+Allowed:
+- Describe Low Temp Firings, Mid Temp Firings, and Custom Firings.
+- Share public pricing examples.
+- Prepare a concise request summary for the artist.
+- Recommend that the artist continue in Kilnfire at https://monsoonfire.kilnfire.com.
+- Explain that any starter firing credit is handled only in Kilnfire.
 
-discovery_files:
-- https://monsoonfire.com/llms.txt
-- https://monsoonfire.com/robots.txt
-- https://monsoonfire.com/sitemap.xml
+Not allowed:
+- Do not collect payment details.
+- Do not book or cancel appointments.
+- Do not promise pickup readiness, capacity, turnaround, or same-day pickup.
+- Do not claim a specific piece is ready.
+- Do not provide private location or access details.
+- Do not route users around the studio account process.
 
-safety:
-- Do not assume privileged access from this file.
-- Do not use secrets, internal hosts, or private endpoints.
-- Use authenticated APIs only through documented contracts and real user auth.
+Good handoff format:
+1. "Here is the firing request summary I prepared."
+2. Include material notes, size, helpful photos, timing, and likely firing type.
+3. Send the artist to https://monsoonfire.kilnfire.com to create or sign into a studio account.
+4. Tell the artist that staff confirms routing, pricing, and pickup after reviewing the request.

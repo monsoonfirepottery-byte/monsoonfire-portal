@@ -88,6 +88,14 @@ function hasFirebaseCliSession() {
 }
 
 function runNpx(args, env) {
+  const localCli = resolve(repoRoot, "node_modules", "firebase-tools", "lib", "bin", "firebase.js");
+  if (args[0] === "firebase-tools" && existsSync(localCli)) {
+    return spawnSync(process.execPath, [localCli, ...args.slice(1)], {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+    });
+  }
   return runResolved("npx", args, {
     cwd: repoRoot,
     env,

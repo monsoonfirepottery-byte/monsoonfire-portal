@@ -4,7 +4,7 @@
 
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import {
   loadPortalAutomationEnv,
@@ -58,6 +58,7 @@ const NAV_DOCK_SWEEP_TARGETS = [
 const STAFF_PATHS = {
   home: "/staff",
   cockpit: "/staff/cockpit",
+  finance: "/staff/cockpit/finance",
   workshops: "/staff/workshops",
   system: "/staff/system",
 };
@@ -83,6 +84,12 @@ function parseArgs(argv) {
       DEFAULT_STAFF_CREDENTIALS_PATH,
     credentialsJson: String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim(),
     firebaseApiKey: String(process.env.PORTAL_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || "").trim(),
+    browserFirebaseApiKey: String(
+      process.env.PORTAL_FIREBASE_API_KEY ||
+      process.env.VITE_FIREBASE_API_KEY ||
+      process.env.FIREBASE_WEB_API_KEY ||
+      ""
+    ).trim(),
     projectId: String(process.env.PORTAL_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID).trim() || DEFAULT_FIREBASE_PROJECT_ID,
     adminToken: String(process.env.PORTAL_CANARY_ADMIN_TOKEN || process.env.PORTAL_ADMIN_TOKEN || "").trim(),
     requireAuth: true,
@@ -102,6 +109,7 @@ function parseArgs(argv) {
     visualDiffBaselineRoot: String(process.env.PORTAL_VISUAL_DIFF_BASELINE_ROOT || "").trim(),
     visualDiffOutputRoot: String(process.env.PORTAL_VISUAL_DIFF_OUTPUT_ROOT || "").trim(),
     visualDiffPlanPath: String(process.env.PORTAL_VISUAL_DIFF_PLAN || "").trim(),
+    firingPickupTicketId: String(process.env.PORTAL_CANARY_FIRING_PICKUP_TICKET_ID || "").trim(),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -305,6 +313,13 @@ function parseArgs(argv) {
       const next = argv[index + 1];
       if (!next || next.startsWith("--")) throw new Error("Missing value for --visual-diff-plan");
       options.visualDiffPlanPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+    if (arg === "--firing-pickup-ticket") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --firing-pickup-ticket");
+      options.firingPickupTicketId = String(next).trim();
       index += 1;
       continue;
     }
@@ -699,20 +714,28 @@ function resolveBrowserAuthStrategy(options, credentialResolution) {
 
 async function installRefreshTokenSignInRoute(page, { apiKey, email, uid, idToken, refreshToken }) {
   const expectedEmail = String(email || "").trim().toLowerCase();
-  const expectedApiKey = String(apiKey || "").trim();
+  const expectedApiKeys = new Set([
+    apiKey,
+    process.env.PORTAL_FIREBASE_API_KEY,
+    process.env.VITE_FIREBASE_API_KEY,
+    process.env.FIREBASE_WEB_API_KEY,
+  ].map((value) => String(value || "").trim()).filter(Boolean));
   const responseBody = JSON.stringify(buildPasswordSignInResponse({ email, uid, idToken, refreshToken }));
   let handled = false;
 
   const handler = async (route, request) => {
     const url = request.url();
-    if (!url.includes("accounts:signInWithPassword") || !url.includes(`key=${expectedApiKey}`)) {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.origin !== "https://identitytoolkit.googleapis.com" ||
+        parsedUrl.pathname !== "/v1/accounts:signInWithPassword" ||
+        request.method() !== "POST" || !expectedApiKeys.has(parsedUrl.searchParams.get("key"))) {
       await route.continue();
       return;
     }
 
     const payload = safeJsonParse(request.postData() || "", {});
     const requestEmail = String(payload?.email || "").trim().toLowerCase();
-    if (expectedEmail && requestEmail && requestEmail !== expectedEmail) {
+    if (!expectedEmail || requestEmail !== expectedEmail) {
       await route.continue();
       return;
     }
@@ -831,7 +854,9 @@ async function takeScreenshot(page, outputDir, fileName, summary, label) {
 }
 
 async function clickNavItem(page, label, required = true) {
+  if (label === "Dashboard") label = "Start here";
   const button = page.getByRole("button", { name: new RegExp(regexSafe(label), "i") }).first();
+  if (required) await button.waitFor({ state: "visible", timeout: 15000 });
   if ((await button.count()) === 0) {
     if (required) throw new Error(`Nav button not found: ${label}`);
     return false;
@@ -1443,8 +1468,13 @@ async function signInWithEmail(page, email, password, { allowPlaceholderPassword
   const signedOutCard = page.locator(".signed-out-card");
   await signedOutCard.waitFor({ timeout: 30000 });
 
-  const emailInput = signedOutCard.locator("input[type='email']").first();
-  const passwordInput = signedOutCard.locator("input[type='password']").first();
+  let passwordInput = signedOutCard.locator("input[type='password']").first();
+  if ((await passwordInput.count()) === 0) {
+    const passwordToggle = signedOutCard.getByRole("button", { name: /use a password instead/i });
+    await passwordToggle.click({ timeout: 10000 });
+    passwordInput = signedOutCard.locator("input[type='password']").first();
+  }
+  const emailInput = signedOutCard.locator("form.signed-out-email input[type='email']").first();
   const submitPrimary = signedOutCard.locator("button.primary").first();
   const submitFallback = signedOutCard.getByRole("button", { name: /^Sign in$/i }).first();
   const submit = (await submitPrimary.count()) > 0 ? submitPrimary : submitFallback;
@@ -1793,6 +1823,17 @@ async function runMyPiecesFlowCheck(page, summary, options, feedbackProfile) {
   }
 }
 
+async function openStudioDesk(page, baseUrl) {
+  if (await page.locator('.staff-workspace-nav').isVisible()) return true;
+  await page.goto(baseUrl + '/staff', { waitUntil: 'domcontentloaded' });
+  try {
+    await page.locator('.staff-workspace-nav').waitFor({ state: 'visible', timeout: 15000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function run() {
   const options = parseArgs(process.argv.slice(2));
 
@@ -1905,6 +1946,7 @@ async function run() {
 
   try {
     const context = await browser.newContext({
+      serviceWorkers: "block",
       viewport: { width: 1440, height: 900 },
       userAgent: "MonsoonFirePortalAuthenticatedCanary/1.0",
     });
@@ -1923,7 +1965,7 @@ async function run() {
         try {
           const minted = await mintPortalStaffIdToken(options, credentialResolution);
           const route = await installRefreshTokenSignInRoute(page, {
-            apiKey: options.firebaseApiKey,
+            apiKey: options.browserFirebaseApiKey,
             email: options.staffEmail,
             uid: options.staffUid,
             idToken: minted.token,
@@ -1936,6 +1978,8 @@ async function run() {
             if (!route.wasHandled()) {
               throw new Error("Refresh-token bootstrap route was not exercised during sign-in.");
             }
+          } catch (error) {
+            throw new Error(`${error instanceof Error ? error.message : String(error)} (bootstrap intercepted: ${route.wasHandled()})`);
           } finally {
             await route.remove();
           }
@@ -1963,6 +2007,12 @@ async function run() {
       await takeScreenshot(page, options.outputDir, "canary-02-authenticated-dashboard.png", summary, "authenticated dashboard");
     });
 
+    await Promise.race([
+      page.getByRole("navigation", { name: "Studio work" }).waitFor({ state: "visible", timeout: 12000 }).catch(() => undefined),
+      page.getByRole("heading", { name: DASHBOARD_HEADING_PATTERN }).first().waitFor({ state: "visible", timeout: 12000 }).catch(() => undefined),
+    ]);
+    const ownerConsoleSurface = await page.getByRole("navigation", { name: "Studio work" }).count() > 0;
+
     if (skipStaffWorkspaceChecks || options.themeOnly) {
       summary.checks.push({
         label: "staff workspace route checks",
@@ -1973,6 +2023,92 @@ async function run() {
             ? "Skipped strict staff-route assertions for synthetic production credentials."
             : "Skipped strict staff-route assertions in theme-only mode.",
       });
+    } else if (ownerConsoleSurface) {
+      await check(summary, "owner console opens on the single-owner Today workspace", async () => {
+        await page.getByRole("navigation", { name: "Studio work" }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByRole("button", { name: /^Today/ }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByRole("heading", { level: 1 }).first().waitFor({ state: "visible", timeout: 30000 });
+        await page.getByRole("region", { name: "Firing tickets" }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByText(/Firing planner · last 30 days/i).waitFor({ state: "visible", timeout: 30000 });
+        await assertNoHorizontalOverflow(page, "owner Today workspace");
+        await takeScreenshot(page, options.outputDir, "canary-02c-owner-today.png", summary, "owner Today workspace");
+      });
+
+      await check(summary, "owner ticket workspace is live", async () => {
+        await page.getByRole("button", { name: "Tickets", exact: true }).click({ timeout: 10000 });
+        await page.getByRole("heading", { name: "Tickets", level: 1 }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByRole("region", { name: "Firing tickets" }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByRole("button", { name: "Open tickets", exact: true }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByLabel("Sort firing tickets", { exact: true }).waitFor({ state: "visible", timeout: 30000 });
+        await assertNoHorizontalOverflow(page, "owner ticket workspace");
+        await takeScreenshot(page, options.outputDir, "canary-02d-owner-tickets.png", summary, "owner ticket workspace");
+      });
+
+      await check(summary, "owner money and settings workspaces are reachable", async () => {
+        await page.getByRole("button", { name: /^Money/ }).click({ timeout: 10000 });
+        await page.getByRole("heading", { name: "Money", level: 1 }).waitFor({ state: "visible", timeout: 30000 });
+        await page.getByRole("button", { name: "Settings", exact: true }).click({ timeout: 10000 });
+        await page.getByRole("heading", { name: "Studio settings", level: 2 }).waitFor({ state: "visible", timeout: 30000 });
+        await assertNoHorizontalOverflow(page, "owner settings workspace");
+        await takeScreenshot(page, options.outputDir, "canary-02e-owner-settings.png", summary, "owner settings workspace");
+      });
+
+      if (options.runJourneyCheck) {
+        await check(summary, "owner opens the public firing planner", async () => {
+          await page.getByRole("button", { name: "Firing planner", exact: true }).click({ timeout: 10000 });
+          await page.waitForURL(
+            (url) => url.hostname === "monsoonfire.com" && url.pathname.startsWith("/firing-services/pathfinder"),
+            { timeout: 30000 },
+          );
+          await page.getByRole("heading", { name: /plan your firing/i }).first().waitFor({
+            state: "visible",
+            timeout: 30000,
+          });
+          summary.journeyCheck.enabled = true;
+          summary.journeyCheck.response = {
+            destination: page.url(),
+            publicPlannerReached: true,
+          };
+          summary.journeyCheck.assertions = [{
+            label: "owner handoff reaches the public firing planner",
+            passed: true,
+          }];
+          summary.journeyCheck.cleanup = {
+            mode: options.journeyCleanupMode,
+            attempted: false,
+            status: "clean",
+            deletedPaths: [],
+            debt: [],
+          };
+          await page.goto(options.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await waitForAuthReady(page);
+        });
+      }
+    } else if (await openStudioDesk(page, options.baseUrl)) {
+      await check(summary, "studio desk daily work and firing tickets are live", async () => {
+        const nav = page.getByRole('navigation', { name: 'Daily work', exact: true });
+        await nav.waitFor({ state: 'visible', timeout: 15000 });
+        await nav.getByRole('button', { name: 'Today', exact: true }).click();
+        await page.getByRole('heading', { name: 'Today at the studio', exact: true }).waitFor();
+        await nav.getByRole('button', { name: 'Tickets & payments', exact: true }).click();
+        await page.getByRole('region', { name: 'Firing tickets', exact: true }).waitFor();
+        await page.getByLabel('Sort firing tickets', { exact: true }).waitFor();
+        await page.getByRole('region', { name: 'Firing tickets', exact: true })
+          .getByRole('button', { name: 'Refresh', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+        await assertNoPermissionOrIndexError(page, ['Firing tickets failed:']);
+        await assertNoHorizontalOverflow(page, 'studio desk tickets');
+        await takeScreenshot(page, options.outputDir, 'canary-studio-desk-tickets.png', summary, 'studio desk firing tickets');
+      });
+      await check(summary, "artist billing overview is live", async () => {
+        await page.goto(options.baseUrl);
+        await page.getByRole('button', { name: 'Open profile', exact: true }).click();
+        await page.getByRole('button', { name: 'Billing', exact: true }).click();
+        await page.getByRole('heading', { name: 'Billing', exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Refresh billing overview', exact: true }).waitFor();
+        await assertNoHorizontalOverflow(page, 'artist billing overview');
+        await takeScreenshot(page, options.outputDir, 'canary-billing-overview.png', summary, 'artist billing overview');
+      });
+      await page.goto(options.baseUrl);
     } else {
       await check(summary, "staff home path resolves to the task-first landing", async () => {
         await assertStaffWorkspaceRoute(
@@ -2044,6 +2180,105 @@ async function run() {
         );
       });
 
+      await check(summary, "staff firing pickup billing workspace is live", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          STAFF_PATHS.finance,
+          STAFF_PATHS.finance
+        );
+        await page.locator("#firing-billing-title").waitFor({ state: "visible", timeout: 30000 });
+        await page.getByText("Stripe settings", { exact: true }).first().waitFor({ state: "visible", timeout: 30000 });
+        await page.getByText("Firing pickup billing", { exact: true }).first().waitFor({ state: "visible", timeout: 30000 });
+        await page.getByText("Stripe settings loaded.", { exact: true }).first().waitFor({ state: "visible", timeout: 30000 });
+        await page.getByText("Loading…", { exact: true }).first().waitFor({ state: "hidden", timeout: 30000 });
+
+        const validateStripeButton = page.getByRole("button", { name: "Validate configuration" });
+        await validateStripeButton.click({ timeout: 10000 });
+        await page
+          .getByText(
+            "A signed Stripe delivery is bound to this account, endpoint, secret, and event contract. Billing writes are unlocked for this mode.",
+            { exact: true }
+          )
+          .first()
+          .waitFor({ state: "visible", timeout: 30000 });
+        await assertNoHorizontalOverflow(page, "staff firing pickup billing workspace");
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-02l-firing-pickup-billing.png",
+          summary,
+          "staff firing pickup billing workspace"
+        );
+
+        if (options.firingPickupTicketId) {
+          await page.getByRole("button", { name: "Ready & billing", exact: true }).click();
+          const ticketButton = page.locator(".firing-billing-ticket").filter({
+            hasText: options.firingPickupTicketId,
+          }).first();
+          await ticketButton.waitFor({ state: "visible", timeout: 30000 });
+          await ticketButton.click();
+          const pickupConfirmation = page.getByLabel("The artist or their helper has the work.", { exact: true });
+          await pickupConfirmation.waitFor({ state: "visible", timeout: 30000 });
+          await pickupConfirmation.check();
+          await takeScreenshot(
+            page,
+            options.outputDir,
+            "canary-02l-firing-pickup-confirmed.png",
+            summary,
+            "staff physical pickup confirmation"
+          );
+          await page.getByRole("button", { name: "Mark work picked up", exact: true }).click();
+          await page.getByText(
+            `Marked ${options.firingPickupTicketId} picked up. Its billing status was left unchanged.`,
+            { exact: true }
+          ).waitFor({ state: "visible", timeout: 30000 });
+          await page.locator(".staff-note").filter({
+            hasText: "The work has left the studio. Billing can still be corrected independently if needed.",
+          }).first().waitFor({ state: "visible", timeout: 30000 });
+          await takeScreenshot(
+            page,
+            options.outputDir,
+            "canary-02l-firing-picked-up.png",
+            summary,
+            "staff physical pickup completed"
+          );
+        }
+      });
+
+      await check(summary, "artist firing billing page is live", async () => {
+        await page.goto(options.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForTimeout(800);
+        const openProfileButton = page.getByRole("button", { name: "Open profile" });
+        await openProfileButton.click({ timeout: 10000 });
+        await page.getByRole("heading", { name: "Your profile", level: 1 }).waitFor({ state: "visible", timeout: 30000 });
+        const openBillingButton = page.getByRole("button", { name: "Billing", exact: true });
+        await openBillingButton.click({ timeout: 10000 });
+        await page.getByRole("heading", { name: "Billing", level: 1 }).waitFor({ state: "visible", timeout: 30000 });
+        const firingBillingHeading = page.locator("#firing-billing-heading");
+        await firingBillingHeading.waitFor({ state: "visible", timeout: 30000 });
+        await page
+          .getByText("Loading firing tickets...", { exact: true })
+          .waitFor({ state: "hidden", timeout: 30000 });
+        await assertNoHorizontalOverflow(page, "artist firing billing page");
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-02m-artist-firing-billing.png",
+          summary,
+          "artist firing billing page"
+        );
+        await firingBillingHeading.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(350);
+        const firingListScreenshotPath = resolve(options.outputDir, "canary-02n-artist-firing-list.png");
+        await page.screenshot({ path: firingListScreenshotPath, fullPage: false });
+        summary.screenshots.push({
+          label: "artist firing billing list",
+          path: firingListScreenshotPath,
+        });
+      });
+
       await check(summary, "staff path noise is canonicalized consistently", async () => {
         await assertStaffWorkspaceRoute(
           page,
@@ -2080,7 +2315,7 @@ async function run() {
       });
     }
 
-    if (!options.themeOnly) {
+    if (!options.themeOnly && !ownerConsoleSurface) {
       await check(summary, "navigation dock controls switch left/top/right/bottom", async () => {
         await clickNavItem(page, "Dashboard", true);
 
@@ -2191,7 +2426,8 @@ async function run() {
           let openedFromDashboard = false;
           let routeUsed = "sidebar-nav";
 
-          const firstPieceThumb = page.locator(".piece-thumb").first();
+          // Check-in previews share this class but open intake rather than piece detail.
+          const firstPieceThumb = page.locator('.piece-thumb[aria-label$=" in My Pieces"]').first();
           if ((await firstPieceThumb.count()) > 0) {
             try {
               await firstPieceThumb.click({ timeout: 10000 });
@@ -2447,7 +2683,7 @@ async function run() {
       });
     }
 
-    await check(summary, "advanced diagnostics panel renders", async () => {
+    if (!ownerConsoleSurface) await check(summary, "advanced diagnostics panel renders", async () => {
       await clickNavItem(page, "Dashboard", true);
       const openButton = page.getByRole("button", { name: /^Advanced diagnostics$/i }).first();
       if ((await openButton.count()) > 0) {
@@ -2465,7 +2701,7 @@ async function run() {
       await takeScreenshot(page, options.outputDir, "canary-07-advanced-diagnostics.png", summary, "advanced diagnostics");
     });
 
-    if (options.runThemeSweep) {
+    if (options.runThemeSweep && !ownerConsoleSurface) {
       const pages = [
         {
           label: "Dashboard",
@@ -2600,7 +2836,9 @@ async function run() {
   }
 }
 
-run().catch((error) => {
+export { parseArgs, resolveStaffCredentials, mintPortalStaffIdToken, installRefreshTokenSignInRoute, signInWithEmail, waitForAuthReady };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) run().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`portal-authenticated-canary failed: ${message}`);
   process.exit(1);

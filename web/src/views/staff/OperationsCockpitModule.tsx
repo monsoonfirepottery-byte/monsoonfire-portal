@@ -54,9 +54,7 @@ export default function OperationsCockpitModule({
         <section className="card staff-console-card staff-operations-focus-card">
           <div className="card-title-row">
             <div className="staff-column">
-              <div className="staff-subtitle">Operations drill-in</div>
               <div className="card-title">{selectedCard.title}</div>
-              <p className="card-subtitle">{selectedCard.headline}</p>
             </div>
             <button
               type="button"
@@ -65,9 +63,6 @@ export default function OperationsCockpitModule({
             >
               Back to operations overview
             </button>
-          </div>
-          <div className="staff-note">
-            Advanced tools, long tables, and cleanup controls stay in the focused module so the Operations overview stays readable.
           </div>
         </section>
         <section className="staff-module-grid">{contentByModule[activeOperationsModule]}</section>

@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
+import StaffCreateFiringTicket from "./staff/StaffCreateFiringTicket";
 import {
   type LibraryCoverReviewReconcileRequest,
   type LibraryCoverReviewReconcileResponse,
@@ -118,6 +119,7 @@ import { formatDateTime } from "../utils/format";
 
 const PolicyModule = lazy(() => import("./staff/PolicyModule"));
 const StripeSettingsModule = lazy(() => import("./staff/StripeSettingsModule"));
+const FiringPickupBillingModule = lazy(() => import("./staff/FiringPickupBillingModule"));
 const ReportsModule = lazy(() => import("./staff/ReportsModule"));
 const AgentOpsModule = lazy(() => import("./staff/AgentOpsModule"));
 const CockpitModule = lazy(() => import("./staff/CockpitModule"));
@@ -131,6 +133,8 @@ const OperationsCockpitModule = lazy(() => import("./staff/OperationsCockpitModu
 const StudioReservationsModule = lazy(() => import("./staff/StudioReservationsModule"));
 const StudioBrainControlTowerModule = lazy(() => import("./staff/StudioBrainControlTowerModule"));
 const TaskHomeModule = lazy(() => import("./staff/TaskHomeModule"));
+import StaffWorkspaceNav from "./staff/StaffWorkspaceNav";
+import "./staff/staffWorkspace.css";
 
 type Props = {
   user: User;
@@ -142,7 +146,7 @@ type Props = {
   showEmulatorTools: boolean;
   onOpenCheckin?: () => void;
   onOpenReservation?: (reservationId?: string) => void;
-  onOpenMemberStart?: () => void;
+  onOpenClientStart?: () => void;
   onOpenMessages?: () => void;
   onOpenMessageThread?: (threadId: string) => void;
   onOpenFirings?: () => void;
@@ -177,7 +181,7 @@ const MODULE_REGISTRY = {
   cockpit: { label: "Cockpit", owner: "Operations", testId: "staff-module-cockpit", nav: true },
   studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: true },
   checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
-  members: { label: "Members", owner: "Member Ops", testId: "staff-module-members", nav: false },
+  members: { label: "Clients", owner: "Client Ops", testId: "staff-module-members", nav: false },
   pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
   firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: false },
   events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: false },
@@ -510,7 +514,7 @@ type MemberRecord = {
   createdAtMs: number;
   updatedAtMs: number;
   lastSeenAtMs: number;
-  membershipTier: string;
+  accountType: string;
   kilnPreferences: string;
   rawDoc: Record<string, unknown>;
 };
@@ -2114,16 +2118,6 @@ function normalizeBatchState(status: string): string {
   return status.trim().toUpperCase().replace(/\s+/g, "_");
 }
 
-function isPreloadBatchDeletable(batch: Pick<BatchRecord, "status" | "isClosed" | "currentKilnId" | "currentKilnName">): boolean {
-  const state = normalizeBatchState(batch.status);
-  return (
-    !batch.isClosed &&
-    !batch.currentKilnId.trim() &&
-    !batch.currentKilnName.trim() &&
-    ["DRAFT", "SUBMITTED", "SHELVED", "DELETION_PENDING"].includes(state)
-  );
-}
-
 function memberRoleLabel(role: MemberRoleValue): string {
   if (role === "admin") return "Admin";
   if (role === "staff") return "Staff";
@@ -2146,35 +2140,11 @@ function memberRole(data: Record<string, unknown>): MemberRoleValue {
   }).role;
 }
 
-function deriveMembershipTier(data: Record<string, unknown>, role: MemberRoleValue): string {
+function deriveAccountType(data: Record<string, unknown>, role: MemberRoleValue): string {
+  void data;
   if (role === "admin") return "Admin";
   if (role === "staff") return "Staff";
-  const membership = record(data.membership);
-  const membershipPlan = record(membership.plan);
-  const subscription = record(data.subscription);
-  const profile = record(data.profile);
-
-  const explicit = [
-    str(data.membershipTier),
-    str(data.membership),
-    str(data.membershipType),
-    str(data.memberType),
-    str(data.planTier),
-    str(data.tier),
-    str(membership.tier),
-    str(membership.level),
-    str(membership.type),
-    str(membership.name),
-    str(membershipPlan.tier),
-    str(membershipPlan.name),
-    str(subscription.tier),
-    str(subscription.plan),
-    str(subscription.planName),
-    str(profile.membershipTier),
-    str(profile.memberType),
-  ].find((value) => value.trim().length > 0);
-  if (explicit) return explicit;
-  return "Studio Member";
+  return "Firing client";
 }
 
 function toReasonCode(input: string, fallback: string): string {
@@ -2395,7 +2365,7 @@ export default function StaffView({
   showEmulatorTools,
   onOpenCheckin,
   onOpenReservation,
-  onOpenMemberStart,
+  onOpenClientStart,
   onOpenMessages,
   onOpenMessageThread,
   onOpenFirings,
@@ -2413,6 +2383,8 @@ export default function StaffView({
   unreadAnnouncements = 0,
   onAnnouncementsChanged,
 }: Props) {
+  const [creatingFiringTicket, setCreatingFiringTicket] = useState(false);
+  const [firingTicketRefreshKey, setFiringTicketRefreshKey] = useState(0);
   const initialCockpitModule = useMemo<ModuleKey | null>(() => {
     if (typeof window === "undefined") return null;
     const requestedPath =
@@ -2538,7 +2510,6 @@ export default function StaffView({
   });
   const [memberEditDraft, setMemberEditDraft] = useState({
     displayName: "",
-    membershipTier: "",
     kilnPreferences: "",
     staffNotes: "",
     reason: "",
@@ -3762,7 +3733,7 @@ export default function StaffView({
       .filter((member) => {
         if (memberRoleFilter !== "all" && member.role !== memberRoleFilter) return false;
         if (!search) return true;
-        const haystack = `${member.displayName} ${member.email} ${member.id} ${member.membershipTier}`.toLowerCase();
+        const haystack = `${member.displayName} ${member.email} ${member.id} ${member.accountType}`.toLowerCase();
         return haystack.includes(search);
       })
       .sort((a, b) => b.lastSeenAtMs - a.lastSeenAtMs);
@@ -4023,7 +3994,7 @@ export default function StaffView({
       loadWarnings.push(`profiles query failed: ${profilesResult.reason instanceof Error ? profilesResult.reason.message : String(profilesResult.reason)}`);
     }
     if (loadWarnings.length) {
-      setError(`Members data is partially unavailable. ${loadWarnings.join(" | ")}`);
+      setError(`Client data is partially unavailable. ${loadWarnings.join(" | ")}`);
     }
 
     if (byUid.size === 0) {
@@ -4092,7 +4063,7 @@ export default function StaffView({
         createdAtMs,
         updatedAtMs,
         lastSeenAtMs,
-        membershipTier: deriveMembershipTier(merged, role),
+        accountType: deriveAccountType(merged, role),
         kilnPreferences: str(merged.kilnPreferences, str(merged.preferredKilns, "-")),
         rawDoc: merged,
       } satisfies MemberRecord;
@@ -4107,14 +4078,14 @@ export default function StaffView({
         createdAtMs: 0,
         updatedAtMs: 0,
         lastSeenAtMs: Date.now(),
-        membershipTier: isAdmin ? "Admin" : isStaff ? "Staff" : "Studio Member",
+        accountType: isAdmin ? "Admin" : isStaff ? "Staff" : "Firing client",
         kilnPreferences: "-",
         rawDoc: {},
       });
     }
 
     if (usersResult.status === "rejected" && profilesResult.status === "rejected") {
-      throw new Error("Unable to load members from users or profiles collections.");
+      throw new Error("Unable to load clients from users or profiles collections.");
     }
     setMemberSourceStats({
       usersDocs: usersDocsCount,
@@ -4269,7 +4240,7 @@ export default function StaffView({
           const displayName =
             firstNonBlankString(raw.displayName, raw.ownerName, raw.clientName, raw.name) ||
             ownerNameByUid.get(ownerUid) ||
-            (ownerUid ? `Member ${ownerUid.slice(0, 6)}` : "Member");
+            (ownerUid ? `Client ${ownerUid.slice(0, 6)}` : "Client");
           const notes = firstNonBlankString(reservation.notes?.general, reservation.staffNotes, raw.staffNotes, raw.notes);
           return {
             id: reservation.id,
@@ -6693,10 +6664,6 @@ export default function StaffView({
     toolbarRefreshPlan,
   ]);
 
-  useEffect(() => {
-    setStatus("Today Console loads key shift data automatically. Use the visible refresh controls when you want focused updates.");
-  }, []);
-
   useStaffEventSignupAutoLoad({
     cockpitTab,
     selectedEventId,
@@ -6820,7 +6787,6 @@ export default function StaffView({
     if (!selectedMember) {
       setMemberEditDraft({
         displayName: "",
-        membershipTier: "",
         kilnPreferences: "",
         staffNotes: "",
         reason: "",
@@ -6831,7 +6797,6 @@ export default function StaffView({
     }
     setMemberEditDraft({
       displayName: selectedMember.displayName || "",
-      membershipTier: selectedMember.membershipTier || "",
       kilnPreferences: selectedMember.kilnPreferences || "",
       staffNotes: str(selectedMember.rawDoc.staffNotes, ""),
       reason: "",
@@ -6848,13 +6813,11 @@ export default function StaffView({
     }
 
     const nextDisplayName = memberEditDraft.displayName.trim();
-    const nextMembershipTier = memberEditDraft.membershipTier.trim();
     const nextKilnPreferences = memberEditDraft.kilnPreferences.trim();
     const nextStaffNotes = memberEditDraft.staffNotes.trim();
 
     const patch: Record<string, string | null> = {};
     if (nextDisplayName !== selectedMember.displayName) patch.displayName = nextDisplayName || null;
-    if (nextMembershipTier !== selectedMember.membershipTier) patch.membershipTier = nextMembershipTier || null;
     if (nextKilnPreferences !== selectedMember.kilnPreferences) patch.kilnPreferences = nextKilnPreferences || null;
     if (nextStaffNotes !== str(selectedMember.rawDoc.staffNotes, "")) patch.staffNotes = nextStaffNotes || null;
 
@@ -6869,7 +6832,7 @@ export default function StaffView({
         reason: memberEditDraft.reason.trim() || null,
         patch,
       });
-      setStatus("Member profile updated.");
+      setStatus("Client profile updated.");
       await loadUsers();
       await loadMemberOperationalStats(selectedMember.id);
       setMemberEditDraft((prev) => ({ ...prev, reason: "" }));
@@ -6883,7 +6846,7 @@ export default function StaffView({
       return;
     }
     if (!hasAdminAuthority) {
-      setError("Only admins can change member roles.");
+      setError("Only admins can change client roles.");
       return;
     }
     if (selectedMember.id === user.uid) {
@@ -7051,23 +7014,6 @@ export default function StaffView({
     run,
   ]);
 
-  const handleDeleteBatch = (batch: BatchRecord) => {
-    if (!isPreloadBatchDeletable(batch)) return;
-    const confirmation = window.confirm(
-      `Delete "${batch.title}" (${batch.id})? This permanently removes the ticket and its piece and timeline records. Only tickets that have not been loaded into a kiln can be deleted.`
-    );
-    if (!confirmation) return;
-
-    void run("staffDeleteUnloadedBatch", async () => {
-      await client.postJson("staffDeleteUnloadedBatch", { batchId: batch.id });
-      setSelectedBatchId((current) => (current === batch.id ? "" : current));
-      setBatchPieces([]);
-      setBatchTimeline([]);
-      await loadBatches();
-      setStatus(`Deleted unloaded ticket ${batch.id}.`);
-    });
-  };
-
   const batchAction = (name: BatchActionName) => {
     if (!selectedBatchId) return;
     if (!batchActionAvailability[name]) {
@@ -7127,14 +7073,14 @@ export default function StaffView({
   const membersContent = (
     <section className="card staff-console-card">
       <div className="card-title-row">
-        <div className="card-title">Members</div>
+        <div className="card-title">Clients</div>
         <button
           type="button"
           className="btn btn-secondary"
           disabled={Boolean(busy)}
           onClick={() => void run("refreshMembers", loadUsers)}
         >
-          Refresh members
+          Refresh clients
         </button>
       </div>
       <div className="staff-kpi-grid">
@@ -7175,7 +7121,7 @@ export default function StaffView({
                 <tr>
                   <th>Name</th>
                   <th>Role</th>
-                  <th>Membership</th>
+                  <th>Account type</th>
                   <th>Email</th>
                   <th>Last seen</th>
                 </tr>
@@ -7183,7 +7129,7 @@ export default function StaffView({
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>No members match current filters.</td>
+                    <td colSpan={5}>No clients match current filters.</td>
                   </tr>
                 ) : (
                   filteredMembers.map((member) => (
@@ -7201,7 +7147,7 @@ export default function StaffView({
                     >
                       <td>{member.displayName}</td>
                       <td><span className="pill">{memberRoleLabel(member.role)}</span></td>
-                      <td><span className="pill">{member.membershipTier}</span></td>
+                      <td><span className="pill">{member.accountType}</span></td>
                       <td>{member.email}</td>
                       <td>{when(member.lastSeenAtMs)}</td>
                     </tr>
@@ -7221,7 +7167,7 @@ export default function StaffView({
                 <code>{selectedMember.id}</code>
               </>
             ) : (
-              "Select a member to inspect details."
+              "Select a client to inspect details."
             )}
           </div>
           {selectedMember ? (
@@ -7298,13 +7244,6 @@ export default function StaffView({
                   />
                 </label>
                 <label className="staff-field">
-                  Membership tier
-                  <input
-                    value={memberEditDraft.membershipTier}
-                    onChange={(event) => setMemberEditDraft((prev) => ({ ...prev, membershipTier: event.target.value }))}
-                  />
-                </label>
-                <label className="staff-field">
                   Kiln preferences
                   <input
                     value={memberEditDraft.kilnPreferences}
@@ -7335,7 +7274,7 @@ export default function StaffView({
               </div>
               <div className="staff-kpi-grid">
                 <div className="staff-kpi"><span>Role</span><strong>{memberRoleLabel(selectedMember.role)}</strong></div>
-                <div className="staff-kpi"><span>Membership</span><strong>{selectedMember.membershipTier}</strong></div>
+                <div className="staff-kpi"><span>Account type</span><strong>{selectedMember.accountType}</strong></div>
                 <div className="staff-kpi"><span>Created</span><strong>{when(selectedMember.createdAtMs)}</strong></div>
                 <div className="staff-kpi"><span>Updated</span><strong>{when(selectedMember.updatedAtMs)}</strong></div>
                 <div className="staff-kpi"><span>Last seen</span><strong>{when(selectedMember.lastSeenAtMs)}</strong></div>
@@ -7343,7 +7282,7 @@ export default function StaffView({
               </div>
               <div className="staff-subtitle">Operational footprint</div>
               {memberStatsBusy ? (
-                <div className="staff-note">Loading member usage stats...</div>
+                <div className="staff-note">Loading client usage stats...</div>
               ) : memberStatsError ? (
                 <div className="staff-note staff-note-error">{memberStatsError}</div>
               ) : (
@@ -7452,13 +7391,12 @@ export default function StaffView({
                   <th>Owner UID</th>
                   <th>Kiln</th>
                   <th>Updated</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>No batches match current filters.</td>
+                    <td colSpan={6}>No batches match current filters.</td>
                   </tr>
                 ) : (
                   filteredBatches.map((batch) => (
@@ -7500,23 +7438,6 @@ export default function StaffView({
                       <td><code>{batch.ownerUid || "-"}</code></td>
                       <td>{batch.currentKilnName || batch.currentKilnId || "-"}</td>
                       <td>{when(batch.updatedAtMs)}</td>
-                      <td>
-                        {isPreloadBatchDeletable(batch) ? (
-                          <button
-                            className="btn btn-ghost btn-small"
-                            type="button"
-                            disabled={Boolean(busy)}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDeleteBatch(batch);
-                            }}
-                          >
-                            {batch.status === "DELETION_PENDING" ? "Retry delete" : "Delete"}
-                          </button>
-                        ) : (
-                          <span className="staff-mini">-</span>
-                        )}
-                      </td>
                     </tr>
                   ))
                 )}
@@ -8277,7 +8198,6 @@ export default function StaffView({
 
   useEffect(() => {
     if (!forceCockpitWorkspace) return;
-    setStatus("Dedicated cockpit page keeps focus on cockpit workspace. Open /staff for full module navigation.");
     if (!cockpitWorkspaceMode) {
       setCockpitWorkspaceMode(true);
     }
@@ -8286,6 +8206,7 @@ export default function StaffView({
 
   const openModuleFromCockpit = useCallback(
     (target: string) => {
+      setIsTaskHomeRoute(false);
       const destination = resolveCockpitNavigationTarget(target);
       setModuleKey(destination.moduleKey);
       if (destination.tab) {
@@ -8590,6 +8511,11 @@ export default function StaffView({
 
   const openMessagesInbox = useCallback(() => {
     if (onOpenMessages) {
+      // Leave the staff deep link before switching to the portal-wide inbox.
+      // Otherwise the location synchronizer can immediately reopen Staff.
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) {
+        window.history.replaceState({}, "", "/");
+      }
       onOpenMessages();
       return;
     }
@@ -8742,7 +8668,7 @@ export default function StaffView({
 
     const messagesCard: StaffTaskHomeCard = {
       id: "messages",
-      eyebrow: "Member communication",
+      eyebrow: "Client communication",
       title: "Messages",
       badge: messagesDegraded ? "Needs review" : unreadMessageCount > 0 ? `${unreadMessageCount} unread` : "Inbox clear",
       tone: messagesDegraded ? "action" : unreadMessageCount > 0 ? "watch" : "clear",
@@ -8757,7 +8683,7 @@ export default function StaffView({
             announcementsError,
             "Open Messages for full diagnostics and retry paths."
           )
-        : "Use Messages for member replies, support follow-up, and direct operational handoffs.",
+        : "Use Messages for client replies, support follow-up, and direct operational handoffs.",
       metrics: [
         { label: "Unread", value: String(unreadMessageCount) },
         { label: "Unread announcements", value: String(unreadAnnouncements) },
@@ -8768,11 +8694,11 @@ export default function StaffView({
 
     const announcementCard: StaffTaskHomeCard = {
       id: "announcements",
-      eyebrow: "Member communication",
+      eyebrow: "Client communication",
       title: "Studio announcements",
       badge: announcementComposerOpen ? "Composer open" : announcementsLoading ? "Loading..." : `${announcements.length} live`,
       tone: announcementsError ? "action" : announcementComposerOpen ? "watch" : announcements.length > 0 ? "reference" : "clear",
-      summary: "Publish a member-facing studio update without digging through cockpit tabs.",
+      summary: "Publish a client-facing studio update without digging through cockpit tabs.",
       note: announcementsError
         ? announcementsError
         : unreadAnnouncements > 0
@@ -8859,22 +8785,22 @@ export default function StaffView({
         ],
       },
       {
-        id: "member-comms",
-        title: "Member communication",
-        subtitle: "Handle replies, publish updates, and look up member context without leaving the board.",
+        id: "client-comms",
+        title: "Client communication",
+        subtitle: "Handle replies, publish updates, and look up client context without leaving the board.",
         cards: [
           messagesCard,
           announcementCard,
           {
             id: "members",
-            eyebrow: "Member ops",
-            title: "Members",
+            eyebrow: "Client ops",
+            title: "Clients",
             badge: membersCard?.label ?? "Roster",
             tone: toStaffTaskTone(membersCard?.tone),
-            summary: membersCard?.headline ?? "Open the member roster for account and profile follow-up.",
-            note: membersCard?.note ?? "Use Members for profile edits, permissions, and activity lookup.",
+            summary: membersCard?.headline ?? "Open the client roster for account and profile follow-up.",
+            note: membersCard?.note ?? "Use Clients for profile edits, permissions, and activity lookup.",
             metrics: membersCard?.metrics,
-            actions: [{ label: membersCard?.actionLabel ?? "Open members", target: "members" }],
+            actions: [{ label: membersCard?.actionLabel ?? "Open clients", target: "members" }],
           },
         ],
       },
@@ -9183,6 +9109,7 @@ export default function StaffView({
   );
 
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
+  const firingPickupBillingContent = <FiringPickupBillingModule key={firingTicketRefreshKey} client={client} isStaff={isStaff} view="tickets" />;
   const commerceContent = (
     <CommerceModule
       client={client}
@@ -9564,7 +9491,7 @@ export default function StaffView({
           <div className="card-title">Check-ins queue</div>
         </div>
         <div className="staff-note">
-          Queue and lifecycle operations moved out of Ware Check-in so intake stays fast for both clients and staff.
+          Queue and lifecycle operations stay here while the public firing planner handles intake for clients and staff.
         </div>
         <WareCheckInView
           user={user}
@@ -9773,6 +9700,7 @@ export default function StaffView({
       operationsContent={operationsContent}
       moduleTelemetrySnapshot={moduleTelemetrySnapshot}
       commerceContent={commerceContent}
+      firingPickupBillingContent={firingPickupBillingContent}
       stripeContent={stripeContent}
       agentOpsContent={agentOpsContent}
       governanceContent={governanceContent}
@@ -9793,6 +9721,7 @@ export default function StaffView({
 
   const cockpitContent = (
     <CockpitModule
+      showTodayOverview={cockpitTab === "triage"}
       busy={busy}
       cockpitOpsContent={cockpitOpsContent}
       shortText={shortText}
@@ -9864,7 +9793,7 @@ export default function StaffView({
   );
 
   const moduleContent =
-    isTaskHomeRoute && !forceCockpitWorkspace
+    isTaskHomeRoute
       ? taskHomeContent
       : moduleKey === "controlTower"
         ? controlTowerContent
@@ -9898,13 +9827,24 @@ export default function StaffView({
   }
 
   return (
-    <div className="staff-console">
+    <div className="staff-console staff-human-workspace">
+      <StaffWorkspaceNav
+        active={isTaskHomeRoute ? "today" : moduleKey === "cockpit" || moduleKey === "commerce" || moduleKey === "stripe" ? cockpitTab : moduleKey}
+        onNavigate={openModuleFromCockpit}
+        onHome={openTaskHome}
+        onMessages={openMessagesInbox}
+        onReservations={openReservationsToday}
+        onNewTicket={() => setCreatingFiringTicket(true)}
+        onPortal={onOpenClientStart}
+      />
+      <div className="staff-workspace-body">
+      {creatingFiringTicket ? <StaffCreateFiringTicket client={client} staffUid={user.uid} onClose={() => { setCreatingFiringTicket(false); setFiringTicketRefreshKey((key) => key + 1); }} /> : null}
       <section className="staff-console-toolbar">
-        <div className="staff-console-title">{isTaskHomeRoute && !forceCockpitWorkspace ? "Staff tasks" : "Staff console"}</div>
+        <div className="staff-console-title">Studio desk</div>
         <p className="staff-console-description">
           {isTaskHomeRoute && !forceCockpitWorkspace
             ? "A task-first board for live staff work. Open the workflow you need without hunting through cockpit tabs."
-            : "Manage members, pieces, firings, events, billing, lending, and system health."}
+            : "Manage clients, pieces, firings, events, billing, lending, and system health."}
         </p>
         <div className="staff-actions-row">
           {toolbarRefreshPlan.visible ? (
@@ -9921,14 +9861,14 @@ export default function StaffView({
               Open task home
             </button>
           ) : null}
-          {onOpenMemberStart ? (
-            <button className="btn btn-ghost" type="button" onClick={onOpenMemberStart}>
-              Open member start
+          {onOpenClientStart ? (
+            <button className="btn btn-ghost" type="button" onClick={onOpenClientStart}>
+              Open client start
             </button>
           ) : null}
           {onOpenCheckin ? (
             <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
-              Open ware check-in
+              Open firing planner
             </button>
           ) : null}
           {isCockpitModule && !forceCockpitWorkspace && !isTaskHomeRoute ? (
@@ -10053,8 +9993,8 @@ export default function StaffView({
         </div>
       </div>
       <div className="staff-identity-statusline staff-identity-statusline-footer">
-        Signed in as <strong>{user.displayName ?? "Staff"}</strong> · Role <strong>{staffAuthorityLabel}</strong> · Email{" "}
-        <strong>{user.email ?? "-"}</strong> · UID <strong>{user.uid}</strong>
+        Signed in as <strong>{user.displayName ?? "Staff"}</strong> · <strong>{user.email ?? "-"}</strong>
+      </div>
       </div>
     </div>
   );

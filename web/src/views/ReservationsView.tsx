@@ -8,7 +8,9 @@ import { makeRequestId } from "../api/requestId";
 import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
 import {
-  FULL_KILN_CUSTOM_PRICE,
+  LOW_FIRE_CAP,
+  MID_FIRE_CAP,
+  PRIVATE_FIRING_PRICE,
   DELIVERY_PRICE_PER_TRIP,
   PLACEMENT_PREFERENCE_PRICE,
   PREPAID_STORAGE_FLAT_PRICE,
@@ -65,8 +67,8 @@ const INTAKE_MODE_OPTIONS: Array<{
   },
   {
     id: "WHOLE_KILN",
-    label: "Reserve the whole kiln",
-    detail: "Dedicated kiln load when you want the whole chamber.",
+    label: "Whole-kiln space",
+    detail: "For a load that needs the full chamber. Privacy is a separate request.",
   },
   {
     id: "COMMUNITY_SHELF",
@@ -591,8 +593,8 @@ function getCheckinJourneySnapshot(intakeMode: IntakeMode) {
 
   if (intakeMode === "WHOLE_KILN") {
     return {
-      heading: "Dedicated kiln booking",
-      nextStep: "Next step: confirm the load, then the studio schedules a dedicated firing.",
+      heading: "Whole-kiln space",
+      nextStep: "Next step: confirm the load and firing schedule with the studio.",
       detail:
         "Intake locks in the booking lane, the queue tracks the full chamber, and pickup follows the firing + cooldown cycle.",
     };
@@ -924,7 +926,6 @@ export default function ReservationsView({
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [photoStatus, setPhotoStatus] = useState("");
   const [animateEstimate, setAnimateEstimate] = useState(false);
-  const priorityQueueAutoAppliedLatestRef = useRef<string | null>(null);
 
   const [latest, setLatest] = useState("");
   const [linkedBatchId, setLinkedBatchId] = useState("");
@@ -932,6 +933,7 @@ export default function ReservationsView({
   const [notesGeneral, setNotesGeneral] = useState("");
   const [notesTags, setNotesTags] = useState<string[]>([]);
   const [rushRequested, setRushRequested] = useState(false);
+  const [privateRequested, setPrivateRequested] = useState(false);
   const [staffGlazePrepRequested, setStaffGlazePrepRequested] = useState(false);
   const [selfLoadedKilnRequested, setSelfLoadedKilnRequested] = useState(false);
   const [placementPreferenceRequested, setPlacementPreferenceRequested] = useState(false);
@@ -1080,14 +1082,16 @@ export default function ReservationsView({
     return applyHalfKilnPriceBreak({
       estimatedHalfShelves: computedHalfShelves,
       estimatedCost: base,
+      firingType,
+      kilnType: selectedKiln?.id,
     });
   }, [selectedKiln?.id, firingType, computedHalfShelves]);
   const shelfPurchaseEstimate = shelfPurchasePricing.estimatedCost;
   const computedCost = useMemo(() => {
     if (intakeMode === "COMMUNITY_SHELF") return 0;
-    if (intakeMode === "WHOLE_KILN") return FULL_KILN_CUSTOM_PRICE;
+    if (intakeMode === "WHOLE_KILN") return firingType === "other" ? null : firingType === "glaze" || selectedKiln?.id?.includes("raku") ? MID_FIRE_CAP : LOW_FIRE_CAP;
     return shelfPurchaseEstimate;
-  }, [intakeMode, shelfPurchaseEstimate]);
+  }, [intakeMode, shelfPurchaseEstimate, firingType, selectedKiln?.id]);
   const shelfEquivalent = useMemo(() => {
     if (!Number.isFinite(estimatedHalfShelves)) return 1;
     return Math.max(0.25, (estimatedHalfShelves ?? 1) / 2);
@@ -1104,17 +1108,16 @@ export default function ReservationsView({
     intakeMode === "COMMUNITY_SHELF"
       ? "Flexible tiny drop-off"
       : intakeMode === "WHOLE_KILN"
-        ? "Reserve the whole kiln"
+        ? "Whole-kiln space"
         : "Standard shelf purchase";
   const checkinJourneySnapshot = getCheckinJourneySnapshot(intakeMode);
-  const canSuggestPriorityQueue = intakeMode !== "COMMUNITY_SHELF";
   const effectiveCommunityShelfFillInAllowed =
-    intakeMode === "SHELF_PURCHASE" && (communityShelfFillInAllowed || rushRequested);
+    intakeMode === "SHELF_PURCHASE" && communityShelfFillInAllowed;
   const deliveryTrips = (pickupDeliveryRequested ? 1 : 0) + (returnDeliveryRequested ? 1 : 0);
   const deliveryCost = computeDeliveryCost(deliveryTrips);
   const estimatedCostWithDelivery =
     computedCost != null ? computedCost + deliveryCost : computedCost;
-  const rushCost = rushRequested ? RUSH_REQUEST_PRICE : 0;
+  const rushCost = rushRequested && intakeMode !== "COMMUNITY_SHELF" ? RUSH_REQUEST_PRICE : 0;
   const staffGlazePrepCost =
     staffGlazePrepRequested && Number.isFinite(estimatedHalfShelvesRounded)
       ? estimatedHalfShelvesRounded * STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE
@@ -1128,6 +1131,7 @@ export default function ReservationsView({
       ? estimatedCostWithDelivery +
         (glazeAccessCost ?? 0) +
         rushCost +
+        (privateRequested && intakeMode !== "COMMUNITY_SHELF" ? PRIVATE_FIRING_PRICE : 0) +
         staffGlazePrepCost +
         selfLoadedKilnCost +
         placementPreferenceCost +
@@ -1142,11 +1146,8 @@ export default function ReservationsView({
     if (communityShelfEligible && computedHalfShelves <= COMMUNITY_SHELF_MAX_HALF_SHELVES && priorityQueueTimingWindow === "none") {
       return "COMMUNITY_SHELF" as IntakeMode;
     }
-    if (computedHalfShelves >= 4 || shelfPurchaseHitsWholeKilnPriceBreak) {
-      return "WHOLE_KILN" as IntakeMode;
-    }
     return "SHELF_PURCHASE" as IntakeMode;
-  }, [communityShelfEligible, computedHalfShelves, priorityQueueTimingWindow, shelfPurchaseHitsWholeKilnPriceBreak]);
+  }, [communityShelfEligible, computedHalfShelves, priorityQueueTimingWindow]);
 
   const client = useMemo(
     () =>
@@ -1499,24 +1500,6 @@ export default function ReservationsView({
     setUseStudioGlazes(false);
     setGlazeAccessCost(null);
   }, [intakeMode]);
-
-  useEffect(() => {
-    if (priorityQueueTimingWindow !== "within_one_week") {
-      priorityQueueAutoAppliedLatestRef.current = null;
-      return;
-    }
-    if (!latest) return;
-    if (priorityQueueAutoAppliedLatestRef.current === latest) return;
-    priorityQueueAutoAppliedLatestRef.current = latest;
-    setRushRequested(true);
-  }, [latest, priorityQueueTimingWindow]);
-
-  useEffect(() => {
-    if (intakeMode !== "SHELF_PURCHASE") return;
-    if (!rushRequested) return;
-    if (communityShelfFillInAllowed) return;
-    setCommunityShelfFillInAllowed(true);
-  }, [communityShelfFillInAllowed, intakeMode, rushRequested]);
 
   useEffect(() => {
     if (!useStudioGlazes) {
@@ -3042,6 +3025,7 @@ export default function ReservationsView({
     setNotesTags([]);
     setNotesGeneral("");
     setRushRequested(false);
+    setPrivateRequested(false);
     setStaffGlazePrepRequested(false);
     setSelfLoadedKilnRequested(false);
     setPlacementPreferenceRequested(false);
@@ -3152,7 +3136,7 @@ export default function ReservationsView({
 
     const rushRequestedForSubmission = rushRequested;
     const communityShelfFillInAllowedForSubmission =
-      intakeMode === "SHELF_PURCHASE" && (communityShelfFillInAllowed || rushRequestedForSubmission);
+      intakeMode === "SHELF_PURCHASE" && communityShelfFillInAllowed;
     if (communityShelfFillInAllowedForSubmission && !communityShelfFillInAllowed) {
       setCommunityShelfFillInAllowed(true);
     }
@@ -3208,6 +3192,7 @@ export default function ReservationsView({
         pieces: null,
         addOns: {
           rushRequested: !isCommunityShelf && rushRequestedForSubmission,
+          privateRequested: !isCommunityShelf && privateRequested,
           waxResistAssistRequested: !isCommunityShelf && staffGlazePrepRequested,
           glazeSanityCheckRequested: false,
           staffGlazePrepRequested: !isCommunityShelf && staffGlazePrepRequested,
@@ -3347,7 +3332,7 @@ export default function ReservationsView({
                 </select>
               </label>
               <p className="form-helper staff-client-note">
-                Staff submissions do not charge automatically. Charges are handled offline.
+                Staff submissions create an estimate. Billing is reviewed after firing.
               </p>
             </div>
           ) : null}
@@ -3663,8 +3648,8 @@ export default function ReservationsView({
                           option.id === "COMMUNITY_SHELF"
                             ? "Free when eligible"
                             : option.id === "WHOLE_KILN"
-                              ? `Flat firing ${formatUsd(FULL_KILN_CUSTOM_PRICE)}`
-                              : `Firing charge ${
+                              ? `Base cap ${firingType === "other" ? "quoted" : formatUsd(firingType === "glaze" || selectedKiln?.id?.includes("raku") ? MID_FIRE_CAP : LOW_FIRE_CAP)}`
+                              : `Firing estimate ${
                                   Number.isFinite(shelfPurchaseEstimate)
                                     ? formatUsd(shelfPurchaseEstimate as number)
                                     : "We’ll confirm"
@@ -3673,7 +3658,7 @@ export default function ReservationsView({
                           option.id === "COMMUNITY_SHELF"
                             ? "Best for tiny test pieces with flexible timing."
                             : option.id === "WHOLE_KILN"
-                              ? "Best when you need the whole chamber or a dedicated run."
+                              ? "Best when your work needs the whole chamber. Request privacy separately."
                               : "Best for most drop-offs and predictable pickup planning.";
                         return (
                           <button
@@ -3697,7 +3682,7 @@ export default function ReservationsView({
                             <span className="firing-option-price">{optionPrice}</span>
                             <span className="firing-option-fit">{optionFit}</span>
                             {option.id === "SHELF_PURCHASE" && shelfPurchaseHitsWholeKilnPriceBreak ? (
-                              <span className="firing-option-note">This size is already in the whole-kiln price range.</span>
+                              <span className="firing-option-note">This size has reached the per-client base cap.</span>
                             ) : null}
                           </button>
                         );
@@ -3722,18 +3707,18 @@ export default function ReservationsView({
 
                 <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
                   <div className="estimate-summary-header">
-                    <div className="estimate-label">Charge summary</div>
+                    <div className="estimate-label">Estimate summary</div>
                     <span className="estimate-chip soft">Reviewed with you in person</span>
                     {intakeMode === "WHOLE_KILN" ? (
                       <span className="estimate-chip">
-                        Whole kiln: {formatUsd(FULL_KILN_CUSTOM_PRICE)}
+                        Whole kiln space: {computedCost == null ? "quote required" : formatUsd(computedCost)}
                       </span>
                     ) : null}
                     {intakeMode === "COMMUNITY_SHELF" ? (
                       <span className="estimate-chip">Community shelf: {formatUsd(0)}</span>
                     ) : null}
                     {intakeMode === "SHELF_PURCHASE" && priceBreakApplied ? (
-                      <span className="estimate-chip">Whole kiln option</span>
+                      <span className="estimate-chip">Base price cap applied</span>
                     ) : null}
                     {intakeMode === "SHELF_PURCHASE" && effectiveCommunityShelfFillInAllowed ? (
                       <span className="estimate-chip">Community shelf fill-in enabled</span>
@@ -3746,12 +3731,13 @@ export default function ReservationsView({
                     <span>
                       {useStudioGlazes ||
                       rushRequested ||
+                      privateRequested ||
                       staffGlazePrepRequested ||
                       selfLoadedKilnRequested ||
                       placementPreferenceRequested ||
                       prepaidStorageRequested
-                        ? "Total charge"
-                        : "Check-in charge"}
+                        ? "Estimated total"
+                        : "Estimated firing"}
                     </span>
                     <strong className={animateEstimate ? "estimate-amount animate" : "estimate-amount"}>
                       {totalEstimate != null ? formatUsd(totalEstimate) : "We’ll confirm the charge"}
@@ -3761,18 +3747,19 @@ export default function ReservationsView({
                   <div className="estimate-reassure">
                     {intakeMode === "COMMUNITY_SHELF"
                       ? "Community shelf pieces stay free, lowest priority, and only move forward when a shelf owner opts in."
-                      : "We confirm shelf count with you at drop-off so the check-in charge is correct."}
+                      : "We confirm shelf count with you at drop-off and the final charge after firing."}
                   </div>
                   {estimatedCostWithDelivery != null &&
                   (useStudioGlazes ||
                     rushRequested ||
+                    privateRequested ||
                     staffGlazePrepRequested ||
                     selfLoadedKilnRequested ||
                     placementPreferenceRequested ||
                     prepaidStorageRequested) ? (
                     <div className="estimate-breakdown">
                       <div className="estimate-line">
-                        <span>Firing charge</span>
+                        <span>Firing estimate</span>
                         <span>{formatUsd(estimatedCostWithDelivery)}</span>
                       </div>
                       {useStudioGlazes && glazeAccessCost != null ? (
@@ -3783,10 +3770,11 @@ export default function ReservationsView({
                       ) : null}
                       {rushRequested ? (
                         <div className="estimate-line">
-                          <span>Priority queue</span>
+                          <span>Fire tonight (only if fulfilled)</span>
                           <span>{formatUsd(RUSH_REQUEST_PRICE)}</span>
                         </div>
                       ) : null}
+                      {privateRequested ? <div className="estimate-line"><span>Private firing</span><span>{formatUsd(PRIVATE_FIRING_PRICE)}</span></div> : null}
                       {staffGlazePrepRequested ? (
                         <div className="estimate-line">
                           <span>Staff glaze prep ({formatHalfShelfCount(estimatedHalfShelvesRounded)})</span>
@@ -3815,7 +3803,7 @@ export default function ReservationsView({
                         </div>
                       ) : null}
                       <div className="estimate-line total">
-                        <span>Total charge</span>
+                        <span>Estimated total</span>
                         <span>{formatUsd(totalEstimate ?? 0)}</span>
                       </div>
                     </div>
@@ -3839,7 +3827,7 @@ export default function ReservationsView({
                     </div>
                   ) : null}
                   {priceBreakApplied ? (
-                    <div className="estimate-note">Price break starts at 4 half shelves.</div>
+                    <div className="estimate-note">The per-client base price cap applies.</div>
                   ) : null}
                   <div className="estimate-next-step">
                     <div className="estimate-next-step-label">What happens next</div>
@@ -3853,9 +3841,7 @@ export default function ReservationsView({
                       <input
                         type="checkbox"
                         checked={effectiveCommunityShelfFillInAllowed}
-                        disabled={rushRequested}
                         onChange={(event) => {
-                          if (rushRequested) return;
                           setCommunityShelfFillInAllowed(event.target.checked);
                         }}
                       />
@@ -3867,11 +3853,6 @@ export default function ReservationsView({
                         </span>
                       </span>
                     </label>
-                    {rushRequested ? (
-                      <p className="form-helper">
-                        Priority queue keeps this on to help offset the faster lane.
-                      </p>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -3910,12 +3891,13 @@ export default function ReservationsView({
                   See available glazes
                 </a>
                 {useStudioGlazes && totalEstimate != null ? (
-                  <div className="addon-total">New total charge: {formatUsd(totalEstimate)}</div>
+                  <div className="addon-total">New estimated total: {formatUsd(totalEstimate)}</div>
                 ) : null}
               </div>
               <div className="addon-section">
                 <div className="addon-subtitle">Firing boosts + handling</div>
                 <div className="addon-grid">
+                  <label className="addon-toggle"><input type="checkbox" checked={privateRequested} onChange={(event) => setPrivateRequested(event.target.checked)} /><span className="addon-text"><span className="addon-title">Private firing</span><span className="addon-copy">Request a firing without other clients' work.</span></span><span className="addon-tag">{formatUsd(PRIVATE_FIRING_PRICE)}</span></label>
                   <label className="addon-toggle">
                     <input
                       type="checkbox"
@@ -3923,10 +3905,9 @@ export default function ReservationsView({
                       onChange={(event) => setRushRequested(event.target.checked)}
                     />
                     <span className="addon-text">
-                      <span className="addon-title">Priority queue</span>
+                      <span className="addon-title">Fire tonight</span>
                       <span className="addon-copy">
-                        Move ahead when queues are long. Includes a fairness surcharge and automatically enables
-                        leftover-space help on your unused shelf space.
+                        Request a same-night firing. The fee is charged only if we can fulfill it.
                       </span>
                     </span>
                     <span className="addon-tag">{formatUsd(RUSH_REQUEST_PRICE)}</span>
@@ -4067,7 +4048,7 @@ export default function ReservationsView({
                   pickupDeliveryRequested ||
                   returnDeliveryRequested) &&
                 totalEstimate != null ? (
-                  <div className="addon-total">New total charge: {formatUsd(totalEstimate)}</div>
+                  <div className="addon-total">New estimated total: {formatUsd(totalEstimate)}</div>
                 ) : null}
               </div>
               </fieldset>
@@ -4091,38 +4072,7 @@ export default function ReservationsView({
                     value={latest}
                     onChange={(event) => setLatest(event.target.value)}
                   />
-                  {priorityQueueTimingWindow === "within_one_week" ? (
-                    <div className="priority-queue-callout priority-queue-callout-urgent">
-                      <strong>Priority queue was turned on for this date.</strong>
-                      <span>
-                        This target is inside 1 week, so we pre-select the faster lane to protect timing. You can
-                        still switch it off before submitting.
-                      </span>
-                      <button type="button" className="btn btn-ghost" onClick={() => setRushRequested((prev) => !prev)}>
-                        {rushRequested ? "Use standard timing instead" : "Turn priority queue back on"}
-                      </button>
-                    </div>
-                  ) : priorityQueueTimingWindow === "within_two_weeks" ? (
-                    <div className="priority-queue-callout">
-                      <strong>Priority queue is recommended for this date.</strong>
-                      <span>
-                        You&apos;re inside 2 weeks. Add the faster lane if timing matters, or keep the standard queue
-                        if you&apos;re flexible.
-                      </span>
-                      <button type="button" className="btn btn-ghost" onClick={() => setRushRequested((prev) => !prev)}>
-                        {rushRequested ? "Keep standard timing" : "Add priority queue"}
-                      </button>
-                    </div>
-                  ) : canSuggestPriorityQueue ? (
-                    <span className="deadline-helper">
-                      Optional timing target. With 2+ weeks of lead time, the standard queue is usually the right fit.
-                    </span>
-                  ) : (
-                    <span className="deadline-helper">
-                      Optional timing target. Flexible tiny drop-off stays lowest priority, and staff will confirm what
-                      timing is realistic.
-                    </span>
-                  )}
+                  <span className="deadline-helper">Optional timing target. Staff will confirm what timing is realistic; select Fire tonight separately if you want to request it.</span>
                 </label>
               </div>
               <div className="piece-linker">
@@ -4712,7 +4662,7 @@ export default function ReservationsView({
                       {`Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
                     </span>
                     <span>{`Mode: ${reservationIntakeLabel}${
-                      reservation.estimatedCost != null ? ` · Charge ${formatUsd(reservation.estimatedCost)}` : ""
+                      reservation.estimatedCost != null ? ` · Estimate ${formatUsd(reservation.estimatedCost)}` : ""
                     }`}</span>
                   </div>
                   <div className="reservation-row">
@@ -4939,13 +4889,19 @@ export default function ReservationsView({
                         })}
                     </div>
                   ) : null}
-                  {reservation.addOns?.pickupDeliveryRequested ||
+                  {reservation.addOns?.privateRequested ||
+                  reservation.addOns?.rushRequested ||
+                  reservation.addOns?.pickupDeliveryRequested ||
                   reservation.addOns?.returnDeliveryRequested ||
                   reservation.addOns?.communityShelfFillInAllowed ||
+                  reservation.addOns?.useStudioGlazes ||
+                  reservation.addOns?.staffGlazePrepRequested ||
                   reservation.addOns?.selfLoadedKilnRequested ||
                   reservation.addOns?.placementPreferenceRequested ||
                   reservation.addOns?.prepaidStorageRequested ? (
                     <div className="reservation-addons-inline">
+                      {reservation.addOns?.privateRequested ? <span className="reservation-addon-pill">Private firing requested</span> : null}
+                      {reservation.addOns?.rushRequested ? <span className="reservation-addon-pill">Fire tonight requested</span> : null}
                       {reservation.addOns?.pickupDeliveryRequested ? (
                         <span className="reservation-addon-pill">Pickup delivery</span>
                       ) : null}
@@ -4955,6 +4911,8 @@ export default function ReservationsView({
                       {reservation.addOns?.communityShelfFillInAllowed ? (
                         <span className="reservation-addon-pill">Community shelf fill-in allowed</span>
                       ) : null}
+                      {reservation.addOns?.useStudioGlazes ? <span className="reservation-addon-pill">Studio glaze access</span> : null}
+                      {reservation.addOns?.staffGlazePrepRequested ? <span className="reservation-addon-pill">Staff glaze prep</span> : null}
                       {reservation.addOns?.selfLoadedKilnRequested ? (
                         <span className="reservation-addon-pill">Self-loaded kiln</span>
                       ) : null}

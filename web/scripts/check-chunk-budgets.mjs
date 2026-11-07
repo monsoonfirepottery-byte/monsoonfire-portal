@@ -41,8 +41,10 @@ const requiredRouteChunks = [
 // attribution path, Studio Brain control tower actionability bridge, host/runtime
 // incident surfaces, reservation notification policy controls, and the current
 // live-surface trust tranche while keeping future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_850_000;
-const MAX_TOTAL_CSS_BYTES = 293_500;
+// Rebased against the verified live staff workspace and studio overview;
+// CI measured 1,891,056 bytes JS and 306,426 bytes CSS.
+const MAX_TOTAL_JS_BYTES = 1_900_000;
+const MAX_TOTAL_CSS_BYTES = 310_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

@@ -98,7 +98,7 @@ describe("CockpitModule announcement composer", () => {
     expect(screen.getByTestId("staff-announcement-composer")).toBeTruthy();
     expect(screen.getByLabelText("Title")).toBeTruthy();
     expect(
-      screen.getByPlaceholderText("Share the studio update, schedule note, or member-facing alert.")
+      screen.getByPlaceholderText("Share the studio update, schedule note, or client-facing alert.")
     ).toBeTruthy();
 
     const publishButton = screen.getByRole("button", { name: "Publish announcement" });
@@ -108,3 +108,4 @@ describe("CockpitModule announcement composer", () => {
     expect(publishAnnouncement).toHaveBeenCalledTimes(1);
   });
 });
+

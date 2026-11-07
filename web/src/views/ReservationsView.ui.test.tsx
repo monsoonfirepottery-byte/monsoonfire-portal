@@ -169,11 +169,11 @@ describe("ReservationsView ware check-in UX", () => {
       screen.getByText(/Booking, queue, progress, cooldown, and pickup/i),
     ).toBeTruthy();
     expect(screen.getByText(/Charges are based on shelf space or whole kiln rather than kiln volume/i)).toBeTruthy();
-    expect(screen.getByText(/We confirm shelf count with you at drop-off so the check-in charge is correct/i)).toBeTruthy();
+    expect(screen.getByText(/We confirm shelf count with you at drop-off and the final charge after firing/i)).toBeTruthy();
     expect(screen.getByText("4. Size + firing option")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Flexible tiny drop-off/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Standard shelf purchase/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Reserve the whole kiln/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Whole-kiln space/i })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Flexible tiny drop-off/i }));
     expect(await screen.findByText("Flexible tiny drop-off summary")).toBeTruthy();
@@ -199,7 +199,7 @@ describe("ReservationsView ware check-in UX", () => {
     ).toBeTruthy();
   }, 10000);
 
-  it("shows inline priority guidance and never uses browser confirm during submit", async () => {
+  it("does not turn a deadline into a same-night request and submits an explicit request", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-03-20T12:00:00.000Z"));
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
@@ -211,20 +211,21 @@ describe("ReservationsView ware check-in UX", () => {
     fireEvent.change(latestInput, {
       target: { value: "2026-03-30T12:00" },
     });
-    expect(await screen.findByText(/Priority queue is recommended for this date/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Add priority queue/i }));
-
     fireEvent.change(latestInput, {
       target: { value: "2026-03-24T12:00" },
     });
-    expect(await screen.findByText(/Priority queue was turned on for this date/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Use standard timing instead/i })).toBeTruthy();
+    expect(screen.getByText(/select Fire tonight separately/i)).toBeTruthy();
+    fireEvent.click(screen.getByText("5. Helpful extras (optional)"));
+    const rush = screen.getByRole("checkbox", { name: /Fire tonight/i }) as HTMLInputElement;
+    expect(rush.checked).toBe(false);
+    fireEvent.click(rush);
 
     fireEvent.click(screen.getByRole("button", { name: /Check in my work/i }));
 
     await waitFor(() => {
       expect(postJsonMock).toHaveBeenCalledTimes(1);
     });
+    expect(postJsonMock.mock.calls[0][1]).toMatchObject({ addOns: { rushRequested: true, communityShelfFillInAllowed: false } });
     await waitFor(() => {
       expect(screen.getByText(/Check-in sent\. We.ll confirm shelf count with you at drop-off\./i)).toBeTruthy();
     });

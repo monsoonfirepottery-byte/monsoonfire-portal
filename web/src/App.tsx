@@ -2512,7 +2512,7 @@ export default function App() {
             showEmulatorTools={isAuthEmulator}
             onOpenCheckin={() => setNav("wareCheckIn")}
             onOpenReservation={() => setNav("wareCheckIn")}
-            onOpenMemberStart={() => setNav("dashboard")}
+            onOpenClientStart={() => setNav("dashboard")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}
             onOpenFirings={() => openStaffWorkspace("firings")}

@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { normalizeReservationRecord } from "../lib/normalizers/reservations";
 
 describe("normalizeReservationRecord", () => {
+  it("preserves privacy and same-night requests in the check-in list", () => {
+    const row = normalizeReservationRecord("res-pricing", { addOns: { privateRequested: true, rushRequested: true } });
+    expect(row.addOns).toMatchObject({ privateRequested: true, rushRequested: true });
+  });
   it("fills expected defaults when optional data is missing", () => {
     const row = normalizeReservationRecord("res-1", {});
 

@@ -168,6 +168,7 @@ export type ReservationRecord = {
   }> | null;
   addOns?: {
     rushRequested?: boolean;
+    privateRequested?: boolean;
     wholeKilnRequested?: boolean;
     communityShelfFillInAllowed?: boolean;
     pickupDeliveryRequested?: boolean;
@@ -178,6 +179,7 @@ export type ReservationRecord = {
     selfLoadedKilnCost?: number | null;
     waxResistAssistRequested?: boolean;
     glazeSanityCheckRequested?: boolean;
+    staffGlazePrepRequested?: boolean;
     fragileHandlingRequested?: boolean;
     fragileHandlingCost?: number | null;
     placementPreferenceRequested?: boolean;
@@ -251,6 +253,7 @@ function normalizeReservationAddOns(
 
   return {
     rushRequested: normalizeBoolean(raw.rushRequested),
+    privateRequested: normalizeBoolean(raw.privateRequested),
     wholeKilnRequested: normalizeBoolean(raw.wholeKilnRequested),
     communityShelfFillInAllowed: normalizeBoolean(raw.communityShelfFillInAllowed),
     pickupDeliveryRequested: normalizeBoolean(raw.pickupDeliveryRequested),
@@ -261,6 +264,7 @@ function normalizeReservationAddOns(
     selfLoadedKilnCost,
     waxResistAssistRequested: normalizeBoolean(raw.waxResistAssistRequested),
     glazeSanityCheckRequested: normalizeBoolean(raw.glazeSanityCheckRequested),
+    staffGlazePrepRequested: normalizeBoolean(raw.staffGlazePrepRequested),
     placementPreferenceRequested: normalizeBoolean(raw.placementPreferenceRequested),
     placementPreferenceZone:
       raw.placementPreferenceZone === "top" ||

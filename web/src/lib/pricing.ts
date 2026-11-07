@@ -1,6 +1,8 @@
-export const HALF_SHELF_BISQUE_PRICE = 15;
-export const HALF_SHELF_GLAZE_PRICE = 25;
-export const FULL_KILN_CUSTOM_PRICE = 85;
+export const HALF_SHELF_BISQUE_PRICE = 20;
+export const HALF_SHELF_GLAZE_PRICE = 35;
+export const PRIVATE_FIRING_PRICE = 20;
+export const LOW_FIRE_CAP = 80;
+export const MID_FIRE_CAP = 120;
 export const DELIVERY_PRICE_PER_TRIP = 25;
 export const RUSH_REQUEST_PRICE = 20;
 export const WAX_RESIST_ASSIST_PRICE = 10;
@@ -73,20 +75,25 @@ export function computeEstimatedCost(input: {
   const isRaku = typeof input.kilnType === "string" && input.kilnType.includes("raku");
   const perHalfShelf =
     isRaku || input.firingType === "glaze" ? HALF_SHELF_GLAZE_PRICE : HALF_SHELF_BISQUE_PRICE;
-  return shelves * perHalfShelf;
+  return Math.ceil(shelves) * perHalfShelf;
 }
 
 export function applyHalfKilnPriceBreak(input: {
   estimatedHalfShelves: number | null | undefined;
   estimatedCost: number | null | undefined;
+  firingType: FiringType;
+  kilnType?: string | null;
 }): { estimatedCost: number | null; priceBreakApplied: boolean } {
+  if (input.estimatedHalfShelves == null || input.estimatedCost == null) return { estimatedCost: input.estimatedCost ?? null, priceBreakApplied: false };
   const shelves = Number(input.estimatedHalfShelves);
   const cost = Number(input.estimatedCost);
   if (!Number.isFinite(shelves) || !Number.isFinite(cost)) {
     return { estimatedCost: input.estimatedCost ?? null, priceBreakApplied: false };
   }
-  if (shelves >= 4 && cost > FULL_KILN_CUSTOM_PRICE) {
-    return { estimatedCost: FULL_KILN_CUSTOM_PRICE, priceBreakApplied: true };
+  if (input.firingType === "other") return { estimatedCost: null, priceBreakApplied: false };
+  const cap = input.firingType === "glaze" || input.kilnType?.includes("raku") ? MID_FIRE_CAP : LOW_FIRE_CAP;
+  if (cost >= cap) {
+    return { estimatedCost: cap, priceBreakApplied: true };
   }
   return { estimatedCost: input.estimatedCost ?? null, priceBreakApplied: false };
 }

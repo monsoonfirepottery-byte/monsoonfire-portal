@@ -1,12 +1,12 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { safeJsonStringify, type LastRequest } from "../../api/functionsClient";
 import type { ShiftStatusSummary } from "./shiftStatus";
 
 const COCKPIT_TABS = [
-  { key: "triage", label: "Action queue" },
+  { key: "triage", label: "Today" },
   { key: "automation", label: "Automation" },
   { key: "platform", label: "Platform" },
-  { key: "finance", label: "Commerce" },
+  { key: "finance", label: "Tickets & payments" },
   { key: "operations", label: "Operations" },
   { key: "policyAgentOps", label: "Policy & Agent Ops" },
   { key: "reports", label: "Reports" },
@@ -152,6 +152,7 @@ type Props = {
   operationsContent: ReactNode;
   moduleTelemetrySnapshot: unknown;
   commerceContent: ReactNode;
+  firingPickupBillingContent: ReactNode;
   stripeContent: ReactNode;
   agentOpsContent: ReactNode;
   governanceContent: ReactNode;
@@ -242,12 +243,14 @@ export default function CockpitOpsPanel({
   operationsContent,
   moduleTelemetrySnapshot,
   commerceContent,
+  firingPickupBillingContent,
   stripeContent,
   agentOpsContent,
   governanceContent,
   reportsContent,
   githubRepoSlug,
 }: Props) {
+  const [financeView, setFinanceView] = useState<"tickets" | "store" | "settings">("tickets");
   const actionableOverviewAlerts = overviewAlerts.filter((alert) => alert.severity !== "low");
   const shiftStatusNoteClass =
     shiftStatus.tone === "action"
@@ -265,10 +268,11 @@ export default function CockpitOpsPanel({
   };
 
   return (
-    <section className="staff-module-grid">
+    <section className="staff-module-grid staff-workspace-panel">
       <section className="card staff-console-card">
+        {!["finance", "operations"].includes(cockpitTab) ? <>
         <div className="card-title-row">
-          <div className="card-title">Ops Cockpit</div>
+          <div className="card-title">{COCKPIT_TABS.find((tab) => tab.key === cockpitTab)?.label}</div>
           <button
             className="btn btn-secondary"
             disabled={Boolean(busy)}
@@ -279,23 +283,24 @@ export default function CockpitOpsPanel({
               })
             }
           >
-            Refresh cockpit
+            Refresh
           </button>
         </div>
-        <div className="staff-kpi-grid">
+        {!["triage", "finance", "operations"].includes(cockpitTab) ? <div className="staff-kpi-grid">
           <div className="staff-kpi"><span>High alerts</span><strong>{cockpitKpis.highAlerts}</strong></div>
           <div className="staff-kpi"><span>Medium alerts</span><strong>{cockpitKpis.mediumAlerts}</strong></div>
           <div className="staff-kpi"><span>Open reports</span><strong>{cockpitKpis.openReports}</strong></div>
           <div className="staff-kpi"><span>Failed checks</span><strong>{cockpitKpis.failedChecks}</strong></div>
           <div className="staff-kpi"><span>Checks loaded</span><strong>{cockpitKpis.totalChecks}</strong></div>
           <div className="staff-kpi"><span>Recent handler errors</span><strong>{cockpitKpis.recentErrors}</strong></div>
-        </div>
+        </div> : null}
         {cockpitKpis.authMismatch ? (
           <div className="staff-note">
             Local Functions is active while Auth emulator is disabled. Cockpit data may be partial for function-backed operations.
           </div>
         ) : null}
-        <nav className="segmented staff-cockpit-tabs" aria-label="Ops cockpit tabs">
+        </> : null}
+        <nav className="segmented staff-cockpit-tabs staff-technical-tabs" aria-label="System tools" hidden={["triage", "finance", "operations"].includes(cockpitTab)}>
           {COCKPIT_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -686,14 +691,13 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "finance" ? (
           <>
-            <div className="staff-module-grid">
-              <div className="staff-column">
-                {commerceContent}
-              </div>
-              <div className="staff-column">
-                {stripeContent}
-              </div>
-            </div>
+            <header className="staff-page-heading"><div><h1>Tickets & payments</h1><p>Review firing tickets, send invoices, and finish pickups.</p></div></header>
+            <nav className="staff-section-tabs" aria-label="Payment sections">
+              {([['tickets', 'Firing tickets'], ['store', 'Store orders'], ['settings', 'Payment settings']] as const).map(([key, label]) => <button type="button" key={key} aria-current={financeView === key ? "page" : undefined} onClick={() => setFinanceView(key)}>{label}</button>)}
+            </nav>
+            {financeView === "tickets" ? firingPickupBillingContent : null}
+            {financeView === "store" ? commerceContent : null}
+            {financeView === "settings" ? stripeContent : null}
           </>
         ) : null}
         {cockpitTab === "operations" ? (

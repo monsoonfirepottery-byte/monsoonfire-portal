@@ -3,7 +3,6 @@ import {
   HALF_SHELF_BISQUE_PRICE,
   HALF_SHELF_GLAZE_PRICE,
   DELIVERY_PRICE_PER_TRIP,
-  FULL_KILN_CUSTOM_PRICE,
   PLACEMENT_PREFERENCE_PRICE,
   PREPAID_STORAGE_FLAT_PRICE,
   PREPAID_STORAGE_INCLUDED_WEEKS,
@@ -76,10 +75,15 @@ describe("pricing helpers", () => {
     ).toBeNull();
   });
 
-  test("applyHalfKilnPriceBreak caps at full kiln price for 4+ half shelves", () => {
-    const result = applyHalfKilnPriceBreak({ estimatedHalfShelves: 4, estimatedCost: 120 });
-    expect(result.estimatedCost).toBe(FULL_KILN_CUSTOM_PRICE);
+  test("a partial half shelf is charged as a full unit", () => {
+    expect(computeEstimatedCost({ kilnType: "studio-electric", firingType: "bisque", estimatedHalfShelves: 1.2 })).toBe(40);
+  });
+
+  test("caps base prices independently by firing type", () => {
+    const result = applyHalfKilnPriceBreak({ estimatedHalfShelves: 4, estimatedCost: 140, firingType: "glaze" });
+    expect(result.estimatedCost).toBe(120);
     expect(result.priceBreakApplied).toBe(true);
+    expect(applyHalfKilnPriceBreak({ estimatedHalfShelves: 5, estimatedCost: 100, firingType: "bisque" }).estimatedCost).toBe(80);
   });
 
   test("computeDeliveryCost uses per-trip pricing", () => {

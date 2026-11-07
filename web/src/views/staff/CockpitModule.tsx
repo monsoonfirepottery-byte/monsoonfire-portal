@@ -44,6 +44,7 @@ type AnnouncementComposerDraft = {
 };
 
 type CockpitModuleProps = {
+  showTodayOverview?: boolean;
   busy: string;
   cockpitOpsContent: ReactNode;
   shortText: (value: string, max: number) => string;
@@ -107,6 +108,7 @@ function when(ms: number): string {
 }
 
 export default function CockpitModule({
+  showTodayOverview = true,
   busy,
   cockpitOpsContent,
   shortText,
@@ -163,6 +165,7 @@ export default function CockpitModule({
 
   return (
     <section className="staff-today-console">
+      {showTodayOverview ? <>
       <section className="card staff-console-card">
         <div className="card-title">Quick actions</div>
         <p className="card-subtitle">Action queue style quick actions for the most common daily staff priorities.</p>
@@ -304,7 +307,7 @@ export default function CockpitModule({
                 <span>Body</span>
                 <textarea
                   value={announcementDraft.body}
-                  placeholder="Share the studio update, schedule note, or member-facing alert."
+                  placeholder="Share the studio update, schedule note, or client-facing alert."
                   onChange={(event) => updateAnnouncementDraft("body", event.target.value)}
                 />
                 <span className="helper">
@@ -563,6 +566,7 @@ export default function CockpitModule({
           Advanced diagnostics stay on the System workspace. Policy controls and agent operations now live in the Cockpit Policy & Agent Ops tab.
         </div>
       </section>
+      </> : null}
       {cockpitOpsContent}
     </section>
   );

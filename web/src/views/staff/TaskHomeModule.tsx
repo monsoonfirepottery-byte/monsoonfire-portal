@@ -68,28 +68,21 @@ function resolveActionClass(action: StaffTaskHomeAction): string {
 }
 
 export default function TaskHomeModule({
-  title,
-  summary,
-  clickBudgetNote,
   attentionItems,
   lanes,
-  moreActions,
   onAction,
 }: TaskHomeModuleProps) {
   return (
     <section className="staff-task-home" data-testid="staff-task-home">
       <section className="card staff-console-card staff-task-home-hero">
         <div className="staff-column">
-          <div className="staff-subtitle">Task-first staff home</div>
-          <div className="card-title">{title}</div>
-          <p className="card-subtitle">{summary}</p>
+          <h1>Today at the studio</h1>
+          <p className="card-subtitle">Drop-offs, firings, pickups, and client messages.</p>
         </div>
-        <div className="staff-note staff-note-muted">{clickBudgetNote}</div>
       </section>
 
       <section className="card staff-console-card">
         <div className="card-title">Needs attention now</div>
-        <p className="card-subtitle">A short queue for the next highest-value move on shift.</p>
         {attentionItems.length === 0 ? (
           <div className="staff-note staff-note-ok">No urgent staff blockers are active right now.</div>
         ) : (
@@ -106,7 +99,7 @@ export default function TaskHomeModule({
                     <span className={`pill ${item.tone === "action" ? "staff-pill-danger" : "staff-pill-warn"}`}>
                       {item.tone === "action" ? "Now" : "Watch"}
                     </span>
-                    <strong>{item.title}</strong>
+                    <strong>{item.title.replace(/smoke\/canary workflow failure/gi, "payment health check needs review")}</strong>
                   </div>
                   <div className="staff-mini">{item.detail}</div>
                 </div>
@@ -123,81 +116,23 @@ export default function TaskHomeModule({
         )}
       </section>
 
-      {lanes.map((lane) => (
-        <section key={lane.id} className="staff-task-home-lane" data-testid={`staff-task-home-lane-${lane.id}`}>
-          <div className="staff-task-home-lane-header">
-            <div className="staff-column">
-              <div className="card-title">{lane.title}</div>
-              <p className="card-subtitle">{lane.subtitle}</p>
-            </div>
-          </div>
-          <div className="staff-task-home-lane-grid">
-            {lane.cards.map((card) => (
-              <section
-                key={card.id}
-                className="card staff-console-card staff-task-home-card"
-                data-testid={`staff-task-home-card-${card.id}`}
-                data-tone={card.tone}
-              >
-                <div className="staff-task-home-card-header">
-                  <div className="staff-column">
-                    <div className="staff-subtitle">{card.eyebrow}</div>
-                    <div className="card-title">{card.title}</div>
-                  </div>
-                  <span className={`pill staff-task-home-card-badge staff-task-home-card-badge-${card.tone}`}>
-                    {card.badge}
-                  </span>
-                </div>
-                <p className="card-subtitle">{card.summary}</p>
-                {card.metrics?.length ? (
-                  <div className="staff-task-home-card-metrics">
-                    {card.metrics.map((metric) => (
-                      <div key={`${card.id}-${metric.label}`} className="staff-task-home-card-metric">
-                        <span>{metric.label}</span>
-                        <strong>{metric.value}</strong>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {card.note ? <div className="staff-note staff-note-muted">{card.note}</div> : null}
-                <div className="staff-actions-row">
-                  {card.actions.map((action) => (
-                    <button
-                      key={`${card.id}-${action.label}`}
-                      type="button"
-                      className={resolveActionClass(action)}
-                      onClick={() => onAction(action.target)}
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        </section>
-      ))}
-
-      <details className="card staff-console-card staff-task-home-more" data-testid="staff-task-home-more">
-        <summary>More tools</summary>
-        <div className="staff-note staff-note-muted">
-          Rare and power-user tools stay here so the main board can stay focused on live staff work.
-        </div>
-        <div className="staff-task-home-more-grid">
-          {moreActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className="staff-task-home-more-btn"
-              data-testid={`staff-task-home-more-${action.id}`}
-              onClick={() => onAction(action.target)}
-            >
-              <strong>{action.label}</strong>
-              <span>{action.description}</span>
-            </button>
-          ))}
-        </div>
-      </details>
+      <section className="staff-daily-work" aria-label="Today's work">
+        {[
+          { id: "finance", title: "Tickets & payments", detail: "Review work, email an invoice, or finish a pickup.", label: "Open tickets", target: "finance" },
+          { id: "checkins", title: "Drop-offs", detail: "Check in arriving work and review the intake queue.", label: "View drop-offs", target: "checkins" },
+          { id: "reservations-today", title: "Reservations", detail: "Today's arrivals and the studio calendar.", label: "View calendar", target: "studioReservations" },
+          { id: "firings", title: "Firings", detail: "Kiln schedules and work in progress.", label: "View firings", target: "firings" },
+          { id: "messages", title: "Messages", detail: "Client questions and replies.", label: "Open inbox", target: "messages" },
+          { id: "announcements", title: "Studio announcements", detail: "Send a studio update to clients.", label: "Write announcement", target: "announcementComposer" },
+        ].map((row) => {
+          const card = lanes.flatMap((lane) => lane.cards).find((item) => item.id === row.id);
+          return <article key={row.id} className="staff-daily-work-row" data-testid={`staff-task-home-card-${row.id}`}>
+            <div><h2>{row.title}</h2><p>{row.detail}</p></div>
+            <span className="staff-daily-work-state">{card?.badge ?? ""}</span>
+            <button type="button" className={resolveActionClass({label:row.label,target:row.target,emphasis:"secondary"})} onClick={() => onAction(row.target)}>{row.label}</button>
+          </article>;
+        })}
+      </section>
     </section>
   );
 }

@@ -322,6 +322,7 @@ export default function FiringPickupBillingModule({
   const ticketListRef = useRef<HTMLElement>(null);
   const [sortBy, setSortBy] = useState<TicketSortKey>("severity");
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -372,6 +373,7 @@ export default function FiringPickupBillingModule({
       const response = await client.postJson<QueueResponse>("staffListFiringPickupReviews", {});
       const nextTickets = response.data?.tickets ?? [];
       setTickets(nextTickets);
+      setHasLoaded(true);
       const nextRuntime = response.data?.runtime ?? null;
       setRuntime(nextRuntime);
       onTicketsChanged?.(nextTickets, nextRuntime);
@@ -897,16 +899,29 @@ export default function FiringPickupBillingModule({
             <option value="heat">Firing range</option>
           </select>
         </label>
-        <button className="btn btn-ghost firing-billing-refresh" type="button" disabled={loading || Boolean(busy)} onClick={() => void load()}>{loading ? "Loading…" : "Refresh"}</button>
+        {!loading ? <button className="btn btn-ghost firing-billing-refresh" type="button" disabled={Boolean(busy)} onClick={() => void load()}>Refresh</button> : null}
       </div>
 
-      <div className="firing-billing-workspace">
+      {loading ? (
+        <div className="firing-ticket-loading" role="status" aria-live="polite">
+          <svg className="firing-ticket-loading-art" viewBox="0 0 144 48" fill="none" aria-hidden="true">
+            <rect x="3" y="7" width="30" height="34" rx="4" />
+            <path d="M10 17h16M10 24h12M10 31h9M40 24h64" />
+            <rect x="111" y="7" width="30" height="34" rx="4" />
+            <path d="M118 17h16M118 24h16M118 31h10" />
+            <circle className="firing-ticket-loading-packet" cx="43" cy="24" r="4" />
+          </svg>
+          <div className="firing-ticket-loading-copy"><strong>{hasLoaded ? "Refreshing firing tickets" : "Loading firing tickets"}</strong><span>Gathering the latest ticket information. This can take a moment.</span><div className="firing-ticket-loading-track" aria-hidden="true"><div className="firing-ticket-loading-fill" /></div></div>
+        </div>
+      ) : null}
+
+      <div className="firing-billing-workspace" aria-busy={loading}>
         <nav className="firing-billing-ticket-list" aria-label="Firing tickets" ref={ticketListRef}>
-          <div className="firing-billing-list-header">
+          {hasLoaded ? <div className="firing-billing-list-header">
             <strong>{visibleTickets.length} {visibleTickets.length === 1 ? "ticket" : "tickets"}</strong>
             <span className="staff-mini">{selectedTicketIndex >= 0 ? `${selectedTicketIndex + 1} of ${visibleTickets.length}` : "No ticket selected"}</span>
-          </div>
-          {visibleTickets.length === 0 ? <div className="staff-note">{(searchQuery || ticketSearch).trim() ? "No tickets match that search." : "No tickets in this view. Choose All or create a new firing ticket."}</div> : null}
+          </div> : null}
+          {hasLoaded && visibleTickets.length === 0 ? <div className="staff-note">{(searchQuery || ticketSearch).trim() ? "No tickets match that search." : "No tickets in this view. Choose All or create a new firing ticket."}</div> : null}
           {visibleTickets.map((ticket, ticketIndex) => (
             <button
               key={ticket.ticketId}
@@ -933,7 +948,7 @@ export default function FiringPickupBillingModule({
         </nav>
 
         <div className="firing-billing-detail">
-          {!selected ? <div className="staff-note">Select a firing ticket to review it.</div> : (
+          {!selected ? (hasLoaded ? <div className="staff-note">Select a firing ticket to review it.</div> : null) : (
             <>
               <header className="firing-billing-summary">
                 <div>

@@ -114,7 +114,6 @@ import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
 import { isDisallowedRetailCoverUrl } from "./staff/lendingResearch";
 import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
-import WareCheckInView from "./WareCheckInView";
 import { FIRING_PATHFINDER_URL } from "../utils/reservationsPaths";
 import { formatDateTime } from "../utils/format";
 
@@ -134,6 +133,7 @@ const OperationsCockpitModule = lazy(() => import("./staff/OperationsCockpitModu
 const StudioReservationsModule = lazy(() => import("./staff/StudioReservationsModule"));
 const StudioBrainControlTowerModule = lazy(() => import("./staff/StudioBrainControlTowerModule"));
 const TaskHomeModule = lazy(() => import("./staff/TaskHomeModule"));
+const WareCheckInView = lazy(() => import("./WareCheckInView"));
 import StaffWorkspaceNav from "./staff/StaffWorkspaceNav";
 import "./staff/staffWorkspace.css";
 

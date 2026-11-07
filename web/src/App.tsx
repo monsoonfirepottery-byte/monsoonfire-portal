@@ -2458,6 +2458,7 @@ export default function App() {
         return (
           <MessagesView
             user={user}
+            staffDesk={staffUi}
             supportEmail={SUPPORT_EMAIL}
             threads={threads}
             threadsLoading={threadsLoading}
@@ -2516,7 +2517,12 @@ export default function App() {
             onOpenClientStart={() => setNav("dashboard")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}
-            onOpenFirings={() => openStaffWorkspace("firings")}
+            onOpenFirings={() => {
+              if (window.location.pathname.startsWith("/staff")) {
+                window.history.replaceState({}, "", "/");
+              }
+              setNav("kiln");
+            }}
             onStartFiring={() => setNav("kilnLaunch")}
             onOpenStaffWorkspace={openStaffWorkspace}
             initialTaskAction={staffInitialTaskAction}

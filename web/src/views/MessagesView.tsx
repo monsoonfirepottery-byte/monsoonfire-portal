@@ -21,11 +21,14 @@ const SUPPORT_THREAD_PREFIX = "support_";
 const DEFAULT_MESSAGE_FETCH_LIMIT = 50;
 const MAX_MESSAGE_FETCH_LIMIT = 200;
 
+import "./staff/staffDeskGuide.css";
+
 type MessagesTab = "inbox" | "studio";
 type ReadFilter = "inbox" | "all";
 
 type Props = {
   user: User;
+  staffDesk?: boolean;
   supportEmail: string;
   initialThreadId?: string | null;
   onInitialThreadIdConsumed?: () => void;
@@ -182,6 +185,7 @@ function useDirectMessageMessages(threadId: string | null, fetchLimit: number) {
 
 export default function MessagesView({
   user,
+  staffDesk = false,
   supportEmail,
   initialThreadId = null,
   onInitialThreadIdConsumed,
@@ -610,9 +614,29 @@ export default function MessagesView({
       <div className="page-header">
         <h1>Messages</h1>
         <p className="page-subtitle">
-          We're excited to be your partner. Use this space for studio support and updates, or email us at {supportEmail}.
+          {staffDesk
+            ? "Reply to clients and keep up with studio updates."
+            : <>We're excited to be your partner. Use this space for studio support and updates, or email us at {supportEmail}.</>}
         </p>
       </div>
+
+      {staffDesk ? (
+        <section className="staff-desk-guide" aria-label="Studio inbox guide">
+          <div className="staff-desk-guide-art" data-scene="messages" aria-hidden="true" />
+          <div className="staff-desk-guide-copy">
+            <h2>At the message desk</h2>
+            <p>Open the unread inbox to catch up on conversations, or switch to studio updates.</p>
+            <div className="staff-desk-guide-actions">
+              <button type="button" className="btn btn-primary" onClick={() => { setMessagesTab("inbox"); setReadFilter("inbox"); }}>
+                Open unread inbox{!threadsLoading && !threadsError ? ` · ${unreadThreadCount}` : ""}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setMessagesTab("studio"); setReadFilter("inbox"); }}>
+                Read studio updates{!announcementsLoading && !announcementsError ? ` · ${unreadAnnouncementCount} unread` : ""}
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {sendStatus ? <div className="status-line">{sendStatus}</div> : null}
 

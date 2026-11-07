@@ -136,6 +136,7 @@ const TaskHomeModule = lazy(() => import("./staff/TaskHomeModule"));
 const WareCheckInView = lazy(() => import("./WareCheckInView"));
 import StaffWorkspaceNav from "./staff/StaffWorkspaceNav";
 import "./staff/staffWorkspace.css";
+import "./staff/staffDeskGuide.css";
 
 type Props = {
   user: User;
@@ -7084,22 +7085,30 @@ export default function StaffView({
           Refresh clients
         </button>
       </div>
-      <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Total</span><strong>{memberRoleCounts.all}</strong></div>
-        <div className="staff-kpi"><span>Staff</span><strong>{memberRoleCounts.staff}</strong></div>
-        <div className="staff-kpi"><span>Admin</span><strong>{memberRoleCounts.admin}</strong></div>
-        <div className="staff-kpi"><span>Client</span><strong>{memberRoleCounts.member}</strong></div>
-      </div>
-      <div className="staff-note">
-        Sources: users {memberSourceStats.usersDocs}, profiles {memberSourceStats.profilesDocs}
+      <section className="staff-desk-guide" aria-label="Client directory">
+        <div className="staff-desk-guide-art" data-scene="clients" aria-hidden="true" />
+        <div className="staff-desk-guide-copy">
+          <h2>Find a client</h2>
+          <p>Open a record to see their pieces, visits, orders, and conversations.</p>
+          <div className="staff-desk-guide-actions">
+            <button type="button" className="btn btn-primary" onClick={() => document.getElementById("staff-client-search")?.focus()}>Search directory</button>
+            <button type="button" className="btn btn-ghost" aria-pressed={memberRoleFilter === "member"} onClick={() => setMemberRoleFilter("member")}>Clients only</button>
+            <button type="button" className="btn btn-ghost" aria-pressed={memberRoleFilter === "all"} onClick={() => setMemberRoleFilter("all")}>Everyone</button>
+          </div>
+        </div>
+      </section>
+      <details className="staff-note"><summary>Directory sources</summary>
+        Users: {memberSourceStats.usersDocs}. Profiles: {memberSourceStats.profilesDocs}.
         {memberSourceStats.inferredMembers > 0
           ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}`
           : ""}
-      </div>
+      </details>
       <div className="staff-module-grid">
         <div className="staff-column">
           <div className="staff-actions-row">
             <input
+              id="staff-client-search"
+              aria-label="Search client directory"
               className="staff-member-search"
               placeholder="Search by name, email, or UID"
               value={memberSearch}
@@ -7728,7 +7737,7 @@ export default function StaffView({
   const firingsContent = (
     <section className="card staff-console-card">
       <div className="card-title-row">
-        <div className="card-title">Firings</div>
+        <div className="card-title">Firing records and controls</div>
         <button
           className="btn btn-secondary"
           disabled={Boolean(busy)}
@@ -8920,6 +8929,13 @@ export default function StaffView({
   const handleTaskHomeAction = useCallback(
     (target: string) => {
       switch (target) {
+        case "pathfinder":
+          window.location.assign(FIRING_PATHFINDER_URL);
+          return;
+        case "kilnSchedule":
+          if (onOpenFirings) onOpenFirings();
+          else openModuleFromCockpit("firings");
+          return;
         case "messages":
           openMessagesInbox();
           return;
@@ -8936,7 +8952,7 @@ export default function StaffView({
           openModuleFromCockpit(target);
       }
     },
-    [openAnnouncementWorkflow, openCockpitWorkspace, openMessagesInbox, openModuleFromCockpit, openTaskHome]
+    [onOpenFirings, openAnnouncementWorkflow, openCockpitWorkspace, openMessagesInbox, openModuleFromCockpit, openTaskHome]
   );
 
   const updateAnnouncementDraft = useCallback(
@@ -9111,7 +9127,16 @@ export default function StaffView({
   );
 
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
-  const firingPickupBillingContent = <FiringPickupBillingModule key={firingTicketRefreshKey} client={client} isStaff={isStaff} view="tickets" />;
+  const firingPickupBillingContent = (
+    <FiringPickupBillingModule
+      key={firingTicketRefreshKey}
+      client={client}
+      isStaff={isStaff}
+      view="tickets"
+      onOpenCheckins={() => window.location.assign(FIRING_PATHFINDER_URL)}
+      onOpenFirings={openFiringsWorkspace}
+    />
+  );
   const commerceContent = (
     <CommerceModule
       client={client}

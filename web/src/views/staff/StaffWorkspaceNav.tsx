@@ -1,3 +1,5 @@
+import { FIRING_PATHFINDER_URL } from "../../utils/reservationsPaths";
+
 type Props = {
   active: string;
   onNavigate: (target: string) => void;
@@ -13,8 +15,6 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
     { key: "today", label: "Today", action: onHome },
     { key: "finance", label: "Tickets & payments", action: () => onNavigate("finance") },
     { key: "reservations", label: "Reservations", action: onReservations },
-    { key: "checkins", label: "Drop-offs", action: () => onNavigate("checkins") },
-    { key: "firings", label: "Firings", action: () => onNavigate("firings") },
     { key: "members", label: "Clients", action: () => onNavigate("members") },
     { key: "messages", label: "Messages", action: onMessages },
   ];
@@ -22,6 +22,7 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
     <div className="staff-workspace-brand">Studio desk<span>Monsoon Fire</span></div>
     {onNewTicket ? <button type="button" className="btn btn-primary staff-new-ticket" onClick={onNewTicket}>+ New firing ticket</button> : null}
     <nav aria-label="Daily work">{daily.map((item) => <button key={item.key} type="button" aria-current={active === item.key ? "page" : undefined} onClick={item.action}>{item.label}</button>)}</nav>
+    <a className="btn btn-ghost" href={FIRING_PATHFINDER_URL} target="_blank" rel="noreferrer">Firing Pathfinder (new tab)</a>
     <div className="staff-workspace-nav-label">Studio</div>
     <nav aria-label="Studio management">{[
       ["pieces", "Pieces & batches"], ["events", "Events"], ["lending", "Library"],
@@ -29,6 +30,13 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
     ].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
     <div className="staff-workspace-nav-label">Administration</div>
     <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
+    <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || undefined}>
+      <summary>Archived tools</summary>
+      <nav aria-label="Archived staff tools">
+        <button type="button" aria-current={active === "checkins" ? "page" : undefined} onClick={() => onNavigate("checkins")}>Drop-off records</button>
+        <button type="button" aria-current={active === "firings" ? "page" : undefined} onClick={() => onNavigate("firings")}>Firing records and controls</button>
+      </nav>
+    </details>
     {onPortal ? <button type="button" className="btn btn-ghost staff-return-portal" onClick={onPortal}>Return to portal</button> : null}
   </aside>;
 }

@@ -11,8 +11,10 @@ describe("studio overview", () => {
       { id: "firings", eyebrow: "", title: "Firings", badge: "2 active", tone: "watch", summary: "Two firings underway.", metrics: [{ label: "Active", value: "2" }], actions: [] },
     ] }];
     render(<TaskHomeModule title="" summary="" clickBudgetNote="" attentionItems={[]} lanes={lanes} moreActions={[]} onAction={onAction} />);
-    fireEvent.click(screen.getByRole("button", { name: "Firings: 2 active" }));
-    expect(onAction).toHaveBeenCalledWith("firings");
+    fireEvent.click(screen.getByRole("button", { name: "Kiln schedule: 2 active" }));
+    expect(onAction).toHaveBeenCalledWith("kilnSchedule");
+    fireEvent.click(document.querySelector(".staff-studio-marker-intake")!);
+    expect(onAction).toHaveBeenCalledWith("pathfinder");
   });
   it("uses a view transition for navigation and cleans up after it finishes", async () => {
     const onAction = vi.fn();
@@ -22,7 +24,7 @@ describe("studio overview", () => {
       render(<TaskHomeModule title="" summary="" clickBudgetNote="" attentionItems={[]} lanes={[]} moreActions={[]} onAction={onAction} />);
       fireEvent.click(document.querySelector(".staff-studio-marker-kiln")!);
       expect(start).toHaveBeenCalledTimes(1);
-      expect(onAction).toHaveBeenCalledWith("firings");
+      expect(onAction).toHaveBeenCalledWith("kilnSchedule");
       await Promise.resolve();
       expect(document.documentElement.classList.contains("staff-studio-transition")).toBe(false);
     } finally {
@@ -37,7 +39,7 @@ describe("studio overview", () => {
     try {
       render(<TaskHomeModule title="" summary="" clickBudgetNote="" attentionItems={[]} lanes={[]} moreActions={[]} onAction={onAction} />);
       fireEvent.click(document.querySelector(".staff-studio-marker-kiln")!);
-      expect(onAction).toHaveBeenCalledWith("firings");
+      expect(onAction).toHaveBeenCalledWith("kilnSchedule");
       expect(start).not.toHaveBeenCalled();
     } finally {
       delete (document as Partial<Document>).startViewTransition;

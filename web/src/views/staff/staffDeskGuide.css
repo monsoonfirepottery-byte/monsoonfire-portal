@@ -1,0 +1,26 @@
+.staff-desk-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  margin: 0.75rem 0 1rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.staff-desk-guide-art {
+  min-height: 155px;
+  background: #b48455 url("/staff-desk-guide.jpg") 0 67% / 200% auto no-repeat;
+}
+
+.staff-desk-guide-art[data-scene="messages"] { background-position-x: 100%; }
+.staff-desk-guide-copy { align-self: center; padding: 1rem; }
+.staff-desk-guide-copy h2 { margin: 0 0 0.35rem; font-size: 1.15rem; }
+.staff-desk-guide-copy p { margin: 0 0 0.75rem; color: var(--muted); }
+.staff-desk-guide-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.staff-desk-guide-actions [aria-pressed="true"] { border-color: var(--accent); }
+
+@media (max-width: 650px) {
+  .staff-desk-guide { grid-template-columns: minmax(0, 1fr); }
+  .staff-desk-guide-art { min-height: 110px; }
+}

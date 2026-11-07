@@ -8511,6 +8511,11 @@ export default function StaffView({
 
   const openMessagesInbox = useCallback(() => {
     if (onOpenMessages) {
+      // Leave the staff deep link before switching to the portal-wide inbox.
+      // Otherwise the location synchronizer can immediately reopen Staff.
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) {
+        window.history.replaceState({}, "", "/");
+      }
       onOpenMessages();
       return;
     }

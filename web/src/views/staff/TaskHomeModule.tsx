@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { flushSync } from "react-dom";
 
 export type StaffTaskHomeTone = "action" | "watch" | "clear" | "reference";
 
@@ -58,14 +58,30 @@ type TaskHomeModuleProps = {
   onAction: (target: string) => void;
 };
 
-function resolveActionClass(action: StaffTaskHomeAction): string {
-  switch (action.emphasis) {
-    case "secondary":
-      return "btn btn-secondary btn-small";
-    case "ghost":
-      return "btn btn-ghost btn-small";
-    default:
-      return "btn btn-primary btn-small";
+function enterStudioArea(target: string, onAction: (target: string) => void, source: HTMLElement) {
+  const root = document.documentElement;
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (reducedMotion || typeof document.startViewTransition !== "function") {
+    onAction(target);
+    return;
+  }
+  const bounds = source.getBoundingClientRect();
+  root.style.setProperty("--studio-entry-x", `${bounds.left + bounds.width / 2}px`);
+  root.style.setProperty("--studio-entry-y", `${bounds.top + bounds.height / 2}px`);
+  root.classList.add("staff-studio-transition");
+  let navigated = false;
+  const navigate = () => { navigated = true; flushSync(() => onAction(target)); };
+  const cleanup = () => {
+    root.classList.remove("staff-studio-transition");
+    root.style.removeProperty("--studio-entry-x");
+    root.style.removeProperty("--studio-entry-y");
+  };
+  try {
+    const transition = document.startViewTransition(navigate);
+    void transition.finished.then(cleanup, cleanup);
+  } catch {
+    cleanup();
+    if (!navigated) onAction(target);
   }
 }
 
@@ -74,7 +90,6 @@ export default function TaskHomeModule({
   lanes,
   onAction,
 }: TaskHomeModuleProps) {
-  const [selected, setSelected] = useState("reservations-today");
   const areas = [
     { id: "checkins", title: "Drop-offs", label: "View drop-offs", target: "checkins", icon: "inbox", position: "intake" },
     { id: "reservations-today", title: "Reservations", label: "View calendar", target: "studio-reservations", icon: "calendar", position: "calendar" },
@@ -84,8 +99,6 @@ export default function TaskHomeModule({
     { id: "announcements", title: "Announcements", label: "Write announcement", target: "announcementComposer", icon: "megaphone", position: "shelves" },
   ];
   const cards = lanes.flatMap((lane) => lane.cards);
-  const active = areas.find((area) => area.id === selected) ?? areas[0];
-  const activeCard = cards.find((card) => card.id === active.id);
   return (
     <section className="staff-task-home" data-testid="staff-task-home">
       <header className="staff-today-header">
@@ -105,23 +118,20 @@ export default function TaskHomeModule({
         )}
       </section>
       <section className="staff-studio-overview" aria-labelledby="staff-studio-overview-heading">
-        <div className="staff-today-section-heading"><div><h2 id="staff-studio-overview-heading">Studio overview</h2><p>Select a marker to see its current status.</p></div></div>
+        <div className="staff-today-section-heading"><div><h2 id="staff-studio-overview-heading">Studio overview</h2><p>Select an area to open its workspace.</p></div></div>
         <div className="staff-studio-scene">
           <img src="/staff-studio-overview.png" alt="Illustrated ceramics studio with a kiln, worktables, calendar, and front desk" />
           {areas.map((area) => {
             const card = cards.find((item) => item.id === area.id);
-            return <button key={area.id} type="button" className={`staff-studio-marker staff-studio-marker-${area.position}`} aria-pressed={selected === area.id} aria-label={`${area.title}${card?.badge ? `: ${card.badge}` : ""}`} onClick={() => setSelected(area.id)}>
+            return <button key={area.id} type="button" className={`staff-studio-marker staff-studio-marker-${area.position}`} aria-label={`${area.title}${card?.badge ? `: ${card.badge}` : ""}`} onClick={(event) => enterStudioArea(area.target, onAction, event.currentTarget)}>
               <StudioIcon name={area.icon} /><span>{area.title}{card?.badge && <small>{card.badge}</small>}</span><i data-tone={card?.tone ?? "reference"} aria-hidden="true" />
             </button>;
           })}
         </div>
-        <div className="staff-studio-picker" aria-label="Studio areas">{areas.map((area) => <button key={area.id} type="button" aria-pressed={selected === area.id} onClick={() => setSelected(area.id)}>{area.title}</button>)}</div>
-        <div className="staff-studio-detail" data-testid={`staff-task-home-card-${active.id}`} aria-live="polite">
-          <div className="staff-studio-detail-copy"><div className="staff-studio-detail-title"><h3>{active.title}</h3>{activeCard?.badge && <span>{activeCard.badge}</span>}</div><p>{activeCard?.badge === "Loading..." ? "Loading current activity…" : activeCard?.summary ?? "Open this area to view its current work."}</p>
-            {activeCard?.metrics && activeCard.metrics.length > 0 && <dl className="staff-today-metrics">{activeCard.metrics.slice(0, 3).map((metric) => <div key={metric.label}><dt>{metric.label}</dt><dd>{metric.value}</dd></div>)}</dl>}
-          </div>
-          <button type="button" className={resolveActionClass({ label: active.label, target: active.target, emphasis: "secondary" })} onClick={() => onAction(active.target)}>{active.label}</button>
-        </div>
+        <div className="staff-studio-picker" aria-label="Studio areas">{areas.map((area) => {
+          const card = cards.find((item) => item.id === area.id);
+          return <button key={area.id} type="button" onClick={(event) => enterStudioArea(area.target, onAction, event.currentTarget)}>{area.title}{card?.badge && <span>{card.badge}</span>}</button>;
+        })}</div>
       </section>
     </section>
   );

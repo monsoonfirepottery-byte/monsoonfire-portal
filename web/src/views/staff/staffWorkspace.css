@@ -153,3 +153,13 @@
 }
 
 .staff-studio-marker small { display: block; margin-top: 3px; font-size: 11px; font-weight: 500; }
+
+/* Carry the selected studio location into its workspace without delaying navigation. */
+.staff-studio-picker button span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 400; }
+html.staff-studio-transition::view-transition-old(root) { animation: studio-leave 180ms ease-in both; transform-origin: var(--studio-entry-x) var(--studio-entry-y); }
+html.staff-studio-transition::view-transition-new(root) { animation: studio-arrive 300ms cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes studio-leave { to { opacity: 0; transform: scale(1.035); } }
+@keyframes studio-arrive { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  html.staff-studio-transition::view-transition-old(root), html.staff-studio-transition::view-transition-new(root) { animation: none; }
+}

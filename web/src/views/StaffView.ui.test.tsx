@@ -194,12 +194,11 @@ describe("StaffView cockpit routing", () => {
     ["calendar", "View calendar", "/staff/cockpit/studio-reservations"],
     ["kiln", "View firings", "/staff/cockpit/firings"],
     ["counter", "Open tickets", "/staff/cockpit/finance"],
-  ])("opens the %s workflow from the studio", async (marker, action, route) => {
+  ])("opens the %s workflow from the studio", async (marker, _action, route) => {
     window.history.replaceState({}, "", "/staff");
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     fireEvent.click(overview.querySelector(`.staff-studio-marker-${marker}`)!);
-    fireEvent.click(within(overview).getByRole("button", { name: action }));
     await waitFor(() => expect(window.location.pathname).toBe(route));
   });
   it("opens messages from the studio overview", async () => {
@@ -207,7 +206,6 @@ describe("StaffView cockpit routing", () => {
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} onOpenMessages={onOpenMessages} />);
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     fireEvent.click(overview.querySelector(".staff-studio-marker-desk")!);
-    fireEvent.click(within(overview).getByRole("button", { name: "Open inbox" }));
     expect(onOpenMessages).toHaveBeenCalledTimes(1);
   });
   it("opens the announcement composer from the studio overview", async () => {
@@ -215,7 +213,6 @@ describe("StaffView cockpit routing", () => {
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     fireEvent.click(overview.querySelector(".staff-studio-marker-shelves")!);
-    fireEvent.click(within(overview).getByRole("button", { name: "Write announcement" }));
     await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit"));
     expect(await screen.findByTestId("cockpit-announcement-composer-open")).toBeTruthy();
   });

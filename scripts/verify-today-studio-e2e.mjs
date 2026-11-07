@@ -17,6 +17,14 @@ const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 }, serviceWorkers: "block" });
   const page = await context.newPage();
+  await page.addInitScript(() => {
+    const original = document.startViewTransition?.bind(document);
+    if (original) document.startViewTransition = ((...args) => {
+      const transition = original(...args);
+      (window).__studioTestTransition = transition;
+      return transition;
+    });
+  });
   const errors = [];
   const ticketResponses = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -68,8 +76,20 @@ try {
     await page.getByRole("navigation", {name:"Daily work"}).getByRole("button",{name:"Today",exact:true}).click({timeout:45000});
     try { await page.locator('.staff-studio-scene').waitFor({timeout:20000}); } catch (e) { console.log("FAILED",marker,page.url()); throw e; }
     await page.locator(`.staff-studio-marker-${marker}`).click();
-    await page.locator('.staff-studio-detail').getByRole('button',{name:action,exact:true}).click();
-    try { if (marker === "desk") { await page.getByRole("heading", {name:/messages/i}).first().waitFor({timeout:15000}); } else { await page.waitForURL(url => url.pathname === path, {timeout:15000}); } } catch (e) { console.log("ROUTE MISMATCH", marker, "actual", page.url(), "expected", path); throw e; }
+    if (marker === "kiln") {
+      const observed = await page.evaluate(async () => {
+        const transition = window.__studioTestTransition;
+        if (!transition) return false;
+        await transition.ready;
+        const animations = document.getAnimations().filter((animation) => animation.effect?.pseudoElement?.includes("view-transition"));
+        for (const animation of animations) { animation.pause(); animation.currentTime = 120; }
+        return animations.length > 0;
+      });
+      if (!observed) throw Error("Studio view transition did not animate");
+      await page.screenshot({path:`${outDir}/today-transition.png`,fullPage:false});
+      await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+    }
+    try { if (marker === "desk") { await page.getByRole("heading", {name:/messages/i}).first().waitFor({timeout:15000}); } else { await page.waitForURL(url => url.pathname === path, {timeout:15000}); } } catch (e) { console.log("ROUTE MISMATCH", marker, "actual", page.url(), "expected", path, "headings", await page.locator("h1,h2,h3").allTextContents()); throw e; }
     console.log("PASSED", marker);
     if (marker === "shelves") await page.getByTestId("staff-announcement-composer").waitFor({timeout:15000});
     checks.push({marker, result: marker === "desk" ? "Messages heading visible" : marker === "shelves" ? "Announcement composer visible" : path});

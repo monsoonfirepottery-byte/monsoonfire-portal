@@ -78,6 +78,7 @@ import { resolveStaffTaskShortcut } from "./utils/staffTaskShortcuts";
 import {
   buildStudioReservationsPath,
   canonicalReservationsPath,
+  FIRING_PATHFINDER_URL,
   parseStudioReservationsSearch,
   resolveReservationsPathTarget,
 } from "./utils/reservationsPaths";
@@ -106,7 +107,6 @@ const StudioResourcesView = React.lazy(() => import("./views/StudioResourcesView
 const SupportView = React.lazy(() => import("./views/SupportView"));
 const OpsPortalBridgeView = React.lazy(() => import("./views/OpsPortalBridgeView"));
 const StaffView = React.lazy(() => import("./views/StaffView"));
-const WareCheckInView = React.lazy(() => import("./views/WareCheckInView"));
 
 type NavKey =
   | "dashboard"
@@ -882,7 +882,6 @@ function useNotifications(user: User | null, canLoad: boolean) {
 function prefetchLikelyNextViews() {
   void import("./views/KilnRentalsView");
   void import("./views/StudioReservationsView");
-  void import("./views/WareCheckInView");
   void import("./views/KilnLaunchView");
 }
 
@@ -911,7 +910,7 @@ export default function App() {
     if (reservationsTarget === "wareCheckIn") return "wareCheckIn";
     if (normalizedPathname === "/glazes" || normalizedPathname === "/community/glazes") return "glazes";
     const saved = readLocalItem(LOCAL_NAV_KEY);
-    if (saved && isNavKey(saved) && saved !== "opsPortal") return saved;
+    if (saved && isNavKey(saved) && saved !== "opsPortal" && saved !== "wareCheckIn") return saved;
     return "dashboard";
   });
   const [staffWorkspaceMode, setStaffWorkspaceMode] = useState<StaffWorkspaceMode>(() => {
@@ -1221,6 +1220,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (nav === "wareCheckIn") {
+      window.location.replace(FIRING_PATHFINDER_URL);
+      return;
+    }
     if (nav !== "opsPortal") {
       writeLocalItem(LOCAL_NAV_KEY, nav);
     }
@@ -1262,8 +1265,6 @@ export default function App() {
       } else {
         window.history.replaceState({}, "", canonicalReservationsPath("reservations"));
       }
-    } else if (nav === "wareCheckIn") {
-      window.history.replaceState({}, "", canonicalReservationsPath("wareCheckIn"));
     } else if (hasStaffWorkspaceRequest) {
       if (requestedStaffPath && pathname !== requestedStaffPath) {
         window.history.replaceState({}, "", requestedStaffPath);
@@ -2431,7 +2432,7 @@ export default function App() {
           />
         );
       case "wareCheckIn":
-        return <WareCheckInView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
+        return <a className="btn btn-primary" href={FIRING_PATHFINDER_URL}>Open Firing Pathfinder</a>;
       case "kiln":
         return <KilnScheduleView user={user} isStaff={staffUi} />;
       case "kilnRentals":

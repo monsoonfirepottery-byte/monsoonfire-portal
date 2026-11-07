@@ -115,6 +115,7 @@ import { isDisallowedRetailCoverUrl } from "./staff/lendingResearch";
 import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import WareCheckInView from "./WareCheckInView";
+import { FIRING_PATHFINDER_URL } from "../utils/reservationsPaths";
 import { formatDateTime } from "../utils/format";
 
 const PolicyModule = lazy(() => import("./staff/PolicyModule"));
@@ -8343,14 +8344,14 @@ export default function StaffView({
     const smokeCanaryFailures = automationDashboard.workflows.filter((workflow) => {
       const label = `${workflow.label} ${workflow.workflowFile}`.toLowerCase();
       const smokeLike = label.includes("smoke") || label.includes("canary");
-      return smokeLike && workflow.conclusion === "failure";
+      return smokeLike && !workflow.isStale && workflow.conclusion === "failure";
     });
     if (smokeCanaryFailures.length > 0) {
       alerts.push({
         id: "payments-smoke-canary-failures",
         severity: "P0",
-        title: `${smokeCanaryFailures.length} smoke/canary workflow failure${smokeCanaryFailures.length === 1 ? "" : "s"}`,
-        detail: "Production health checks are failing and may impact payment reliability.",
+        title: "Production checks need review",
+        detail: `Failed checks: ${smokeCanaryFailures.map((workflow) => workflow.label).join(", ")}.`,
       });
     }
     const paymentHandlerErrors = latestErrors.filter((entry) =>
@@ -8595,13 +8596,14 @@ export default function StaffView({
 
     const highestPaymentAlert = paymentAlerts[0];
     if (highestPaymentAlert) {
+      const isWorkflowAlert = highestPaymentAlert.id === "payments-smoke-canary-failures";
       items.push({
         id: highestPaymentAlert.id,
         tone: highestPaymentAlert.severity === "P0" ? "action" : "watch",
         title: highestPaymentAlert.title,
         detail: highestPaymentAlert.detail,
-        actionLabel: "Open finance",
-        actionTarget: "finance",
+        actionLabel: isWorkflowAlert ? "Review automation" : "Open finance",
+        actionTarget: isWorkflowAlert ? "automation" : "finance",
       });
     }
 
@@ -9488,10 +9490,13 @@ export default function StaffView({
     <section className="staff-module-grid">
       <div className="staff-column">
         <div className="card-title-row">
-          <div className="card-title">Check-ins queue</div>
+          <div className="card-title">Ware check-in</div>
         </div>
         <div className="staff-note">
-          Queue and lifecycle operations stay here while the public firing planner handles intake for clients and staff.
+          Use Pathfinder to plan a firing and start a new ticket. The queue below is for check-ins already in progress.
+        </div>
+        <div className="staff-actions-row">
+          <a className="btn btn-primary" href={FIRING_PATHFINDER_URL} target="_blank" rel="noreferrer">Open Firing Pathfinder (new tab)</a>
         </div>
         <WareCheckInView
           user={user}

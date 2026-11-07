@@ -1147,7 +1147,7 @@ export default function ReservationsView({
       return "COMMUNITY_SHELF" as IntakeMode;
     }
     return "SHELF_PURCHASE" as IntakeMode;
-  }, [communityShelfEligible, computedHalfShelves, priorityQueueTimingWindow, shelfPurchaseHitsWholeKilnPriceBreak]);
+  }, [communityShelfEligible, computedHalfShelves, priorityQueueTimingWindow]);
 
   const client = useMemo(
     () =>

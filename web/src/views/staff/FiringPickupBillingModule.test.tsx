@@ -459,12 +459,12 @@ describe("FiringPickupBillingModule", () => {
 
     await waitFor(() => expect(postJson.mock.calls.some(([fn]) => fn === "staffQueueFiringWorkSlipPrint")).toBe(true));
     const queueCall = postJson.mock.calls.find(([fn]) => fn === "staffQueueFiringWorkSlipPrint");
+    expect(typeof (queueCall?.[1] as { clientRequestId?: unknown } | undefined)?.clientRequestId).toBe("string");
     expect(queueCall?.[1]).toMatchObject({
       ticketId: "MF-7K4P",
-      clientRequestId: expect.any(String),
       action: "original",
     });
-    expect(queueCall?.[2]).toMatchObject({ headers: { "Idempotency-Key": expect.any(String) } });
+    expect(typeof (queueCall?.[2] as { headers?: Record<string, unknown> } | undefined)?.headers?.["Idempotency-Key"]).toBe("string");
     expect(open).not.toHaveBeenCalled();
   });
 
@@ -480,9 +480,9 @@ describe("FiringPickupBillingModule", () => {
 
     await waitFor(() => expect(postJson.mock.calls.some(([fn]) => fn === "staffQueueFiringWorkSlipPrint")).toBe(true));
     const queueCall = postJson.mock.calls.find(([fn]) => fn === "staffQueueFiringWorkSlipPrint");
+    expect(typeof (queueCall?.[1] as { clientRequestId?: unknown } | undefined)?.clientRequestId).toBe("string");
     expect(queueCall?.[1]).toMatchObject({
       ticketId: "MF-7K4P",
-      clientRequestId: expect.any(String),
       action: "reprint",
     });
   });

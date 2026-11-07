@@ -56,6 +56,8 @@ const postJsonMock = vi.fn(async (fn: string) => {
       return { data: {} };
     case "apiV1/v1/library.rollout.get":
       return { data: { phase: "phase_3_admin_full", memberWritesEnabled: true } };
+    case "staffGetFiringTicketCreationOptions":
+      return { data: { people: [], firings: [], limits: { users: 0, profiles: 0, firings: 0 } } };
     default:
       return {};
   }
@@ -167,90 +169,54 @@ describe("StaffView cockpit routing", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a task-first home on /staff and keeps rare tools behind More", async () => {
+  it("opens staff ticket creation from the workspace instead of the public planner", async () => {
+    const onOpenCheckin = vi.fn();
     window.history.replaceState({}, "", "/staff");
-    render(
-      <StaffView
-        user={buildUser()}
-        isStaff
-        devAdminToken=""
-        onDevAdminTokenChange={() => undefined}
-        devAdminEnabled={false}
-        showEmulatorTools={false}
-      />
-    );
-
-    expect(await screen.findByTestId("staff-task-home")).toBeTruthy();
-    expect(screen.getByTestId("staff-task-home-lane-studio-floor")).toBeTruthy();
-    expect(screen.getByTestId("staff-task-home-lane-member-comms")).toBeTruthy();
-    expect(screen.getByTestId("staff-task-home-lane-programs-and-money")).toBeTruthy();
-
-    const moreTools = screen.getByTestId("staff-task-home-more") as HTMLDetailsElement;
-    expect(moreTools.open).toBe(false);
-    fireEvent.click(screen.getByText("More tools"));
-    expect(moreTools.open).toBe(true);
-    expect(screen.getByTestId("staff-task-home-more-system")).toBeTruthy();
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined}
+      devAdminEnabled={false} showEmulatorTools={false} onOpenCheckin={onOpenCheckin} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ New firing ticket" }));
+    expect(await screen.findByRole("heading", { name: "New firing ticket" })).toBeTruthy();
+    expect(await screen.findByLabelText("Find client")).toBeTruthy();
+    expect(onOpenCheckin).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("heading", { name: "New firing ticket" })).toBeNull();
   });
 
-  it("opens check-ins from the task home in one click", async () => {
+  it("renders the studio overview with six selectable areas", async () => {
     window.history.replaceState({}, "", "/staff");
-    render(
-      <StaffView
-        user={buildUser()}
-        isStaff
-        devAdminToken=""
-        onDevAdminTokenChange={() => undefined}
-        devAdminEnabled={false}
-        showEmulatorTools={false}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open today's queue" }));
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/staff/cockpit/checkins");
-    });
-    expect(await screen.findByTestId("operations-focus-checkins")).toBeTruthy();
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
+    const overview = await screen.findByRole("region", { name: "Studio overview" });
+    expect(within(overview).getByRole("img")).toBeTruthy();
+    expect(overview.querySelectorAll(".staff-studio-marker")).toHaveLength(6);
   });
-
-  it("routes messages directly from the task home using the app callback", async () => {
-    const onOpenMessages = vi.fn();
+  it.each([
+    ["intake", "View drop-offs", "/staff/cockpit/checkins"],
+    ["calendar", "View calendar", "/staff/cockpit/studio-reservations"],
+    ["kiln", "View firings", "/staff/cockpit/firings"],
+    ["counter", "Open tickets", "/staff/cockpit/finance"],
+  ])("opens the %s workflow from the studio", async (marker, action, route) => {
     window.history.replaceState({}, "", "/staff");
-    render(
-      <StaffView
-        user={buildUser()}
-        isStaff
-        devAdminToken=""
-        onDevAdminTokenChange={() => undefined}
-        devAdminEnabled={false}
-        showEmulatorTools={false}
-        onOpenMessages={onOpenMessages}
-      />
-    );
-
-    const messagesCard = await screen.findByTestId("staff-task-home-card-messages");
-    fireEvent.click(within(messagesCard).getByRole("button", { name: "Open messages" }));
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
+    const overview = await screen.findByRole("region", { name: "Studio overview" });
+    fireEvent.click(overview.querySelector(`.staff-studio-marker-${marker}`)!);
+    fireEvent.click(within(overview).getByRole("button", { name: action }));
+    await waitFor(() => expect(window.location.pathname).toBe(route));
+  });
+  it("opens messages from the studio overview", async () => {
+    const onOpenMessages = vi.fn(); window.history.replaceState({}, "", "/staff");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} onOpenMessages={onOpenMessages} />);
+    const overview = await screen.findByRole("region", { name: "Studio overview" });
+    fireEvent.click(overview.querySelector(".staff-studio-marker-desk")!);
+    fireEvent.click(within(overview).getByRole("button", { name: "Open inbox" }));
     expect(onOpenMessages).toHaveBeenCalledTimes(1);
   });
-
-  it("promotes the studio announcement workflow from the task home into cockpit", async () => {
+  it("opens the announcement composer from the studio overview", async () => {
     window.history.replaceState({}, "", "/staff");
-    render(
-      <StaffView
-        user={buildUser()}
-        isStaff
-        devAdminToken=""
-        onDevAdminTokenChange={() => undefined}
-        devAdminEnabled={false}
-        showEmulatorTools={false}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Create studio announcement" }));
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/staff/cockpit");
-    });
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
+    const overview = await screen.findByRole("region", { name: "Studio overview" });
+    fireEvent.click(overview.querySelector(".staff-studio-marker-shelves")!);
+    fireEvent.click(within(overview).getByRole("button", { name: "Write announcement" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit"));
     expect(await screen.findByTestId("cockpit-announcement-composer-open")).toBeTruthy();
   });
 
@@ -448,7 +414,7 @@ describe("StaffView cockpit routing", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh members" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh clients" }));
     expect(await screen.findByText("Access role")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Save role change" })).toBeTruthy();
     const roleSelect = screen.getByLabelText("Role") as HTMLSelectElement;
@@ -468,7 +434,7 @@ describe("StaffView cockpit routing", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh members" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh clients" }));
     expect(await screen.findByText("Access role")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Save role change" })).toBeNull();
     expect(screen.getByText(/Admin claim required to change roles\./)).toBeTruthy();

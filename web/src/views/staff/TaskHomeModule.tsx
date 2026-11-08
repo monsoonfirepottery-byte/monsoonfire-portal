@@ -41,22 +41,11 @@ export type StaffTaskHomeAttentionItem = {
   actionTarget: string;
 };
 
-export type StaffTaskHomeMoreAction = {
-  id: string;
-  label: string;
-  description: string;
-  target: string;
-};
-
 type TaskHomeModuleProps = {
-  title: string;
-  summary: string;
-  clickBudgetNote: string;
   attentionItems: ReadonlyArray<StaffTaskHomeAttentionItem>;
   pickupQueueState?: "checking" | "ready" | "error";
   onRetryPickupQueue?: () => void;
   lanes: ReadonlyArray<StaffTaskHomeLane>;
-  moreActions: ReadonlyArray<StaffTaskHomeMoreAction>;
   onAction: (target: string) => void;
 };
 

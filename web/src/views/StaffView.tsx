@@ -105,7 +105,6 @@ import type {
   StaffTaskHomeAttentionItem,
   StaffTaskHomeCard,
   StaffTaskHomeLane,
-  StaffTaskHomeMoreAction,
   StaffTaskHomeTone,
 } from "./staff/TaskHomeModule";
 import { resolveOperationsOverview } from "./staff/operationsOverview";
@@ -8913,60 +8912,6 @@ export default function StaffView({
     unreadMessageCount,
   ]);
 
-  const taskHomeMoreActions = useMemo<StaffTaskHomeMoreAction[]>(
-    () => [
-      {
-        id: "control-tower",
-        label: "Control Tower",
-        description: "Open the browser-first Studio Brain operator bridge for rooms, services, and incidents.",
-        target: "controlTower",
-      },
-      {
-        id: "cockpit",
-        label: "Operations cockpit",
-        description: "Open the legacy operations cockpit and automation panels.",
-        target: "cockpit",
-      },
-      {
-        id: "reservations",
-        label: "Reservations calendar",
-        description: "Open the full studio reservations workspace.",
-        target: "studioReservations",
-      },
-      {
-        id: "community-blogs",
-        label: "Community blogs",
-        description: "Edit and review blog content for community publishing.",
-        target: "communityBlogs",
-      },
-      {
-        id: "reports",
-        label: "Reports",
-        description: "Open trust, moderation, and report follow-up tools.",
-        target: "reports",
-      },
-      {
-        id: "system",
-        label: "System",
-        description: "Inspect platform health, incidents, and service checks.",
-        target: "system",
-      },
-      {
-        id: "policy-agent-ops",
-        label: "Policy & agent ops",
-        description: "Open governance, agent, and policy operations surfaces.",
-        target: "policy-agent-ops",
-      },
-      {
-        id: "module-telemetry",
-        label: "Telemetry",
-        description: "Review module telemetry and engagement snapshots.",
-        target: "module-telemetry",
-      },
-    ],
-    []
-  );
-
   const handleTaskHomeAction = useCallback(
     (target: string) => {
       if (target.startsWith("pickup-ticket:")) {
@@ -9859,14 +9804,10 @@ export default function StaffView({
 
   const taskHomeContent = (
     <TaskHomeModule
-      title="Staff tasks"
-      summary="Open the workflow you need by task, not by module tree. The most common staff jobs stay one click away."
-      clickBudgetNote="Click budget: every primary action below opens its workflow in one click. A second click is only for refinement inside that workspace."
       attentionItems={taskHomeAttentionItems}
       pickupQueueState={isStaff ? todayPickupState : undefined}
       onRetryPickupQueue={() => setTodayPickupRetry((attempt) => attempt + 1)}
       lanes={taskHomeLanes}
-      moreActions={taskHomeMoreActions}
       onAction={handleTaskHomeAction}
     />
   );

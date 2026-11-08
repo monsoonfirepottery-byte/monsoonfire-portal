@@ -19,6 +19,7 @@ type Args = {
   rangeStartIso: string;
   rangeEndIso: string;
   spaceIds?: string[];
+  mineOnly?: boolean;
 };
 
 type StudioReservationsDataState = {
@@ -39,6 +40,7 @@ export function useStudioReservationsData({
   rangeStartIso,
   rangeEndIso,
   spaceIds = [],
+  mineOnly = false,
 }: Args): StudioReservationsDataState {
   const [spaces, setSpaces] = useState<StudioSpaceRecord[]>([]);
   const [entries, setEntries] = useState<StudioCalendarEntryRecord[]>([]);
@@ -62,7 +64,7 @@ export function useStudioReservationsData({
     try {
       const idToken = await user.getIdToken();
       const [calendarResp, mineResp] = await Promise.all([
-        api.listStudioReservationCalendar({
+        mineOnly ? Promise.resolve(null) : api.listStudioReservationCalendar({
           idToken,
           adminToken,
           payload: {
@@ -81,7 +83,7 @@ export function useStudioReservationsData({
           },
         }),
       ]);
-      const calendarData = unwrapPortalData(calendarResp.data);
+      const calendarData = calendarResp ? unwrapPortalData(calendarResp.data) : null;
       const myData = unwrapPortalData(mineResp.data);
       setSpaces(
         Array.isArray(calendarData?.spaces)
@@ -115,7 +117,7 @@ export function useStudioReservationsData({
     } finally {
       setLoading(false);
     }
-  }, [adminToken, api, normalizedSpaceIds, rangeEndIso, rangeStartIso, user]);
+  }, [adminToken, api, mineOnly, normalizedSpaceIds, rangeEndIso, rangeStartIso, user]);
 
   useEffect(() => {
     void reload();

@@ -205,22 +205,26 @@ describe("StaffView cockpit routing", () => {
     expect(screen.queryByRole("heading", { name: "New firing ticket" })).toBeNull();
   });
 
-  it("renders the studio overview with six selectable areas", async () => {
+  it("omits the reservations marker while bookings are paused", async () => {
     window.history.replaceState({}, "", "/staff");
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     expect(within(overview).getByRole("img")).toBeTruthy();
-    expect(overview.querySelectorAll(".staff-studio-marker")).toHaveLength(6);
+    expect(overview.querySelectorAll(".staff-studio-marker")).toHaveLength(5);
+    expect(overview.querySelector(".staff-studio-marker-calendar")).toBeNull();
   });
 
-  it("opens staff reservations from the sidebar without invoking ware check-in", async () => {
+  it("keeps reservation records in Archived tools without promoting booking", async () => {
     const onOpenCheckin = vi.fn();
     window.history.replaceState({}, "", "/staff");
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} onOpenCheckin={onOpenCheckin} />);
     const daily = screen.getByRole("navigation", { name: "Daily work" });
-    fireEvent.click(within(daily).getByRole("button", { name: "Reservations", exact: true }));
+    expect(within(daily).queryByRole("button", { name: "Reservations", exact: true })).toBeNull();
+    fireEvent.click(screen.getByText("Archived tools", { exact: true }));
+    const archive = screen.getByRole("navigation", { name: "Archived staff tools" });
+    fireEvent.click(within(archive).getByRole("button", { name: "Reservation records", exact: true }));
     await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit/studio-reservations"));
-    expect(within(daily).getByRole("button", { name: "Reservations", exact: true }).getAttribute("aria-current")).toBe("page");
+    expect(within(archive).getByRole("button", { name: "Reservation records", exact: true }).getAttribute("aria-current")).toBe("page");
     expect(onOpenCheckin).not.toHaveBeenCalled();
   });
 
@@ -270,7 +274,6 @@ describe("StaffView cockpit routing", () => {
     expect(await screen.findByText("All clear")).toBeTruthy();
   });
   it.each([
-    ["calendar", "View calendar", "/staff/cockpit/studio-reservations"],
     ["kiln", "View kiln schedule fallback", "/staff/cockpit/firings"],
     ["counter", "Open tickets", "/staff/cockpit/finance"],
   ])("opens the %s workflow from the studio", async (marker, _action, route) => {

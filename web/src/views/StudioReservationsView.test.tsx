@@ -233,6 +233,18 @@ afterEach(() => {
 });
 
 describe("StudioReservationsView", () => {
+  it("shows the pause on old links and keeps existing cancellations available", async () => {
+    useStudioReservationsData.mockReturnValue({
+      ...baseHookValue(), entries: [makeEntry({})], myReservations: [makeReservation({})],
+    });
+    render(<StudioReservationsView user={createUser()} isStaff={false} bookingPaused />);
+    expect(screen.getByRole("heading", { name: "Studio reservations are paused" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Book |join waitlist|browse this day/i })).toBeNull();
+    expect(useStudioReservationsData).toHaveBeenCalledWith(expect.objectContaining({ mineOnly: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/i }));
+    await waitFor(() => expect(apiMock.cancelStudioReservation).toHaveBeenCalledTimes(1));
+    expect(apiMock.createStudioReservation).not.toHaveBeenCalled();
+  });
   it("renders a space-first flow with a featured opening and available-day browsing", async () => {
     useStudioReservationsData.mockReturnValue({
       ...baseHookValue(),

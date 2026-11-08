@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { FIRING_PATHFINDER_URL } from "../../utils/reservationsPaths";
+import { FIRING_PATHFINDER_URL, STUDIO_BOOKINGS_PAUSED } from "../../utils/reservationsPaths";
 
 type Props = {
   active: string;
@@ -17,7 +17,7 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
   const daily = [
     { key: "today", label: "Today", action: onHome },
     { key: "finance", label: "Tickets & payments", action: () => onNavigate("finance") },
-    { key: "studioReservations", label: "Reservations", action: onReservations },
+    ...(STUDIO_BOOKINGS_PAUSED ? [] : [{ key: "studioReservations", label: "Reservations", action: onReservations }]),
     { key: "members", label: "Clients", action: () => onNavigate("members") },
     { key: "messages", label: "Messages", action: onMessages },
   ];
@@ -35,11 +35,12 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
       ].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
       <div className="staff-workspace-nav-label">Administration</div>
       <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
-      <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || undefined}>
+      <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || (STUDIO_BOOKINGS_PAUSED && active === "studioReservations") || undefined}>
         <summary>Archived tools</summary>
         <nav aria-label="Archived staff tools">
           <button type="button" aria-current={active === "checkins" ? "page" : undefined} onClick={() => onNavigate("checkins")}>Drop-off records</button>
           <button type="button" aria-current={active === "firings" ? "page" : undefined} onClick={() => onNavigate("firings")}>Firing records and controls</button>
+          {STUDIO_BOOKINGS_PAUSED ? <button type="button" aria-current={active === "studioReservations" ? "page" : undefined} onClick={onReservations}>Reservation records</button> : null}
         </nav>
       </details>
       {onPortal ? <button type="button" className="btn btn-ghost staff-return-portal" onClick={onPortal}>Return to portal</button> : null}

@@ -7,6 +7,7 @@ const WARE_CHECKIN_ALIASES = new Set([
 ]);
 
 export const STUDIO_RESERVATIONS_PATH = "/reservations";
+export const STUDIO_BOOKINGS_PAUSED = true;
 export const WARE_CHECKIN_PATH = "/ware-check-in";
 export const FIRING_PATHFINDER_URL = "https://monsoonfire.com/firing-services/pathfinder/";
 

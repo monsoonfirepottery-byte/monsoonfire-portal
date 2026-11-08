@@ -21,9 +21,10 @@
 .staff-workspace-nav nav button { color: inherit; background: transparent; border: 0; border-radius: 6px; padding: 11px 12px; font: inherit; font-size: 14px; text-align: left; cursor: pointer; min-height: 42px; }
 .staff-workspace-nav nav button:hover { background: var(--surface-2, #edf2f5); }
 .staff-workspace-nav nav button[aria-current="page"] { background: var(--surface-2, #edf2f5); color: var(--text); font-weight: 700; box-shadow: inset 3px 0 var(--accent, #297387); }
-.staff-workspace-nav-label { font-size: 12px; color: var(--muted); margin: 24px 12px 8px; }
-.staff-archived-tools { margin: 1rem 0.75rem; color: var(--muted); font-size: 0.85rem; }
-.staff-archived-tools summary { padding: 0.5rem 0; cursor: pointer; }
+.staff-extra-tools { margin-top: 14px; padding: 4px 0 4px 12px; border-left: 1px solid var(--desk-line); }
+.staff-workspace-nav-label { margin: 18px 0 6px; padding: 0 12px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.staff-archived-tools { margin: 1rem 0; padding: 0 12px; color: var(--muted); font-size: 0.85rem; }
+.staff-archived-tools summary { padding: 0.5rem 0; cursor: pointer; font-weight: 700; }
 .staff-workspace-nav .staff-more-tools { display: none; }
 .staff-workspace-nav .staff-archived-tools nav { display: grid; }
 .staff-new-ticket { width: 100%; margin-bottom: 20px; min-height: 44px; }
@@ -128,7 +129,8 @@
   .staff-workspace-nav { position: static; max-height: none; border-right: 0; padding: 0 0 18px; margin-bottom: 20px; border-bottom: 1px solid var(--desk-line); }
   .staff-workspace-brand { margin-bottom: 12px; }
   .staff-workspace-nav nav { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
-  .staff-workspace-nav-label { margin: 12px 4px 4px; }
+  .staff-extra-tools { margin-top: 10px; padding-left: 8px; }
+  .staff-workspace-nav-label { margin: 12px 4px 4px; padding-left: 8px; }
   .staff-workspace-nav nav button { padding: 9px 10px; }
   .staff-new-ticket { width: auto; margin-bottom: 12px; }
   .staff-section-tabs { flex-wrap: wrap; gap: 0 12px; }

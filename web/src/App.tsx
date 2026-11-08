@@ -2513,7 +2513,6 @@ export default function App() {
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
             onOpenCheckin={() => setNav("wareCheckIn")}
-            onOpenReservation={() => setNav("wareCheckIn")}
             onOpenClientStart={() => setNav("dashboard")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}

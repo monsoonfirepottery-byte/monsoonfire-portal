@@ -1,3 +1,4 @@
+import { useId, useState } from "react";
 import { FIRING_PATHFINDER_URL } from "../../utils/reservationsPaths";
 
 type Props = {
@@ -11,10 +12,12 @@ type Props = {
 };
 
 export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessages, onReservations, onNewTicket, onPortal }: Props) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreId = useId();
   const daily = [
     { key: "today", label: "Today", action: onHome },
     { key: "finance", label: "Tickets & payments", action: () => onNavigate("finance") },
-    { key: "reservations", label: "Reservations", action: onReservations },
+    { key: "studioReservations", label: "Reservations", action: onReservations },
     { key: "members", label: "Clients", action: () => onNavigate("members") },
     { key: "messages", label: "Messages", action: onMessages },
   ];
@@ -23,20 +26,23 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
     {onNewTicket ? <button type="button" className="btn btn-primary staff-new-ticket" onClick={onNewTicket}>+ New firing ticket</button> : null}
     <nav aria-label="Daily work">{daily.map((item) => <button key={item.key} type="button" aria-current={active === item.key ? "page" : undefined} onClick={item.action}>{item.label}</button>)}</nav>
     <a className="btn btn-ghost" href={FIRING_PATHFINDER_URL} target="_blank" rel="noreferrer">Firing Pathfinder (new tab)</a>
-    <div className="staff-workspace-nav-label">Studio</div>
-    <nav aria-label="Studio management">{[
-      ["pieces", "Pieces & batches"], ["events", "Events"], ["lending", "Library"],
-      ["communityBlogs", "Studio blog"], ["reports", "Reports"],
-    ].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
-    <div className="staff-workspace-nav-label">Administration</div>
-    <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
-    <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || undefined}>
-      <summary>Archived tools</summary>
-      <nav aria-label="Archived staff tools">
-        <button type="button" aria-current={active === "checkins" ? "page" : undefined} onClick={() => onNavigate("checkins")}>Drop-off records</button>
-        <button type="button" aria-current={active === "firings" ? "page" : undefined} onClick={() => onNavigate("firings")}>Firing records and controls</button>
-      </nav>
-    </details>
-    {onPortal ? <button type="button" className="btn btn-ghost staff-return-portal" onClick={onPortal}>Return to portal</button> : null}
+    <button type="button" className="btn btn-ghost staff-more-tools" aria-controls={moreId} aria-expanded={moreOpen} onClick={() => setMoreOpen((open) => !open)}>More tools</button>
+    <div id={moreId} className="staff-extra-tools" data-expanded={moreOpen}>
+      <div className="staff-workspace-nav-label">Studio</div>
+      <nav aria-label="Studio management">{[
+        ["pieces", "Pieces & batches"], ["events", "Events"], ["lending", "Library"],
+        ["communityBlogs", "Studio blog"], ["reports", "Reports"],
+      ].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
+      <div className="staff-workspace-nav-label">Administration</div>
+      <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
+      <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || undefined}>
+        <summary>Archived tools</summary>
+        <nav aria-label="Archived staff tools">
+          <button type="button" aria-current={active === "checkins" ? "page" : undefined} onClick={() => onNavigate("checkins")}>Drop-off records</button>
+          <button type="button" aria-current={active === "firings" ? "page" : undefined} onClick={() => onNavigate("firings")}>Firing records and controls</button>
+        </nav>
+      </details>
+      {onPortal ? <button type="button" className="btn btn-ghost staff-return-portal" onClick={onPortal}>Return to portal</button> : null}
+    </div>
   </aside>;
 }

@@ -6597,10 +6597,11 @@ export default function StaffView({
         })
       );
 
+      const unavailable = [...workflows, ...issues].filter((row) => row.error).length;
       setAutomationDashboard({
         loading: false,
         loadedAtMs: Date.now(),
-        error: "",
+        error: unavailable ? `Could not read ${unavailable} GitHub source${unavailable === 1 ? "" : "s"}. Refresh later or check GitHub directly.` : "",
         workflows,
         issues,
       });
@@ -7122,6 +7123,7 @@ export default function StaffView({
               onChange={(event) => setMemberSearch(event.target.value)}
             />
             <select
+              aria-label="Filter directory by role"
               className="staff-member-role-filter"
               value={memberRoleFilter}
               onChange={(event) => setMemberRoleFilter(event.target.value as MemberRoleFilter)}
@@ -8399,7 +8401,7 @@ export default function StaffView({
     }
     return alerts.slice(0, TODAY_ALERT_LIMIT);
   }, [automationDashboard.workflows, latestErrors, orders, unpaidCheckIns.length]);
-  const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError) || Boolean(automationDashboard.error);
+  const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError);
   const operationsNextReservationLabel = useMemo(() => {
     const nextReservation = [...todayReservations]
       .filter((reservation) => reservation.timeMs > 0)
@@ -8524,12 +8526,8 @@ export default function StaffView({
   );
 
   const openReservationsToday = useCallback(() => {
-    if (onOpenCheckin) {
-      onOpenCheckin();
-      return;
-    }
-    openModuleFromCockpit("checkins");
-  }, [onOpenCheckin, openModuleFromCockpit]);
+    openModuleFromCockpit("studio-reservations");
+  }, [openModuleFromCockpit]);
 
   const openReservationDetail = useCallback(
     (reservationId: string) => {
@@ -8638,6 +8636,16 @@ export default function StaffView({
         actionTarget: isWorkflowAlert ? "automation" : "finance",
       });
     }
+    if (automationDashboard.error) {
+      items.push({
+        id: "automation-status-unavailable",
+        tone: "watch",
+        title: "Automation status unavailable",
+        detail: automationDashboard.error,
+        actionLabel: "Review automation",
+        actionTarget: "automation",
+      });
+    }
 
     const pickupReviews = todayPickupTickets.filter(requiresPickupReview).slice(0, 3).map((ticket): StaffTaskHomeAttentionItem => ({
       id: `pickup-review-${ticket.ticketId}`,
@@ -8650,6 +8658,7 @@ export default function StaffView({
     return [...pickupReviews, ...items].slice(0, 6);
   }, [
     announcementsError,
+    automationDashboard.error,
     cockpitTodayMessageRows,
     messageThreadsError,
     messagesDegraded,

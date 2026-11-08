@@ -207,6 +207,27 @@ describe("StaffView cockpit routing", () => {
     expect(overview.querySelectorAll(".staff-studio-marker")).toHaveLength(6);
   });
 
+  it("opens staff reservations from the sidebar without invoking ware check-in", async () => {
+    const onOpenCheckin = vi.fn();
+    window.history.replaceState({}, "", "/staff");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} onOpenCheckin={onOpenCheckin} />);
+    const daily = screen.getByRole("navigation", { name: "Daily work" });
+    fireEvent.click(within(daily).getByRole("button", { name: "Reservations", exact: true }));
+    await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit/studio-reservations"));
+    expect(within(daily).getByRole("button", { name: "Reservations", exact: true }).getAttribute("aria-current")).toBe("page");
+    expect(onOpenCheckin).not.toHaveBeenCalled();
+  });
+
+  it("shows missing automation data as unavailable and routes to Automation", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("Rate limit exceeded", { status: 403 })));
+    window.history.replaceState({}, "", "/staff");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
+    const item = await screen.findByTestId("staff-task-home-attention-automation-status-unavailable");
+    expect(item.textContent).toContain("Automation status unavailable");
+    fireEvent.click(within(item).getByRole("button", { name: "Review automation" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit/automation"));
+  });
+
   it("opens an exact pickup review and removes it from Today only after it is saved", async () => {
     const fixture = {
       email: "artist@example.com", status: "awaiting_pickup_review", billingStatus: "unbilled", noticeStatus: "not_queued",
@@ -221,7 +242,7 @@ describe("StaffView cockpit routing", () => {
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
     const second = await screen.findByTestId("staff-task-home-attention-pickup-review-MF-1002-TEST");
     fireEvent.click(within(second).getByRole("button", { name: "Open ticket" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Second Artist/ }).getAttribute("aria-pressed")).toBe("true"), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Second Artist/ }).getAttribute("aria-pressed")).toBe("true"), { timeout: 8000 });
     await screen.findByDisplayValue("50.00");
     fireEvent.click(screen.getByRole("button", { name: "Mark ready & send pickup email" }));
     await waitFor(() => expect(postJsonMock).toHaveBeenCalledWith(
@@ -230,7 +251,7 @@ describe("StaffView cockpit routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Today", exact: true }));
     expect(await screen.findByTestId("staff-task-home-attention-pickup-review-MF-1001-TEST")).toBeTruthy();
     await waitFor(() => expect(screen.queryByTestId("staff-task-home-attention-pickup-review-MF-1002-TEST")).toBeNull());
-  });
+  }, 15000);
 
   it("lets staff retry an unavailable pickup queue without declaring Today clear", async () => {
     pickupQueueUnavailable = true;

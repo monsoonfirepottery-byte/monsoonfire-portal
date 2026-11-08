@@ -6860,12 +6860,11 @@ export default function StaffView({
             </select>
           </div>
           <div className="staff-table-wrap">
-            <table className="staff-table">
+            <table className="staff-table staff-client-directory-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th>Role</th>
-                  <th>Account type</th>
                   <th>Email</th>
                   <th>Last seen</th>
                 </tr>
@@ -6873,7 +6872,7 @@ export default function StaffView({
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>No clients match current filters.</td>
+                    <td colSpan={4}>No clients match current filters.</td>
                   </tr>
                 ) : (
                   filteredMembers.map((member) => (
@@ -6891,7 +6890,6 @@ export default function StaffView({
                     >
                       <td>{member.displayName}</td>
                       <td><span className="pill">{memberRoleLabel(member.role)}</span></td>
-                      <td><span className="pill">{member.accountType}</span></td>
                       <td>{member.email}</td>
                       <td>{when(member.lastSeenAtMs)}</td>
                     </tr>

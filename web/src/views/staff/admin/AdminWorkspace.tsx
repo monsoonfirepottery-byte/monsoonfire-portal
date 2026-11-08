@@ -13,6 +13,7 @@ export function AdminPageHeader({ eyebrow, title, description, art, children }: 
 
 export function AdminWorkflow({ label, stages }: { label: string; stages: AdminStage[] }) {
   return <figure className="admin-workflow" aria-label={label}>
+    <style>{ADMIN_STYLE}</style>
     <figcaption>{label}</figcaption>
     <ol>{stages.map((stage, index) => <li key={stage.label} data-state={stage.state ?? "neutral"} style={{ "--admin-step": index } as React.CSSProperties}>
       <span className="admin-workflow-marker" aria-hidden="true">{index + 1}</span><span><strong>{stage.label}</strong>{stage.detail ? <small>{stage.detail}</small> : null}</span>

@@ -2742,6 +2742,13 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   cursor: pointer;
 }
 
+@media (max-width: 720px) {
+  .staff-table { min-width: 0; table-layout: fixed; }
+  .staff-table th, .staff-table td { padding: 8px 5px; overflow-wrap: anywhere; }
+  .staff-table th:nth-child(3), .staff-table td:nth-child(3) { display: none; }
+  .staff-table td:nth-child(2) .pill { white-space: normal; line-height: 1.2; }
+}
+
 .staff-click-row:focus-visible {
   outline: 2px solid rgba(190, 244, 217, 0.85);
   outline-offset: -2px;

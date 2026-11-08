@@ -105,7 +105,6 @@ import type {
   StaffTaskHomeAttentionItem,
   StaffTaskHomeCard,
   StaffTaskHomeLane,
-  StaffTaskHomeMoreAction,
   StaffTaskHomeTone,
 } from "./staff/TaskHomeModule";
 import { resolveOperationsOverview } from "./staff/operationsOverview";
@@ -6597,10 +6596,11 @@ export default function StaffView({
         })
       );
 
+      const unavailable = [...workflows, ...issues].filter((row) => row.error).length;
       setAutomationDashboard({
         loading: false,
         loadedAtMs: Date.now(),
-        error: "",
+        error: unavailable ? `Could not read ${unavailable} GitHub source${unavailable === 1 ? "" : "s"}. Refresh later or check GitHub directly.` : "",
         workflows,
         issues,
       });
@@ -7122,6 +7122,7 @@ export default function StaffView({
               onChange={(event) => setMemberSearch(event.target.value)}
             />
             <select
+              aria-label="Filter directory by role"
               className="staff-member-role-filter"
               value={memberRoleFilter}
               onChange={(event) => setMemberRoleFilter(event.target.value as MemberRoleFilter)}
@@ -8399,7 +8400,7 @@ export default function StaffView({
     }
     return alerts.slice(0, TODAY_ALERT_LIMIT);
   }, [automationDashboard.workflows, latestErrors, orders, unpaidCheckIns.length]);
-  const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError) || Boolean(automationDashboard.error);
+  const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError);
   const operationsNextReservationLabel = useMemo(() => {
     const nextReservation = [...todayReservations]
       .filter((reservation) => reservation.timeMs > 0)
@@ -8524,12 +8525,8 @@ export default function StaffView({
   );
 
   const openReservationsToday = useCallback(() => {
-    if (onOpenCheckin) {
-      onOpenCheckin();
-      return;
-    }
-    openModuleFromCockpit("checkins");
-  }, [onOpenCheckin, openModuleFromCockpit]);
+    openModuleFromCockpit("studio-reservations");
+  }, [openModuleFromCockpit]);
 
   const openReservationDetail = useCallback(
     (reservationId: string) => {
@@ -8638,6 +8635,16 @@ export default function StaffView({
         actionTarget: isWorkflowAlert ? "automation" : "finance",
       });
     }
+    if (automationDashboard.error) {
+      items.push({
+        id: "automation-status-unavailable",
+        tone: "watch",
+        title: "Automation status unavailable",
+        detail: automationDashboard.error,
+        actionLabel: "Review automation",
+        actionTarget: "automation",
+      });
+    }
 
     const pickupReviews = todayPickupTickets.filter(requiresPickupReview).slice(0, 3).map((ticket): StaffTaskHomeAttentionItem => ({
       id: `pickup-review-${ticket.ticketId}`,
@@ -8650,6 +8657,7 @@ export default function StaffView({
     return [...pickupReviews, ...items].slice(0, 6);
   }, [
     announcementsError,
+    automationDashboard.error,
     cockpitTodayMessageRows,
     messageThreadsError,
     messagesDegraded,
@@ -8903,60 +8911,6 @@ export default function StaffView({
     unreadAnnouncements,
     unreadMessageCount,
   ]);
-
-  const taskHomeMoreActions = useMemo<StaffTaskHomeMoreAction[]>(
-    () => [
-      {
-        id: "control-tower",
-        label: "Control Tower",
-        description: "Open the browser-first Studio Brain operator bridge for rooms, services, and incidents.",
-        target: "controlTower",
-      },
-      {
-        id: "cockpit",
-        label: "Operations cockpit",
-        description: "Open the legacy operations cockpit and automation panels.",
-        target: "cockpit",
-      },
-      {
-        id: "reservations",
-        label: "Reservations calendar",
-        description: "Open the full studio reservations workspace.",
-        target: "studioReservations",
-      },
-      {
-        id: "community-blogs",
-        label: "Community blogs",
-        description: "Edit and review blog content for community publishing.",
-        target: "communityBlogs",
-      },
-      {
-        id: "reports",
-        label: "Reports",
-        description: "Open trust, moderation, and report follow-up tools.",
-        target: "reports",
-      },
-      {
-        id: "system",
-        label: "System",
-        description: "Inspect platform health, incidents, and service checks.",
-        target: "system",
-      },
-      {
-        id: "policy-agent-ops",
-        label: "Policy & agent ops",
-        description: "Open governance, agent, and policy operations surfaces.",
-        target: "policy-agent-ops",
-      },
-      {
-        id: "module-telemetry",
-        label: "Telemetry",
-        description: "Review module telemetry and engagement snapshots.",
-        target: "module-telemetry",
-      },
-    ],
-    []
-  );
 
   const handleTaskHomeAction = useCallback(
     (target: string) => {
@@ -9850,14 +9804,10 @@ export default function StaffView({
 
   const taskHomeContent = (
     <TaskHomeModule
-      title="Staff tasks"
-      summary="Open the workflow you need by task, not by module tree. The most common staff jobs stay one click away."
-      clickBudgetNote="Click budget: every primary action below opens its workflow in one click. A second click is only for refinement inside that workspace."
       attentionItems={taskHomeAttentionItems}
       pickupQueueState={isStaff ? todayPickupState : undefined}
       onRetryPickupQueue={() => setTodayPickupRetry((attempt) => attempt + 1)}
       lanes={taskHomeLanes}
-      moreActions={taskHomeMoreActions}
       onAction={handleTaskHomeAction}
     />
   );

@@ -130,12 +130,14 @@ export default function CommerceModule({
               Seed materials catalog
             </button>
             <input
+              aria-label="Search store orders"
               className="staff-member-search"
               placeholder="Search orders by id, status, notes"
               value={commerceSearch}
               onChange={(event) => setCommerceSearch(event.target.value)}
             />
             <select
+              aria-label="Filter store orders by status"
               className="staff-member-role-filter"
               value={commerceStatusFilter}
               onChange={(event) => setCommerceStatusFilter(event.target.value)}

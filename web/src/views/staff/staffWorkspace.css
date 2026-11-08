@@ -74,7 +74,21 @@
 .staff-human-workspace .firing-billing-ticket.is-selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
 .firing-billing-ticket-reference { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
 .firing-ticket-amount { font-size: 22px; font-weight: 650; margin-top: 12px; }
-.firing-billing-ticket-state { color: var(--muted); font-size: 13px; }
+.firing-billing-ticket-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--muted); font-size: 13px; }
+.firing-ticket-tag {
+  --tag: #e0a039;
+  padding: 3px 8px;
+  border: 1px solid var(--tag);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tag) 23%, var(--surface));
+  color: var(--text);
+  font-weight: 650;
+}
+.firing-ticket-tag[data-tone="issue"] { --tag: #e26f72; }
+.firing-ticket-tag[data-tone="incoming"] { --tag: #63aeea; }
+.firing-ticket-tag[data-tone="due"] { --tag: #bd8fe4; }
+.firing-ticket-tag[data-tone="ready"] { --tag: #59b987; }
+.firing-ticket-tag[data-tone="done"] { --tag: #8e9ba3; }
 .staff-human-workspace .firing-billing-summary { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
 .firing-billing-ticket-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .firing-billing-detail, .firing-billing-review-form { display: grid; gap: 16px; min-width: 0; }
@@ -98,12 +112,6 @@
 .staff-human-workspace .staff-task-home-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .staff-human-workspace .staff-task-home-card { padding: 20px; box-shadow: none; }
 .staff-human-workspace .staff-task-home-card .staff-actions-row { margin-top: 12px; }
-.staff-daily-work { border: 1px solid var(--desk-line); border-radius: 10px; overflow: hidden; background: var(--surface); }
-.staff-daily-work-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 165px; align-items: center; gap: 24px; padding: 20px 24px; border-bottom: 1px solid var(--desk-line); }
-.staff-daily-work-row:last-child { border-bottom: 0; }
-.staff-daily-work-row h2 { font-size: 17px; margin: 0; }
-.staff-daily-work-row p { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
-.staff-daily-work-state { font-size: 13px; color: var(--muted); }
 .staff-daily-secondary { display: flex; flex-wrap: wrap; gap: 8px; }
 .staff-human-workspace .staff-identity-statusline-footer { font-size: 11px; overflow-wrap: anywhere; margin-top: 30px; color: var(--muted); }
 .staff-human-workspace button:focus-visible, .staff-human-workspace input:focus-visible { outline: 3px solid var(--accent, #297387); outline-offset: 3px; }
@@ -125,9 +133,6 @@
   .staff-section-tabs { flex-wrap: wrap; gap: 0 12px; }
   .staff-human-workspace .staff-task-home-lane-grid { grid-template-columns: 1fr; }
   .staff-human-workspace .firing-billing-module { padding: 12px; }
-  .staff-daily-work-row { grid-template-columns: 1fr auto; gap: 12px; padding: 18px 16px; }
-  .staff-daily-work-row > div { grid-column: 1 / -1; }
-  .staff-daily-work-row button { min-width: 145px; }
 }
 
 /* Today overview */
@@ -138,10 +143,6 @@
 .staff-today-section-heading p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
 .staff-today-attention .staff-note { margin: 0; }
 .staff-human-workspace .staff-task-home-attention-item { box-shadow: none; }
-.staff-today-metrics { display: flex; flex-wrap: wrap; gap: 12px 24px; }
-.staff-today-metrics div { display: flex; flex-direction: column; gap: 3px; }
-.staff-today-metrics dt { color: var(--muted); font-size: 12px; }
-.staff-today-metrics dd { margin: 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Illustrated studio overview. The text picker remains available at every size. */
 .staff-today-header h1 { margin: 0; font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; letter-spacing: -.025em; }
 .staff-today-header p { margin: 8px 0 0; color: var(--muted); }

@@ -4,6 +4,7 @@ import { humanTicketName, humanTicketReference } from "../../utils/ticketIdentit
 import { missingArtistContactFields } from "./staffContactValidation";
 import { sortFiringTickets, type TicketSortKey } from "./staffTicketSorting";
 import { requiresPickupReview } from "./pickupReviewQueue";
+import { firingQueueStatus } from "./firingQueueStatus";
 
 type BillingOutcome =
   | "normal_billable"
@@ -119,25 +120,6 @@ function formatMoney(cents: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
-function humanStatus(value: string): string {
-  const labels: Record<string, string> = {
-    unbilled: "Needs pickup review",
-    hold_for_review: "Held for review",
-    billing_preparing: "Preparing invoice",
-    invoice_open: "Ready · payment open",
-    payment_failed: "Ready · payment needs attention",
-    paid: "Ready · paid",
-    no_charge: "Ready · no charge",
-    adjustment_pending: "Billing update in progress",
-    partially_refunded: "Partially refunded",
-    refunded: "Refunded",
-    refund_failed: "Refund needs attention",
-    void: "Invoice canceled",
-    reconciliation_required: "Needs billing recovery",
-  };
-  return labels[value] ?? value.replace(/_/g, " ");
-}
-
 function humanStudioStage(value: string): string {
   const labels: Record<string, string> = {
     expected_dropoff: "Expected for drop-off",
@@ -210,26 +192,8 @@ function isBillingOrPickupTicket(ticket: FiringTicket): boolean {
   return !isOpenFiringTicket(ticket) && !needsPickupReview(ticket);
 }
 
-function ticketStatusLabel(ticket: FiringTicket): string {
-  if (isOpenFiringTicket(ticket)) return "Open · not unloaded";
-  if (ticket.billingStatus === "unbilled" && ticket.status === "awaiting_pickup_review") {
-    return "Pickup review";
-  }
-  return humanStatus(ticket.billingStatus);
-}
-
-function ticketTone(ticket: FiringTicket): "attention" | "open" | "ready" | "hold" {
-  if (ticket.billingStatus === "hold_for_review" || ticket.billingStatus === "refund_failed" || ticket.billingStatus === "payment_failed" || ["needs_review", "failed"].includes(ticket.stripeReceiptPrint?.status ?? "")) return "hold";
-  if (isOpenFiringTicket(ticket)) return "open";
-  if (ticket.status === "ready_for_pickup" || ticket.status === "picked_up" || ticket.billingStatus === "paid" || ticket.billingStatus === "no_charge") return "ready";
-  return "attention";
-}
-
 function ticketSeverity(ticket: FiringTicket): number {
-  if (ticket.billingStatus === "hold_for_review" || ticket.billingStatus === "refund_failed" || ticket.billingStatus === "payment_failed" || RECOVERY_STATUSES.has(ticket.billingStatus)) return 0;
-  if (needsPickupReview(ticket)) return 1;
-  if (isOpenFiringTicket(ticket)) return 2;
-  return 3;
+  return firingQueueStatus(ticket).priority;
 }
 
 function workSlipPrintStatus(ticket: FiringTicket): string {
@@ -328,7 +292,9 @@ export default function FiringPickupBillingModule({
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const initialTicketRef = useRef(initialTicketId);
   const [missingInitialTicket, setMissingInitialTicket] = useState(false);
-  const [filter, setFilter] = useState<"attention" | "open" | "review" | "ready" | "all">(view === "today" ? "attention" : "all");
+  const [filter, setFilter] = useState<"attention" | "open" | "review" | "ready" | "all" | "work" | "pickup" | "history">(
+    initialTicketId ? "all" : view === "tickets" ? "work" : view === "money" ? "ready" : "attention",
+  );
   const [ticketSearch, setTicketSearch] = useState("");
   const ticketListRef = useRef<HTMLElement>(null);
   const [sortBy, setSortBy] = useState<TicketSortKey>("severity");
@@ -478,14 +444,22 @@ export default function FiringPickupBillingModule({
   );
 
   useEffect(() => {
-    if (view === "tickets") setFilter("all");
+    if (view === "tickets") setFilter(initialTicketId ? "all" : "work");
     if (view === "money") setFilter("ready");
     if (view === "today") setFilter("attention");
-  }, [view]);
+  }, [initialTicketId, view]);
+
+  const queueCounts = useMemo(() => {
+    const counts = { work: 0, pickup: 0, history: 0, all: tickets.length };
+    for (const ticket of tickets) counts[firingQueueStatus(ticket).group] += 1;
+    return counts;
+  }, [tickets]);
 
   const visibleTickets = useMemo(() => {
     const scoped = filter === "all"
       ? tickets
+      : filter === "work" || filter === "pickup" || filter === "history"
+        ? tickets.filter((ticket) => firingQueueStatus(ticket).group === filter)
       : filter === "attention"
         ? tickets.filter(needsOwnerAttention)
       : filter === "open"
@@ -902,9 +876,9 @@ export default function FiringPickupBillingModule({
               <span className="firing-workflow-art" data-stage="unload" aria-hidden="true" />
               <span className="firing-workflow-copy"><strong>Unloading</strong><span>Review tickets after firing</span>{hasLoaded ? <small>{tickets.filter(needsPickupReview).length} to review</small> : null}</span>
             </button></li>
-            <li><button type="button" className="firing-workflow-stage" aria-pressed={filter === "ready"} onClick={() => setFilter("ready")}>
+            <li><button type="button" className="firing-workflow-stage" aria-pressed={filter === "pickup"} onClick={() => setFilter("pickup")}>
               <span className="firing-workflow-art" data-stage="billing" aria-hidden="true" />
-              <span className="firing-workflow-copy"><strong>Billing &amp; pickup</strong><span>View payment and pickup status</span>{hasLoaded ? <small>{tickets.filter(isBillingOrPickupTicket).length} tickets</small> : null}</span>
+              <span className="firing-workflow-copy"><strong>Billing &amp; pickup</strong><span>View payment and pickup status</span>{hasLoaded ? <small>{queueCounts.pickup} awaiting pickup</small> : null}</span>
             </button></li>
           </ol>
         </section>
@@ -923,11 +897,19 @@ export default function FiringPickupBillingModule({
 
       <div className="staff-actions-row firing-billing-filters" role="group" aria-label="Filter firing tickets">
         <label className="staff-field firing-ticket-search">Find a ticket<input type="search" placeholder="Name, email, or ticket number" value={ticketSearch} onChange={(event) => setTicketSearch(event.target.value)} /></label>
-        {view === "today" ? <button className={`btn ${filter === "attention" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("attention")}>Needs you</button> : null}
-        <button className={`btn ${filter === "open" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("open")}>Open tickets</button>
-        <button className={`btn ${filter === "review" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("review")}>Pickup review</button>
-        <button className={`btn ${filter === "ready" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("ready")}>Ready</button>
-        <button className={`btn ${filter === "all" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("all")}>All</button>
+        {view === "tickets" ? (
+          ([["work", "Needs work"], ["pickup", "Awaiting pickup"], ["history", "History"], ["all", "All tickets"]] as const).map(([key, label]) => (
+            <button key={key} className={`btn ${filter === key ? "btn-primary" : "btn-ghost"}`} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>
+              {label}{hasLoaded ? ` · ${queueCounts[key]}` : ""}
+            </button>
+          ))
+        ) : <>
+          {view === "today" ? <button className={`btn ${filter === "attention" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("attention")}>Needs you</button> : null}
+          <button className={`btn ${filter === "open" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("open")}>Open tickets</button>
+          <button className={`btn ${filter === "review" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("review")}>Pickup review</button>
+          <button className={`btn ${filter === "ready" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("ready")}>Ready</button>
+          <button className={`btn ${filter === "all" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setFilter("all")}>All</button>
+        </>}
         <label className="firing-billing-sort">Sort by
           <select aria-label="Sort firing tickets" value={sortBy} onChange={(event) => setSortBy(event.target.value as TicketSortKey)}>
             <option value="severity">Needs attention</option>
@@ -961,30 +943,36 @@ export default function FiringPickupBillingModule({
             <strong>{visibleTickets.length} {visibleTickets.length === 1 ? "ticket" : "tickets"}</strong>
             <span className="staff-mini">{selectedTicketIndex >= 0 ? `${selectedTicketIndex + 1} of ${visibleTickets.length}` : "No ticket selected"}</span>
           </div> : null}
-          {hasLoaded && visibleTickets.length === 0 ? <div className="staff-note">{(searchQuery || ticketSearch).trim() ? "No tickets match that search." : "No tickets in this view. Choose All or create a new firing ticket."}</div> : null}
-          {visibleTickets.map((ticket, ticketIndex) => (
-            <button
-              key={ticket.ticketId}
-              type="button"
-              className={`firing-billing-ticket is-${ticketTone(ticket)} ${ticket.ticketId === selectedTicketId ? "is-selected" : ""} ${busy && ticket.ticketId === selectedTicketId ? "is-transitioning" : ""}`}
-              aria-pressed={ticket.ticketId === selectedTicketId}
-              aria-keyshortcuts="ArrowUp ArrowDown"
-              onClick={() => setSelectedTicketId(ticket.ticketId)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setSelectedTicketId(visibleTickets[Math.min(ticketIndex + 1, visibleTickets.length - 1)].ticketId);
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setSelectedTicketId(visibleTickets[Math.max(ticketIndex - 1, 0)].ticketId);
-                }
-              }}
-            >
-              <span><strong>{humanTicketName(ticket.displayName)}</strong><small className="firing-billing-ticket-reference">{humanTicketReference(ticket.ticketId)}</small></span>
-              <span className="firing-billing-ticket-state"><i aria-hidden="true" />{ticket.heatLabel} · {ticketStatusLabel(ticket)}</span>
-            </button>
-          ))}
+          {hasLoaded && visibleTickets.length === 0 ? <div className="staff-note">{(searchQuery || ticketSearch).trim() ? "No tickets match that search." : filter === "work" ? "No tickets need work. Check Awaiting pickup or History." : "No tickets in this view."}</div> : null}
+          {visibleTickets.map((ticket, ticketIndex) => {
+            const queueStatus = firingQueueStatus(ticket);
+            return (
+              <button
+                key={ticket.ticketId}
+                type="button"
+                className={`firing-billing-ticket ${ticket.ticketId === selectedTicketId ? "is-selected" : ""} ${busy && ticket.ticketId === selectedTicketId ? "is-transitioning" : ""}`}
+                aria-pressed={ticket.ticketId === selectedTicketId}
+                aria-keyshortcuts="ArrowUp ArrowDown"
+                onClick={() => setSelectedTicketId(ticket.ticketId)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setSelectedTicketId(visibleTickets[Math.min(ticketIndex + 1, visibleTickets.length - 1)].ticketId);
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSelectedTicketId(visibleTickets[Math.max(ticketIndex - 1, 0)].ticketId);
+                  }
+                }}
+              >
+                <span><strong>{humanTicketName(ticket.displayName)}</strong><small className="firing-billing-ticket-reference">{humanTicketReference(ticket.ticketId)}</small></span>
+                <span className="firing-billing-ticket-state">
+                  <span className="firing-ticket-tag" data-tone={queueStatus.tone}>{queueStatus.label}</span>
+                  {ticket.heatLabel ? <span>{ticket.heatLabel}</span> : null}
+                </span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="firing-billing-detail">
@@ -993,7 +981,7 @@ export default function FiringPickupBillingModule({
               <header className="firing-billing-summary">
                 <div>
                   <div className="card-title">{humanTicketName(selected.displayName)}</div>
-                  <div>{humanTicketReference(selected.ticketId)} · {selected.heatLabel} · {ticketStatusLabel(selected)}</div>
+                  <div>{humanTicketReference(selected.ticketId)} · {selected.heatLabel} · {firingQueueStatus(selected).label}</div>
                   {selected.email ? <div className="staff-mini">{selected.email}</div> : null}
                   <div className="firing-ticket-amount">{selected.finalChargeCents === null ? "Not billed yet" : formatMoney(selected.finalChargeCents)}{selected.refundedAmountCents > 0 ? ` · ${formatMoney(selected.refundedAmountCents)} refunded` : ""}</div>
                   <div className="firing-billing-ticket-nav" aria-label="Ticket navigation">

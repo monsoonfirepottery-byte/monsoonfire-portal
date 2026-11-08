@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FunctionsClient } from "../../api/functionsClient";
 import FiringPickupBillingModule from "./FiringPickupBillingModule";
@@ -85,6 +85,24 @@ afterEach(() => {
 });
 
 describe("FiringPickupBillingModule", () => {
+  it("keeps pickup and history outside the default work list without hiding payment failures", async () => {
+    const { client } = createClient([
+      ticket({ ticketId: "MF-001-NEW", displayName: "Incoming Artist", status: "expected_dropoff" }),
+      ticket({ ticketId: "MF-002-DUE", displayName: "Pickup Artist", status: "ready_for_pickup", billingStatus: "invoice_open" }),
+      ticket({ ticketId: "MF-003-DONE", displayName: "Past Artist", status: "picked_up", billingStatus: "paid" }),
+      ticket({ ticketId: "MF-004-FAIL", displayName: "Problem Artist", status: "picked_up", billingStatus: "payment_failed" }),
+    ]);
+    render(<FiringPickupBillingModule client={client} isStaff view="tickets" />);
+    const list = () => within(screen.getByRole("navigation", { name: "Firing tickets" }));
+    await screen.findByRole("button", { name: "Needs work · 2" });
+    expect(list().getByRole("button", { name: /Incoming Artist.*Expected drop-off/ })).toBeTruthy();
+    expect(list().getByRole("button", { name: /Problem Artist.*Payment failed/ })).toBeTruthy();
+    expect(list().queryByRole("button", { name: /Pickup Artist|Past Artist/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Awaiting pickup · 1" }));
+    expect(list().getByRole("button", { name: /Pickup Artist.*payment due/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "History · 1" }));
+    expect(list().getByRole("button", { name: /Past Artist.*Picked up · paid/ })).toBeTruthy();
+  });
   it("charges requested add-ons only when staff confirms fulfillment", async () => {
     const { client, postJson } = createClient(ticket({ pricingVersion: 2, requestedSpaceId: "large", addOnRequests: { private: true, rush: true } }));
     render(<FiringPickupBillingModule client={client} isStaff />);
@@ -185,6 +203,7 @@ describe("FiringPickupBillingModule", () => {
     render(<FiringPickupBillingModule client={client} isStaff />);
 
     const name = await screen.findByRole("textbox", { name: /Name or nickname/i });
+    await waitFor(() => expect((name as HTMLInputElement).value).toBe("New ticket"));
     fireEvent.change(name, { target: { value: "Micha" } });
     expect(await screen.findByRole("button", { name: /Use Micha Wynne · micah@example\.com/i })).toBeTruthy();
     expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("");

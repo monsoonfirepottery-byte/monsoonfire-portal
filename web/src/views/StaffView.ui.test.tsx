@@ -44,8 +44,20 @@ vi.mock("firebase/storage", () => ({
   uploadBytes: vi.fn(async () => ({ metadata: {} })),
 }));
 
-const postJsonMock = vi.fn(async (fn: string) => {
+let pickupTickets: Array<{ ticketId: string; displayName: string; status: string; billingStatus: string }> = [];
+let pickupQueueUnavailable = false;
+const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string }) => {
   switch (fn) {
+    case "staffListFiringPickupReviews":
+      if (pickupQueueUnavailable) throw new Error("Temporary ticket queue failure");
+      return { data: { tickets: pickupTickets, runtime: {
+        stripeMode: "test", invoicesEnabled: true, firingBillingEnabled: true, liveWritesEnabled: false,
+      } } };
+    case "staffFinalizeFiringPickup":
+      pickupTickets = pickupTickets.map((ticket) => ticket.ticketId === body?.ticketId
+        ? { ...ticket, status: "ready_for_pickup", billingStatus: "invoice_open" }
+        : ticket);
+      return { ok: true };
     case "apiV1/v1/library.items.list":
       return { data: { items: [] } };
     case "apiV1/v1/library.staff.dashboard":
@@ -100,11 +112,13 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
   default: ({
     operationsContent,
     reservationNotificationPolicyContent,
+    firingPickupBillingContent,
     cockpitTab,
   }: {
     cockpitTab: string;
     operationsContent: ReactNode;
     reservationNotificationPolicyContent?: ReactNode;
+    firingPickupBillingContent?: ReactNode;
   }) => (
     <div data-testid="cockpit-ops-panel">
       <div data-testid="cockpit-current-tab">{cockpitTab}</div>
@@ -112,6 +126,7 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
         <div data-testid="cockpit-reservation-policy">{reservationNotificationPolicyContent}</div>
       ) : null}
       {operationsContent}
+      {cockpitTab === "finance" ? firingPickupBillingContent : null}
     </div>
   ),
 }));
@@ -152,6 +167,8 @@ function buildUser(): User {
 describe("StaffView cockpit routing", () => {
   beforeEach(() => {
     postJsonMock.mockClear();
+    pickupTickets = [];
+    pickupQueueUnavailable = false;
     window.history.replaceState({}, "", "/staff/cockpit/operations");
     vi.stubGlobal(
       "fetch",
@@ -188,6 +205,42 @@ describe("StaffView cockpit routing", () => {
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     expect(within(overview).getByRole("img")).toBeTruthy();
     expect(overview.querySelectorAll(".staff-studio-marker")).toHaveLength(6);
+  });
+
+  it("opens an exact pickup review and removes it from Today only after it is saved", async () => {
+    const fixture = {
+      email: "artist@example.com", status: "awaiting_pickup_review", billingStatus: "unbilled", noticeStatus: "not_queued",
+      billingVersion: 0, heatId: "mid", heatLabel: "Mid fire", requestedSpaceId: "double",
+      finalChargeCents: null, currency: "usd", otherRequestedServices: [],
+    };
+    pickupTickets = [
+      { ...fixture, ticketId: "MF-1001-TEST", displayName: "First Artist" },
+      { ...fixture, ticketId: "MF-1002-TEST", displayName: "Second Artist" },
+    ];
+    window.history.replaceState({}, "", "/staff");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
+    const second = await screen.findByTestId("staff-task-home-attention-pickup-review-MF-1002-TEST");
+    fireEvent.click(within(second).getByRole("button", { name: "Open ticket" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Second Artist/ }).getAttribute("aria-pressed")).toBe("true"), { timeout: 5000 });
+    await screen.findByDisplayValue("50.00");
+    fireEvent.click(screen.getByRole("button", { name: "Mark ready & send pickup email" }));
+    await waitFor(() => expect(postJsonMock).toHaveBeenCalledWith(
+      "staffFinalizeFiringPickup", expect.objectContaining({ ticketId: "MF-1002-TEST" }), expect.anything(),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Today", exact: true }));
+    expect(await screen.findByTestId("staff-task-home-attention-pickup-review-MF-1001-TEST")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId("staff-task-home-attention-pickup-review-MF-1002-TEST")).toBeNull());
+  });
+
+  it("lets staff retry an unavailable pickup queue without declaring Today clear", async () => {
+    pickupQueueUnavailable = true;
+    window.history.replaceState({}, "", "/staff");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} />);
+    const retry = await screen.findByRole("button", { name: "Retry ticket check" });
+    expect(screen.queryByText("All clear")).toBeNull();
+    pickupQueueUnavailable = false;
+    fireEvent.click(retry);
+    expect(await screen.findByText("All clear")).toBeTruthy();
   });
   it.each([
     ["calendar", "View calendar", "/staff/cockpit/studio-reservations"],

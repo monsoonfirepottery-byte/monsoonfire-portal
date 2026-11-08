@@ -115,6 +115,9 @@ import { isDisallowedRetailCoverUrl } from "./staff/lendingResearch";
 import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import { FIRING_PATHFINDER_URL } from "../utils/reservationsPaths";
+import { humanTicketName, humanTicketReference } from "../utils/ticketIdentity";
+import type { FiringTicket, QueueResponse } from "./staff/FiringPickupBillingModule";
+import { requiresPickupReview } from "./staff/pickupReviewQueue";
 import { formatDateTime } from "../utils/format";
 
 const PolicyModule = lazy(() => import("./staff/PolicyModule"));
@@ -2387,6 +2390,10 @@ export default function StaffView({
 }: Props) {
   const [creatingFiringTicket, setCreatingFiringTicket] = useState(false);
   const [firingTicketRefreshKey, setFiringTicketRefreshKey] = useState(0);
+  const [requestedFiringTicketId, setRequestedFiringTicketId] = useState("");
+  const [todayPickupTickets, setTodayPickupTickets] = useState<FiringTicket[]>([]);
+  const [todayPickupState, setTodayPickupState] = useState<"checking" | "ready" | "error">("checking");
+  const [todayPickupRetry, setTodayPickupRetry] = useState(0);
   const initialCockpitModule = useMemo<ModuleKey | null>(() => {
     if (typeof window === "undefined") return null;
     const requestedPath =
@@ -8215,7 +8222,8 @@ export default function StaffView({
   }, [cockpitWorkspaceMode, forceCockpitWorkspace, syncWorkspaceStateFromUrl]);
 
   const openModuleFromCockpit = useCallback(
-    (target: string) => {
+    (target: string, ticketId = "") => {
+      setRequestedFiringTicketId(ticketId);
       setIsTaskHomeRoute(false);
       const destination = resolveCockpitNavigationTarget(target);
       setModuleKey(destination.moduleKey);
@@ -8283,6 +8291,21 @@ export default function StaffView({
     todayBootstrapAttempted,
     isCockpitModule,
   ]);
+
+  useEffect(() => {
+    if (!isTaskHomeRoute || forceCockpitWorkspace || !isStaff) return;
+    let current = true;
+    setTodayPickupState("checking");
+    void client.postJson<QueueResponse>("staffListFiringPickupReviews", {}).then((response) => {
+      if (!current) return;
+      if (!Array.isArray(response.data?.tickets)) throw new Error("Ticket queue unavailable");
+      setTodayPickupTickets(response.data.tickets);
+      setTodayPickupState("ready");
+    }).catch(() => {
+      if (current) setTodayPickupState("error");
+    });
+    return () => { current = false; };
+  }, [client, forceCockpitWorkspace, isStaff, isTaskHomeRoute, todayPickupRetry]);
 
   const todayMessageRows = useMemo(
     () =>
@@ -8616,7 +8639,15 @@ export default function StaffView({
       });
     }
 
-    return items.slice(0, 6);
+    const pickupReviews = todayPickupTickets.filter(requiresPickupReview).slice(0, 3).map((ticket): StaffTaskHomeAttentionItem => ({
+      id: `pickup-review-${ticket.ticketId}`,
+      tone: "action",
+      title: `${humanTicketReference(ticket.ticketId)} · ${humanTicketName(ticket.displayName)}`,
+      detail: ticket.billingStatus === "hold_for_review" ? "Held for pickup review." : "Firing is complete. Review the ticket before pickup.",
+      actionLabel: "Open ticket",
+      actionTarget: `pickup-ticket:${ticket.ticketId}`,
+    }));
+    return [...pickupReviews, ...items].slice(0, 6);
   }, [
     announcementsError,
     cockpitTodayMessageRows,
@@ -8624,6 +8655,7 @@ export default function StaffView({
     messagesDegraded,
     operationsOverview.priorityItems,
     paymentAlerts,
+    todayPickupTickets,
     unreadMessageCount,
   ]);
 
@@ -8928,6 +8960,10 @@ export default function StaffView({
 
   const handleTaskHomeAction = useCallback(
     (target: string) => {
+      if (target.startsWith("pickup-ticket:")) {
+        openModuleFromCockpit("finance", target.slice("pickup-ticket:".length));
+        return;
+      }
       switch (target) {
         case "pathfinder":
           window.location.assign(FIRING_PATHFINDER_URL);
@@ -9129,10 +9165,12 @@ export default function StaffView({
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
   const firingPickupBillingContent = (
     <FiringPickupBillingModule
-      key={firingTicketRefreshKey}
+      key={`${firingTicketRefreshKey}:${requestedFiringTicketId}`}
       client={client}
       isStaff={isStaff}
       view="tickets"
+      initialTicketId={requestedFiringTicketId}
+      onTicketsChanged={setTodayPickupTickets}
       onOpenCheckins={() => window.location.assign(FIRING_PATHFINDER_URL)}
       onOpenFirings={openFiringsWorkspace}
     />
@@ -9816,6 +9854,8 @@ export default function StaffView({
       summary="Open the workflow you need by task, not by module tree. The most common staff jobs stay one click away."
       clickBudgetNote="Click budget: every primary action below opens its workflow in one click. A second click is only for refinement inside that workspace."
       attentionItems={taskHomeAttentionItems}
+      pickupQueueState={isStaff ? todayPickupState : undefined}
+      onRetryPickupQueue={() => setTodayPickupRetry((attempt) => attempt + 1)}
       lanes={taskHomeLanes}
       moreActions={taskHomeMoreActions}
       onAction={handleTaskHomeAction}

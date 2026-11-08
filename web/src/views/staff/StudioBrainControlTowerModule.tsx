@@ -29,6 +29,7 @@ import {
   type ControlTowerState,
 } from "../../utils/studioBrainControlTower";
 import "./studioBrainControlTower.css";
+import { AdminWorkflow } from "./admin/AdminWorkspace";
 
 type Props = {
   user: User;
@@ -758,6 +759,8 @@ export default function StudioBrainControlTowerModule({
     <>
       <section className="control-tower-shell" data-testid="studio-brain-control-tower">
         <section className={`card staff-console-card control-tower-hero${quietMode ? " control-tower-hero-quiet" : ""}`}>
+          <style>{`.control-tower-workshop-art{width:100%;height:170px;object-fit:cover;border-radius:12px;animation:ct .8s ease-out both}@keyframes ct{from{opacity:.25;transform:scale(1.025)}}@media(prefers-reduced-motion:reduce){.control-tower-workshop-art{animation:none}}`}</style>
+          <img className="control-tower-workshop-art" src="/staff-admin/studio-brain.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
           <div className="control-tower-hero-copy">
             <div className="control-tower-kicker">Studio Brain Control Tower v3</div>
             <h1>{quietMode ? "Quiet control tower" : "30-second operator plane"}</h1>
@@ -767,6 +770,7 @@ export default function StudioBrainControlTowerModule({
                 : "Mission board, approvals, memory brief, and live channels are the first screen now. tmux and logs stay backstage as recovery substrate."}
             </p>
           </div>
+          <AdminWorkflow label="Control-room workflow" stages={[{ label: "Rooms", detail: `${activeRooms.length} active`, state: activeRooms.length ? "ok" : "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }, { label: "Review", detail: `${approvals.length} approval${approvals.length === 1 ? "" : "s"}`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} need attention`, state: counts.needsAttention ? "danger" : "ok" }]} />
           <div className="control-tower-hero-actions">
             <button type="button" className="btn btn-secondary" onClick={() => void loadState()}>
               {loading ? "Refreshing..." : "Refresh"}

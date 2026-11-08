@@ -2517,6 +2517,7 @@ export default function App() {
             onOpenCheckin={() => setNav("wareCheckIn")}
             onOpenClientStart={() => setNav("dashboard")}
             onOpenMessages={() => setNav("messages")}
+            onOpenMessageThread={() => setNav("messages")}
             onOpenFirings={() => {
               if (window.location.pathname.startsWith("/staff")) {
                 window.history.replaceState({}, "", "/");

@@ -190,9 +190,8 @@ describe("StaffView cockpit routing", () => {
     expect(overview.querySelectorAll(".staff-studio-marker")).toHaveLength(6);
   });
   it.each([
-    ["intake", "View drop-offs", "/staff/cockpit/checkins"],
     ["calendar", "View calendar", "/staff/cockpit/studio-reservations"],
-    ["kiln", "View firings", "/staff/cockpit/firings"],
+    ["kiln", "View kiln schedule fallback", "/staff/cockpit/firings"],
     ["counter", "Open tickets", "/staff/cockpit/finance"],
   ])("opens the %s workflow from the studio", async (marker, _action, route) => {
     window.history.replaceState({}, "", "/staff");

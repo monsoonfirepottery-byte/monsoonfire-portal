@@ -91,9 +91,9 @@ export default function TaskHomeModule({
   onAction,
 }: TaskHomeModuleProps) {
   const areas = [
-    { id: "checkins", title: "Drop-offs", label: "View drop-offs", target: "checkins", icon: "inbox", position: "intake" },
+    { id: "pathfinder", title: "Plan a drop-off", label: "Open Pathfinder", target: "pathfinder", icon: "inbox", position: "intake" },
     { id: "reservations-today", title: "Reservations", label: "View calendar", target: "studio-reservations", icon: "calendar", position: "calendar" },
-    { id: "firings", title: "Firings", label: "View firings", target: "firings", icon: "fire", position: "kiln" },
+    { id: "firings", title: "Kiln schedule", label: "View kiln schedule", target: "kilnSchedule", icon: "fire", position: "kiln" },
     { id: "finance", title: "Tickets & payments", label: "Open tickets", target: "finance", icon: "receipt", position: "counter" },
     { id: "messages", title: "Messages", label: "Open inbox", target: "messages", icon: "message", position: "desk" },
     { id: "announcements", title: "Announcements", label: "Write announcement", target: "announcementComposer", icon: "megaphone", position: "shelves" },

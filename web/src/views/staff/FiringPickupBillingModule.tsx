@@ -100,6 +100,8 @@ type Props = {
   view?: "today" | "tickets" | "money";
   searchQuery?: string;
   onTicketsChanged?: (tickets: FiringTicket[], runtime: FiringBillingRuntime | null) => void;
+  onOpenCheckins?: () => void;
+  onOpenFirings?: () => void;
 };
 
 const RECOVERY_STATUSES = new Set([
@@ -202,6 +204,10 @@ function needsOwnerAttention(ticket: FiringTicket): boolean {
 
 function isOpenFiringTicket(ticket: FiringTicket): boolean {
   return ticket.billingStatus === "unbilled" && ticket.status !== "awaiting_pickup_review";
+}
+
+function isBillingOrPickupTicket(ticket: FiringTicket): boolean {
+  return !isOpenFiringTicket(ticket) && !needsPickupReview(ticket);
 }
 
 function ticketStatusLabel(ticket: FiringTicket): string {
@@ -313,6 +319,8 @@ export default function FiringPickupBillingModule({
   view = "today",
   searchQuery = "",
   onTicketsChanged,
+  onOpenCheckins,
+  onOpenFirings,
 }: Props) {
   const [tickets, setTickets] = useState<FiringTicket[]>([]);
   const [runtime, setRuntime] = useState<FiringBillingRuntime | null>(null);
@@ -377,12 +385,6 @@ export default function FiringPickupBillingModule({
       const nextRuntime = response.data?.runtime ?? null;
       setRuntime(nextRuntime);
       onTicketsChanged?.(nextTickets, nextRuntime);
-      setFilter((current) => {
-        if (current === "review" && !nextTickets.some(needsPickupReview) && nextTickets.some(isOpenFiringTicket)) {
-          return "open";
-        }
-        return current;
-      });
       setSelectedTicketId((current) => {
         if (current && nextTickets.some((ticket) => ticket.ticketId === current)) return current;
         return nextTickets.find(needsOwnerAttention)?.ticketId ??
@@ -478,7 +480,7 @@ export default function FiringPickupBillingModule({
         ? tickets.filter(isOpenFiringTicket)
         : filter === "review"
           ? tickets.filter(needsPickupReview)
-          : tickets.filter((ticket) => !isOpenFiringTicket(ticket) && !needsPickupReview(ticket));
+          : tickets.filter(isBillingOrPickupTicket);
     const query = (searchQuery || ticketSearch).trim().toLowerCase();
     const searched = !query ? scoped : scoped.filter((ticket) => [
       ticket.ticketId,
@@ -867,9 +869,33 @@ export default function FiringPickupBillingModule({
   const canRefund = selected ? REFUNDABLE_STATUSES.has(selected.billingStatus) : false;
   const canMarkPickedUp = selected?.status === "ready_for_pickup";
   const hasFieldIssue = (...targets: FieldIssueTarget[]) => Boolean(fieldIssue && targets.includes(fieldIssue.target));
+  const showWorkflow = view === "tickets" && onOpenCheckins && onOpenFirings;
 
   return (
     <section className={`card staff-console-card firing-billing-module firing-billing-view-${view}`} aria-label="Firing tickets">
+      {showWorkflow ? (
+        <section className="firing-workflow" aria-label="Follow the ware">
+          <h2>Follow the ware</h2>
+          <ol className="firing-workflow-stages">
+            <li><button type="button" className="firing-workflow-stage" onClick={onOpenCheckins}>
+              <span className="firing-workflow-art" data-stage="intake" aria-hidden="true" />
+              <span className="firing-workflow-copy"><strong>Incoming ware</strong><span>Plan a drop-off in Pathfinder</span></span>
+            </button></li>
+            <li><button type="button" className="firing-workflow-stage" onClick={onOpenFirings}>
+              <span className="firing-workflow-art" data-stage="kiln" aria-hidden="true" />
+              <span className="firing-workflow-copy"><strong>Firing lanes</strong><span>Open kiln schedule</span></span>
+            </button></li>
+            <li><button type="button" className="firing-workflow-stage" aria-pressed={filter === "review"} onClick={() => setFilter("review")}>
+              <span className="firing-workflow-art" data-stage="unload" aria-hidden="true" />
+              <span className="firing-workflow-copy"><strong>Unloading</strong><span>Review tickets after firing</span>{hasLoaded ? <small>{tickets.filter(needsPickupReview).length} to review</small> : null}</span>
+            </button></li>
+            <li><button type="button" className="firing-workflow-stage" aria-pressed={filter === "ready"} onClick={() => setFilter("ready")}>
+              <span className="firing-workflow-art" data-stage="billing" aria-hidden="true" />
+              <span className="firing-workflow-copy"><strong>Billing &amp; pickup</strong><span>View payment and pickup status</span>{hasLoaded ? <small>{tickets.filter(isBillingOrPickupTicket).length} tickets</small> : null}</span>
+            </button></li>
+          </ol>
+        </section>
+      ) : null}
       {runtime ? (
         <div className="staff-mini firing-payment-mode" role="status">
           <strong>{runtime.stripeMode === "test" ? "Test payments" : "Live payments"}</strong>

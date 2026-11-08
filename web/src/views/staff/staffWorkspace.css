@@ -146,7 +146,6 @@
 .staff-studio-scene { position: relative; overflow: hidden; border-radius: 12px; background: #b9815d; }
 .staff-studio-scene > img { display: block; width: 100%; height: auto; }
 .staff-studio-marker { position: absolute; display: flex; align-items: center; gap: 7px; min-height: 42px; max-width: 30%; padding: 7px 10px; color: #152b2d; background: #fffefa; border: 2px solid transparent; border-radius: 9px; box-shadow: 0 3px 12px #34251d66; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.2; cursor: pointer; transform: translate(-50%, -50%); }
-.staff-studio-marker[aria-pressed="true"] { border-color: #075c61; box-shadow: 0 3px 14px #142e30a0; }
 .staff-studio-marker svg { width: 20px; height: 20px; flex: none; }
 .staff-studio-marker i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #4a7772; }
 .staff-studio-marker i[data-tone="watch"] { background: #b36200; }
@@ -159,18 +158,9 @@
 .staff-studio-marker-shelves { left: 30%; top: 71%; }
 .staff-studio-picker { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 0; }
 .staff-studio-picker button { border: 1px solid var(--desk-line); border-radius: 6px; background: var(--surface); color: var(--text); padding: 8px 11px; font: inherit; font-size: 13px; cursor: pointer; }
-.staff-studio-picker button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-2); font-weight: 700; }
-.staff-studio-detail { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 18px 0; border-top: 1px solid var(--desk-line); }
-.staff-studio-detail-copy { min-width: 0; }
-.staff-studio-detail-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
-.staff-studio-detail-title h3 { margin: 0; font-size: 19px; }
-.staff-studio-detail-title span { color: var(--muted); font-size: 13px; }
-.staff-studio-detail p { color: var(--muted); margin: 8px 0; line-height: 1.5; }
-.staff-studio-detail .staff-today-metrics { margin: 12px 0 0; }
 @media (max-width: 700px) {
   .staff-studio-marker { width: 40px; min-height: 40px; justify-content: center; padding: 7px; border-radius: 50%; }
   .staff-studio-marker span, .staff-studio-marker i { display: none; }
-  .staff-studio-detail { align-items: flex-start; flex-direction: column; gap: 16px; }
 }
 
 .staff-studio-marker small { display: block; margin-top: 3px; font-size: 11px; font-weight: 500; }

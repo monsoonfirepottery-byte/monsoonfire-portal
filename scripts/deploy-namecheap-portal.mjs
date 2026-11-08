@@ -230,7 +230,7 @@ try {
     options.server,
     [
       `mkdir -p ${shellQuote(options.remotePath)}`,
-      `find ${shellQuote(options.remotePath)} -mindepth 1 -maxdepth 1 ! -name ${shellQuote(remoteUploadDirName)} -exec rm -rf -- {} +`,
+      `find ${shellQuote(options.remotePath)} -mindepth 1 -maxdepth 1 ! -name ${shellQuote(remoteUploadDirName)} ! -name portal-automation-status.json -exec rm -rf -- {} +`,
       `if [ -d ${shellQuote(remoteUploadPath)} ]; then cp -a ${shellQuote(`${remoteUploadPath}/.`)} ${shellQuote(remotePathWithSlash)} && rm -rf ${shellQuote(remoteUploadPath)}; else exit 1; fi`,
     ].join(" && "),
   ], {
@@ -297,7 +297,7 @@ try {
             options.server,
             [
               `mkdir -p ${shellQuote(options.remotePath)}`,
-              `find ${shellQuote(options.remotePath)} -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +`,
+              `find ${shellQuote(options.remotePath)} -mindepth 1 -maxdepth 1 ! -name portal-automation-status.json -exec rm -rf -- {} +`,
               `if [ -d ${shellQuote(remoteRollbackPath)} ]; then cp -a ${shellQuote(`${remoteRollbackPathWithSlash}.`)} ${shellQuote(remotePathWithSlash)}; fi`,
             ].join(" && "),
           ],

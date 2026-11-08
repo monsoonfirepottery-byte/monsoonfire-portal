@@ -117,6 +117,7 @@ import { FIRING_PATHFINDER_URL } from "../utils/reservationsPaths";
 import { humanTicketName, humanTicketReference } from "../utils/ticketIdentity";
 import type { FiringTicket, QueueResponse } from "./staff/FiringPickupBillingModule";
 import { requiresPickupReview } from "./staff/pickupReviewQueue";
+import { parseAutomationStatus, type AutomationDashboardState } from "./staff/automationStatus";
 import { formatDateTime } from "../utils/format";
 
 const PolicyModule = lazy(() => import("./staff/PolicyModule"));
@@ -802,54 +803,6 @@ type SystemCheckRecord = {
   atMs: number;
   details: string;
 };
-type AutomationWorkflowSource = {
-  key: string;
-  label: string;
-  workflowFile: string;
-  outputHint: string;
-};
-type AutomationIssueSource = {
-  key: string;
-  title: string;
-  issueNumber: number;
-  purpose: string;
-};
-type AutomationWorkflowRun = {
-  key: string;
-  label: string;
-  workflowFile: string;
-  outputHint: string;
-  runId: number;
-  runUrl: string;
-  status: string;
-  conclusion: string;
-  createdAtMs: number;
-  updatedAtMs: number;
-  headSha: string;
-  event: string;
-  isStale: boolean;
-  error: string;
-};
-type AutomationIssueThread = {
-  key: string;
-  title: string;
-  issueNumber: number;
-  issueUrl: string;
-  purpose: string;
-  state: string;
-  updatedAtMs: number;
-  latestCommentAtMs: number;
-  latestCommentUrl: string;
-  latestCommentPreview: string;
-  error: string;
-};
-type AutomationDashboardState = {
-  loading: boolean;
-  loadedAtMs: number;
-  error: string;
-  workflows: AutomationWorkflowRun[];
-  issues: AutomationIssueThread[];
-};
 type StudioBrainStatus = {
   checkedAt: string;
   mode: "healthy" | "degraded" | "offline" | "disabled" | "unknown";
@@ -965,8 +918,6 @@ const MODULES: Array<{ key: ModuleKey; label: string; owner: string; testId: str
 const GITHUB_REPO_OWNER = "monsoonfirepottery-byte";
 const GITHUB_REPO_NAME = "monsoonfire-portal";
 const GITHUB_REPO_SLUG = `${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
-const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO_SLUG}`;
-const AUTOMATION_STALE_MS = 36 * 60 * 60 * 1000;
 const TODAY_RESERVATION_LIMIT = 10;
 const TODAY_MESSAGE_LIMIT = 8;
 const TODAY_ALERT_LIMIT = 8;
@@ -977,76 +928,6 @@ const BATCH_STALE_OPEN_DAYS = 30;
 const STUDIO_BRAIN_SIGNAL_STALE_MINUTES = 12;
 const STUDIO_BRAIN_OFFLINE_CONFIRM_MINUTES = 45;
 let storageEmulatorConnected = false;
-const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
-  {
-    key: "automationHealth",
-    label: "Automation Health Daily",
-    workflowFile: "portal-automation-health-daily.yml",
-    outputHint: "health dashboard + issue loop artifacts",
-  },
-  {
-    key: "automationWeeklyDigest",
-    label: "Automation Weekly Digest",
-    workflowFile: "portal-automation-weekly-digest.yml",
-    outputHint: "weekly trend markdown/json digest",
-  },
-  {
-    key: "canary",
-    label: "Daily Authenticated Canary",
-    workflowFile: "portal-daily-authenticated-canary.yml",
-    outputHint: "canary report + adaptive feedback profile",
-  },
-  {
-    key: "indexGuard",
-    label: "Firestore Index Guard",
-    workflowFile: "firestore-index-contract-guard.yml",
-    outputHint: "index guard + auto-remediation profile",
-  },
-  {
-    key: "promotionGate",
-    label: "Post-Deploy Promotion Gate",
-    workflowFile: "portal-post-deploy-promotion-gate.yml",
-    outputHint: "promotion gate + adaptive scope profile",
-  },
-  {
-    key: "prodSmoke",
-    label: "Production Smoke",
-    workflowFile: "portal-prod-smoke.yml",
-    outputHint: "smoke run + retry-memory profile",
-  },
-  {
-    key: "prFunctional",
-    label: "PR Functional Gate",
-    workflowFile: "portal-pr-functional-gate.yml",
-    outputHint: "emulator gate + remediation profile",
-  },
-];
-const AUTOMATION_ISSUE_SOURCES: AutomationIssueSource[] = [
-  {
-    key: "portalQa",
-    title: "Portal QA Automation (Rolling)",
-    issueNumber: 116,
-    purpose: "portal workflow failures, canary state changes, tuning, and digest updates",
-  },
-  {
-    key: "portalInfra",
-    title: "Portal Infra and Security Guards (Rolling)",
-    issueNumber: 103,
-    purpose: "credential, index, and branch-integrity guard updates",
-  },
-  {
-    key: "governanceTuning",
-    title: "Governance Weekly Tuning (Rolling)",
-    issueNumber: 309,
-    purpose: "weekly governance tuning summaries and threshold proposals",
-  },
-  {
-    key: "codexAutomation",
-    title: "Codex Automation (Rolling)",
-    issueNumber: 84,
-    purpose: "Codex improvement, interaction, PR-green, and backlog reporting",
-  },
-];
 const WORKSHOP_PROGRAMMING_TECHNIQUES: WorkshopProgrammingTechnique[] = [
   {
     key: "wheel-throwing",
@@ -1509,28 +1390,11 @@ function resolveStorageForStaffToday() {
   return storage;
 }
 
-function toIsoMs(value: unknown): number {
-  if (typeof value !== "string") return 0;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function shortText(value: string, max = 220): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) return "";
   if (normalized.length <= max) return normalized;
   return `${normalized.slice(0, Math.max(0, max - 3)).trim()}...`;
-}
-
-function commentPreview(body: string): string {
-  const lines = body
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("##"));
-  if (lines.length === 0) return "";
-  const bullet = lines.find((line) => line.startsWith("- "));
-  return shortText((bullet || lines[0]).replace(/^-\s+/, ""));
 }
 
 function when(ms: number): string {
@@ -3611,7 +3475,6 @@ export default function StaffView({
     const inProgress = workflowRows.filter((item) => item.status === "in_progress" || item.status === "queued").length;
     const stale = workflowRows.filter((item) => item.isStale).length;
     const threads = automationDashboard.issues.length;
-    const threadErrors = automationDashboard.issues.filter((item) => Boolean(item.error)).length;
     return {
       monitored,
       healthy,
@@ -3619,7 +3482,6 @@ export default function StaffView({
       inProgress,
       stale,
       threads,
-      threadErrors,
       loadedAtMs: automationDashboard.loadedAtMs,
     };
   }, [automationDashboard]);
@@ -6463,153 +6325,17 @@ export default function StaffView({
   }, [qTrace]);
 
   const loadAutomationHealthDashboard = useCallback(async () => {
-    type GithubWorkflowRunsResponse = {
-      workflow_runs?: Array<{
-        id?: number;
-        html_url?: string;
-        status?: string;
-        conclusion?: string | null;
-        created_at?: string;
-        updated_at?: string;
-        head_sha?: string;
-        event?: string;
-      }>;
-    };
-    type GithubIssueResponse = {
-      number?: number;
-      title?: string;
-      html_url?: string;
-      state?: string;
-      updated_at?: string;
-    };
-    type GithubIssueComment = {
-      body?: string;
-      html_url?: string;
-      created_at?: string;
-    };
-
-    setAutomationDashboard((prev) => ({
-      ...prev,
-      loading: true,
-      error: "",
-    }));
-
-    const headers = {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    };
-    const readJson = async <T,>(url: string): Promise<T> => {
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        const detail = await response.text().catch(() => "");
-        throw new Error(`GitHub API ${response.status}: ${shortText(detail, 120) || response.statusText || "request failed"}`);
-      }
-      return (await response.json()) as T;
-    };
-
-    const now = Date.now();
+    setAutomationDashboard((prev) => ({ ...prev, loading: true }));
     try {
-      const workflows = await Promise.all(
-        AUTOMATION_WORKFLOW_SOURCES.map(async (source): Promise<AutomationWorkflowRun> => {
-          try {
-            const url = `${GITHUB_API_BASE}/actions/workflows/${encodeURIComponent(source.workflowFile)}/runs?branch=main&per_page=1`;
-            const payload = await readJson<GithubWorkflowRunsResponse>(url);
-            const run = Array.isArray(payload.workflow_runs) ? payload.workflow_runs[0] : null;
-            const createdAtMs = toIsoMs(run?.created_at);
-            const updatedAtMs = toIsoMs(run?.updated_at);
-            const status = str(run?.status, "unknown");
-            const conclusion = str(run?.conclusion, "");
-            return {
-              key: source.key,
-              label: source.label,
-              workflowFile: source.workflowFile,
-              outputHint: source.outputHint,
-              runId: num(run?.id, 0),
-              runUrl: str(run?.html_url, ""),
-              status,
-              conclusion,
-              createdAtMs,
-              updatedAtMs,
-              headSha: str(run?.head_sha, ""),
-              event: str(run?.event, ""),
-              isStale: createdAtMs > 0 ? now - createdAtMs > AUTOMATION_STALE_MS : true,
-              error: "",
-            };
-          } catch (error: unknown) {
-            return {
-              key: source.key,
-              label: source.label,
-              workflowFile: source.workflowFile,
-              outputHint: source.outputHint,
-              runId: 0,
-              runUrl: "",
-              status: "error",
-              conclusion: "",
-              createdAtMs: 0,
-              updatedAtMs: 0,
-              headSha: "",
-              event: "",
-              isStale: true,
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-        })
-      );
-
-      const issues = await Promise.all(
-        AUTOMATION_ISSUE_SOURCES.map(async (source): Promise<AutomationIssueThread> => {
-          try {
-            const issueUrl = `${GITHUB_API_BASE}/issues/${source.issueNumber}`;
-            const issue = await readJson<GithubIssueResponse>(issueUrl);
-            const comments = await readJson<GithubIssueComment[]>(
-              `${GITHUB_API_BASE}/issues/${source.issueNumber}/comments?per_page=100`
-            );
-            const latestComment = Array.isArray(comments) && comments.length > 0 ? comments[comments.length - 1] : null;
-            return {
-              key: source.key,
-              title: source.title,
-              issueNumber: num(issue.number, source.issueNumber),
-              issueUrl: str(issue.html_url, ""),
-              purpose: source.purpose,
-              state: str(issue.state, "unknown"),
-              updatedAtMs: toIsoMs(issue.updated_at),
-              latestCommentAtMs: toIsoMs(latestComment?.created_at),
-              latestCommentUrl: str(latestComment?.html_url, ""),
-              latestCommentPreview: commentPreview(str(latestComment?.body, "")),
-              error: "",
-            };
-          } catch (error: unknown) {
-            return {
-              key: source.key,
-              title: source.title,
-              issueNumber: source.issueNumber,
-              issueUrl: "",
-              purpose: source.purpose,
-              state: "error",
-              updatedAtMs: 0,
-              latestCommentAtMs: 0,
-              latestCommentUrl: "",
-              latestCommentPreview: "",
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-        })
-      );
-
-      const unavailable = [...workflows, ...issues].filter((row) => row.error).length;
-      setAutomationDashboard({
-        loading: false,
-        loadedAtMs: Date.now(),
-        error: unavailable ? `Could not read ${unavailable} GitHub source${unavailable === 1 ? "" : "s"}. Refresh later or check GitHub directly.` : "",
-        workflows,
-        issues,
-      });
-    } catch (error: unknown) {
+      const response = await fetch("/portal-automation-status.json", { cache: "no-cache", signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) throw new Error("Automation snapshot unavailable");
+      setAutomationDashboard({ loading: false, ...parseAutomationStatus(await response.json()) });
+    } catch {
       setAutomationDashboard((prev) => ({
         ...prev,
         loading: false,
-        loadedAtMs: Date.now(),
-        error: error instanceof Error ? error.message : String(error),
+        error: "Could not load the shared GitHub status. Refresh later or check GitHub directly.",
+        workflows: prev.workflows.map((workflow) => ({ ...workflow, isStale: true })),
       }));
     }
   }, []);

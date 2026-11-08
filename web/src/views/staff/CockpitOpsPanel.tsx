@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { safeJsonStringify, type LastRequest } from "../../api/functionsClient";
 import type { ShiftStatusSummary } from "./shiftStatus";
+import type { AutomationDashboardState } from "./automationStatus";
 
 const COCKPIT_TABS = [
   { key: "triage", label: "Today" },
@@ -44,39 +45,6 @@ type CockpitAutomationKpis = {
   loadedAtMs: number;
 };
 
-type CockpitAutomationWorkflow = {
-  key: string;
-  label: string;
-  workflowFile: string;
-  outputHint: string;
-  runUrl: string;
-  status: string;
-  conclusion: string;
-  createdAtMs: number;
-  isStale: boolean;
-};
-
-type CockpitAutomationIssue = {
-  key: string;
-  title: string;
-  issueNumber: number;
-  issueUrl: string;
-  purpose: string;
-  state: string;
-  updatedAtMs: number;
-  latestCommentPreview: string;
-  latestCommentUrl: string;
-  error: string;
-};
-
-type CockpitAutomationDashboard = {
-  loading: boolean;
-  error: string;
-  loadedAtMs: number;
-  workflows: CockpitAutomationWorkflow[];
-  issues: CockpitAutomationIssue[];
-};
-
 type SystemCheckRecord = {
   key: string;
   label: string;
@@ -113,7 +81,7 @@ type Props = {
   shiftStatus: ShiftStatusSummary;
   cockpitKpis: CockpitKpis;
   automationKpis: CockpitAutomationKpis;
-  automationDashboard: CockpitAutomationDashboard;
+  automationDashboard: AutomationDashboardState;
   hasFunctionsAuthMismatch: boolean;
   onRefreshCockpit: () => void;
   run: (key: string, fn: () => Promise<void>) => Promise<void>;
@@ -423,8 +391,8 @@ export default function CockpitOpsPanel({
               </div>
             ) : null}
             <div className="staff-mini">
-              Source: GitHub Actions + rolling issues for <code>{githubRepoSlug}</code>.
-              {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
+              Source: shared GitHub status for <code>{githubRepoSlug}</code>.
+              {automationKpis.loadedAtMs ? ` Last GitHub check ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
             </div>
             <div className="staff-table-wrap">
               <table className="staff-table">
@@ -479,12 +447,11 @@ export default function CockpitOpsPanel({
                     <th>Thread</th>
                     <th>State</th>
                     <th>Updated</th>
-                    <th>Latest output preview</th>
                   </tr>
                 </thead>
                 <tbody>
                   {automationDashboard.issues.length === 0 ? (
-                    <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
+                    <tr><td colSpan={3}>No rolling issue threads loaded yet.</td></tr>
                   ) : (
                     automationDashboard.issues.map((issue) => (
                       <tr key={issue.key}>
@@ -495,18 +462,9 @@ export default function CockpitOpsPanel({
                             issue.title
                           )}
                           <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
-                          {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
                         </td>
                         <td><span className="pill">{issue.state || "-"}</span></td>
                         <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
-                        <td>
-                          {issue.latestCommentPreview || "-"}
-                          {issue.latestCommentUrl ? (
-                            <div className="staff-mini">
-                              <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
-                            </div>
-                          ) : null}
-                        </td>
                       </tr>
                     ))
                   )}

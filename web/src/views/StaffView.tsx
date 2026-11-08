@@ -8020,6 +8020,11 @@ export default function StaffView({
   ]);
 
   useEffect(() => {
+    if (moduleKey !== "members") return;
+    void run("refreshMembersOnOpen", loadUsers);
+  }, [loadUsers, moduleKey, run]);
+
+  useEffect(() => {
     if (!isTaskHomeRoute || forceCockpitWorkspace || !isStaff) return;
     let current = true;
     setTodayPickupState("checking");

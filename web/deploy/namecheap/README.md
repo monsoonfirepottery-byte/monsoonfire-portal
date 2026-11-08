@@ -75,6 +75,15 @@ The script:
 
 ## Notes
 
+- The staff portal reads `/portal-automation-status.json`. On Namecheap, the
+  account's tagged `monsoonfire-portal-automation-status` cron job runs
+  `~/portal-status/refresh.py` every 20 minutes under `flock`. Install that script
+  from `scripts/refresh-portal-automation-status.py` and seed the JSON before
+  deploying to a new host. It uses 11 public GitHub reads per refresh and writes
+  atomically; failures leave the last good file in place. The portal marks a
+  snapshot stale after 65 minutes. Check `~/portal-status/last-refresh.log` if
+  timestamps stop advancing. The deploy script preserves the snapshot.
+
 - The `.htaccess` rules are guarded by `<IfModule ...>` so they will no-op if the host disables the relevant Apache modules.
 - If Namecheap is not Apache (or you are hosting on IIS/nginx), this file is not applicable.
 - `verify-cutover` checks:

@@ -173,7 +173,13 @@ describe("StaffView cockpit routing", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        new Response(JSON.stringify({ workflow_runs: [] }), {
+        new Response(JSON.stringify({
+          version: 1, generatedAtMs: Date.now(), issues: [],
+          workflows: [{
+            key: "prodSmoke", label: "Production Smoke", workflowFile: "portal-prod-smoke.yml", outputHint: "",
+            runUrl: "", status: "completed", conclusion: "success", createdAtMs: Date.now(),
+          }],
+        }), {
           status: 200,
           headers: { "content-type": "application/json" },
         })

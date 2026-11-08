@@ -137,6 +137,7 @@ const StudioReservationsModule = lazy(() => import("./staff/StudioReservationsMo
 const StudioBrainControlTowerModule = lazy(() => import("./staff/StudioBrainControlTowerModule"));
 const TaskHomeModule = lazy(() => import("./staff/TaskHomeModule"));
 const WareCheckInView = lazy(() => import("./WareCheckInView"));
+const MessagesView = lazy(() => import("./MessagesView"));
 import StaffWorkspaceNav from "./staff/StaffWorkspaceNav";
 import "./staff/staffWorkspace.css";
 import "./staff/staffDeskGuide.css";
@@ -153,7 +154,7 @@ type Props = {
   onOpenReservation?: (reservationId?: string) => void;
   onOpenClientStart?: () => void;
   onOpenMessages?: () => void;
-  onOpenMessageThread?: (threadId: string) => void;
+  supportEmail?: string;
   onOpenFirings?: () => void;
   onStartFiring?: () => void;
   initialModule?: ModuleKey;
@@ -187,6 +188,7 @@ const MODULE_REGISTRY = {
   studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: !STUDIO_BOOKINGS_PAUSED },
   checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
   members: { label: "Clients", owner: "Client Ops", testId: "staff-module-members", nav: false },
+  messages: { label: "Messages", owner: "Client Ops", testId: "staff-module-messages", nav: false },
   pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
   firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: false },
   events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: false },
@@ -2235,7 +2237,7 @@ export default function StaffView({
   onOpenReservation,
   onOpenClientStart,
   onOpenMessages,
-  onOpenMessageThread,
+  supportEmail = "support@monsoonfire.com",
   onOpenFirings,
   onStartFiring,
   onOpenStaffWorkspace,
@@ -8270,26 +8272,23 @@ export default function StaffView({
 
   const openMessagesInbox = useCallback(() => {
     if (onOpenMessages) {
-      // Leave the staff deep link before switching to the portal-wide inbox.
-      // Otherwise the location synchronizer can immediately reopen Staff.
-      if (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) {
-        window.history.replaceState({}, "", "/");
-      }
       onOpenMessages();
       return;
     }
-    setStatus("Messages route is unavailable in this surface. Use main navigation to open Messages.");
+    setIsTaskHomeRoute(false);
+    setModuleKey("messages");
   }, [onOpenMessages]);
 
+  const openStaffMessages = useCallback(() => {
+    setIsTaskHomeRoute(false);
+    setModuleKey("messages");
+  }, []);
+
   const openMessageThread = useCallback(
-    (threadId: string) => {
-      if (onOpenMessageThread) {
-        onOpenMessageThread(threadId);
-        return;
-      }
+    (_threadId: string) => {
       openMessagesInbox();
     },
-    [onOpenMessageThread, openMessagesInbox]
+    [openMessagesInbox]
   );
 
   const openAnnouncementWorkflow = useCallback(() => {
@@ -9540,11 +9539,31 @@ export default function StaffView({
     />
   );
 
+  const messagesContent = (
+    <MessagesView
+      user={user}
+      staffDesk
+      supportEmail={supportEmail}
+      threads={messageThreads}
+      threadsLoading={messageThreadsLoading}
+      threadsError={messageThreadsError}
+      liveUsers={[]}
+      liveUsersLoading={false}
+      liveUsersError=""
+      announcements={announcements}
+      announcementsLoading={announcementsLoading}
+      announcementsError={announcementsError}
+      unreadAnnouncements={unreadAnnouncements}
+    />
+  );
+
   const moduleContent =
     isTaskHomeRoute
       ? taskHomeContent
       : moduleKey === "controlTower"
         ? controlTowerContent
+      : moduleKey === "messages"
+        ? messagesContent
       : moduleKey === "studioReservations"
       ? studioReservationsContent
       : moduleKey === "communityBlogs"
@@ -9580,7 +9599,7 @@ export default function StaffView({
         active={isTaskHomeRoute ? "today" : moduleKey === "cockpit" || moduleKey === "commerce" || moduleKey === "stripe" ? cockpitTab : moduleKey}
         onNavigate={openModuleFromCockpit}
         onHome={openTaskHome}
-        onMessages={openMessagesInbox}
+        onMessages={openStaffMessages}
         onReservations={openReservationsToday}
         onNewTicket={() => setCreatingFiringTicket(true)}
         onPortal={onOpenClientStart}

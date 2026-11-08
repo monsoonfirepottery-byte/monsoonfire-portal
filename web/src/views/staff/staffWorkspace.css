@@ -40,6 +40,7 @@
 .staff-page-heading h1, .staff-task-home-hero h1 { margin: 0; font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; letter-spacing: -.025em; }
 .staff-page-heading p { margin: 9px 0 0; color: var(--muted); font-size: 15px; }
 .staff-section-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--desk-line); margin-bottom: 20px; }
+.staff-stripe { grid-template-columns: minmax(0, 1fr); overflow-wrap: anywhere; }
 .staff-section-tabs button { color: var(--muted); background: none; border: 0; border-bottom: 3px solid transparent; padding: 12px 0; font: inherit; font-size: 14px; cursor: pointer; }
 .staff-section-tabs button[aria-current="page"] { color: var(--text); border-color: var(--accent, #297387); font-weight: 700; }
 .staff-technical-tabs[hidden] { display: none; }
@@ -121,8 +122,7 @@
   .staff-workspace-nav-label { margin: 12px 4px 4px; }
   .staff-workspace-nav nav button { padding: 9px 10px; }
   .staff-new-ticket { width: auto; margin-bottom: 12px; }
-  .staff-section-tabs { gap: 18px; overflow: auto; }
-  .staff-section-tabs button { flex-shrink: 0; }
+  .staff-section-tabs { flex-wrap: wrap; gap: 0 12px; }
   .staff-human-workspace .staff-task-home-lane-grid { grid-template-columns: 1fr; }
   .staff-human-workspace .firing-billing-module { padding: 12px; }
   .staff-daily-work-row { grid-template-columns: 1fr auto; gap: 12px; padding: 18px 16px; }

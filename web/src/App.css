@@ -5122,6 +5122,8 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
     padding: 20px 18px 48px;
   }
 
+  .nav-toggle-row { flex-wrap: wrap; }
+
   .topbar {
     flex-direction: column;
     align-items: flex-start;

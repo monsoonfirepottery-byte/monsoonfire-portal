@@ -238,7 +238,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
   }
 
   return (
-    <section className="card staff-console-card">
+    <section className="card staff-console-card staff-stripe">
       <div className="card-title-row">
         <div className="card-title">Stripe settings</div>
         <button className="btn btn-secondary" disabled={loading || saving || validating} onClick={() => void load()}>

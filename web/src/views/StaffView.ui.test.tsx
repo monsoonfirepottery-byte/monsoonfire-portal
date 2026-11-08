@@ -250,7 +250,7 @@ describe("StaffView cockpit routing", () => {
     fireEvent.click(within(second).getByRole("button", { name: "Open ticket" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Second Artist/ }).getAttribute("aria-pressed")).toBe("true"), { timeout: 8000 });
     await screen.findByDisplayValue("50.00");
-    fireEvent.click(screen.getByRole("button", { name: "Mark ready & send pickup email" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Ticket actions" })).getByRole("button", { name: "Mark ready & send pickup email" }));
     await waitFor(() => expect(postJsonMock).toHaveBeenCalledWith(
       "staffFinalizeFiringPickup", expect.objectContaining({ ticketId: "MF-1002-TEST" }), expect.anything(),
     ));

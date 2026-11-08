@@ -291,6 +291,7 @@ export default function FiringPickupBillingModule({
   const [runtime, setRuntime] = useState<FiringBillingRuntime | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const initialTicketRef = useRef(initialTicketId);
+  const finalizing = useRef(false);
   const [missingInitialTicket, setMissingInitialTicket] = useState(false);
   const [filter, setFilter] = useState<"attention" | "open" | "review" | "ready" | "all" | "work" | "pickup" | "history">(
     initialTicketId ? "all" : view === "tickets" ? "work" : view === "money" ? "ready" : "attention",
@@ -565,7 +566,7 @@ export default function FiringPickupBillingModule({
   }, [busy, client, load, selected]);
 
   const finalize = useCallback(async () => {
-    if (!selected || busy) return;
+    if (!selected || busy || finalizing.current) return;
     const isHold = outcome === "hold_for_review";
     const isBillable = outcome === "normal_billable" || outcome === "maker_risk_billable";
     const finalChargeCents = dollarsToCents(finalCharge);
@@ -604,6 +605,7 @@ export default function FiringPickupBillingModule({
     }
     const requestKey = `finalize:${selected.ticketId}:v${selected.billingVersion}`;
     const clientRequestId = requestIdFor(requestKey);
+    finalizing.current = true;
     setBusy("finalize");
     setError("");
     setStatus("");
@@ -633,6 +635,7 @@ export default function FiringPickupBillingModule({
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : String(submitError));
     } finally {
+      finalizing.current = false;
       setBusy("");
     }
   }, [artistVisibleNote, billingUnit, busy, client, customBaseCharge, derivedRate.cents, derivedRate.rateKey, displayName, email, finalCharge, load, outcome, overrideReason, privateStaffNote, privateFulfilled, rushFulfilled, quantity, selected, showFieldIssue, writesReady]);
@@ -852,6 +855,19 @@ export default function FiringPickupBillingModule({
   const canFinalize = selected &&
     ["unbilled", "hold_for_review"].includes(selected.billingStatus) &&
     selected.status === "awaiting_pickup_review";
+  const readyAction = canFinalize ? (
+    <button className="btn btn-primary" type="button" disabled={Boolean(busy) || billableActionLocked} onClick={() => void finalize()}>
+      {busy === "finalize"
+        ? "Saving…"
+        : outcome === "hold_for_review"
+          ? "Save hold · send nothing"
+          : billableActionLocked
+            ? "Live billing locked · use Settings"
+            : runtime?.stripeMode === "live" && outcome !== "studio_fault_no_charge"
+              ? "Mark ready & create LIVE invoice"
+              : "Mark ready & send pickup email"}
+    </button>
+  ) : null;
   const canAdjustOpen = selected ? PAYMENT_OPEN_STATUSES.has(selected.billingStatus) : false;
   const canRefund = selected ? REFUNDABLE_STATUSES.has(selected.billingStatus) : false;
   const canMarkPickedUp = selected?.status === "ready_for_pickup";
@@ -1061,18 +1077,8 @@ export default function FiringPickupBillingModule({
 
               {canFinalize ? (
                 <div className="firing-billing-review-form">
-                  <div className="staff-actions-row firing-billing-primary-action">
-                    <button className="btn btn-primary" type="button" disabled={Boolean(busy) || billableActionLocked} onClick={() => void finalize()}>
-                      {busy === "finalize"
-                        ? "Saving…"
-                        : outcome === "hold_for_review"
-                          ? "Save hold · send nothing"
-                          : billableActionLocked
-                            ? "Live billing locked · use Settings"
-                            : runtime?.stripeMode === "live" && outcome !== "studio_fault_no_charge"
-                              ? "Mark ready & create LIVE invoice"
-                              : "Mark ready & send pickup email"}
-                    </button>
+                  <div className="staff-actions-row firing-billing-primary-action" role="group" aria-label="Pickup review actions">
+                    {readyAction}
                   </div>
                   <fieldset className={hasFieldIssue("artist-contact") ? "has-field-issue" : ""}>
                     <legend>Artist contact</legend>
@@ -1152,11 +1158,12 @@ export default function FiringPickupBillingModule({
 
               {selected.status === "ready_for_pickup" && selected.noticeStatus && selected.noticeStatus !== "not_queued" ? <div className="staff-actions-row"><button className="btn btn-ghost" type="button" disabled={Boolean(busy)} onClick={() => void resend()}>{busy === "resend" ? "Sending…" : "Resend pickup details"}</button></div> : null}
 
-              <div className="staff-actions-row">
+              <div className="staff-actions-row firing-ticket-footer" role="group" aria-label="Ticket actions">
                 <button className="btn btn-ghost" type="button" disabled={Boolean(busy) || Boolean(selected.stripeInvoiceId) || ["paid", "partially_refunded", "refunded", "picked_up"].includes(selected.billingStatus) || selected.status === "picked_up"} onClick={() => void deleteTicket()}>
                   {busy === "delete-ticket" ? "Deleting…" : "Delete ticket"}
                 </button>
                 {selected.stripeInvoiceId || ["paid", "partially_refunded", "refunded"].includes(selected.billingStatus) ? <span className="staff-mini">Invoices and payment history must be retained.</span> : null}
+                {readyAction}
               </div>
 
               <details className="firing-billing-reference">

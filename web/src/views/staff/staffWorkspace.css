@@ -92,6 +92,7 @@
 .staff-human-workspace .firing-billing-summary { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
 .firing-billing-ticket-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .firing-billing-detail, .firing-billing-review-form { display: grid; gap: 16px; min-width: 0; }
+.firing-ticket-footer > .btn-primary { margin-inline-start: auto; }
 .firing-billing-review-form fieldset { min-width: 0; border: 1px solid var(--desk-line); border-radius: 6px; padding: 14px; }
 .firing-billing-review-form legend { font-weight: 600; padding: 0 6px; }
 .firing-billing-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

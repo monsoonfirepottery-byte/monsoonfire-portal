@@ -53,6 +53,8 @@ type TaskHomeModuleProps = {
   summary: string;
   clickBudgetNote: string;
   attentionItems: ReadonlyArray<StaffTaskHomeAttentionItem>;
+  pickupQueueState?: "checking" | "ready" | "error";
+  onRetryPickupQueue?: () => void;
   lanes: ReadonlyArray<StaffTaskHomeLane>;
   moreActions: ReadonlyArray<StaffTaskHomeMoreAction>;
   onAction: (target: string) => void;
@@ -87,6 +89,8 @@ function enterStudioArea(target: string, onAction: (target: string) => void, sou
 
 export default function TaskHomeModule({
   attentionItems,
+  pickupQueueState,
+  onRetryPickupQueue,
   lanes,
   onAction,
 }: TaskHomeModuleProps) {
@@ -105,9 +109,15 @@ export default function TaskHomeModule({
         <div><h1>Today at the studio</h1><p>Explore the studio to see what needs your attention.</p></div>
       </header>
       <section className="staff-today-attention" aria-labelledby="staff-today-attention-heading">
-        <div className="staff-today-section-heading"><h2 id="staff-today-attention-heading">Needs attention</h2><span>{attentionItems.length ? `${attentionItems.length} to review` : "All clear"}</span></div>
+        <div className="staff-today-section-heading"><h2 id="staff-today-attention-heading">Needs attention</h2><span>{attentionItems.length ? `${attentionItems.length} to review` : pickupQueueState === "checking" ? "Checking tickets…" : pickupQueueState === "error" ? "Ticket status unavailable" : "All clear"}</span></div>
+        {pickupQueueState === "error" ? (
+          <div className="staff-note staff-note-error" role="status">
+            Pickup reviews couldn’t be refreshed. The last known items are shown below.
+            <button type="button" className="btn btn-ghost btn-small" onClick={onRetryPickupQueue}>Retry ticket check</button>
+          </div>
+        ) : null}
         {attentionItems.length === 0 ? (
-          <div className="staff-note staff-note-ok">No urgent staff blockers are active right now.</div>
+          pickupQueueState !== "checking" && pickupQueueState !== "error" ? <div className="staff-note staff-note-ok">No urgent staff blockers are active right now.</div> : null
         ) : (
           <div className="staff-task-home-attention-list">{attentionItems.map((item) => (
             <div key={item.id} className="staff-task-home-attention-item" data-testid={`staff-task-home-attention-${item.id}`} data-tone={item.tone}>

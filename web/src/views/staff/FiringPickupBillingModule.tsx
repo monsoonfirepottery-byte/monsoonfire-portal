@@ -3,6 +3,7 @@ import type { FunctionsClient } from "../../api/functionsClient";
 import { humanTicketName, humanTicketReference } from "../../utils/ticketIdentity";
 import { missingArtistContactFields } from "./staffContactValidation";
 import { sortFiringTickets, type TicketSortKey } from "./staffTicketSorting";
+import { requiresPickupReview } from "./pickupReviewQueue";
 
 type BillingOutcome =
   | "normal_billable"
@@ -89,7 +90,7 @@ export type FiringBillingRuntime = {
   pickupInstructionsVersion: string;
 };
 
-type QueueResponse = {
+export type QueueResponse = {
   ok: boolean;
   data: { tickets: FiringTicket[]; runtime: FiringBillingRuntime };
 };
@@ -100,6 +101,7 @@ type Props = {
   view?: "today" | "tickets" | "money";
   searchQuery?: string;
   onTicketsChanged?: (tickets: FiringTicket[], runtime: FiringBillingRuntime | null) => void;
+  initialTicketId?: string;
   onOpenCheckins?: () => void;
   onOpenFirings?: () => void;
 };
@@ -186,9 +188,7 @@ function recentArtistMatches(tickets: FiringTicket[], displayName: string): Firi
 }
 
 function needsPickupReview(ticket: FiringTicket): boolean {
-  return RECOVERY_STATUSES.has(ticket.billingStatus) ||
-    (["unbilled", "hold_for_review"].includes(ticket.billingStatus) &&
-      ticket.status === "awaiting_pickup_review");
+  return RECOVERY_STATUSES.has(ticket.billingStatus) || requiresPickupReview(ticket);
 }
 
 function needsOwnerAttention(ticket: FiringTicket): boolean {
@@ -319,12 +319,15 @@ export default function FiringPickupBillingModule({
   view = "today",
   searchQuery = "",
   onTicketsChanged,
+  initialTicketId,
   onOpenCheckins,
   onOpenFirings,
 }: Props) {
   const [tickets, setTickets] = useState<FiringTicket[]>([]);
   const [runtime, setRuntime] = useState<FiringBillingRuntime | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState("");
+  const initialTicketRef = useRef(initialTicketId);
+  const [missingInitialTicket, setMissingInitialTicket] = useState(false);
   const [filter, setFilter] = useState<"attention" | "open" | "review" | "ready" | "all">(view === "today" ? "attention" : "all");
   const [ticketSearch, setTicketSearch] = useState("");
   const ticketListRef = useRef<HTMLElement>(null);
@@ -379,12 +382,21 @@ export default function FiringPickupBillingModule({
     setError("");
     try {
       const response = await client.postJson<QueueResponse>("staffListFiringPickupReviews", {});
-      const nextTickets = response.data?.tickets ?? [];
+      if (!Array.isArray(response.data?.tickets)) throw new Error("The ticket queue couldn’t be loaded. Try Refresh.");
+      const nextTickets = response.data.tickets;
       setTickets(nextTickets);
       setHasLoaded(true);
       const nextRuntime = response.data?.runtime ?? null;
       setRuntime(nextRuntime);
       onTicketsChanged?.(nextTickets, nextRuntime);
+      const requestedTicket = initialTicketRef.current;
+      initialTicketRef.current = undefined;
+      if (requestedTicket) {
+        const exists = nextTickets.some((ticket) => ticket.ticketId === requestedTicket);
+        setMissingInitialTicket(!exists);
+        setSelectedTicketId(exists ? requestedTicket : "");
+        return;
+      }
       setSelectedTicketId((current) => {
         if (current && nextTickets.some((ticket) => ticket.ticketId === current)) return current;
         return nextTickets.find(needsOwnerAttention)?.ticketId ??
@@ -497,9 +509,10 @@ export default function FiringPickupBillingModule({
   useEffect(() => {
     setSelectedTicketId((current) => {
       if (current && visibleTickets.some((ticket) => ticket.ticketId === current)) return current;
+      if (missingInitialTicket) return "";
       return visibleTickets[0]?.ticketId ?? "";
     });
-  }, [visibleTickets]);
+  }, [missingInitialTicket, visibleTickets]);
 
   const selectedTicketIndex = visibleTickets.findIndex((ticket) => ticket.ticketId === selectedTicketId);
   useEffect(() => {
@@ -906,6 +919,7 @@ export default function FiringPickupBillingModule({
       ) : null}
       {status ? <div className="staff-note" role="status" aria-live="polite">{status}</div> : null}
       {error ? <div className="staff-note staff-note-error" role="alert">{error}</div> : null}
+      {missingInitialTicket && !selected ? <div className="staff-note" role="status">That ticket is no longer in this queue. Choose a ticket below or return to Today.</div> : null}
 
       <div className="staff-actions-row firing-billing-filters" role="group" aria-label="Filter firing tickets">
         <label className="staff-field firing-ticket-search">Find a ticket<input type="search" placeholder="Name, email, or ticket number" value={ticketSearch} onChange={(event) => setTicketSearch(event.target.value)} /></label>

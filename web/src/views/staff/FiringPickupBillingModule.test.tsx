@@ -109,7 +109,7 @@ describe("FiringPickupBillingModule", () => {
     await screen.findByDisplayValue("120.00");
     fireEvent.click(screen.getByRole("checkbox", { name: /Private firing fulfilled/i }));
     await screen.findByDisplayValue("140.00");
-    fireEvent.click(screen.getByRole("button", { name: /Mark ready & send pickup email/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Pickup review actions" })).getByRole("button", { name: /Mark ready & send pickup email/i }));
     await waitFor(() => expect(postJson.mock.calls.some(([fn, body]) => fn === "staffFinalizeFiringPickup" &&
       (body as { finalChargeCents: number; privateFulfilled: boolean; rushFulfilled: boolean }).finalChargeCents === 14000 &&
       (body as { privateFulfilled: boolean; rushFulfilled: boolean }).privateFulfilled &&
@@ -123,7 +123,7 @@ describe("FiringPickupBillingModule", () => {
     fireEvent.change(quote, { target: { value: "180" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Same-night rush fulfilled/i }));
     await screen.findByDisplayValue("200.00");
-    fireEvent.click(screen.getByRole("button", { name: /Mark ready & send pickup email/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Pickup review actions" })).getByRole("button", { name: /Mark ready & send pickup email/i }));
     await waitFor(() => expect(postJson.mock.calls.some(([fn, body]) => fn === "staffFinalizeFiringPickup" &&
       (body as { finalChargeCents: number; customBaseChargeCents: number }).finalChargeCents === 20000 &&
       (body as { customBaseChargeCents: number }).customBaseChargeCents === 18000)).toBe(true));
@@ -134,7 +134,7 @@ describe("FiringPickupBillingModule", () => {
     render(<FiringPickupBillingModule client={client} isStaff />);
     await screen.findByText(/Review other requested services before billing: Studio glaze access/i);
     await screen.findByDisplayValue("70.00");
-    fireEvent.click(screen.getByRole("button", { name: /Mark ready & send pickup email/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Pickup review actions" })).getByRole("button", { name: /Mark ready & send pickup email/i }));
     expect(await screen.findByText(/Record how the other requested services were handled/i)).toBeTruthy();
     expect(postJson.mock.calls.some(([fn]) => fn === "staffFinalizeFiringPickup")).toBe(false);
   });
@@ -163,7 +163,7 @@ describe("FiringPickupBillingModule", () => {
     render(<FiringPickupBillingModule client={client} isStaff />);
 
     await screen.findByDisplayValue("Test Artist");
-    fireEvent.click(screen.getByRole("button", { name: /Mark ready & send pickup email/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Pickup review actions" })).getByRole("button", { name: /Mark ready & send pickup email/i }));
 
     const email = screen.getByRole("textbox", { name: /Email/ });
     expect(await screen.findByText("Add the artist email to send the pickup note.")).toBeTruthy();
@@ -213,7 +213,7 @@ describe("FiringPickupBillingModule", () => {
     const { client } = createClient();
     render(<FiringPickupBillingModule client={client} isStaff />);
 
-    const ready = await screen.findByRole("button", { name: /Mark ready & send pickup email/i });
+    const ready = await within(await screen.findByRole("group", { name: "Pickup review actions" })).findByRole("button", { name: /Mark ready & send pickup email/i });
     const details = screen.getByText("Ticket details").closest("details");
     expect(details?.hasAttribute("open")).toBe(false);
     expect(ready.compareDocumentPosition(details as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -225,8 +225,10 @@ describe("FiringPickupBillingModule", () => {
 
     await screen.findByDisplayValue("Test Artist");
     expect(screen.getByDisplayValue("50.00")).toBeTruthy();
-    const submit = screen.getByRole("button", { name: /Mark ready & send pickup email/i });
-    fireEvent.click(submit);
+    const submit = within(screen.getByRole("group", { name: "Pickup review actions" })).getByRole("button", { name: /Mark ready & send pickup email/i });
+    const footer = within(screen.getByRole("group", { name: "Ticket actions" }));
+    expect(footer.getByRole("button", { name: "Delete ticket" })).toBeTruthy();
+    fireEvent.click(footer.getByRole("button", { name: /Mark ready & send pickup email/i }));
     fireEvent.click(submit);
 
     await waitFor(() => {
@@ -258,7 +260,7 @@ describe("FiringPickupBillingModule", () => {
     });
     render(<FiringPickupBillingModule client={client} isStaff />);
 
-    const submit = await screen.findByRole("button", { name: /Live billing locked · use Settings/i });
+    const submit = await within(await screen.findByRole("group", { name: "Pickup review actions" })).findByRole("button", { name: /Live billing locked · use Settings/i });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(submit);
     expect(postJson.mock.calls.some(([fn]) => fn === "staffFinalizeFiringPickup")).toBe(false);
@@ -270,7 +272,7 @@ describe("FiringPickupBillingModule", () => {
 
     await screen.findByDisplayValue("Test Artist");
     fireEvent.click(screen.getByLabelText(/Hold · send nothing yet/i));
-    fireEvent.click(screen.getByRole("button", { name: /Save hold · send nothing/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Pickup review actions" })).getByRole("button", { name: /Save hold · send nothing/i }));
 
     await waitFor(() => {
       expect(postJson.mock.calls.some(([fn]) => fn === "staffFinalizeFiringPickup")).toBe(true);

@@ -79,6 +79,7 @@ import {
   buildStudioReservationsPath,
   canonicalReservationsPath,
   FIRING_PATHFINDER_URL,
+  STUDIO_BOOKINGS_PAUSED,
   parseStudioReservationsSearch,
   resolveReservationsPathTarget,
 } from "./utils/reservationsPaths";
@@ -212,7 +213,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Studio & Resources",
     items: [
       { key: "studioResources", label: "Overview" },
-      { key: "reservations", label: "Reservations" },
+      ...(STUDIO_BOOKINGS_PAUSED ? [] : [{ key: "reservations", label: "Reservations" } as const]),
       { key: "pieces", label: "My Pieces" },
       { key: "lendingLibrary", label: "Lending Library" },
       { key: "glazes", label: "Glaze Board" },
@@ -2425,6 +2426,7 @@ export default function App() {
         return (
           <StudioReservationsView
             user={user}
+            bookingPaused={STUDIO_BOOKINGS_PAUSED}
             adminToken={devAdminTokenValue}
             isStaff={staffUi}
             onOpenStaffWorkspace={openStaffWorkspace}

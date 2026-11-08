@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import { createPortalApi } from "../../api/portalApi";
 import { unwrapPortalData } from "../../api/unwrapPortalData";
 import { useStudioReservationsData } from "../../hooks/useStudioReservationsData";
+import { STUDIO_BOOKINGS_PAUSED } from "../../utils/reservationsPaths";
 import {
   addStudioDays,
   formatStudioDateLabel,
@@ -279,7 +280,9 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
           <div className="card-title">Studio reservations</div>
         </div>
         <div className="staff-note">
-          Calendar-first booking for shared studio spaces. Members see occupancy. Staff sees names, waitlists, and holds.
+          {STUDIO_BOOKINGS_PAUSED
+            ? "Review existing bookings, waitlists, and holds."
+            : "Calendar-first booking for shared studio spaces. Members see occupancy. Staff sees names, waitlists, and holds."}
         </div>
         {loadError ? <div className="staff-note staff-note-error">{loadError}</div> : null}
         {error ? <div className="staff-note staff-note-error">{error}</div> : null}
@@ -582,7 +585,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
           <div className="card card-3d studio-reservations-admin-card">
             <div className="card-title">Calendar feed snapshot</div>
             <div className="studio-mine-list">
-              {entries.slice(0, 12).map((entry) => (
+              {entries.filter((entry) => !STUDIO_BOOKINGS_PAUSED || entry.kind !== "availability").slice(0, 12).map((entry) => (
                 <div key={entry.id} className="studio-mine-card">
                   <div className="studio-calendar-card-head">
                     <span className="studio-calendar-card-title">{entry.spaceName ?? entry.title}</span>

@@ -24,6 +24,7 @@ import "./StudioReservationsView.css";
 
 type Props = {
   user: User;
+  bookingPaused?: boolean;
   adminToken?: string;
   isStaff: boolean;
   onOpenStaffWorkspace?: (target: string) => void;
@@ -277,6 +278,7 @@ function SoundToggleIcon({ muted }: { muted: boolean }) {
 
 export default function StudioReservationsView({
   user,
+  bookingPaused = false,
   adminToken,
   isStaff,
   onOpenStaffWorkspace,
@@ -314,6 +316,7 @@ export default function StudioReservationsView({
       rangeStartIso,
       rangeEndIso: rangeFinishIso,
       spaceIds: [],
+      mineOnly: bookingPaused,
     });
 
   const browseRef = useRef<HTMLElement | null>(null);
@@ -381,7 +384,7 @@ export default function StudioReservationsView({
   }, [selectedSummary]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (bookingPaused || typeof window === "undefined") return;
     const nextPath = buildStudioReservationsPath({
       dateKey: activeDateKey,
       spaceId: selectedSummary?.space.id ?? null,
@@ -390,7 +393,7 @@ export default function StudioReservationsView({
     if (current !== nextPath) {
       window.history.replaceState({}, "", nextPath);
     }
-  }, [activeDateKey, selectedSummary]);
+  }, [activeDateKey, bookingPaused, selectedSummary]);
 
   useEffect(() => {
     const availableDayKeys = activeBrowseDays.map((day) => day.dayKey);
@@ -546,7 +549,7 @@ export default function StudioReservationsView({
     resourceIds?: string[];
     bookingNote?: string | null;
   }) => {
-    if (!entry.spaceId) return;
+    if (bookingPaused || !entry.spaceId) return;
     if (busyAction) return;
     primeFeedbackAudio();
     clearActionFeedback();
@@ -613,7 +616,7 @@ export default function StudioReservationsView({
   };
 
   const joinWaitlist = async (entry: StudioCalendarEntryRecord) => {
-    if (!entry.spaceId) return;
+    if (bookingPaused || !entry.spaceId) return;
     if (busyAction) return;
     primeFeedbackAudio();
     clearActionFeedback();
@@ -952,6 +955,116 @@ export default function StudioReservationsView({
     );
   };
 
+  const reservationsPanel = (
+    <details
+      ref={reservationsRef}
+      className="card card-3d studio-my-reservations"
+      open={bookingPaused || showManageReservations}
+      onToggle={(event) => setShowManageReservations((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="studio-my-reservations-summary">
+        <span className="studio-my-reservations-title-group">
+          <span className="card-title">My reservations</span>
+          <span className="studio-day-subtitle">
+            {nextUpcoming
+              ? `${nextUpcoming.spaceName} next · ${formatStudioDateLabel(nextUpcoming.startAtDate, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                })}`
+              : "No studio reservations yet."}
+          </span>
+        </span>
+        <span className="pill subtle">{upcoming.length}</span>
+      </summary>
+      <div className="studio-my-reservations-body">
+        {upcoming.length === 0 ? (
+          <div className="studio-day-empty">{loading ? "Checking reservations…" : loadError ? "Reservation records are unavailable." : bookingPaused ? "You have no upcoming reservations." : "No studio reservations yet. Book a space above to get started."}</div>
+        ) : (
+          <div className="studio-mine-list">
+            {upcoming.map((reservation) => (
+              <article
+                className="studio-mine-card"
+                key={reservation.id}
+                data-feedback-phase={
+                  reservationFeedback?.targetId === reservation.id ? reservationFeedback.phase : "idle"
+                }
+                data-feedback-kind={
+                  reservationFeedback?.targetId === reservation.id ? reservationFeedback.kind : ""
+                }
+              >
+                <div className="studio-calendar-card-head">
+                  <span className="studio-calendar-card-title">{reservation.spaceName}</span>
+                  <span className="pill subtle">{reservation.status}</span>
+                </div>
+                <div className="studio-calendar-card-time">
+                  {formatStudioDateLabel(reservation.startAtDate, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}{" "}
+                  · {formatStudioTimeRange(reservation.startAtDate, reservation.endAtDate)}
+                </div>
+                <div className="studio-calendar-card-copy">{reservationSummary(reservation)}</div>
+                <div className="studio-detail-button-row">
+                  {!bookingPaused ? <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => {
+                      if (!reservation.startAtDate) return;
+                      handleSelectSpace(reservation.spaceId);
+                      handleSetAnchorDayKey(studioPhoenixDateKey(reservation.startAtDate));
+                      setShowBrowse(true);
+                    }}
+                  >
+                    Browse this day
+                  </button> : null}
+                  {reservation.canCancel ? (
+                    <button
+                      className="btn btn-secondary studio-action-button"
+                      type="button"
+                      onClick={toVoidHandler(() => handleCancelReservation(reservation.id))}
+                      disabled={busyAction === `cancel:${reservation.id}`}
+                      data-feedback-phase={
+                        reservationFeedback?.targetId === reservation.id ? reservationFeedback.phase : "idle"
+                      }
+                    >
+                      {busyAction === `cancel:${reservation.id}` ? "Canceling..." : "Cancel"}
+                    </button>
+                  ) : null}
+                </div>
+                {reservationFeedback?.targetId === reservation.id && reservationFeedback.message ? (
+                  <div
+                    className={`studio-action-feedback ${
+                      reservationFeedback.phase === "error" ? "status-error" : "status-success"
+                    }`}
+                    role={reservationFeedback.phase === "error" ? "alert" : "status"}
+                  >
+                    {reservationFeedback.message}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+
+  if (bookingPaused) {
+    return (
+      <div className="page studio-reservations-page">
+        <section className="card card-3d">
+          <h1>Studio reservations are paused</h1>
+          <p>New studio bookings and waitlist requests are paused. You can still view or cancel an existing reservation below.</p>
+        </section>
+        {loadError || error ? <div className="card card-3d alert" role="alert">{loadError || error}</div> : null}
+        {status && status !== DEFAULT_STATUS_MESSAGE ? <div className="card card-3d notice" role="status">{status}</div> : null}
+        {reservationsPanel}
+      </div>
+    );
+  }
+
   return (
     <div className="page studio-reservations-page">
       <section className="card card-3d studio-reservations-header">
@@ -1224,99 +1337,7 @@ export default function StudioReservationsView({
         </section>
       ) : null}
 
-      <details
-        ref={reservationsRef}
-        className="card card-3d studio-my-reservations"
-        open={showManageReservations}
-        onToggle={(event) => setShowManageReservations((event.currentTarget as HTMLDetailsElement).open)}
-      >
-        <summary className="studio-my-reservations-summary">
-          <span className="studio-my-reservations-title-group">
-            <span className="card-title">My reservations</span>
-            <span className="studio-day-subtitle">
-              {nextUpcoming
-                ? `${nextUpcoming.spaceName} next · ${formatStudioDateLabel(nextUpcoming.startAtDate, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}`
-                : "No studio reservations yet."}
-            </span>
-          </span>
-          <span className="pill subtle">{upcoming.length}</span>
-        </summary>
-        <div className="studio-my-reservations-body">
-          {upcoming.length === 0 ? (
-            <div className="studio-day-empty">No studio reservations yet. Book a space above to get started.</div>
-          ) : (
-            <div className="studio-mine-list">
-              {upcoming.map((reservation) => (
-                <article
-                  className="studio-mine-card"
-                  key={reservation.id}
-                  data-feedback-phase={
-                    reservationFeedback?.targetId === reservation.id ? reservationFeedback.phase : "idle"
-                  }
-                  data-feedback-kind={
-                    reservationFeedback?.targetId === reservation.id ? reservationFeedback.kind : ""
-                  }
-                >
-                  <div className="studio-calendar-card-head">
-                    <span className="studio-calendar-card-title">{reservation.spaceName}</span>
-                    <span className="pill subtle">{reservation.status}</span>
-                  </div>
-                  <div className="studio-calendar-card-time">
-                    {formatStudioDateLabel(reservation.startAtDate, {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}{" "}
-                    · {formatStudioTimeRange(reservation.startAtDate, reservation.endAtDate)}
-                  </div>
-                  <div className="studio-calendar-card-copy">{reservationSummary(reservation)}</div>
-                  <div className="studio-detail-button-row">
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      onClick={() => {
-                        if (!reservation.startAtDate) return;
-                        handleSelectSpace(reservation.spaceId);
-                        handleSetAnchorDayKey(studioPhoenixDateKey(reservation.startAtDate));
-                        setShowBrowse(true);
-                      }}
-                    >
-                      Browse this day
-                    </button>
-                    {reservation.canCancel ? (
-                      <button
-                        className="btn btn-secondary studio-action-button"
-                        type="button"
-                        onClick={toVoidHandler(() => handleCancelReservation(reservation.id))}
-                        disabled={busyAction === `cancel:${reservation.id}`}
-                        data-feedback-phase={
-                          reservationFeedback?.targetId === reservation.id ? reservationFeedback.phase : "idle"
-                        }
-                      >
-                        {busyAction === `cancel:${reservation.id}` ? "Canceling..." : "Cancel"}
-                      </button>
-                    ) : null}
-                  </div>
-                  {reservationFeedback?.targetId === reservation.id && reservationFeedback.message ? (
-                    <div
-                      className={`studio-action-feedback ${
-                        reservationFeedback.phase === "error" ? "status-error" : "status-success"
-                      }`}
-                      role={reservationFeedback.phase === "error" ? "alert" : "status"}
-                    >
-                      {reservationFeedback.message}
-                    </div>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      </details>
+      {reservationsPanel}
     </div>
   );
 }

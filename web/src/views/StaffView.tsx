@@ -113,7 +113,7 @@ import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
 import { isDisallowedRetailCoverUrl } from "./staff/lendingResearch";
 import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
-import { FIRING_PATHFINDER_URL } from "../utils/reservationsPaths";
+import { FIRING_PATHFINDER_URL, STUDIO_BOOKINGS_PAUSED } from "../utils/reservationsPaths";
 import { humanTicketName, humanTicketReference } from "../utils/ticketIdentity";
 import type { FiringTicket, QueueResponse } from "./staff/FiringPickupBillingModule";
 import { requiresPickupReview } from "./staff/pickupReviewQueue";
@@ -184,7 +184,7 @@ type StaffAnnouncementDraft = {
 const MODULE_REGISTRY = {
   controlTower: { label: "Control Tower", owner: "Studio Brain", testId: "staff-module-control-tower", nav: true },
   cockpit: { label: "Cockpit", owner: "Operations", testId: "staff-module-cockpit", nav: true },
-  studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: true },
+  studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: !STUDIO_BOOKINGS_PAUSED },
   checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
   members: { label: "Clients", owner: "Client Ops", testId: "staff-module-members", nav: false },
   pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
@@ -9251,11 +9251,10 @@ export default function StaffView({
     </section>
   );
   const studioReservationsContent = (
-    <StudioReservationsModule
-      user={user}
-      adminToken={devAdminToken}
-      onOpenWareCheckIn={onOpenCheckin}
-    />
+    <>
+      {STUDIO_BOOKINGS_PAUSED ? <div className="staff-note" role="status">Studio bookings are paused. This workspace is for existing reservation records.</div> : null}
+      <StudioReservationsModule user={user} adminToken={devAdminToken} onOpenWareCheckIn={onOpenCheckin} />
+    </>
   );
   const cockpitOperationsFocusModule:
     | "operations"

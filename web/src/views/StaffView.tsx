@@ -6832,7 +6832,7 @@ export default function StaffView({
   const membersContent = (
     <section className="card staff-console-card staff-contacts-surface">
       <div className="card-title-row">
-        <div className="card-title">Contacts</div>
+        <h1 className="card-title">Contacts</h1>
         <button
           type="button"
           className="btn btn-secondary"
@@ -6842,19 +6842,6 @@ export default function StaffView({
           Refresh contacts
         </button>
       </div>
-      <section className="staff-desk-guide" aria-label="Contact directory">
-        <div className="staff-desk-guide-art" style={{backgroundImage: 'url("/staff-facelift/contacts.webp")', backgroundPosition: "right center", backgroundSize: "cover"}} aria-hidden="true" />
-        <div className="staff-desk-guide-copy">
-          <h2>Find a person</h2>
-          <p>Find a contact and start an email.</p>
-        </div>
-      </section>
-      <details className="staff-note"><summary>Directory sources</summary>
-        Users: {memberSourceStats.usersDocs}. Profiles: {memberSourceStats.profilesDocs}.
-        {memberSourceStats.inferredMembers > 0
-          ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}`
-          : ""}
-      </details>
       <div className="staff-contacts-grid" data-detail-open={contactDetailOpen}>
         <div className="staff-column staff-contacts-list">
           <div className="staff-actions-row">
@@ -6910,6 +6897,10 @@ export default function StaffView({
           <h3>Firing ticket contacts</h3>
           <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person.</p>
           {contactTicketsError ? <p role="status">{contactTicketsError}</p> : firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>)}
+          <details className="staff-note"><summary>Directory sources</summary>
+            Users: {memberSourceStats.usersDocs}. Profiles: {memberSourceStats.profilesDocs}.
+            {memberSourceStats.inferredMembers > 0 ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}` : ""}
+          </details>
         </div>
 
         <div className="staff-column staff-contacts-detail">

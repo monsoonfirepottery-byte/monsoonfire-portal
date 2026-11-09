@@ -220,6 +220,23 @@ try {
     { label: `Uploading ${stageDir} -> ${remoteTarget}` }
   );
 
+  // Shared hosting serves static files outside the SSH user's process. scp can
+  // preserve an owner-only directory mode, which makes an otherwise complete
+  // upload look like a LiteSpeed 404. Keep the deployed tree publicly readable
+  // and its directories traversable before promoting it.
+  run("ssh", [
+    "-i",
+    keyPath,
+    "-p",
+    String(options.port),
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    options.server,
+    `chmod -R u=rwX,g=rX,o=rX ${shellQuote(remoteUploadPath)}`,
+  ], {
+    label: "Setting public portal file permissions",
+  });
+
   run("ssh", [
     "-i",
     keyPath,

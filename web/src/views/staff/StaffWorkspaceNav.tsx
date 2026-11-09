@@ -18,7 +18,7 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
     { key: "today", label: "Today", action: onHome },
     { key: "finance", label: "Tickets & payments", action: () => onNavigate("finance") },
     ...(STUDIO_BOOKINGS_PAUSED ? [] : [{ key: "studioReservations", label: "Reservations", action: onReservations }]),
-    { key: "members", label: "Clients", action: () => onNavigate("members") },
+    { key: "members", label: "Contacts", action: () => onNavigate("members") },
     { key: "messages", label: "Messages", action: onMessages },
   ];
   return <aside className="staff-workspace-nav" aria-label="Staff workspace">

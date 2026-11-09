@@ -668,7 +668,7 @@ describe("StudioBrainControlTowerModule", () => {
       />,
     );
 
-    expect(await screen.findByText("30-second operator plane")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Studio Brain" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Chief of staff" })).toBeTruthy();
     expect(screen.getByText("Owner commands")).toBeTruthy();
     expect(screen.getByText("Why this contact")).toBeTruthy();
@@ -967,7 +967,7 @@ describe("StudioBrainControlTowerModule", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save URL" }));
 
-    expect(await screen.findByText("30-second operator plane")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Studio Brain" })).toBeTruthy();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("https://studio-brain.runtime.example/api/control-tower/state"),
@@ -1007,7 +1007,7 @@ describe("StudioBrainControlTowerModule", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText("30-second operator plane")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Studio Brain" })).toBeTruthy();
     expect(fetchStateSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -1048,7 +1048,7 @@ describe("StudioBrainControlTowerModule", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText("30-second operator plane")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Studio Brain" })).toBeTruthy();
     expect(fetchStateSpy).toHaveBeenCalledTimes(2);
 
     await act(async () => {

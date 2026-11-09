@@ -759,17 +759,13 @@ export default function StudioBrainControlTowerModule({
     <>
       <section className="control-tower-shell" data-testid="studio-brain-control-tower">
         <section className={`card staff-console-card control-tower-hero${quietMode ? " control-tower-hero-quiet" : ""}`}>
-          <img className="control-tower-workshop-art" src="/staff-admin/studio-brain.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
+          <img className="control-tower-workshop-art" src="/staff-facelift/studio-brain.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
           <div className="control-tower-hero-copy">
-            <div className="control-tower-kicker">Studio Brain Control Tower v3</div>
-            <h1>{quietMode ? "Quiet control tower" : "30-second operator plane"}</h1>
-            <p>
-              {quietMode
-                ? "No active rooms, approvals, incidents, or host heartbeats are in flight. The surface stays compact until real operator work arrives."
-                : "Mission board, approvals, memory brief, and live channels are the first screen now. tmux and logs stay backstage as recovery substrate."}
-            </p>
+            <div className="control-tower-kicker">Administration · Studio Brain</div>
+            <h1>Studio Brain</h1>
+            <p>{errorMessage ? "Status unavailable. Refresh to try again." : !state ? "Loading the latest activity." : quietMode ? "No activity needs attention right now." : "Review approvals and blocked work, then open a room or service."}</p>
           </div>
-          <AdminWorkflow label="Workflow" stages={[{ label: "Rooms", detail: `${activeRooms.length} active`, state: activeRooms.length ? "ok" : "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }, { label: "Review", detail: `${approvals.length} approvals`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} attention`, state: counts.needsAttention ? "danger" : "ok" }]} />
+          <AdminWorkflow label="Current work" stages={!state || errorMessage ? [{ label: "Activity", detail: errorMessage ? "Unavailable" : "Loading", state: "neutral" }] : [{ label: "Review", detail: `${approvals.length} approvals`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} need attention`, state: counts.needsAttention ? "danger" : "neutral" }, { label: "Rooms", detail: `${activeRooms.length} active`, state: "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }]} />
           <div className="control-tower-hero-actions">
             <button type="button" className="btn btn-secondary" onClick={() => void loadState()}>
               {loading ? "Refreshing..." : "Refresh"}
@@ -785,7 +781,9 @@ export default function StudioBrainControlTowerModule({
             </button>
           </div>
 
-          {quietMode ? (
+          {!state || errorMessage ? (
+            <div className="staff-note">{errorMessage ? "Unable to load current activity. Refresh to retry." : "Loading current activity…"}</div>
+          ) : quietMode ? (
             <article className="control-tower-next-card">
               <div className="control-tower-title-row">
                 <h3>Quiet right now</h3>
@@ -831,7 +829,7 @@ export default function StudioBrainControlTowerModule({
             </div>
           )}
 
-          <div className="control-tower-status-row">
+          {state && !errorMessage ? <div className="control-tower-status-row">
             <span className={`pill control-tower-pill-${toneClass(state?.ops.overallStatus ?? "neutral")}`}>
               {`Ops ${state?.ops.overallStatus ?? "neutral"}`}
             </span>
@@ -848,7 +846,7 @@ export default function StudioBrainControlTowerModule({
             </span>
             {!quietMode ? <span>{state?.ops.summary || "Loading Control Tower status..."}</span> : null}
             {!quietMode && state?.generatedAt ? <span>{`Updated ${formatTimestamp(state.generatedAt)}`}</span> : null}
-          </div>
+          </div> : null}
 
           {hosts.length ? (
             <div className="control-tower-host-strip">

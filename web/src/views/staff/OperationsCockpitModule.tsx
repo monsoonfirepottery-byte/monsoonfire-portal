@@ -51,7 +51,7 @@ export default function OperationsCockpitModule({
         : cardByModule[activeOperationsModule];
     return (
       <section className="staff-operations-focus" data-testid={`operations-focus-${activeOperationsModule}`}>
-        <section className="card staff-console-card staff-operations-focus-card">
+        {activeOperationsModule !== "members" && <section className="card staff-console-card staff-operations-focus-card">
           <div className="card-title-row">
             <div className="staff-column">
               <div className="card-title">{selectedCard.title}</div>
@@ -64,7 +64,7 @@ export default function OperationsCockpitModule({
               Back to operations overview
             </button>
           </div>
-        </section>
+        </section>}
         <section className="staff-module-grid">{contentByModule[activeOperationsModule]}</section>
       </section>
     );

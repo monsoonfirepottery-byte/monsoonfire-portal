@@ -115,7 +115,6 @@ import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import { FIRING_PATHFINDER_URL, STUDIO_BOOKINGS_PAUSED } from "../utils/reservationsPaths";
 import { humanTicketName, humanTicketReference } from "../utils/ticketIdentity";
-import type { FiringTicket, QueueResponse } from "./staff/FiringPickupBillingModule";
 import { requiresPickupReview } from "./staff/pickupReviewQueue";
 import { parseAutomationStatus, type AutomationDashboardState } from "./staff/automationStatus";
 import { formatDateTime } from "../utils/format";
@@ -137,8 +136,13 @@ const StudioReservationsModule = lazy(() => import("./staff/StudioReservationsMo
 const StudioBrainControlTowerModule = lazy(() => import("./staff/StudioBrainControlTowerModule"));
 const TaskHomeModule = lazy(() => import("./staff/TaskHomeModule"));
 const WareCheckInView = lazy(() => import("./WareCheckInView"));
+const MessagesView = lazy(() => import("./MessagesView"));
 import StaffWorkspaceNav from "./staff/StaffWorkspaceNav";
 import "./staff/staffWorkspace.css";
+import "./staff/staffContacts.css";
+import { contactEmailAddress } from "./staff/contactEmail";
+import { firingTicketContacts } from "./staff/firingTicketContacts";
+import type { FiringTicket, QueueResponse } from "./staff/FiringPickupBillingModule";
 import "./staff/staffDeskGuide.css";
 
 type Props = {
@@ -154,6 +158,7 @@ type Props = {
   onOpenClientStart?: () => void;
   onOpenMessages?: () => void;
   onOpenMessageThread?: (threadId: string) => void;
+  supportEmail?: string;
   onOpenFirings?: () => void;
   onStartFiring?: () => void;
   initialModule?: ModuleKey;
@@ -187,6 +192,7 @@ const MODULE_REGISTRY = {
   studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: !STUDIO_BOOKINGS_PAUSED },
   checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
   members: { label: "Clients", owner: "Client Ops", testId: "staff-module-members", nav: false },
+  messages: { label: "Messages", owner: "Client Ops", testId: "staff-module-messages", nav: false },
   pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
   firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: false },
   events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: false },
@@ -284,12 +290,14 @@ const COCKPIT_PATH_TAB_BY_SEGMENT: Readonly<Record<string, CockpitTabKey>> = {
 };
 
 const COCKPIT_MODULE_PATH_SEGMENT: Partial<Record<ModuleKey, string>> = {
+  messages: "messages",
   controlTower: "control-tower",
   communityBlogs: "community-blogs",
   studioReservations: "studio-reservations",
 };
 
 const COCKPIT_MODULE_KEY_BY_PATH_SEGMENT: Readonly<Record<string, ModuleKey>> = {
+  messages: "messages",
   "control-tower": "controlTower",
   "community-blogs": "communityBlogs",
   reports: "reports",
@@ -2234,8 +2242,7 @@ export default function StaffView({
   onOpenCheckin,
   onOpenReservation,
   onOpenClientStart,
-  onOpenMessages,
-  onOpenMessageThread,
+  supportEmail = "support@monsoonfire.com",
   onOpenFirings,
   onStartFiring,
   onOpenStaffWorkspace,
@@ -2327,6 +2334,12 @@ export default function StaffView({
   const [handlerLog, setHandlerLog] = useState<Array<{ atIso: string; label: string; message: string }>>(() => getHandlerErrorLog());
 
   const [users, setUsers] = useState<MemberRecord[]>([]);
+  const [contactTickets, setContactTickets] = useState<FiringTicket[]>([]);
+  const [contactTicketsError, setContactTicketsError] = useState("");
+  const [messageRecipientCheck, setMessageRecipientCheck] = useState<{ uid: string; status: "checking" | "active" | "disabled" | "not_found" | "unavailable" } | null>(null);
+  const [staffMessageRecipientId, setStaffMessageRecipientId] = useState<string | null>(null);
+  const [staffMessageThreadId, setStaffMessageThreadId] = useState<string | null>(null);
+  const [staffMessageDirectoryError, setStaffMessageDirectoryError] = useState("");
   const [batches, setBatches] = useState<BatchRecord[]>([]);
   const [firings, setFirings] = useState<FiringRecord[]>([]);
   const [firingsLoading, setFiringsLoading] = useState(false);
@@ -2369,8 +2382,8 @@ export default function StaffView({
   const [reportOps, setReportOps] = useState({ total: 0, open: 0, highOpen: 0, slaBreaches: 0 });
 
   const [memberSearch, setMemberSearch] = useState("");
-  const [memberRoleFilter, setMemberRoleFilter] = useState<MemberRoleFilter>("all");
   const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [contactDetailOpen, setContactDetailOpen] = useState(false);
   const [memberStats, setMemberStats] = useState<MemberOperationalStats | null>(null);
   const [memberStatsBusy, setMemberStatsBusy] = useState(false);
   const [memberStatsError, setMemberStatsError] = useState("");
@@ -3601,13 +3614,12 @@ export default function StaffView({
     const search = memberSearch.trim().toLowerCase();
     return users
       .filter((member) => {
-        if (memberRoleFilter !== "all" && member.role !== memberRoleFilter) return false;
         if (!search) return true;
         const haystack = `${member.displayName} ${member.email} ${member.id} ${member.accountType}`.toLowerCase();
         return haystack.includes(search);
       })
       .sort((a, b) => b.lastSeenAtMs - a.lastSeenAtMs);
-  }, [memberRoleFilter, memberSearch, users]);
+  }, [memberSearch, users]);
 
   const markErr = useCallback(
     (err: unknown) => {
@@ -3829,10 +3841,18 @@ export default function StaffView({
   const loadUsers = useCallback(async () => {
     qTrace("users", { limit: 240 });
     qTrace("profiles", { limit: 240 });
-    const [usersResult, profilesResult] = await Promise.allSettled([
+    const [usersResult, profilesResult, ticketsResult] = await Promise.allSettled([
       getDocs(query(collection(db, "users"), limit(240))),
       getDocs(query(collection(db, "profiles"), limit(240))),
+      client.postJson<QueueResponse>("staffListFiringPickupReviews", {}),
     ]);
+    if (ticketsResult.status === "fulfilled" && Array.isArray(ticketsResult.value.data?.tickets)) {
+      setContactTickets(ticketsResult.value.data.tickets);
+      setContactTicketsError("");
+    } else {
+      setContactTickets([]);
+      setContactTicketsError("Firing ticket contacts are unavailable. Refresh contacts to retry.");
+    }
 
     const byUid = new Map<string, { userData: Record<string, unknown>; profileData: Record<string, unknown> }>();
     const usersDocsCount = usersResult.status === "fulfilled" ? usersResult.value.docs.length : 0;
@@ -3841,11 +3861,15 @@ export default function StaffView({
     let inferredMembers = 0;
 
     if (usersResult.status === "fulfilled") {
+      setStaffMessageDirectoryError("");
       usersResult.value.docs.forEach((docSnap) => {
         const row = byUid.get(docSnap.id) ?? { userData: {}, profileData: {} };
         row.userData = (docSnap.data() ?? {}) as Record<string, unknown>;
         byUid.set(docSnap.id, row);
       });
+    }
+    else {
+      setStaffMessageDirectoryError("Portal recipient directory is unavailable. Refresh contacts to retry.");
     }
 
     if (profilesResult.status === "fulfilled") {
@@ -3965,7 +3989,7 @@ export default function StaffView({
     });
     setUsers(rows);
     if (!selectedMemberId && rows[0]) setSelectedMemberId(rows[0].id);
-  }, [isAdmin, isStaff, qTrace, selectedMemberId, user.displayName, user.email, user.uid]);
+  }, [client, isAdmin, isStaff, qTrace, selectedMemberId, user.displayName, user.email, user.uid]);
 
   const countFor = useCallback(
     async (collectionName: string, ...constraints: QueryConstraint[]): Promise<number> => {
@@ -6806,28 +6830,23 @@ export default function StaffView({
   }, [filteredFirings, firings, selectedFiringId]);
 
   const membersContent = (
-    <section className="card staff-console-card">
+    <section className="card staff-console-card staff-contacts-surface">
       <div className="card-title-row">
-        <div className="card-title">Clients</div>
+        <div className="card-title">Contacts</div>
         <button
           type="button"
           className="btn btn-secondary"
           disabled={Boolean(busy)}
           onClick={() => void run("refreshMembers", loadUsers)}
         >
-          Refresh clients
+          Refresh contacts
         </button>
       </div>
-      <section className="staff-desk-guide" aria-label="Client directory">
-        <div className="staff-desk-guide-art" data-scene="clients" aria-hidden="true" />
+      <section className="staff-desk-guide" aria-label="Contact directory">
+        <div className="staff-desk-guide-art" style={{backgroundImage: 'url("/staff-facelift/contacts.webp")', backgroundPosition: "right center", backgroundSize: "cover"}} aria-hidden="true" />
         <div className="staff-desk-guide-copy">
-          <h2>Find a client</h2>
-          <p>Open a record to see their pieces, visits, orders, and conversations.</p>
-          <div className="staff-desk-guide-actions">
-            <button type="button" className="btn btn-primary" onClick={() => document.getElementById("staff-client-search")?.focus()}>Search directory</button>
-            <button type="button" className="btn btn-ghost" aria-pressed={memberRoleFilter === "member"} onClick={() => setMemberRoleFilter("member")}>Clients only</button>
-            <button type="button" className="btn btn-ghost" aria-pressed={memberRoleFilter === "all"} onClick={() => setMemberRoleFilter("all")}>Everyone</button>
-          </div>
+          <h2>Find a person</h2>
+          <p>Find a contact and start an email.</p>
         </div>
       </section>
       <details className="staff-note"><summary>Directory sources</summary>
@@ -6836,85 +6855,81 @@ export default function StaffView({
           ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}`
           : ""}
       </details>
-      <div className="staff-module-grid">
-        <div className="staff-column">
+      <div className="staff-contacts-grid" data-detail-open={contactDetailOpen}>
+        <div className="staff-column staff-contacts-list">
           <div className="staff-actions-row">
             <input
               id="staff-client-search"
-              aria-label="Search client directory"
+              aria-label="Search contacts by name or email"
               className="staff-member-search"
-              placeholder="Search by name, email, or UID"
+              placeholder="Search by name or email"
               value={memberSearch}
               onChange={(event) => setMemberSearch(event.target.value)}
             />
-            <select
-              aria-label="Filter directory by role"
-              className="staff-member-role-filter"
-              value={memberRoleFilter}
-              onChange={(event) => setMemberRoleFilter(event.target.value as MemberRoleFilter)}
-            >
-              <option value="all">All roles</option>
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-              <option value="member">Client</option>
-            </select>
           </div>
+          <p className="staff-note">Search is limited to available contacts. Enter an email address to start a draft even if it is not listed.</p>
+          {contactEmailAddress(memberSearch) ? <a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(memberSearch)!) }`}>Email this address</a> : null}
           <div className="staff-table-wrap">
             <table className="staff-table staff-client-directory-table">
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Role</th>
                   <th>Email</th>
-                  <th>Last seen</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={4}>No clients match current filters.</td>
+                    <td colSpan={2}>No contacts match this search.</td>
                   </tr>
                 ) : (
                   filteredMembers.map((member) => (
                     <tr
                       key={member.id}
                       className={`staff-click-row ${selectedMemberId === member.id ? "active" : ""}`}
-                      onClick={() => setSelectedMemberId(member.id)}
+                      onClick={() => { setMessageRecipientCheck(null); setSelectedMemberId(member.id); setContactDetailOpen(true); requestAnimationFrame(() => document.getElementById("staff-contact-detail")?.focus()); }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
+                          setMessageRecipientCheck(null);
                           setSelectedMemberId(member.id);
+                          setContactDetailOpen(true);
+                          requestAnimationFrame(() => document.getElementById("staff-contact-detail")?.focus());
                         }
                       }}
                       tabIndex={0}
                     >
                       <td>{member.displayName}</td>
-                      <td><span className="pill">{memberRoleLabel(member.role)}</span></td>
-                      <td>{member.email}</td>
-                      <td>{when(member.lastSeenAtMs)}</td>
+                      <td>{member.email || "No email on file"}</td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+          <h3>Firing ticket contacts</h3>
+          <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person.</p>
+          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>)}
         </div>
 
-        <div className="staff-column">
-          <div className="staff-note">
+        <div className="staff-column staff-contacts-detail">
+          <button type="button" className="btn btn-ghost staff-contacts-back" onClick={() => { setContactDetailOpen(false); requestAnimationFrame(() => document.getElementById("staff-client-search")?.focus()); }}>Back to results</button>
+          <div className="staff-note" id="staff-contact-detail" tabIndex={-1}>
             {selectedMember ? (
               <>
                 <strong>{selectedMember.displayName}</strong><br />
                 <span>{selectedMember.email}</span><br />
-                <code>{selectedMember.id}</code>
               </>
             ) : (
-              "Select a client to inspect details."
+              "Select a contact to see their details."
             )}
           </div>
           {selectedMember ? (
             <>
               <div className="staff-actions-row">
+                {contactEmailAddress(selectedMember.email) ? <a className="btn btn-primary" href={`mailto:${encodeURIComponent(contactEmailAddress(selectedMember.email)!) }`}>Email</a> : <span>No usable email on file</span>}
+                {selectedMember.id !== user.uid ? messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "active" ? <button type="button" className="btn btn-secondary" onClick={() => { setStaffMessageRecipientId(selectedMember.id); openModuleFromCockpit("messages"); }}>Message in portal</button> : <button type="button" className="btn btn-secondary" disabled={messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "checking"} onClick={() => { const uid = selectedMember.id; setMessageRecipientCheck({ uid, status: "checking" }); void client.postJson<{ ok: boolean; data?: { uid: string; status: "active" | "disabled" | "not_found" } }>("staffVerifyMessageRecipient", { uid }).then((result) => { setMessageRecipientCheck((current) => current?.uid === uid ? { uid, status: result.ok && result.data?.uid === uid ? result.data.status : "unavailable" } : current); }).catch(() => { setMessageRecipientCheck((current) => current?.uid === uid ? { uid, status: "unavailable" } : current); }); }}>{messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "checking" ? "Checking portal account…" : "Check portal messaging"}</button> : null}
+                {messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "disabled" ? <span>Portal account disabled.</span> : messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "not_found" ? <span>No portal account found.</span> : messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "unavailable" ? <span>Portal account check unavailable. Try again.</span> : null}
                 <button type="button" className="btn btn-ghost" onClick={() => void copy(selectedMember.id)}>
                   Copy UID
                 </button>
@@ -6922,60 +6937,7 @@ export default function StaffView({
                   Copy email
                 </button>
               </div>
-              <div className="staff-subtitle">Access role</div>
-              <div className="staff-note">
-                Current role: <strong>{memberRoleLabel(selectedMember.role)}</strong>. Role changes update Firebase Auth claims and
-                the mirrored user record.
-              </div>
-              {hasAdminAuthority ? (
-                <>
-                  <div className="staff-module-grid">
-                    <label className="staff-field">
-                      Role
-                      <select
-                        value={memberRoleDraft}
-                        onChange={(event) => setMemberRoleDraft(event.target.value as MemberRoleValue)}
-                      >
-                        <option value="member">Client</option>
-                        <option value="staff">Staff</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    </label>
-                    <label className="staff-field">
-                      Role change reason (audit log)
-                      <input
-                        value={memberRoleReason}
-                        onChange={(event) => setMemberRoleReason(event.target.value)}
-                        placeholder="Why this role change was made"
-                      />
-                    </label>
-                  </div>
-                  {selectedMember.id === user.uid ? (
-                    <div className="staff-note">
-                      Use another admin session to change your own role so you do not lock yourself out mid-session.
-                    </div>
-                  ) : null}
-                  {hasDevAdminAuthority && !isAdmin ? (
-                    <div className="staff-note">
-                      Role management is currently authorized by the dev admin token for this session.
-                    </div>
-                  ) : null}
-                  <div className="staff-actions-row">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={Boolean(busy) || selectedMember.id === user.uid}
-                      onClick={handleSaveMemberRole}
-                    >
-                      {busy === "saveMemberRole" ? "Saving role..." : "Save role change"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="staff-note">
-                  Admin claim required to change roles. Staff can still update profile fields and internal notes.
-                </div>
-              )}
+              <details className="staff-troubleshooting"><summary>Profile</summary>
               <div className="staff-subtitle">Edit profile</div>
               <div className="staff-module-grid">
                 <label className="staff-field">
@@ -7040,6 +7002,7 @@ export default function StaffView({
               <details className="staff-troubleshooting">
                 <summary>Raw member document</summary>
                 <pre>{safeJsonStringify(selectedMember.rawDoc)}</pre>
+              </details>
               </details>
             </>
           ) : null}
@@ -8269,27 +8232,19 @@ export default function StaffView({
   );
 
   const openMessagesInbox = useCallback(() => {
-    if (onOpenMessages) {
-      // Leave the staff deep link before switching to the portal-wide inbox.
-      // Otherwise the location synchronizer can immediately reopen Staff.
-      if (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) {
-        window.history.replaceState({}, "", "/");
-      }
-      onOpenMessages();
-      return;
-    }
-    setStatus("Messages route is unavailable in this surface. Use main navigation to open Messages.");
-  }, [onOpenMessages]);
+    openModuleFromCockpit("messages");
+  }, [openModuleFromCockpit]);
+
+  const openStaffMessages = useCallback(() => {
+    openModuleFromCockpit("messages");
+  }, [openModuleFromCockpit]);
 
   const openMessageThread = useCallback(
     (threadId: string) => {
-      if (onOpenMessageThread) {
-        onOpenMessageThread(threadId);
-        return;
-      }
-      openMessagesInbox();
+      setStaffMessageThreadId(threadId);
+      openModuleFromCockpit("messages");
     },
-    [onOpenMessageThread, openMessagesInbox]
+    [openModuleFromCockpit]
   );
 
   const openAnnouncementWorkflow = useCallback(() => {
@@ -9399,6 +9354,41 @@ export default function StaffView({
     </>
   );
 
+  const accessRoleContent = (
+    <section aria-labelledby="staff-access-roles-title">
+      <h2 id="staff-access-roles-title">Access &amp; roles</h2>
+      <p>Choose a person to review their access. Role changes are recorded in the audit log.</p>
+      <button type="button" className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => void run("refreshMembers", loadUsers)}>
+        {busy === "refreshMembers" ? "Loading contacts…" : "Refresh contacts"}
+      </button>
+      <label className="staff-field">
+        Person
+        <select value={selectedMember?.id ?? ""} onChange={(event) => setSelectedMemberId(event.target.value)}>
+          <option value="">Select a contact</option>
+          {users.map((member) => <option key={member.id} value={member.id}>{member.displayName} {member.email ? `— ${member.email}` : ""}</option>)}
+        </select>
+      </label>
+      {selectedMember ? <>
+        <div className="staff-note">Current role: <strong>{memberRoleLabel(selectedMember.role)}</strong>. Role changes update Firebase Auth claims and the mirrored user record.</div>
+        {hasAdminAuthority ? <>
+          <div className="staff-module-grid">
+            <label className="staff-field">Role
+              <select value={memberRoleDraft} onChange={(event) => setMemberRoleDraft(event.target.value as MemberRoleValue)}>
+                <option value="member">Client</option><option value="staff">Staff</option><option value="admin">Admin</option>
+              </select>
+            </label>
+            <label className="staff-field">Role change reason (audit log)
+              <input value={memberRoleReason} onChange={(event) => setMemberRoleReason(event.target.value)} placeholder="Why this role change was made" />
+            </label>
+          </div>
+          {selectedMember.id === user.uid ? <div className="staff-note">Use another admin session to change your own role so you do not lock yourself out mid-session.</div> : null}
+          {hasDevAdminAuthority && !isAdmin ? <div className="staff-note">Role management is currently authorized by the dev admin token for this session.</div> : null}
+          <div className="staff-actions-row"><button type="button" className="btn btn-secondary" disabled={Boolean(busy) || selectedMember.id === user.uid} onClick={handleSaveMemberRole}>{busy === "saveMemberRole" ? "Saving role..." : "Save role change"}</button></div>
+        </> : <div className="staff-note">Admin claim required to change roles.</div>}
+      </> : <div className="staff-note">Select a contact to view access.</div>}
+    </section>
+  );
+
   const cockpitOpsContent = (
     <CockpitOpsPanel
       busy={busy}
@@ -9453,6 +9443,7 @@ export default function StaffView({
       firingPickupBillingContent={firingPickupBillingContent}
       stripeContent={stripeContent}
       agentOpsContent={agentOpsContent}
+      accessRoleContent={accessRoleContent}
       governanceContent={governanceContent}
       reportsContent={reportsContent}
       githubRepoSlug={GITHUB_REPO_SLUG}
@@ -9540,11 +9531,39 @@ export default function StaffView({
     />
   );
 
+  const messagesContent = (
+    <MessagesView
+      user={user}
+      staffDesk
+      supportEmail={supportEmail}
+      threads={messageThreads}
+      threadsLoading={messageThreadsLoading}
+      threadsError={messageThreadsError}
+      initialRecipientId={staffMessageRecipientId}
+      onInitialRecipientIdConsumed={() => setStaffMessageRecipientId(null)}
+      initialThreadId={staffMessageThreadId}
+      onInitialThreadIdConsumed={() => setStaffMessageThreadId(null)}
+      verifyStaffRecipient={async (uid) => {
+        const response = await client.postJson<{ ok: boolean; data?: { uid: string; status: "active" | "disabled" | "not_found" } }>("staffVerifyMessageRecipient", { uid });
+        return response.ok === true && response.data?.uid === uid && response.data.status === "active";
+      }}
+      liveUsers={users.filter((entry) => messageRecipientCheck?.uid === entry.id && messageRecipientCheck.status === "active")}
+      liveUsersLoading={busy === "refreshMembersOnOpen" || busy === "refreshMembers"}
+      liveUsersError={staffMessageDirectoryError}
+      announcements={announcements}
+      announcementsLoading={announcementsLoading}
+      announcementsError={announcementsError}
+      unreadAnnouncements={unreadAnnouncements}
+    />
+  );
+
   const moduleContent =
     isTaskHomeRoute
       ? taskHomeContent
       : moduleKey === "controlTower"
         ? controlTowerContent
+      : moduleKey === "messages"
+        ? messagesContent
       : moduleKey === "studioReservations"
       ? studioReservationsContent
       : moduleKey === "communityBlogs"
@@ -9580,7 +9599,7 @@ export default function StaffView({
         active={isTaskHomeRoute ? "today" : moduleKey === "cockpit" || moduleKey === "commerce" || moduleKey === "stripe" ? cockpitTab : moduleKey}
         onNavigate={openModuleFromCockpit}
         onHome={openTaskHome}
-        onMessages={openMessagesInbox}
+        onMessages={openStaffMessages}
         onReservations={openReservationsToday}
         onNewTicket={() => setCreatingFiringTicket(true)}
         onPortal={onOpenClientStart}

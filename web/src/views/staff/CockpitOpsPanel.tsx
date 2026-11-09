@@ -124,6 +124,7 @@ type Props = {
   firingPickupBillingContent: ReactNode;
   stripeContent: ReactNode;
   agentOpsContent: ReactNode;
+  accessRoleContent: ReactNode;
   governanceContent: ReactNode;
   reportsContent: ReactNode;
   githubRepoSlug: string;
@@ -179,7 +180,6 @@ export default function CockpitOpsPanel({
   loadSystemStats,
   loadAutomationHealthDashboard,
   showEmulatorTools,
-  notificationMetricsSummary,
   runSystemPing,
   runCalendarProbe,
   runNotificationMetricsProbe,
@@ -209,6 +209,7 @@ export default function CockpitOpsPanel({
   firingPickupBillingContent,
   stripeContent,
   agentOpsContent,
+  accessRoleContent,
   governanceContent,
   reportsContent,
   githubRepoSlug,
@@ -230,11 +231,12 @@ export default function CockpitOpsPanel({
     openModuleFromCockpit(target);
   };
   const isAdminWorkspace = ["automation", "platform", "policyAgentOps", "moduleTelemetry"].includes(cockpitTab);
-  const latestCheck = systemChecks[0];
+  const healthChecks = ["functions_ping", "calendar_probe"].map((key) => systemChecks.find((check) => check.key === key));
+  const failedHealthCheck = healthChecks.find((check) => check && !check.ok);
 
   return (
-    <section className="staff-module-grid staff-workspace-panel">
-      <section className="card staff-console-card">
+    <section className={`staff-module-grid staff-workspace-panel${isAdminWorkspace ? " staff-admin-workspace" : ""}`}>
+      <section className="card staff-console-card" hidden={cockpitTab === "policyAgentOps"}>
         {!["finance", "operations"].includes(cockpitTab) && !isAdminWorkspace ? <>
         <div className="card-title-row">
           <div className="card-title">{COCKPIT_TABS.find((tab) => tab.key === cockpitTab)?.label}</div>
@@ -348,7 +350,7 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "automation" ? (
           <>
-            <AdminPageHeader eyebrow="Administration" title="Automations" description="Open a run." art="/staff-admin/automations.webp"><div className="staff-actions-row">
+            <AdminPageHeader eyebrow="Administration" title="Automations" description="Check recent runs and follow up on anything that needs attention." art="/staff-facelift/automations.webp"><div className="staff-actions-row">
               <button
                 className="btn btn-secondary btn-small"
                 disabled={Boolean(busy) || automationDashboard.loading}
@@ -373,7 +375,7 @@ export default function CockpitOpsPanel({
                 Open weekly digest
               </a>
             </div></AdminPageHeader>
-            <AdminWorkflow label="Workflow path" stages={automationDashboard.workflows.slice(0, 3).map((workflow) => ({ label: workflow.label, state: workflow.isStale ? "warn" : workflow.conclusion === "success" ? "ok" : workflow.conclusion === "failure" ? "danger" : workflow.status === "in_progress" || workflow.status === "queued" ? "warn" : "neutral", detail: workflow.isStale ? "Stale" : workflow.status === "in_progress" ? "Running" : workflow.status === "queued" ? "Waiting" : workflow.conclusion === "success" ? "Done" : workflow.conclusion || "Unknown" }))} />
+            <AdminWorkflow label="Recent workflow status" stages={[...automationDashboard.workflows].sort((a, b) => Number(b.conclusion === "failure" || b.isStale) - Number(a.conclusion === "failure" || a.isStale)).slice(0, 3).map((workflow) => ({ label: workflow.label, state: workflow.conclusion === "failure" ? "danger" : workflow.isStale ? "warn" : workflow.conclusion === "success" ? "ok" : workflow.status === "in_progress" || workflow.status === "queued" ? "warn" : "neutral", detail: workflow.isStale ? `Stale · ${workflow.conclusion || workflow.status || "unknown"}` : workflow.status === "in_progress" ? "Running" : workflow.status === "queued" ? "Waiting" : workflow.conclusion === "success" ? "Done" : workflow.conclusion || "Unknown" }))} />
             {automationDashboard.error ? (
               <div className="staff-note staff-note-error">
                 Automation dashboard fetch error: {automationDashboard.error}
@@ -464,8 +466,8 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "platform" ? (
           <>
-            <AdminPageHeader eyebrow="Administration" title="System health" description={latestCheck ? `${latestCheck.ok ? "Passed" : "Attention"}: ${latestCheck.label}.` : "Run checks."} art="/staff-admin/system-health.webp"><div className="staff-actions-row"><button className="btn btn-primary" disabled={Boolean(busy) || hasFunctionsAuthMismatch} onClick={() => void run("cockpitHealthCheck", async () => { await Promise.all([runSystemPing(), runCalendarProbe(), runNotificationMetricsProbe(), loadSystemStats()]); })}>{busy ? "Checking…" : "Run health check"}</button></div></AdminPageHeader>
-            <AdminWorkflow label="Health check" stages={[{ label: "Portal", state: !latestCheck ? "neutral" : latestCheck.ok ? "ok" : "danger", detail: latestCheck ? latestCheck.ok ? "Passed" : "Attention" : "Not checked" }, { label: "Functions", state: hasFunctionsAuthMismatch ? "warn" : latestCheck ? "ok" : "neutral", detail: hasFunctionsAuthMismatch ? "Unavailable" : "Ping" }, { label: "Checks", state: notificationMetricsSummary ? "ok" : "neutral", detail: notificationMetricsSummary ? "Loaded" : "Not checked" }, { label: "Studio Brain", state: "neutral", detail: "Workspace" }]} />
+            <AdminPageHeader eyebrow="Administration" title="System health" description={hasFunctionsAuthMismatch ? "Checks are unavailable in this session." : busy === "cockpitHealthCheck" ? "Checking functions and calendar…" : failedHealthCheck ? `${failedHealthCheck.label} needs attention.` : healthChecks.every(Boolean) ? "Functions and calendar checks passed." : "Run read-only checks to see what needs attention."} art="/staff-facelift/system-health.webp"><div className="staff-actions-row"><button className="btn btn-primary" disabled={Boolean(busy) || hasFunctionsAuthMismatch} onClick={() => void run("cockpitHealthCheck", async () => { await Promise.allSettled([runSystemPing(), runCalendarProbe()]); })}>{busy === "cockpitHealthCheck" ? "Checking…" : "Run health check"}</button></div></AdminPageHeader>
+            <AdminWorkflow label="Read-only checks" stages={healthChecks.map((check, index) => ({ label: index === 0 ? "Functions ping" : "Calendar probe", state: hasFunctionsAuthMismatch ? "warn" : busy === "cockpitHealthCheck" ? "neutral" : check ? check.ok ? "ok" : "danger" : "neutral", detail: hasFunctionsAuthMismatch ? "Unavailable" : busy === "cockpitHealthCheck" ? "Checking…" : check ? `${check.ok ? "Passed" : "Needs attention"} · ${when(check.atMs)}` : "Not checked" }))} />
             <details className="staff-troubleshooting"><summary>Individual checks and diagnostics</summary>
             <div className="staff-actions-row">
               <button
@@ -583,7 +585,7 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "moduleTelemetry" ? (
           <>
-            <AdminPageHeader eyebrow="Administration" title="Usage reports" description="This browser only." art="/staff-admin/usage.webp"><div className="staff-actions-row">
+            <AdminPageHeader eyebrow="Administration" title="Usage reports" description="Activity recorded in this browser only." art="/staff-facelift/usage.webp"><div className="staff-actions-row">
               <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
                 Reset telemetry
               </button>
@@ -597,7 +599,7 @@ export default function CockpitOpsPanel({
                 ? "No low-engagement modules detected in the current telemetry sample."
                 : `Low-engagement modules in the current telemetry sample: ${lowEngagementModules.join(", ")}`}
             </div>
-            <div className="admin-ranked-list" aria-label="Visits by module">{moduleUsageRows.slice().sort((a, b) => b.visits - a.visits).map((row) => <div className="admin-ranked-row" key={`bar-${row.key}`}><span>{row.label}</span><div className="admin-ranked-bar"><span style={{ "--bar": `${Math.max(8, Math.round((row.visits / Math.max(...moduleUsageRows.map((item) => item.visits), 1)) * 100))}%` } as React.CSSProperties} /></div><strong>{row.visits} visits</strong></div>)}</div>
+            <div className="admin-ranked-list" aria-label="Visits by module">{moduleUsageRows.slice().sort((a, b) => b.visits - a.visits).map((row) => <div className="admin-ranked-row" key={`bar-${row.key}`}><span>{row.label}</span><div className="admin-ranked-bar"><span style={{ "--bar": `${Math.round((row.visits / Math.max(...moduleUsageRows.map((item) => item.visits), 1)) * 100)}%` } as React.CSSProperties} /></div><strong>{row.visits} visits</strong></div>)}</div>
             <div className="staff-table-wrap">
               <table className="staff-table">
                 <thead>
@@ -647,9 +649,10 @@ export default function CockpitOpsPanel({
       </section>
       {cockpitTab === "policyAgentOps" ? (
         <>
-          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Guarded access." art="/staff-admin/policies.webp" /><AdminWorkflow label="Access path" stages={[{ label: "Request", detail: "Staff", state: "neutral" }, { label: "Identity", detail: "Role", state: "neutral" }, { label: "Rules", detail: "Policy", state: "neutral" }, { label: "Outcome", detail: "Recorded", state: "neutral" }]} /></div>
-          <div className="card staff-console-card">{agentOpsContent}</div>
-          <div className="card staff-console-card">{governanceContent}</div>
+          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Review the rules and connections that keep studio tools safe." art="/staff-facelift/policies.webp"><div className="staff-actions-row"><a href="#staff-access-roles" className="btn btn-secondary">Access &amp; roles</a><a href="#staff-integrations" className="btn btn-secondary">Integrations</a><a href="#staff-policies" className="btn btn-secondary">Policies</a></div></AdminPageHeader><AdminWorkflow label="Guide: how access decisions work" stages={[{ label: "Request", detail: "Staff action", state: "neutral" }, { label: "Identity", detail: "Role and context", state: "neutral" }, { label: "Rules", detail: "Current policy", state: "neutral" }, { label: "Outcome", detail: "Allowed or reviewed", state: "neutral" }]} /></div>
+          <div id="staff-access-roles" className="card staff-console-card">{accessRoleContent}</div>
+          <div id="staff-integrations" className="card staff-console-card"><h2>Integrations & access</h2>{agentOpsContent}</div>
+          <div id="staff-policies" className="card staff-console-card"><h2>Policies</h2>{governanceContent}</div>
         </>
       ) : null}
       {cockpitTab === "reports" ? <div className="card staff-console-card">{reportsContent}</div> : null}

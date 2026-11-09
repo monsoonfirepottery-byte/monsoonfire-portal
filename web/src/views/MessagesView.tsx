@@ -32,6 +32,9 @@ type Props = {
   supportEmail: string;
   initialThreadId?: string | null;
   onInitialThreadIdConsumed?: () => void;
+  initialRecipientId?: string | null;
+  onInitialRecipientIdConsumed?: () => void;
+  verifyStaffRecipient?: (uid: string) => Promise<boolean>;
   threads: DirectMessageThread[];
   threadsLoading: boolean;
   threadsError: string;
@@ -189,6 +192,9 @@ export default function MessagesView({
   supportEmail,
   initialThreadId = null,
   onInitialThreadIdConsumed,
+  initialRecipientId = null,
+  onInitialRecipientIdConsumed,
+  verifyStaffRecipient,
   threads,
   threadsLoading,
   threadsError,
@@ -220,6 +226,22 @@ export default function MessagesView({
   const [sendStatus, setSendStatus] = useState("");
   const [messageFetchLimit, setMessageFetchLimit] = useState(DEFAULT_MESSAGE_FETCH_LIMIT);
   const newThreadFormRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!initialRecipientId || liveUsersLoading) return;
+    const recipient = liveUsers.find((candidate) => candidate.id === initialRecipientId && candidate.isActive !== false);
+    setMessagesTab("inbox");
+    if (recipient) {
+      setNewToUid(recipient.id);
+      setNewThreadOpen(true);
+      setSendError("");
+      setSendStatus("");
+    } else {
+      setNewToUid("");
+      setNewThreadOpen(false);
+      setSendError("This person is not available for portal messages. Try email instead.");
+    }
+    onInitialRecipientIdConsumed?.();
+  }, [initialRecipientId, liveUsers, liveUsersLoading, onInitialRecipientIdConsumed]);
   const optimisticReadThreadSet = useMemo(
     () => new Set(optimisticReadThreadIds),
     [optimisticReadThreadIds]
@@ -475,6 +497,10 @@ export default function MessagesView({
 
   async function handleCreateThread() {
     if (composerBusy) return;
+    if (newToUid && !liveUsers.some((candidate) => candidate.id === newToUid && candidate.isActive !== false)) {
+      setSendError("This person is no longer available for portal messages. Try email instead.");
+      return;
+    }
     if (!newBody.trim()) {
       setSendError("Message body is required.");
       setSendStatus("Message body is required.");
@@ -488,6 +514,26 @@ export default function MessagesView({
     try {
       const subject = newSubject.trim() || "(no subject)";
       const toUid = newToUid.trim();
+      if (staffDesk && toUid) {
+        if (!verifyStaffRecipient) {
+          setSendError("Portal account verification is unavailable. Your draft is preserved.");
+          setSendStatus("");
+          return;
+        }
+        let active: boolean;
+        try {
+          active = await verifyStaffRecipient(toUid);
+        } catch {
+          setSendError("Portal account verification is unavailable. Your draft is preserved.");
+          setSendStatus("");
+          return;
+        }
+        if (!active) {
+          setSendError("This portal account is unavailable. Your draft is preserved; try email instead.");
+          setSendStatus("");
+          return;
+        }
+      }
       const messageId = createMessageId();
       const fromEmail = user.email || null;
 

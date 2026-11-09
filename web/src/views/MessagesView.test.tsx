@@ -6,6 +6,7 @@ import type { User } from "firebase/auth";
 import type { ReactNode } from "react";
 
 import MessagesView from "./MessagesView";
+import { trackedAddDoc, trackedSetDoc } from "../lib/firestoreTelemetry";
 
 type MockConstraint =
   | { type: "orderBy"; field: string; direction: "asc" | "desc" }
@@ -151,6 +152,36 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("staff recipient handoff", () => {
+  const common = { user: createUser(), supportEmail: "support@monsoonfire.com", threads: [], threadsLoading: false, threadsError: "", announcements: [], announcementsLoading: false, announcementsError: "", liveUsersLoading: false, liveUsersError: "", staffDesk: true };
+  it("opens a draft addressed to the confirmed recipient without sending", async () => {
+    const consumed = vi.fn();
+    render(<MessagesView {...common} liveUsers={[{ id: "maker", displayName: "Maker" }]} initialRecipientId="maker" onInitialRecipientIdConsumed={consumed} />);
+    expect(await screen.findByLabelText("To")).toHaveProperty("value", "maker");
+    expect(screen.getByPlaceholderText("Write your message...")).toHaveProperty("value", "");
+    expect(consumed).toHaveBeenCalled();
+  });
+  it("refuses an unavailable recipient instead of composing to support", async () => {
+    render(<MessagesView {...common} liveUsers={[]} initialRecipientId="missing" />);
+    expect(await screen.findByText("This person is not available for portal messages. Try email instead.")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Write your message...")).toBeNull();
+  });
+  it.each([
+    ["disabled", vi.fn(async () => false), "This portal account is unavailable. Your draft is preserved; try email instead."],
+    ["unavailable", vi.fn(async () => { throw new Error("offline"); }), "Portal account verification is unavailable. Your draft is preserved."],
+  ])("keeps the draft and sends nothing when verification is %s", async (_name, verify, message) => {
+    render(<MessagesView {...common} liveUsers={[{ id: "maker", displayName: "Maker" }]} initialRecipientId="maker" verifyStaffRecipient={verify} />);
+    const draft = await screen.findByPlaceholderText("Write your message...");
+    fireEvent.change(draft, { target: { value: "Hello maker" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send new message" }));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(draft).toHaveProperty("value", "Hello maker");
+    expect(verify).toHaveBeenCalledWith("maker");
+    expect(trackedSetDoc).not.toHaveBeenCalled();
+    expect(trackedAddDoc).not.toHaveBeenCalled();
+  });
 });
 
 describe("MessagesView initial thread focus", () => {

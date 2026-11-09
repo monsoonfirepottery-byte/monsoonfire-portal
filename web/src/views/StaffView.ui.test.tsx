@@ -113,12 +113,14 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
     operationsContent,
     reservationNotificationPolicyContent,
     firingPickupBillingContent,
+    accessRoleContent,
     cockpitTab,
   }: {
     cockpitTab: string;
     operationsContent: ReactNode;
     reservationNotificationPolicyContent?: ReactNode;
     firingPickupBillingContent?: ReactNode;
+    accessRoleContent?: ReactNode;
   }) => (
     <div data-testid="cockpit-ops-panel">
       <div data-testid="cockpit-current-tab">{cockpitTab}</div>
@@ -127,6 +129,7 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
       ) : null}
       {operationsContent}
       {cockpitTab === "finance" ? firingPickupBillingContent : null}
+      {cockpitTab === "policyAgentOps" ? accessRoleContent : null}
     </div>
   ),
 }));
@@ -288,7 +291,8 @@ describe("StaffView cockpit routing", () => {
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} onOpenMessages={onOpenMessages} />);
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     fireEvent.click(overview.querySelector(".staff-studio-marker-desk")!);
-    expect(onOpenMessages).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit/messages"));
+    expect(onOpenMessages).not.toHaveBeenCalled();
   });
   it("opens the announcement composer from the studio overview", async () => {
     window.history.replaceState({}, "", "/staff");
@@ -479,7 +483,7 @@ describe("StaffView cockpit routing", () => {
     expect(screen.queryByTestId("operations-overview")).toBeNull();
   });
 
-  it("shows in-app role management controls for admins in the members module", async () => {
+  it("shows role management controls for admins in policies", async () => {
     window.history.replaceState({}, "", "/staff/members");
     render(
       <StaffView
@@ -493,8 +497,9 @@ describe("StaffView cockpit routing", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh clients" }));
-    expect(await screen.findByText("Access role")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh contacts" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Policies & integrations" }));
+    expect(await screen.findByRole("heading", { name: "Access & roles" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Save role change" })).toBeTruthy();
     const roleSelect = screen.getByLabelText("Role") as HTMLSelectElement;
     expect(Array.from(roleSelect.options).map((option) => option.value)).toEqual(["member", "staff", "admin"]);
@@ -513,8 +518,9 @@ describe("StaffView cockpit routing", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh clients" }));
-    expect(await screen.findByText("Access role")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh contacts" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Policies & integrations" }));
+    expect(await screen.findByRole("heading", { name: "Access & roles" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Save role change" })).toBeNull();
     expect(screen.getByText(/Admin claim required to change roles\./)).toBeTruthy();
   });

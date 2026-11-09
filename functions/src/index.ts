@@ -34,6 +34,7 @@ import {
 import { normalizeIntakeMode } from "./intakeMode";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
+import { verifyMessageRecipient } from "./messageRecipientVerification";
 import {
   staffGetCommunitySafetyConfig,
   staffScanCommunityDraft,
@@ -655,6 +656,40 @@ export const githubLookup = onRequest(
       const message = error instanceof Error ? error.message : String(error);
       logger.error("githubLookup failed", { message });
       res.status(500).json({ ok: false, message: "GitHub lookup failed" });
+    }
+  }
+);
+
+export const staffVerifyMessageRecipient = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+    const parsed = parseBody(z.object({ uid: z.string().trim().min(1).max(128) }).strict(), req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+    try {
+      const status = await verifyMessageRecipient(parsed.data.uid, (uid) => adminAuth.getUser(uid));
+      res.set("Cache-Control", "no-store");
+      res.status(200).json({ ok: true, data: { uid: parsed.data.uid, status } });
+    } catch {
+      logger.error("staffVerifyMessageRecipient failed");
+      res.status(503).json({ ok: false, message: "Recipient verification unavailable" });
     }
   }
 );

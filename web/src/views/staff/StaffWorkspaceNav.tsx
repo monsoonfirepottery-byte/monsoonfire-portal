@@ -33,9 +33,9 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
         ["pieces", "Pieces & batches"], ["events", "Events"], ["lending", "Library"],
         ["communityBlogs", "Studio blog"], ["reports", "Reports"],
       ].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
-      <details className="staff-administration-tools" style={{ margin: "18px 0 6px" }} open={["platform", "automation", "policyAgentOps", "moduleTelemetry", "controlTower"].includes(active)}>
-        <summary style={{ padding: "8px 12px", color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}>Administration</summary>
-        <nav aria-label="Administration" style={{ paddingLeft: 8 }}>{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" style={{ display: "flex", alignItems: "center", gap: 8 }} aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}><span style={{ color: "var(--accent, #297387)", fontSize: 16 }} aria-hidden="true">⌁</span>{label}</button>)}</nav>
+      <details className="staff-administration-tools" open={["platform", "automation", "policyAgentOps", "moduleTelemetry", "controlTower"].includes(active)}>
+        <summary>Administration</summary>
+        <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}><span aria-hidden="true">⌁</span>{label}</button>)}</nav>
       </details>
       <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || (STUDIO_BOOKINGS_PAUSED && active === "studioReservations") || undefined}>
         <summary>Archived tools</summary>

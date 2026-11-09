@@ -759,7 +759,6 @@ export default function StudioBrainControlTowerModule({
     <>
       <section className="control-tower-shell" data-testid="studio-brain-control-tower">
         <section className={`card staff-console-card control-tower-hero${quietMode ? " control-tower-hero-quiet" : ""}`}>
-          <style>{`.control-tower-workshop-art{width:100%;height:170px;object-fit:cover;border-radius:12px;animation:ct .8s ease-out both}@keyframes ct{from{opacity:.25;transform:scale(1.025)}}@media(prefers-reduced-motion:reduce){.control-tower-workshop-art{animation:none}}`}</style>
           <img className="control-tower-workshop-art" src="/staff-admin/studio-brain.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
           <div className="control-tower-hero-copy">
             <div className="control-tower-kicker">Studio Brain Control Tower v3</div>

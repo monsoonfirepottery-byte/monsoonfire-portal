@@ -12,6 +12,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  startAfter,
   setDoc,
   updateDoc,
   where,
@@ -2336,6 +2337,8 @@ export default function StaffView({
   const [users, setUsers] = useState<MemberRecord[]>([]);
   const [contactTickets, setContactTickets] = useState<FiringTicket[]>([]);
   const [contactTicketsError, setContactTicketsError] = useState("");
+  const [contactDirectoryNotice, setContactDirectoryNotice] = useState("");
+  const contactLoadInFlight = useRef(false);
   const [messageRecipientCheck, setMessageRecipientCheck] = useState<{ uid: string; status: "checking" | "active" | "disabled" | "not_found" | "unavailable" } | null>(null);
   const [staffMessageRecipientId, setStaffMessageRecipientId] = useState<string | null>(null);
   const [staffMessageThreadId, setStaffMessageThreadId] = useState<string | null>(null);
@@ -3839,11 +3842,28 @@ export default function StaffView({
   }, [sbBaseUrl, studioBrainResolution.enabled, studioBrainUnreachableReason, upsertSystemCheck]);
 
   const loadUsers = useCallback(async () => {
-    qTrace("users", { limit: 240 });
-    qTrace("profiles", { limit: 240 });
+    if (contactLoadInFlight.current) return;
+    contactLoadInFlight.current = true;
+    setContactDirectoryNotice("Loading contacts; search results may be incomplete.");
+    try {
+    qTrace("users", { pageSize: 240, maxPages: 20 });
+    qTrace("profiles", { pageSize: 240, maxPages: 20 });
+    const loadDirectory = async (name: "users" | "profiles") => {
+      const docs: Awaited<ReturnType<typeof getDocs>>["docs"] = [];
+      try {
+        for (let page = 0; page < 20; page += 1) {
+          const snapshot = await getDocs(query(collection(db, name), orderBy(documentId()), ...(docs.length ? [startAfter(docs[docs.length - 1])] : []), limit(240)));
+          docs.push(...snapshot.docs);
+          if (snapshot.docs.length < 240) return { docs, complete: true, error: false };
+        }
+        return { docs, complete: false, error: false };
+      } catch {
+        return { docs, complete: false, error: true };
+      }
+    };
     const [usersResult, profilesResult, ticketsResult] = await Promise.allSettled([
-      getDocs(query(collection(db, "users"), limit(240))),
-      getDocs(query(collection(db, "profiles"), limit(240))),
+      loadDirectory("users"),
+      loadDirectory("profiles"),
       client.postJson<QueueResponse>("staffListFiringPickupReviews", {}),
     ]);
     if (ticketsResult.status === "fulfilled" && Array.isArray(ticketsResult.value.data?.tickets)) {
@@ -3881,6 +3901,8 @@ export default function StaffView({
     }
 
     const loadWarnings: string[] = [];
+    if (usersResult.status === "fulfilled" && !usersResult.value.complete) loadWarnings.push(usersResult.value.error ? "Users could not be fully loaded" : "Users exceed the search limit");
+    if (profilesResult.status === "fulfilled" && !profilesResult.value.complete) loadWarnings.push(profilesResult.value.error ? "Profiles could not be fully loaded" : "Profiles exceed the search limit");
     if (usersResult.status === "rejected") {
       loadWarnings.push(`users query failed: ${usersResult.reason instanceof Error ? usersResult.reason.message : String(usersResult.reason)}`);
     }
@@ -3890,6 +3912,7 @@ export default function StaffView({
     if (loadWarnings.length) {
       setError(`Client data is partially unavailable. ${loadWarnings.join(" | ")}`);
     }
+    setContactDirectoryNotice(loadWarnings.length ? "Some contacts may be missing. Refresh contacts to retry." : "");
 
     if (byUid.size === 0) {
       const sources = [
@@ -3988,8 +4011,11 @@ export default function StaffView({
       fallbackCollections,
     });
     setUsers(rows);
-    if (!selectedMemberId && rows[0]) setSelectedMemberId(rows[0].id);
-  }, [client, isAdmin, isStaff, qTrace, selectedMemberId, user.displayName, user.email, user.uid]);
+    setSelectedMemberId((current) => current || rows[0]?.id || "");
+    } finally {
+      contactLoadInFlight.current = false;
+    }
+  }, [client, isAdmin, isStaff, qTrace, user.displayName, user.email, user.uid]);
 
   const countFor = useCallback(
     async (collectionName: string, ...constraints: QueryConstraint[]): Promise<number> => {
@@ -6855,6 +6881,7 @@ export default function StaffView({
             />
           </div>
           <p className="staff-note">Search is limited to available contacts. Enter an email address to start a draft even if it is not listed.</p>
+          {contactDirectoryNotice ? <p className="staff-note staff-note-error" role="status">{contactDirectoryNotice}</p> : null}
           {contactEmailAddress(memberSearch) ? <a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(memberSearch)!) }`}>Email this address</a> : null}
           <div className="staff-table-wrap">
             <table className="staff-table staff-client-directory-table">

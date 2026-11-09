@@ -17,6 +17,7 @@
 .admin-workflow ol { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 10px 0 0; padding: 0; }
 .admin-workflow li { display: flex; align-items: start; gap: 8px; flex: 1 1 150px; min-width: 0; padding: 10px; border-radius: 8px; background: var(--surface-2, #23292b); }
 .admin-workflow li:not([data-state="neutral"]) { animation: staff-admin-arrive .4s ease-out both; }
+.admin-workflow[aria-label^="Guide:"] li { animation: staff-admin-arrive .4s ease-out both; }
 .admin-workflow-marker { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: #485057; color: white; font-size: 12px; }
 .admin-workflow [data-state="ok"] .admin-workflow-marker { background: #67c99a; color: #10251d; }
 .admin-workflow [data-state="warn"] .admin-workflow-marker { background: #e0a95e; color: #2d1b08; }

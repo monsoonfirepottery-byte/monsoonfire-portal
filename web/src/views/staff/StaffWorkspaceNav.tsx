@@ -33,8 +33,10 @@ export default function StaffWorkspaceNav({ active, onNavigate, onHome, onMessag
         ["pieces", "Pieces & batches"], ["events", "Events"], ["lending", "Library"],
         ["communityBlogs", "Studio blog"], ["reports", "Reports"],
       ].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
-      <div className="staff-workspace-nav-label">Administration</div>
-      <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}>{label}</button>)}</nav>
+      <details className="staff-administration-tools" open={["platform", "automation", "policyAgentOps", "moduleTelemetry", "controlTower"].includes(active)}>
+        <summary>Administration</summary>
+        <nav aria-label="Administration">{[["platform", "System health"], ["automation", "Automations"], ["policyAgentOps", "Policies & integrations"], ["moduleTelemetry", "Usage reports"], ["controlTower", "Studio Brain"]].map(([key, label]) => <button key={key} type="button" aria-current={active === key ? "page" : undefined} onClick={() => onNavigate(key)}><span aria-hidden="true">⌁</span>{label}</button>)}</nav>
+      </details>
       <details className="staff-archived-tools" open={active === "checkins" || active === "firings" || (STUDIO_BOOKINGS_PAUSED && active === "studioReservations") || undefined}>
         <summary>Archived tools</summary>
         <nav aria-label="Archived staff tools">

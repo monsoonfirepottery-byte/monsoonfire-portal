@@ -178,7 +178,6 @@ export default function CockpitOpsPanel({
   loadReportOps,
   loadSystemStats,
   loadAutomationHealthDashboard,
-  usingLocalFunctions,
   showEmulatorTools,
   notificationMetricsSummary,
   runSystemPing,
@@ -349,7 +348,7 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "automation" ? (
           <>
-            <AdminPageHeader eyebrow="Administration · evidence from GitHub" title="Automations" description="See the last confirmed workflow state, then open the exact run or follow-up thread." art="/staff-admin/automations.webp"><div className="staff-actions-row">
+            <AdminPageHeader eyebrow="Administration" title="Automations" description="Open a run." art="/staff-admin/automations.webp"><div className="staff-actions-row">
               <button
                 className="btn btn-secondary btn-small"
                 disabled={Boolean(busy) || automationDashboard.loading}
@@ -374,7 +373,7 @@ export default function CockpitOpsPanel({
                 Open weekly digest
               </a>
             </div></AdminPageHeader>
-            <AdminWorkflow label="Last confirmed workflow path" stages={automationDashboard.workflows.slice(0, 3).map((workflow) => ({ label: workflow.label, state: workflow.isStale ? "warn" : workflow.conclusion === "success" ? "ok" : workflow.conclusion === "failure" ? "danger" : workflow.status === "in_progress" || workflow.status === "queued" ? "warn" : "neutral", detail: workflow.isStale ? "Out of date" : workflow.status === "in_progress" ? "Running" : workflow.status === "queued" ? "Waiting" : workflow.conclusion === "success" ? "Finished" : workflow.conclusion || "Unknown" }))} />
+            <AdminWorkflow label="Workflow path" stages={automationDashboard.workflows.slice(0, 3).map((workflow) => ({ label: workflow.label, state: workflow.isStale ? "warn" : workflow.conclusion === "success" ? "ok" : workflow.conclusion === "failure" ? "danger" : workflow.status === "in_progress" || workflow.status === "queued" ? "warn" : "neutral", detail: workflow.isStale ? "Stale" : workflow.status === "in_progress" ? "Running" : workflow.status === "queued" ? "Waiting" : workflow.conclusion === "success" ? "Done" : workflow.conclusion || "Unknown" }))} />
             {automationDashboard.error ? (
               <div className="staff-note staff-note-error">
                 Automation dashboard fetch error: {automationDashboard.error}
@@ -465,8 +464,8 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "platform" ? (
           <>
-            <AdminPageHeader eyebrow={usingLocalFunctions ? "Administration · local functions" : "Administration · production functions"} title="System health" description={latestCheck ? `${latestCheck.ok ? "Passed" : "Needs attention"}: ${latestCheck.label} ${when(latestCheck.atMs)}.` : "Not checked yet. Run the read-only health check to collect a current receipt."} art="/staff-admin/system-health.webp"><div className="staff-actions-row"><button className="btn btn-primary" disabled={Boolean(busy) || hasFunctionsAuthMismatch} onClick={() => void run("cockpitHealthCheck", async () => { await Promise.all([runSystemPing(), runCalendarProbe(), runNotificationMetricsProbe(), loadSystemStats()]); })}>{busy ? "Checking…" : "Run health check"}</button></div></AdminPageHeader>
-            <AdminWorkflow label="Read-only health check" stages={[{ label: "Portal connection", state: !latestCheck ? "neutral" : latestCheck.ok ? "ok" : "danger", detail: latestCheck ? latestCheck.ok ? "Passed" : "Needs attention" : "Not checked" }, { label: "Functions response", state: hasFunctionsAuthMismatch ? "warn" : latestCheck ? "ok" : "neutral", detail: hasFunctionsAuthMismatch ? "Unavailable" : "Checked by ping" }, { label: "Supporting checks", state: notificationMetricsSummary ? "ok" : "neutral", detail: notificationMetricsSummary ? "Metrics loaded" : "Not checked" }, { label: "Studio Brain", state: "neutral", detail: "Open its workspace" }]} />
+            <AdminPageHeader eyebrow="Administration" title="System health" description={latestCheck ? `${latestCheck.ok ? "Passed" : "Attention"}: ${latestCheck.label}.` : "Run checks."} art="/staff-admin/system-health.webp"><div className="staff-actions-row"><button className="btn btn-primary" disabled={Boolean(busy) || hasFunctionsAuthMismatch} onClick={() => void run("cockpitHealthCheck", async () => { await Promise.all([runSystemPing(), runCalendarProbe(), runNotificationMetricsProbe(), loadSystemStats()]); })}>{busy ? "Checking…" : "Run health check"}</button></div></AdminPageHeader>
+            <AdminWorkflow label="Health check" stages={[{ label: "Portal", state: !latestCheck ? "neutral" : latestCheck.ok ? "ok" : "danger", detail: latestCheck ? latestCheck.ok ? "Passed" : "Attention" : "Not checked" }, { label: "Functions", state: hasFunctionsAuthMismatch ? "warn" : latestCheck ? "ok" : "neutral", detail: hasFunctionsAuthMismatch ? "Unavailable" : "Ping" }, { label: "Checks", state: notificationMetricsSummary ? "ok" : "neutral", detail: notificationMetricsSummary ? "Loaded" : "Not checked" }, { label: "Studio Brain", state: "neutral", detail: "Workspace" }]} />
             <details className="staff-troubleshooting"><summary>Individual checks and diagnostics</summary>
             <div className="staff-actions-row">
               <button
@@ -584,7 +583,7 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "moduleTelemetry" ? (
           <>
-            <AdminPageHeader eyebrow="Administration · local browser sample" title="Usage reports" description="This is activity from this browser only, not a staff-wide performance report." art="/staff-admin/usage.webp"><div className="staff-actions-row">
+            <AdminPageHeader eyebrow="Administration" title="Usage reports" description="This browser only." art="/staff-admin/usage.webp"><div className="staff-actions-row">
               <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
                 Reset telemetry
               </button>
@@ -592,7 +591,7 @@ export default function CockpitOpsPanel({
                 Copy telemetry JSON
               </button>
             </div></AdminPageHeader>
-            <AdminWorkflow label="Local activity measurement" stages={[{ label: "Visit", state: moduleUsageRows.length ? "ok" : "neutral", detail: `${moduleUsageRows.length} module${moduleUsageRows.length === 1 ? "" : "s"} measured` }, { label: "Time spent", state: "neutral", detail: "Recorded while open" }, { label: "First action", state: moduleUsageRows.some((row) => row.firstActionMs !== null) ? "ok" : "neutral", detail: "Shown when available" }]} />
+            <AdminWorkflow label="Activity path" stages={[{ label: "Visit", state: moduleUsageRows.length ? "ok" : "neutral", detail: `${moduleUsageRows.length} modules` }, { label: "Time", state: "neutral", detail: "Open" }, { label: "Action", state: moduleUsageRows.some((row) => row.firstActionMs !== null) ? "ok" : "neutral", detail: "Available" }]} />
             <div className="staff-note">
               {lowEngagementModules.length === 0
                 ? "No low-engagement modules detected in the current telemetry sample."
@@ -648,7 +647,7 @@ export default function CockpitOpsPanel({
       </section>
       {cockpitTab === "policyAgentOps" ? (
         <>
-          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration · controlled access" title="Policies & integrations" description="Understand the path from a request through identity and access rules before making a guarded change." art="/staff-admin/policies.webp" /><AdminWorkflow label="How access decisions move" stages={[{ label: "Request", detail: "A staff action begins", state: "neutral" }, { label: "Identity", detail: "Role and context", state: "neutral" }, { label: "Access rules", detail: "Existing policy", state: "neutral" }, { label: "Allowed / review / blocked", detail: "Recorded outcome", state: "neutral" }]} /></div>
+          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Guarded access." art="/staff-admin/policies.webp" /><AdminWorkflow label="Access path" stages={[{ label: "Request", detail: "Staff", state: "neutral" }, { label: "Identity", detail: "Role", state: "neutral" }, { label: "Rules", detail: "Policy", state: "neutral" }, { label: "Outcome", detail: "Recorded", state: "neutral" }]} /></div>
           <div className="card staff-console-card">{agentOpsContent}</div>
           <div className="card staff-console-card">{governanceContent}</div>
         </>

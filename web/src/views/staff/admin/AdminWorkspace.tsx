@@ -14,7 +14,7 @@ export function AdminWorkflow({ label, stages }: { label: string; stages: AdminS
   return <figure className="admin-workflow" aria-label={label}>
     <figcaption>{label}</figcaption>
     <ol>{stages.map((stage, index) => <li key={stage.label} data-state={stage.state ?? "neutral"}>
-      <span className="admin-workflow-marker" aria-hidden="true">{index + 1}</span><span><strong>{stage.label}</strong>{stage.detail ? <small>{stage.detail}</small> : null}</span>
+      <span className="admin-workflow-marker" aria-hidden="true">{index + 1}</span><strong>{stage.label}</strong>{stage.detail ? <small>{stage.detail}</small> : null}
     </li>)}</ol>
   </figure>;
 }

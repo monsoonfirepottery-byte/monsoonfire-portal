@@ -769,7 +769,7 @@ export default function StudioBrainControlTowerModule({
                 : "Mission board, approvals, memory brief, and live channels are the first screen now. tmux and logs stay backstage as recovery substrate."}
             </p>
           </div>
-          <AdminWorkflow label="Control-room workflow" stages={[{ label: "Rooms", detail: `${activeRooms.length} active`, state: activeRooms.length ? "ok" : "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }, { label: "Review", detail: `${approvals.length} approval${approvals.length === 1 ? "" : "s"}`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} need attention`, state: counts.needsAttention ? "danger" : "ok" }]} />
+          <AdminWorkflow label="Workflow" stages={[{ label: "Rooms", detail: `${activeRooms.length} active`, state: activeRooms.length ? "ok" : "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }, { label: "Review", detail: `${approvals.length} approvals`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} attention`, state: counts.needsAttention ? "danger" : "ok" }]} />
           <div className="control-tower-hero-actions">
             <button type="button" className="btn btn-secondary" onClick={() => void loadState()}>
               {loading ? "Refreshing..." : "Refresh"}

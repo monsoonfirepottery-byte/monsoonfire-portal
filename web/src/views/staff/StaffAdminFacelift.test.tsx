@@ -39,6 +39,16 @@ describe("staff administration", () => {
     expect(postJson.mock.calls.some(([endpoint]) => endpoint === "staffUpdateCommunitySafetyConfig")).toBe(false);
   });
 
+  it("enables safety controls after a complete successful load", async () => {
+    const postJson = vi.fn(async (endpoint: string) => {
+      if (endpoint === "staffGetCommunitySafetyConfig") return { ok: true, config: { enabled: true, publishKillSwitch: false, autoFlagEnabled: true, highSeverityThreshold: 70, mediumSeverityThreshold: 30, blockedTerms: [], blockedUrlHosts: [] } };
+      return { ok: true, policies: [] };
+    });
+    render(<PolicyModule client={{ postJson } as unknown as FunctionsClient} active disabled={false} />);
+    await screen.findByText("Safety controls are active and auto-flagging is enabled.");
+    expect(screen.getByRole("button", { name: "Save safety controls" }).closest("fieldset")?.disabled).toBe(false);
+  });
+
   it("shows the published policy and actual safety warning", async () => {
     const client = { postJson: async (endpoint: string) => {
       if (endpoint === "getModerationPolicyCurrent") return { policy: null };

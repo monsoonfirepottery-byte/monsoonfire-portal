@@ -170,6 +170,24 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("shows the first user page while profiles and a later user page are stalled", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    const docs = Array.from({ length: 240 }, (_, i) => ({ id: `user-${i}`, data: () => ({ displayName: `Page Contact ${i}` }) }));
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ kind?: string; segments?: string[] }> }).parts;
+      const name = parts?.[0]?.segments?.at(-1);
+      if (name === "profiles" || (name === "users" && parts.some((part) => part.kind === "startAfter"))) return new Promise(() => undefined);
+      return (name === "users" ? { docs } : empty) as never;
+    });
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText("Page Contact 0")).length).toBeGreaterThan(0);
+      expect(screen.getByText("Loading contacts; search results may be incomplete.")).toBeTruthy();
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+    }
+  });
   it("searches Stripe separately, loads another page, and keeps search out of request telemetry", async () => {
     const priorFetch = globalThis.fetch;
     const stripeRequests: Array<{ url: string; body: string }> = [];

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FunctionsClient } from "../../api/functionsClient";
+import { AdminWorkflow } from "./admin/AdminWorkspace";
 
 type PolicyRule = {
   id: string;
@@ -240,6 +241,8 @@ export default function PolicyModule({ client, active, disabled }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [safetyStatusKnown, setSafetyStatusKnown] = useState(false);
   const [activeVersion, setActiveVersion] = useState("");
   const [policies, setPolicies] = useState<PolicyVersion[]>([]);
   const [currentPolicy, setCurrentPolicy] = useState<PolicyVersion | null>(null);
@@ -332,7 +335,10 @@ export default function PolicyModule({ client, active, disabled }: Props) {
     const normalizedSafety = normalizeSafetyConfig(
       (safetyResp.config ?? {}) as Record<string, unknown>
     );
+    const safetyRow = safetyResp.config;
+    setSafetyStatusKnown(Boolean(safetyRow && typeof safetyRow.enabled === "boolean" && typeof safetyRow.publishKillSwitch === "boolean" && typeof safetyRow.autoFlagEnabled === "boolean"));
     setSafetyConfig(normalizedSafety);
+    setLoaded(true);
     setBlockedTermsDraft(normalizedSafety.blockedTerms.join("\n"));
     setBlockedHostsDraft(normalizedSafety.blockedUrlHosts.join("\n"));
 
@@ -374,13 +380,20 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </button>
       </div>
 
+      <AdminWorkflow label="Policy and safety status" stages={disabled || error || !loaded ? [
+        { label: "Policy and safety", detail: disabled ? "Unavailable in this session" : error ? "Unable to load · refresh to retry" : "Loading", state: error || disabled ? "warn" : "neutral" },
+      ] : [
+        { label: "Published policy", detail: activeVersion ? `Version ${activeVersion}` : "None published · review policy", state: activeVersion ? "ok" : "warn" },
+        { label: "Safety controls", detail: safetyStatusKnown ? safetyPosture.message : "Status unavailable · review controls", state: !safetyStatusKnown || safetyPosture.level !== "healthy" ? "warn" : "ok" },
+      ]} />
+
       {disabled ? (
         <div className="staff-note">
           Governance policy module requires function auth. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or point Functions to production.
         </div>
       ) : null}
 
-      <div className="staff-note">
+      {loaded && !error && !disabled ? <><div className="staff-note">
         Active Code of Conduct version: <strong>{activeVersion || "none published"}</strong>
       </div>
 
@@ -392,7 +405,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </div>
       ) : (
         <div className="staff-note">No published policy yet. Draft and publish one before taking moderation actions.</div>
-      )}
+      )}</> : null}
 
       <div className="staff-actions-row">
         <select value={versionDraft} onChange={(event) => setVersionDraft(event.target.value)}>
@@ -472,8 +485,8 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       <div className="staff-note">
         These controls apply to community publishing flows and staff draft scans.
       </div>
-      <div className={`staff-note ${safetyPosture.level === "healthy" ? "" : "staff-note-error"}`}>
-        Safety posture: <strong>{safetyPosture.level}</strong> · {safetyPosture.message}
+      <div className={`staff-note ${loaded && safetyStatusKnown && safetyPosture.level !== "healthy" ? "staff-note-error" : ""}`}>
+        {loaded && safetyStatusKnown && !error && !disabled ? <>Safety posture: <strong>{safetyPosture.level}</strong> · {safetyPosture.message}</> : "Safety posture unavailable until controls load."}
       </div>
       <div className="staff-note">
         <strong>What each control changes</strong>

@@ -3906,12 +3906,16 @@ export default function StaffView({
     try {
     qTrace("users", { pageSize: 240, maxPages: 20 });
     qTrace("profiles", { pageSize: 240, maxPages: 20 });
-    const loadDirectory = async (name: "users" | "profiles") => {
+    const loadedDocs: Record<"users" | "profiles", Awaited<ReturnType<typeof getDocs>>["docs"]> = { users: [], profiles: [] };
+    const loadDirectory = async (name: "users" | "profiles", isCurrent: () => boolean) => {
       const docs: Awaited<ReturnType<typeof getDocs>>["docs"] = [];
       try {
         for (let page = 0; page < 20; page += 1) {
           const snapshot = await getDocs(query(collection(db, name), orderBy(documentId()), ...(docs.length ? [startAfter(docs[docs.length - 1])] : []), limit(240)));
+          if (!isCurrent()) return { docs, complete: false, error: true };
           docs.push(...snapshot.docs);
+          loadedDocs[name] = [...docs];
+          if (docs.length) publishPartial(name, { docs, complete: false, error: false });
           if (snapshot.docs.length < 240) return { docs, complete: true, error: false };
         }
         return { docs, complete: false, error: false };
@@ -3930,9 +3934,55 @@ export default function StaffView({
       setContactTickets([]);
       setContactTicketsError("Firing ticket contacts are unavailable. Refresh contacts to retry.");
     });
+    // Publish each directory as it arrives, so a slow source cannot hide the
+    // contacts already returned by the other one.
+    const partial = new Map<string, { userData: Record<string, unknown>; profileData: Record<string, unknown> }>();
+    const publishPartial = (name: "users" | "profiles", result: Awaited<ReturnType<typeof loadDirectory>>) => {
+      if (!contactsMounted.current) return;
+      result.docs.forEach((docSnap) => {
+        const pair = partial.get(docSnap.id) ?? { userData: {}, profileData: {} };
+        if (name === "users") pair.userData = (docSnap.data() ?? {}) as Record<string, unknown>;
+        else pair.profileData = (docSnap.data() ?? {}) as Record<string, unknown>;
+        partial.set(docSnap.id, pair);
+      });
+      const rows = Array.from(partial.entries()).map(([uid, pair]) => {
+        const merged = { ...pair.userData, ...pair.profileData };
+        const role = memberRole(merged);
+        const updatedAtMs = maxMs(toTsMs(pair.userData.updatedAt), toTsMs(pair.profileData.updatedAt));
+        return {
+          id: uid, displayName: str(merged.displayName, "Unknown"), email: str(merged.email, "-"), role,
+          createdAtMs: maxMs(toTsMs(pair.userData.createdAt), toTsMs(pair.profileData.createdAt)),
+          updatedAtMs,
+          lastSeenAtMs: maxMs(toTsMs(merged.lastSeenAt), toTsMs(merged.lastLoginAt), toTsMs(merged.lastSignInAt), updatedAtMs),
+          accountType: deriveAccountType(merged, role),
+          kilnPreferences: str(merged.kilnPreferences, str(merged.preferredKilns, "-")), rawDoc: merged,
+        } satisfies MemberRecord;
+      });
+      if (rows.length) {
+        setUsers(rows);
+        setSelectedMemberId((current) => current || rows[0]?.id || "");
+      }
+    };
+    const boundedDirectory = async (name: "users" | "profiles") => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let active = true;
+      try {
+        const result = await Promise.race([
+          loadDirectory(name, () => active && contactsMounted.current),
+          new Promise<Awaited<ReturnType<typeof loadDirectory>>>((resolve) => {
+            timer = setTimeout(() => resolve({ docs: loadedDocs[name], complete: false, error: true }), 20_000);
+          }),
+        ]);
+        publishPartial(name, result);
+        return result;
+      } finally {
+        active = false;
+        if (timer) clearTimeout(timer);
+      }
+    };
     const [usersResult, profilesResult] = await Promise.allSettled([
-      loadDirectory("users"),
-      loadDirectory("profiles"),
+      boundedDirectory("users"),
+      boundedDirectory("profiles"),
     ]);
     if (!contactsMounted.current) return;
 
@@ -3986,9 +4036,14 @@ export default function StaffView({
         { name: "libraryLoans", uidKeys: ["uid", "borrowerUid", "ownerUid"], displayKeys: ["borrowerName", "displayName"], emailKeys: ["borrowerEmail", "email"] },
       ] as const;
 
-      const fallbackResults = await Promise.allSettled(
-        sources.map((source) => getDocs(query(collection(db, source.name), limit(240))))
-      );
+      let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+      const fallbackResults = await Promise.race([
+        Promise.allSettled(sources.map((source) => getDocs(query(collection(db, source.name), limit(240))))),
+        new Promise<PromiseSettledResult<Awaited<ReturnType<typeof getDocs>>>[]>((resolve) => {
+          fallbackTimer = setTimeout(() => resolve([]), 10_000);
+        }),
+      ]);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       if (!contactsMounted.current) return;
 
       fallbackResults.forEach((result, index) => {

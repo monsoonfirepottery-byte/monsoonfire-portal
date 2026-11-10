@@ -593,7 +593,7 @@ export default function CockpitOpsPanel({
                 Copy telemetry JSON
               </button>
             </div></AdminPageHeader>
-            <AdminWorkflow label="Activity path" stages={[{ label: "Visit", state: moduleUsageRows.length ? "ok" : "neutral", detail: `${moduleUsageRows.length} modules` }, { label: "Time", state: "neutral", detail: "Open" }, { label: "Action", state: moduleUsageRows.some((row) => row.firstActionMs !== null) ? "ok" : "neutral", detail: "Available" }]} />
+            <AdminWorkflow label="Activity in this browser" stages={[{ label: "Modules visited", state: moduleUsageRows.length ? "ok" : "neutral", detail: `${moduleUsageRows.length} recorded` }, { label: "Visits", state: "neutral", detail: `${moduleUsageRows.reduce((total, row) => total + row.visits, 0)} recorded` }, { label: "Modules with an action", state: moduleUsageRows.some((row) => row.firstActionMs !== null) ? "ok" : "neutral", detail: `${moduleUsageRows.filter((row) => row.firstActionMs !== null).length} recorded` }]} />
             <div className="staff-note">
               {lowEngagementModules.length === 0
                 ? "No low-engagement modules detected in the current telemetry sample."
@@ -649,10 +649,10 @@ export default function CockpitOpsPanel({
       </section>
       {cockpitTab === "policyAgentOps" ? (
         <>
-          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Review the rules and connections that keep studio tools safe." art="/staff-facelift/policies.webp"><div className="staff-actions-row"><a href="#staff-access-roles" className="btn btn-secondary">Access &amp; roles</a><a href="#staff-integrations" className="btn btn-secondary">Integrations</a><a href="#staff-policies" className="btn btn-secondary">Policies</a></div></AdminPageHeader><AdminWorkflow label="Guide: how access decisions work" stages={[{ label: "Request", detail: "Staff action", state: "neutral" }, { label: "Identity", detail: "Role and context", state: "neutral" }, { label: "Rules", detail: "Current policy", state: "neutral" }, { label: "Outcome", detail: "Allowed or reviewed", state: "neutral" }]} /></div>
+          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Review the rules and connections that keep studio tools safe." art="/staff-facelift/policies.webp"><div className="staff-actions-row"><a href="#staff-access-roles" className="btn btn-secondary">Access &amp; roles</a><a href="#staff-integrations" className="btn btn-secondary">Integrations</a><a href="#staff-policies" className="btn btn-secondary">Policies</a></div></AdminPageHeader></div>
+          <div id="staff-policies" className="card staff-console-card"><h2>Policies</h2>{governanceContent}</div>
           <div id="staff-access-roles" className="card staff-console-card">{accessRoleContent}</div>
           <div id="staff-integrations" className="card staff-console-card"><h2>Integrations & access</h2>{agentOpsContent}</div>
-          <div id="staff-policies" className="card staff-console-card"><h2>Policies</h2>{governanceContent}</div>
         </>
       ) : null}
       {cockpitTab === "reports" ? <div className="card staff-console-card">{reportsContent}</div> : null}

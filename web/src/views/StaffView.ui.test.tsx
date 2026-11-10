@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -176,6 +176,24 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("offers a retry if Stripe customer search stalls", async () => {
+    const previousFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith("/staffSearchStripeContacts")
+      ? new Promise<Response>(() => undefined)
+      : previousFetch(input, init)));
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    const search = await screen.findByLabelText("Search contacts by name or email");
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(search, { target: { value: "Alex" } });
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_500); });
+      expect(screen.getByText(/Stripe customer search is unavailable/)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("loads contacts on direct entry to access and roles", async () => {
     const empty = { docs: [], empty: true, forEach: () => undefined };
     vi.mocked(getDocs).mockImplementation(async (value) => {

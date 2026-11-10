@@ -2625,6 +2625,11 @@ export default function StaffView({
     const controller = new AbortController();
     stripeAbort.current = controller;
     setStripeSearchState("loading");
+    const timeout = window.setTimeout(() => {
+      if (controller.signal.aborted || request !== stripeRequest.current) return;
+      controller.abort();
+      setStripeSearchState("error");
+    }, 15_000);
     try {
       const token = await user.getIdToken();
       if (controller.signal.aborted) return;
@@ -2647,6 +2652,8 @@ export default function StaffView({
     } catch {
       if (controller.signal.aborted || request !== stripeRequest.current) return;
       setStripeSearchState("error");
+    } finally {
+      window.clearTimeout(timeout);
     }
   }, [devAdminEnabled, devAdminToken, fBaseUrl, user]);
 

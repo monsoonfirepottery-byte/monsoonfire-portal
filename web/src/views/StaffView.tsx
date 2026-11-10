@@ -8209,6 +8209,11 @@ export default function StaffView({
   }, [loadUsers, moduleKey, run]);
 
   useEffect(() => {
+    if (!isCockpitModule || cockpitTab !== "policyAgentOps") return;
+    void loadUsers();
+  }, [cockpitTab, isCockpitModule, loadUsers]);
+
+  useEffect(() => {
     if (!isTaskHomeRoute || forceCockpitWorkspace || !isStaff) return;
     let current = true;
     setTodayPickupState("checking");

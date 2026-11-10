@@ -176,6 +176,20 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("loads contacts on direct entry to access and roles", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ segments?: string[] }> }).parts;
+      return (parts?.[0]?.segments?.at(-1) === "users" ? { docs: [{ id: "policy-person", data: () => ({ displayName: "Policy Person", email: "policy@example.com" }) }] } : empty) as never;
+    });
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/policy-agent-ops");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText(/Policy Person/)).length).toBeGreaterThan(0);
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+    }
+  });
   it("searches guest names only on request and labels an incomplete scan", async () => {
     window.history.replaceState({}, "", "/staff/cockpit/members");
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);

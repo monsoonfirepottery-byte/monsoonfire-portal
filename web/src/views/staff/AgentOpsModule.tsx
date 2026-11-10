@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FunctionsClient } from "../../api/functionsClient";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "staff-note";
+const __bundleClass_2 = "staff-actions-row";
+const __bundleClass_3 = "staff-field staff-field-flex-1";
+const __bundleClass_4 = "staff-field";
+const __bundleClass_5 = "staff-column";
+const __bundleClass_6 = "staff-subtitle";
+const __bundleClass_7 = "staff-table-wrap";
+const __bundleClass_8 = "staff-table";
+const __bundleClass_9 = "staff-mini";
+const __bundleClass_10 = "staff-field staff-field-flex-2";
+
 
 type AgentClient = {
   id: string;
@@ -1147,16 +1159,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     <section className="card staff-console-card">
       <div className="card-title-row">
         <div className="card-title">Agent Ops</div>
-        <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("refreshAgentOps", load)}>
+        <button className={__bundleClass_0} disabled={Boolean(busy) || disabled} onClick={() => void run("refreshAgentOps", load)}>
           Refresh
         </button>
       </div>
 
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         Agent keys are shown once at creation/rotation and never stored in plaintext.
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_3}>
           <span>Agent API enabled</span>
           <input
             type="checkbox"
@@ -1164,7 +1176,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             onChange={(event) => setAgentApiEnabled(event.target.checked)}
           />
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_3}>
           <span>Agent payments enabled</span>
           <input
             type="checkbox"
@@ -1173,8 +1185,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           />
         </label>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_3}>
           <span>Controls change reason (required when disabling)</span>
           <input
             value={agentControlsReason}
@@ -1183,7 +1195,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           />
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled}
           onClick={() => void run("saveAgentOpsConfig", saveAgentOpsConfig)}
         >
@@ -1191,21 +1203,21 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </button>
       </div>
       {agentControlsMeta.updatedAtMs > 0 ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           Last control update: {when(agentControlsMeta.updatedAtMs)}
           {agentControlsMeta.updatedByUid ? ` by ${agentControlsMeta.updatedByUid}` : ""}
           {agentControlsMeta.lastControlReason ? ` · reason: ${agentControlsMeta.lastControlReason}` : ""}
         </div>
       ) : null}
-      {status ? <div className="staff-note">{status}</div> : null}
+      {status ? <div className={__bundleClass_1}>{status}</div> : null}
       {error ? <div className="staff-note staff-note-error">{error}</div> : null}
 
       {latestKey ? (
-        <div className="staff-field">
+        <div className={__bundleClass_4}>
           Latest key (copy now)
-          <div className="staff-actions-row">
+          <div className={__bundleClass_2}>
             <input value={latestKey} readOnly />
-            <button className="btn btn-secondary" onClick={() => void copyLatestKey()}>
+            <button className={__bundleClass_0} onClick={() => void copyLatestKey()}>
               Copy
             </button>
           </div>
@@ -1213,11 +1225,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       ) : null}
 
       {latestDelegatedToken ? (
-        <div className="staff-field">
+        <div className={__bundleClass_4}>
           Latest delegated token (copy now)
-          <div className="staff-actions-row">
+          <div className={__bundleClass_2}>
             <input value={latestDelegatedToken} readOnly />
-            <button className="btn btn-secondary" onClick={() => void copyDelegatedToken()}>
+            <button className={__bundleClass_0} onClick={() => void copyDelegatedToken()}>
               Copy
             </button>
           </div>
@@ -1225,18 +1237,18 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       ) : null}
 
       <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Create agent client</div>
-          <label className="staff-field">
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Create agent client</div>
+          <label className={__bundleClass_4}>
             Client name
             <input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} placeholder="Studio Fulfillment Agent" />
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_4}>
             Scopes (comma-separated)
             <input value={scopesDraft} onChange={(event) => setScopesDraft(event.target.value)} />
           </label>
-          <div className="staff-actions-row">
-            <label className="staff-field staff-field-flex-1">
+          <div className={__bundleClass_2}>
+            <label className={__bundleClass_3}>
               Trust tier
               <select value={trustTierDraft} onChange={(event) => setTrustTierDraft(event.target.value as "low" | "medium" | "high")}>
                 <option value="low">Low</option>
@@ -1244,26 +1256,26 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <option value="high">High</option>
               </select>
             </label>
-            <label className="staff-field staff-field-flex-1">
+            <label className={__bundleClass_3}>
               Per-minute limit
               <input value={perMinuteDraft} onChange={(event) => setPerMinuteDraft(event.target.value)} />
             </label>
-              <label className="staff-field staff-field-flex-1">
+              <label className={__bundleClass_3}>
                 Per-hour limit
                 <input value={perHourDraft} onChange={(event) => setPerHourDraft(event.target.value)} />
               </label>
             </div>
-          <div className="staff-actions-row">
-            <label className="staff-field staff-field-flex-1">
+          <div className={__bundleClass_2}>
+            <label className={__bundleClass_3}>
               Max order cents
               <input value={orderMaxCentsDraft} onChange={(event) => setOrderMaxCentsDraft(event.target.value)} />
             </label>
-            <label className="staff-field staff-field-flex-1">
+            <label className={__bundleClass_3}>
               Max orders / hour
               <input value={maxOrdersPerHourDraft} onChange={(event) => setMaxOrdersPerHourDraft(event.target.value)} />
             </label>
           </div>
-          <label className="staff-field">
+          <label className={__bundleClass_4}>
             Notes
             <textarea value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} placeholder="Optional context for staff" />
           </label>
@@ -1276,10 +1288,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           </button>
         </div>
 
-        <div className="staff-column">
-          <div className="staff-subtitle">Registered clients</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Registered clients</div>
+          <div className={__bundleClass_7}>
+            <table className={__bundleClass_8}>
               <thead>
                 <tr>
                   <th>Name</th>
@@ -1310,7 +1322,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     >
                       <td>
                         <div>{row.name}</div>
-                        <div className="staff-mini">
+                        <div className={__bundleClass_9}>
                           <code>{row.id}</code>
                         </div>
                       </td>
@@ -1322,7 +1334,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                             {riskByClient[row.id].total} ({riskByClient[row.id].quoteLimit}Q/{riskByClient[row.id].payLimit}P/{riskByClient[row.id].velocity}V)
                           </span>
                         ) : (
-                          <span className="staff-mini">0</span>
+                          <span className={__bundleClass_9}>0</span>
                         )}
                       </td>
                       <td>{when(row.updatedAtMs)}</td>
@@ -1334,11 +1346,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           </div>
         </div>
 
-        <div className="staff-column">
-          <div className="staff-subtitle">Client details</div>
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Client details</div>
           {selected ? (
             <>
-              <div className="staff-note">
+              <div className={__bundleClass_1}>
                 <strong>{selected.name}</strong><br />
                 <span>Status: {selected.status} · Trust: {selected.trustTier}</span><br />
                 <span>Key v{selected.keyVersion} · {selected.keyPrefix ?? "--"}...{selected.keyLast4 ?? "----"}</span><br />
@@ -1353,8 +1365,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   {selected.cooldownReason ? ` (${selected.cooldownReason})` : ""}
                 </span>
               </div>
-              <div className="staff-actions-row">
-                <label className="staff-field staff-field-flex-1">
+              <div className={__bundleClass_2}>
+                <label className={__bundleClass_3}>
                   Admin reason (saved to audit)
                   <input
                     value={statusReasonDraft}
@@ -1363,21 +1375,21 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   />
                 </label>
               </div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("rotateAgentKey", rotateKey)}>
+              <div className={__bundleClass_2}>
+                <button className={__bundleClass_0} disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("rotateAgentKey", rotateKey)}>
                   Rotate key
                 </button>
-                <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "active"} onClick={() => void run("activateAgent", async () => setClientStatus("active"))}>
+                <button className={__bundleClass_0} disabled={Boolean(busy) || disabled || selected.status === "active"} onClick={() => void run("activateAgent", async () => setClientStatus("active"))}>
                   Set active
                 </button>
-                <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "suspended" || selected.status === "revoked"} onClick={() => void run("suspendAgent", async () => setClientStatus("suspended"))}>
+                <button className={__bundleClass_0} disabled={Boolean(busy) || disabled || selected.status === "suspended" || selected.status === "revoked"} onClick={() => void run("suspendAgent", async () => setClientStatus("suspended"))}>
                   Suspend
                 </button>
-                <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("revokeAgent", async () => setClientStatus("revoked"))}>
+                <button className={__bundleClass_0} disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("revokeAgent", async () => setClientStatus("revoked"))}>
                   Revoke
                 </button>
                 <button
-                  className="btn btn-secondary"
+                  className={__bundleClass_0}
                   disabled={Boolean(busy) || disabled || !selected.cooldownUntilMs}
                   onClick={() => void run("clearCooldown", clearCooldown)}
                 >
@@ -1385,16 +1397,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 </button>
               </div>
 
-              <label className="staff-field">
+              <label className={__bundleClass_4}>
                 Name
                 <input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
               </label>
-              <label className="staff-field">
+              <label className={__bundleClass_4}>
                 Scopes (comma-separated)
                 <input value={profileScopes} onChange={(event) => setProfileScopes(event.target.value)} />
               </label>
-              <div className="staff-actions-row">
-                <label className="staff-field staff-field-flex-1">
+              <div className={__bundleClass_2}>
+                <label className={__bundleClass_3}>
                   Trust tier
                   <select value={profileTrustTier} onChange={(event) => setProfileTrustTier(event.target.value as "low" | "medium" | "high")}>
                     <option value="low">Low</option>
@@ -1402,26 +1414,26 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <option value="high">High</option>
                   </select>
                 </label>
-                <label className="staff-field staff-field-flex-1">
+                <label className={__bundleClass_3}>
                   Per-minute limit
                   <input value={profilePerMinute} onChange={(event) => setProfilePerMinute(event.target.value)} />
                 </label>
-                <label className="staff-field staff-field-flex-1">
+                <label className={__bundleClass_3}>
                   Per-hour limit
                   <input value={profilePerHour} onChange={(event) => setProfilePerHour(event.target.value)} />
                 </label>
               </div>
-              <div className="staff-actions-row">
-                <label className="staff-field staff-field-flex-1">
+              <div className={__bundleClass_2}>
+                <label className={__bundleClass_3}>
                   Max order cents
                   <input value={profileOrderMaxCents} onChange={(event) => setProfileOrderMaxCents(event.target.value)} />
                 </label>
-                <label className="staff-field staff-field-flex-1">
+                <label className={__bundleClass_3}>
                   Max orders / hour
                   <input value={profileMaxOrdersPerHour} onChange={(event) => setProfileMaxOrdersPerHour(event.target.value)} />
                 </label>
               </div>
-              <label className="staff-field">
+              <label className={__bundleClass_4}>
                 Notes
                 <textarea value={profileNotes} onChange={(event) => setProfileNotes(event.target.value)} />
               </label>
@@ -1433,39 +1445,39 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 Save profile
               </button>
 
-              <div className="staff-subtitle">Issue delegated token</div>
-              <label className="staff-field">
+              <div className={__bundleClass_6}>Issue delegated token</div>
+              <label className={__bundleClass_4}>
                 Principal UID (optional; default is your UID)
                 <input value={delegatedPrincipalDraft} onChange={(event) => setDelegatedPrincipalDraft(event.target.value)} placeholder="uid_override_optional" />
               </label>
-              <label className="staff-field">
+              <label className={__bundleClass_4}>
                 Delegated scopes (comma-separated)
                 <input value={delegatedScopesDraft} onChange={(event) => setDelegatedScopesDraft(event.target.value)} />
               </label>
-              <div className="staff-actions-row">
-                <label className="staff-field staff-field-flex-1">
+              <div className={__bundleClass_2}>
+                <label className={__bundleClass_3}>
                   TTL seconds (30-600)
                   <input value={delegatedTtlDraft} onChange={(event) => setDelegatedTtlDraft(event.target.value)} />
                 </label>
-                <label className="staff-field staff-field-flex-1">
+                <label className={__bundleClass_3}>
                   Audience
                   <input value={delegatedAudienceDraft} onChange={(event) => setDelegatedAudienceDraft(event.target.value)} />
                 </label>
               </div>
               <button
-                className="btn btn-secondary"
+                className={__bundleClass_0}
                 disabled={Boolean(busy) || disabled || parseScopes(delegatedScopesDraft).length < 1}
                 onClick={() => void run("issueDelegatedToken", issueDelegatedToken)}
               >
                 Issue delegated token
               </button>
 
-              <div className="staff-subtitle">Delegation grants</div>
-              <div className="staff-note">
+              <div className={__bundleClass_6}>Delegation grants</div>
+              <div className={__bundleClass_1}>
                 Delegations bind owner + client + scopes. Revoke grants immediately if abuse is suspected.
               </div>
-              <div className="staff-table-wrap">
-                <table className="staff-table">
+              <div className={__bundleClass_7}>
+                <table className={__bundleClass_8}>
                   <thead>
                     <tr>
                       <th>Delegation</th>
@@ -1497,7 +1509,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                           <td>{row.expiresAtMs ? when(row.expiresAtMs) : "-"}</td>
                           <td>
                             <button
-                              className="btn btn-secondary"
+                              className={__bundleClass_0}
                               disabled={Boolean(busy) || disabled || row.status !== "active"}
                               onClick={() => void run(`revokeDelegation:${row.id}`, () => revokeDelegation(row))}
                             >
@@ -1511,64 +1523,64 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 </table>
               </div>
 
-              <div className="staff-subtitle">Independent account controls</div>
+              <div className={__bundleClass_6}>Independent account controls</div>
               {selectedAccount ? (
                 <>
-                  <div className="staff-actions-row">
+                  <div className={__bundleClass_2}>
                     <div className="pill">Balance: ${(selectedAccount.prepaidBalanceCents / 100).toFixed(2)}</div>
                     <div className="pill">Spent today: ${(selectedAccount.spentTodayCents / 100).toFixed(2)}</div>
                     <div className="pill">Spend day: {selectedAccount.spendDayKey || "-"}</div>
                   </div>
-                  <div className="staff-actions-row">
-                    <label className="staff-field staff-field-flex-1">
+                  <div className={__bundleClass_2}>
+                    <label className={__bundleClass_3}>
                       Account status
                       <select value={accountStatusDraft} onChange={(event) => setAccountStatusDraft(event.target.value as "active" | "on_hold")}>
                         <option value="active">active</option>
                         <option value="on_hold">on_hold</option>
                       </select>
                     </label>
-                    <label className="staff-field staff-field-flex-1">
+                    <label className={__bundleClass_3}>
                       Independent mode enabled
                       <input type="checkbox" checked={accountIndependentDraft} onChange={(event) => setAccountIndependentDraft(event.target.checked)} />
                     </label>
-                    <label className="staff-field staff-field-flex-1">
+                    <label className={__bundleClass_3}>
                       Prepay required
                       <input type="checkbox" checked={accountPrepayDraft} onChange={(event) => setAccountPrepayDraft(event.target.checked)} />
                     </label>
                   </div>
-                  <div className="staff-actions-row">
-                    <label className="staff-field staff-field-flex-1">
+                  <div className={__bundleClass_2}>
+                    <label className={__bundleClass_3}>
                       Daily spend cap (cents)
                       <input value={accountDailyCapDraft} onChange={(event) => setAccountDailyCapDraft(event.target.value)} />
                     </label>
-                    <label className="staff-field staff-field-flex-1">
+                    <label className={__bundleClass_3}>
                       Balance delta cents (+/-)
                       <input value={accountBalanceDeltaDraft} onChange={(event) => setAccountBalanceDeltaDraft(event.target.value)} />
                     </label>
-                    <label className="staff-field staff-field-flex-2">
+                    <label className={__bundleClass_10}>
                       Reason
                       <input value={accountReasonDraft} onChange={(event) => setAccountReasonDraft(event.target.value)} placeholder="Hold account pending fraud review" />
                     </label>
-                    <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("saveSelectedAgentAccount", saveSelectedAgentAccount)}>
+                    <button className={__bundleClass_0} disabled={Boolean(busy) || disabled} onClick={() => void run("saveSelectedAgentAccount", saveSelectedAgentAccount)}>
                       Save account
                     </button>
                   </div>
                 </>
               ) : (
-                <div className="staff-note">Account controls unavailable until a client is selected.</div>
+                <div className={__bundleClass_1}>Account controls unavailable until a client is selected.</div>
               )}
             </>
           ) : (
-            <div className="staff-note">Select a client to inspect and update.</div>
+            <div className={__bundleClass_1}>Select a client to inspect and update.</div>
           )}
         </div>
       </div>
 
-      <div className="staff-subtitle">Agent service catalog</div>
-      <div className="staff-note">
+      <div className={__bundleClass_6}>Agent service catalog</div>
+      <div className={__bundleClass_1}>
         This controls what agents can quote/reserve/pay against. Keep `pricingMode` in `test` until Stripe test flows pass.
       </div>
-      <label className="staff-field">
+      <label className={__bundleClass_4}>
         Catalog JSON
         <textarea
           value={catalogJsonDraft}
@@ -1578,7 +1590,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           className="staff-mono-input"
         />
       </label>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <button
           className="btn btn-primary"
           disabled={Boolean(busy) || disabled || !catalogJsonDraft.trim()}
@@ -1588,8 +1600,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </button>
       </div>
       {catalogConfig ? (
-        <div className="staff-table-wrap">
-          <table className="staff-table">
+        <div className={__bundleClass_7}>
+          <table className={__bundleClass_8}>
             <thead>
               <tr>
                 <th>Service</th>
@@ -1610,7 +1622,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   <tr key={service.id}>
                     <td>
                       <div>{service.title}</div>
-                      <div className="staff-mini">
+                      <div className={__bundleClass_9}>
                         <code>{service.id}</code>
                       </div>
                     </td>
@@ -1631,13 +1643,13 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           </table>
         </div>
       ) : (
-        <div className="staff-note">Catalog not loaded yet.</div>
+        <div className={__bundleClass_1}>Catalog not loaded yet.</div>
       )}
 
-      <div className="staff-subtitle">Catalog audit log</div>
+      <div className={__bundleClass_6}>Catalog audit log</div>
       <div className="staff-log-list">
         {catalogAudit.length === 0 ? (
-          <div className="staff-note">No catalog audit events yet.</div>
+          <div className={__bundleClass_1}>No catalog audit events yet.</div>
         ) : (
           catalogAudit.slice(0, 20).map((entry, idx) => (
             <div key={`${str(entry.id, `catalog-audit-${idx}`)}-${idx}`} className="staff-log-entry">
@@ -1654,9 +1666,9 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         )}
       </div>
 
-      <div className="staff-subtitle">Operations feed</div>
+      <div className={__bundleClass_6}>Operations feed</div>
       {opsSnapshot ? (
-        <div className="staff-actions-row">
+        <div className={__bundleClass_2}>
           <div className="pill">Quotes: {num(opsSnapshot.quotes, 0)}</div>
           <div className="pill">Reservations: {num(opsSnapshot.reservations, 0)}</div>
           <div className="pill">Orders: {num(opsSnapshot.orders, 0)}</div>
@@ -1666,10 +1678,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       ) : null}
 
       <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Recent quotes</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Recent quotes</div>
+          <div className={__bundleClass_7}>
+            <table className={__bundleClass_8}>
               <thead>
                 <tr>
                   <th>Quote</th>
@@ -1699,10 +1711,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Recent reservations</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Recent reservations</div>
+          <div className={__bundleClass_7}>
+            <table className={__bundleClass_8}>
               <thead>
                 <tr>
                   <th>Reservation</th>
@@ -1721,16 +1733,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <td>{row.requiresManualReview === true ? "Required" : "Auto"}</td>
                     <td>
                       {str(row.status) === "pending_review" ? (
-                        <div className="staff-actions-row">
+                        <div className={__bundleClass_2}>
                           <button
-                            className="btn btn-secondary"
+                            className={__bundleClass_0}
                             disabled={Boolean(busy) || disabled}
                             onClick={() => void run("approveReservation", () => reviewReservation(str(row.id), "approve"))}
                           >
                             Approve
                           </button>
                           <button
-                            className="btn btn-secondary"
+                            className={__bundleClass_0}
                             disabled={Boolean(busy) || disabled}
                             onClick={() => void run("rejectReservation", () => reviewReservation(str(row.id), "reject"))}
                           >
@@ -1738,7 +1750,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                           </button>
                         </div>
                       ) : (
-                        <span className="staff-mini">-</span>
+                        <span className={__bundleClass_9}>-</span>
                       )}
                     </td>
                   </tr>
@@ -1750,10 +1762,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Recent orders</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Recent orders</div>
+          <div className={__bundleClass_7}>
+            <table className={__bundleClass_8}>
               <thead>
                 <tr>
                   <th>Order</th>
@@ -1771,7 +1783,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <td>{str(row.fulfillmentStatus, "-")}</td>
                     <td>{when(tsMs(row.updatedAt))}</td>
                     <td>
-                      <div className="staff-actions-row">
+                      <div className={__bundleClass_2}>
                         <select
                           value={orderNextStatus[str(row.id)] ?? ""}
                           onChange={(event) =>
@@ -1793,7 +1805,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                           <option value="exception">exception</option>
                         </select>
                         <button
-                          className="btn btn-secondary"
+                          className={__bundleClass_0}
                           disabled={Boolean(busy) || disabled || !(orderNextStatus[str(row.id)] ?? "").trim()}
                           onClick={() =>
                             void run(`updateFulfillment:${str(row.id)}`, () =>
@@ -1816,11 +1828,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </div>
       </div>
 
-      <div className="staff-subtitle">Agent request intake queue</div>
-      <div className="staff-note">
+      <div className={__bundleClass_6}>Agent request intake queue</div>
+      <div className={__bundleClass_1}>
         Structured requests from agents and users are triaged here. Link accepted requests to a portal batch for fulfillment tracking.
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <div className="pill">Total: {agentRequestKpis.total}</div>
         <div className="pill">New: {agentRequestKpis.new}</div>
         <div className="pill">Triaged: {agentRequestKpis.triaged}</div>
@@ -1828,8 +1840,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         <div className="pill">Fulfilled: {agentRequestKpis.fulfilled}</div>
         <div className="pill">Rejected/Cancelled: {agentRequestKpis.blocked}</div>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-2">
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_10}>
           Search
           <input
             value={agentRequestSearch}
@@ -1837,7 +1849,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             placeholder="id, title, uid, kind"
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_4}>
           Status
           <select
             value={agentRequestStatusFilter}
@@ -1854,7 +1866,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="cancelled">cancelled</option>
           </select>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_4}>
           Kind
           <select
             value={agentRequestKindFilter}
@@ -1871,7 +1883,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           </select>
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled}
           onClick={() => void run("refreshAgentRequestsOnly", refreshAgentRequests)}
         >
@@ -1879,9 +1891,9 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </button>
       </div>
       <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_7}>
+            <table className={__bundleClass_8}>
               <thead>
                 <tr>
                   <th>Title</th>
@@ -1912,7 +1924,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     >
                       <td>
                         <div>{row.title || "(untitled request)"}</div>
-                        <div className="staff-mini">
+                        <div className={__bundleClass_9}>
                           <code>{row.id}</code>
                         </div>
                       </td>
@@ -1920,7 +1932,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                       <td>{row.kind}</td>
                       <td>
                         <code>{row.createdByUid || "-"}</code>
-                        <div className="staff-mini">{row.createdByMode}</div>
+                        <div className={__bundleClass_9}>{row.createdByMode}</div>
                       </td>
                       <td>{when(row.updatedAtMs)}</td>
                     </tr>
@@ -1930,11 +1942,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Request detail</div>
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Request detail</div>
           {selectedAgentRequest ? (
             <>
-              <div className="staff-note">
+              <div className={__bundleClass_1}>
                 <strong>{selectedAgentRequest.title}</strong><br />
                 <span>{selectedAgentRequest.summary || "No summary"}</span><br />
                 <span>Kind: {selectedAgentRequest.kind} · Status: {selectedAgentRequest.status}</span><br />
@@ -1944,8 +1956,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <span>Linked batch: <code>{selectedAgentRequest.linkedBatchId || "-"}</code></span><br />
                 <span>Commission order: <code>{selectedAgentRequest.commissionOrderId || "-"}</code> · Payment: {selectedAgentRequest.commissionPaymentStatus || "-"}</span>
               </div>
-              <div className="staff-actions-row">
-                <label className="staff-field staff-field-flex-1">
+              <div className={__bundleClass_2}>
+                <label className={__bundleClass_3}>
                   Next status
                   <select
                     value={agentRequestNextStatus}
@@ -1961,7 +1973,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <option value="cancelled">cancelled</option>
                   </select>
                 </label>
-                <label className="staff-field staff-field-flex-2">
+                <label className={__bundleClass_10}>
                   Reason / internal note
                   <input
                     value={agentRequestReasonDraft}
@@ -1969,7 +1981,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     placeholder="Queued for next bisque cycle"
                   />
                 </label>
-                <label className="staff-field staff-field-flex-1">
+                <label className={__bundleClass_3}>
                   Reason code
                   <select
                     value={agentRequestReasonCodeDraft}
@@ -1986,15 +1998,15 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   </select>
                 </label>
                 <button
-                  className="btn btn-secondary"
+                  className={__bundleClass_0}
                   disabled={Boolean(busy) || disabled}
                   onClick={() => void run("updateAgentRequestStatus", updateAgentRequestStatus)}
                 >
                   Update status
                 </button>
               </div>
-              <div className="staff-actions-row">
-                <label className="staff-field staff-field-flex-2">
+              <div className={__bundleClass_2}>
+                <label className={__bundleClass_10}>
                   Link batch ID
                   <input
                     value={agentRequestBatchDraft}
@@ -2003,7 +2015,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   />
                 </label>
                 <button
-                  className="btn btn-secondary"
+                  className={__bundleClass_0}
                   disabled={Boolean(busy) || disabled || !agentRequestBatchDraft.trim()}
                   onClick={() => void run("linkAgentRequestBatch", linkAgentRequestBatch)}
                 >
@@ -2011,9 +2023,9 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 </button>
               </div>
               {selectedAgentRequest.kind === "commission" ? (
-                <div className="staff-actions-row">
+                <div className={__bundleClass_2}>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={
                       Boolean(busy) ||
                       disabled ||
@@ -2024,7 +2036,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     Create commission order
                   </button>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={Boolean(busy) || disabled || !selectedAgentRequest.commissionOrderId}
                     onClick={() => void run("generateCommissionCheckoutLink", generateCommissionCheckoutLink)}
                   >
@@ -2038,17 +2050,17 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
               </details>
             </>
           ) : (
-            <div className="staff-note">Select a request to inspect and triage.</div>
+            <div className={__bundleClass_1}>Select a request to inspect and triage.</div>
           )}
         </div>
       </div>
 
-      <div className="staff-subtitle">Security audit events</div>
-      <div className="staff-note">
+      <div className={__bundleClass_6}>Security audit events</div>
+      <div className={__bundleClass_1}>
         Canonical security logs from privileged authz checks. Use request ID + reason code for incident review.
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_4}>
           Result
           <select
             value={securityResultFilter}
@@ -2060,7 +2072,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="error">error</option>
           </select>
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_3}>
           Owner UID
           <input
             value={securityOwnerFilter}
@@ -2068,7 +2080,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             placeholder="optional owner uid"
           />
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_3}>
           Actor UID
           <input
             value={securityActorFilter}
@@ -2076,7 +2088,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             placeholder="optional actor uid"
           />
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_3}>
           Action
           <input
             value={securityActionFilter}
@@ -2084,12 +2096,12 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             placeholder="optional action key"
           />
         </label>
-        <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("refreshSecurityAudit", refreshSecurityAudit)}>
+        <button className={__bundleClass_0} disabled={Boolean(busy) || disabled} onClick={() => void run("refreshSecurityAudit", refreshSecurityAudit)}>
           Refresh security audit
         </button>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_7}>
+        <table className={__bundleClass_8}>
           <thead>
             <tr>
               <th>Time</th>
@@ -2114,7 +2126,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   <td>{row.action || "-"}</td>
                   <td>
                     <code>{row.actorUid || "-"}</code>
-                    <div className="staff-mini">{row.actorType || "-"}</div>
+                    <div className={__bundleClass_9}>{row.actorType || "-"}</div>
                   </td>
                   <td><code>{row.ownerUid || "-"}</code></td>
                   <td><code>{row.requestId || "-"}</code></td>
@@ -2126,15 +2138,15 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </table>
       </div>
 
-      <div className="staff-subtitle">Audit log</div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_6}>Audit log</div>
+      <div className={__bundleClass_2}>
         <div className="pill">Total: {auditKpis.total}</div>
         <div className="pill">Security: {auditKpis.security}</div>
         <div className="pill">Denied: {auditKpis.denied}</div>
         <div className="pill">Errored: {auditKpis.errored}</div>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_4}>
           Source
           <select value={auditSourceFilter} onChange={(event) => setAuditSourceFilter(event.target.value as "all" | "client" | "security")}>
             <option value="all">All sources</option>
@@ -2142,7 +2154,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="security">Security audit</option>
           </select>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_4}>
           Outcome
           <select value={auditOutcomeFilter} onChange={(event) => setAuditOutcomeFilter(event.target.value as "all" | "ok" | "deny" | "error")}>
             <option value="all">All outcomes</option>
@@ -2154,7 +2166,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       </div>
       <div className="staff-log-list">
         {filteredAudit.length === 0 ? (
-          <div className="staff-note">No agent client audit events yet.</div>
+          <div className={__bundleClass_1}>No agent client audit events yet.</div>
         ) : (
           filteredAudit.slice(0, 40).map((entry) => (
             <div key={entry.id} className="staff-log-entry">
@@ -2171,9 +2183,9 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         )}
       </div>
 
-      <div className="staff-subtitle">Denied events</div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_6}>Denied events</div>
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_3}>
           Client filter
           <select
             value={deniedClientFilter}
@@ -2187,7 +2199,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             ))}
           </select>
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_3}>
           Action filter
           <select
             value={deniedActionFilter}
@@ -2203,7 +2215,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="agent_pay_denied_velocity">pay denied - velocity</option>
           </select>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_4}>
           From
           <input
             type="date"
@@ -2211,7 +2223,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             onChange={(event) => setDeniedFromDate(event.target.value)}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_4}>
           To
           <input
             type="date"
@@ -2220,14 +2232,14 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           />
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || filteredDeniedEvents.length === 0 || Boolean(deniedFromDate && deniedToDate && deniedFromDate > deniedToDate)}
           onClick={() => void exportDeniedEvents()}
         >
           Copy JSON export
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || Boolean(deniedFromDate && deniedToDate && deniedFromDate > deniedToDate)}
           onClick={() => void run("downloadDeniedCsv", downloadDeniedEventsCsv)}
         >
@@ -2237,8 +2249,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       {deniedFromDate && deniedToDate && deniedFromDate > deniedToDate ? (
         <div className="staff-note staff-note-error">Date range is invalid. Set "From" to a date before "To".</div>
       ) : null}
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_7}>
+        <table className={__bundleClass_8}>
           <thead>
             <tr>
               <th>Time</th>

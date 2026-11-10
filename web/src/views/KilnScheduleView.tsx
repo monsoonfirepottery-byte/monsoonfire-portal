@@ -19,6 +19,8 @@ import { formatDateTime } from "../utils/format";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import "./KilnScheduleView.css";
+const __bundleClass_0 = "btn btn-secondary";
+
 
 type NormalizedFiring = KilnFiring & { startDate: Date; endDate: Date };
 
@@ -379,7 +381,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
       ) : null}
       {(error || permissionDenied) && !loading ? (
         <div className="card card-3d">
-          <button className="btn btn-secondary" disabled={loading} onClick={() => void reload()}>
+          <button className={__bundleClass_0} disabled={loading} onClick={() => void reload()}>
             Retry loading kiln schedule
           </button>
         </div>
@@ -513,7 +515,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
               {isStaff && user ? (
                 <div className="details-actions">
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={unloadBusy || Boolean(unloadedAt)}
                     onClick={() => {
                       void (async () => {
@@ -566,7 +568,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                     />
                   </label>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={staffBusy}
                     onClick={() => void runStaffAction("Create follow-up firing", createFollowUpFiring)}
                   >
@@ -584,7 +586,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                     />
                   </label>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={staffBusy}
                     onClick={() => void runStaffAction("Delay selected firing", delaySelectedFiringByHours)}
                   >

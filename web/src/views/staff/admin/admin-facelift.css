@@ -3,6 +3,7 @@
 .staff-admin-workspace > [hidden] { display: none !important; }
 .staff-admin-workspace > * { min-width: 0; }
 .staff-admin-workspace .staff-console-card { min-width: 0; overflow-wrap: anywhere; }
+.staff-human-workspace .card-title-row { flex-wrap: wrap; }
 .staff-admin-workspace .staff-table-wrap { max-width: 100%; overflow-x: auto; }
 .staff-admin-workspace .staff-table { min-width: 580px; }
 .admin-page-header { position: relative; isolation: isolate; overflow: hidden; min-height: 180px; display: flex; align-items: center; margin: 0 0 16px; border: 1px solid var(--border, #30363d); border-radius: 14px; color: #fff8ed; background: #211d19; }

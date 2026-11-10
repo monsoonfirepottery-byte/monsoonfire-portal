@@ -1,5 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 import { buildLendingResearchSections, isDisallowedRetailCoverUrl } from "./lendingResearch";
+const __bundleClass_0 = "staff-field";
+const __bundleClass_1 = "staff-actions-row";
+
 
 export type LendingAdminItemRecord = {
   id: string;
@@ -112,7 +115,7 @@ export default function LendingCatalogEditor({
     <section className="staff-column" data-testid={testId}>
       <div className="staff-subtitle">{heading}</div>
       {note ? <div className="staff-note">{note}</div> : null}
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Title
         <input
           type="text"
@@ -123,7 +126,7 @@ export default function LendingCatalogEditor({
           disabled={Boolean(busy) || lendingAdminItemBusy}
         />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Authors (comma/newline)
         <textarea
           value={lendingAdminItemDraft.authorsCsv}
@@ -133,8 +136,8 @@ export default function LendingCatalogEditor({
           disabled={Boolean(busy) || lendingAdminItemBusy}
         />
       </label>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_0}>
           ISBN
           <input
             type="text"
@@ -154,7 +157,7 @@ export default function LendingCatalogEditor({
           {lendingAdminIsbnResolveBusy ? "Resolving..." : "Resolve ISBN"}
         </button>
       </div>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Subtitle
         <input
           type="text"
@@ -165,7 +168,7 @@ export default function LendingCatalogEditor({
           disabled={Boolean(busy) || lendingAdminItemBusy}
         />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Summary
         <textarea
           value={lendingAdminItemDraft.summary}
@@ -176,7 +179,7 @@ export default function LendingCatalogEditor({
         />
         <span className="helper">Short member-facing synopsis shown first in the lending detail view.</span>
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Description
         <textarea
           value={lendingAdminItemDraft.description}
@@ -186,7 +189,7 @@ export default function LendingCatalogEditor({
           disabled={Boolean(busy) || lendingAdminItemBusy}
         />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         <span>Why this title matters</span>
         <textarea
           value={lendingAdminItemDraft.staffRationale}
@@ -197,7 +200,7 @@ export default function LendingCatalogEditor({
         />
         <span className="helper">Optional staff rationale shown on shelf cards and in title detail.</span>
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         <span>Staff pick</span>
         <button
           type="button"
@@ -210,8 +213,8 @@ export default function LendingCatalogEditor({
           {lendingAdminItemDraft.staffPick ? "Marked as staff pick" : "Mark as staff pick"}
         </button>
       </label>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_0}>
           Publisher
           <input
             type="text"
@@ -222,7 +225,7 @@ export default function LendingCatalogEditor({
             disabled={Boolean(busy) || lendingAdminItemBusy}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_0}>
           Published date
           <input
             type="text"
@@ -235,8 +238,8 @@ export default function LendingCatalogEditor({
           />
         </label>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_0}>
           Media type
           <input
             type="text"
@@ -247,7 +250,7 @@ export default function LendingCatalogEditor({
             disabled={Boolean(busy) || lendingAdminItemBusy}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_0}>
           Status
           <select
             value={lendingAdminItemDraft.status}
@@ -264,7 +267,7 @@ export default function LendingCatalogEditor({
             <option value="archived">archived</option>
           </select>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_0}>
           Source
           <input
             type="text"
@@ -276,8 +279,8 @@ export default function LendingCatalogEditor({
           />
         </label>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_0}>
           Total copies
           <input
             type="number"
@@ -289,7 +292,7 @@ export default function LendingCatalogEditor({
             disabled={Boolean(busy) || lendingAdminItemBusy}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_0}>
           Available copies
           <input
             type="number"
@@ -301,7 +304,7 @@ export default function LendingCatalogEditor({
             disabled={Boolean(busy) || lendingAdminItemBusy}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_0}>
           Format
           <input
             type="text"
@@ -313,7 +316,7 @@ export default function LendingCatalogEditor({
           />
         </label>
       </div>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Cover URL
         <input
           type="url"
@@ -334,7 +337,7 @@ export default function LendingCatalogEditor({
         )}
       </label>
       {researchSections.length > 0 ? (
-        <div className="staff-field">
+        <div className={__bundleClass_0}>
           <span>Research assist</span>
           <div className="staff-mini">
             Catalog/API links are safe lookup sources. Retail links are manual-reference only: capture factual metadata, not retailer copy, ratings, prices, or hosted images.
@@ -343,7 +346,7 @@ export default function LendingCatalogEditor({
             <div key={section.id}>
               <div className="staff-mini"><strong>{section.title}</strong></div>
               <div className="staff-mini">{section.policyNote}</div>
-              <div className="staff-actions-row">
+              <div className={__bundleClass_1}>
                 {section.links.map((link) => (
                   <a
                     key={link.id}
@@ -360,8 +363,8 @@ export default function LendingCatalogEditor({
           ))}
         </div>
       ) : null}
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_0}>
           Subjects
           <input
             type="text"
@@ -373,7 +376,7 @@ export default function LendingCatalogEditor({
             disabled={Boolean(busy) || lendingAdminItemBusy}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_0}>
           Techniques
           <input
             type="text"
@@ -386,7 +389,7 @@ export default function LendingCatalogEditor({
           />
         </label>
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_1}>
         <button
           type="button"
           className="btn btn-primary"
@@ -418,7 +421,7 @@ export default function LendingCatalogEditor({
       </div>
       {deleteEnabled ? (
         <>
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             Type <code>{lendingAdminDeleteConfirmationPhrase || "delete <itemId>"}</code> to enable delete
             <input
               type="text"
@@ -427,7 +430,7 @@ export default function LendingCatalogEditor({
               disabled={Boolean(busy) || lendingAdminItemBusy}
             />
           </label>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_1}>
             <button
               type="button"
               className="btn btn-secondary"

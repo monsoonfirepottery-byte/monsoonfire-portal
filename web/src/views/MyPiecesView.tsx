@@ -21,6 +21,17 @@ import {
   trackedUpdateDoc,
 } from "../lib/firestoreTelemetry";
 import "./MyPiecesView.css";
+const __bundleClass_0 = "my-pieces-section-head";
+const __bundleClass_1 = "piece-meta my-pieces-section-copy";
+const __bundleClass_2 = "empty-state";
+const __bundleClass_3 = "piece-meta";
+const __bundleClass_4 = "piece-title-row";
+const __bundleClass_5 = "pill piece-status";
+const __bundleClass_6 = "btn btn-ghost";
+const __bundleClass_7 = "my-piece-overview-item";
+const __bundleClass_8 = "my-piece-overview-label";
+const __bundleClass_9 = "btn btn-primary";
+
 
 const HISTORY_PIECES_PAGE_SIZE = 6;
 const HISTORY_BATCHES_PAGE_SIZE = 5;
@@ -1096,10 +1107,10 @@ export default function MyPiecesView({
         index={0}
         enabled={motionEnabled}
       >
-        <div className="my-pieces-section-head">
+        <div className={__bundleClass_0}>
           <div>
             <div className="card-title">Pieces in progress</div>
-            <p className="piece-meta my-pieces-section-copy">
+            <p className={__bundleClass_1}>
               A still-first pass through what&apos;s currently moving through
               the studio, with the latest update and next step surfaced inline.
             </p>
@@ -1130,11 +1141,11 @@ export default function MyPiecesView({
         </div>
 
         {piecesLoading ? (
-          <div className="empty-state">Loading pieces...</div>
+          <div className={__bundleClass_2}>Loading pieces...</div>
         ) : activePieceCount === 0 ? (
-          <div className="empty-state">
+          <div className={__bundleClass_2}>
             <div>Nothing is currently in progress.</div>
-            <div className="piece-meta">
+            <div className={__bundleClass_3}>
               New work will appear here as soon as it enters the studio flow.
             </div>
           </div>
@@ -1161,24 +1172,24 @@ export default function MyPiecesView({
                     <div className="my-piece-still-caption">Still preview</div>
                   </div>
                   <div className="my-piece-still-meta">
-                    <div className="piece-title-row">
+                    <div className={__bundleClass_4}>
                       <div className="piece-title">
                         {piece.pieceCode || piece.id}
                       </div>
                       {piece.isArchived ? (
-                        <div className="pill piece-status">Archived</div>
+                        <div className={__bundleClass_5}>Archived</div>
                       ) : null}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       {piece.shortDesc || "No description yet."}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       Check-in: {piece.batchTitle}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       {getPieceLatestUpdateLabel(piece)}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       {getPieceNextStepLabel(piece)}
                     </div>
                     <div className="my-piece-still-footer">
@@ -1197,10 +1208,10 @@ export default function MyPiecesView({
         index={1}
         enabled={motionEnabled}
       >
-        <div className="my-pieces-section-head">
+        <div className={__bundleClass_0}>
           <div>
             <div className="card-title">Needs rating</div>
-            <p className="piece-meta my-pieces-section-copy">
+            <p className={__bundleClass_1}>
               Recent finished pieces that still need your feedback.
             </p>
           </div>
@@ -1210,9 +1221,9 @@ export default function MyPiecesView({
         </div>
 
         {piecesLoading ? (
-          <div className="empty-state">Loading ratings queue...</div>
+          <div className={__bundleClass_2}>Loading ratings queue...</div>
         ) : piecesNeedingRating.length === 0 ? (
-          <div className="empty-state">
+          <div className={__bundleClass_2}>
             Everything currently loaded already has feedback.
           </div>
         ) : (
@@ -1220,22 +1231,22 @@ export default function MyPiecesView({
             {visiblePiecesNeedingRating.map((piece) => (
               <article className="my-pieces-list-row" key={piece.key}>
                 <div className="my-pieces-list-summary">
-                  <div className="piece-title-row">
+                  <div className={__bundleClass_4}>
                     <div className="piece-title">
                       {piece.pieceCode || piece.id}
                     </div>
-                    <div className="pill piece-status">
+                    <div className={__bundleClass_5}>
                       {STAGE_LABELS[piece.stage]}
                     </div>
                   </div>
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>
                     {piece.shortDesc || "No description yet."}
                   </div>
-                  <div className="piece-meta">Check-in: {piece.batchTitle}</div>
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>Check-in: {piece.batchTitle}</div>
+                  <div className={__bundleClass_3}>
                     {getPieceLatestUpdateLabel(piece)}
                   </div>
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>
                     {getPieceNextStepLabel(piece)}
                   </div>
                 </div>
@@ -1256,7 +1267,7 @@ export default function MyPiecesView({
                   </div>
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className={__bundleClass_6}
                     onClick={() => openPieceDetail(piece)}
                     aria-label={`Open piece needing rating ${piece.pieceCode || piece.id}`}
                   >
@@ -1274,10 +1285,10 @@ export default function MyPiecesView({
         index={2}
         enabled={motionEnabled}
       >
-        <div className="my-pieces-section-head">
+        <div className={__bundleClass_0}>
           <div>
             <div className="card-title">History</div>
-            <p className="piece-meta my-pieces-section-copy">
+            <p className={__bundleClass_1}>
               Completed pieces from earlier firings, with a simple way to open
               more.
             </p>
@@ -1286,11 +1297,11 @@ export default function MyPiecesView({
         </div>
 
         {piecesLoading ? (
-          <div className="empty-state">Loading history...</div>
+          <div className={__bundleClass_2}>Loading history...</div>
         ) : historyPieceCount === 0 ? (
-          <div className="empty-state">
+          <div className={__bundleClass_2}>
             <div>Your first completed pieces will land here.</div>
-            <div className="piece-meta">
+            <div className={__bundleClass_3}>
               Older work appears automatically as batches close out.
             </div>
           </div>
@@ -1299,37 +1310,37 @@ export default function MyPiecesView({
             {visibleHistoryPieces.map((piece) => (
               <article className="my-pieces-list-row" key={piece.key}>
                 <div className="my-pieces-list-summary">
-                  <div className="piece-title-row">
+                  <div className={__bundleClass_4}>
                     <div className="piece-title">
                       {piece.pieceCode || piece.id}
                     </div>
-                    <div className="pill piece-status">
+                    <div className={__bundleClass_5}>
                       {STAGE_LABELS[piece.stage]}
                     </div>
                     {piece.isArchived ? (
-                      <div className="pill piece-status">Archived</div>
+                      <div className={__bundleClass_5}>Archived</div>
                     ) : null}
                   </div>
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>
                     {piece.shortDesc || "No description yet."}
                   </div>
-                  <div className="piece-meta">Check-in: {piece.batchTitle}</div>
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>Check-in: {piece.batchTitle}</div>
+                  <div className={__bundleClass_3}>
                     {getPieceLatestUpdateLabel(piece)}
                   </div>
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>
                     {getPieceNextStepLabel(piece)}
                   </div>
                 </div>
                 <div className="my-pieces-list-actions">
-                  <div className="piece-meta">
+                  <div className={__bundleClass_3}>
                     {piece.clientRating
                       ? `Rated ${piece.clientRating}★`
                       : "No rating yet"}
                   </div>
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className={__bundleClass_6}
                     onClick={() => openPieceDetail(piece)}
                     aria-label={`Open history piece ${piece.pieceCode || piece.id}`}
                   >
@@ -1384,50 +1395,50 @@ export default function MyPiecesView({
                     <div id="piece-detail-title" className="detail-title">
                       {selectedPiece.pieceCode || selectedPiece.id}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       {selectedPiece.shortDesc || "No description yet."}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       Check-in: {selectedPiece.batchTitle}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       {getPieceLatestUpdateLabel(selectedPiece)}
                     </div>
-                    <div className="piece-meta">
+                    <div className={__bundleClass_3}>
                       {getPieceNextStepLabel(selectedPiece)}
                     </div>
                   </div>
                 </div>
-              <button className="btn btn-ghost" onClick={closePieceDetail}>
+              <button className={__bundleClass_6} onClick={closePieceDetail}>
                 Close
               </button>
             </div>
 
             <div className="my-piece-overview-grid">
-              <div className="my-piece-overview-item">
-                <span className="my-piece-overview-label">Stage</span>
+              <div className={__bundleClass_7}>
+                <span className={__bundleClass_8}>Stage</span>
                 <strong>{getPieceJourneyStatus(selectedPiece)}</strong>
               </div>
-              <div className="my-piece-overview-item">
-                <span className="my-piece-overview-label">Latest update</span>
+              <div className={__bundleClass_7}>
+                <span className={__bundleClass_8}>Latest update</span>
                 <strong>{formatMaybeTimestamp(selectedPiece.updatedAt)}</strong>
               </div>
-              <div className="my-piece-overview-item">
-                <span className="my-piece-overview-label">Next step</span>
+              <div className={__bundleClass_7}>
+                <span className={__bundleClass_8}>Next step</span>
                 <strong>{getPieceNextStepLabel(selectedPiece)}</strong>
               </div>
-              <div className="my-piece-overview-item">
-                <span className="my-piece-overview-label">Category</span>
+              <div className={__bundleClass_7}>
+                <span className={__bundleClass_8}>Category</span>
                 <strong>
                   {WARE_CATEGORY_LABELS[selectedPiece.wareCategory]}
                 </strong>
               </div>
-              <div className="my-piece-overview-item">
-                <span className="my-piece-overview-label">Owner</span>
+              <div className={__bundleClass_7}>
+                <span className={__bundleClass_8}>Owner</span>
                 <strong>{selectedPiece.ownerName || "Member"}</strong>
               </div>
-              <div className="my-piece-overview-item">
-                <span className="my-piece-overview-label">Feedback</span>
+              <div className={__bundleClass_7}>
+                <span className={__bundleClass_8}>Feedback</span>
                 <strong>
                   {selectedPiece.clientRating
                     ? `${selectedPiece.clientRating}★`
@@ -1499,7 +1510,7 @@ export default function MyPiecesView({
                   </div>
                   <div className="piece-actions">
                     <button
-                      className="btn btn-ghost"
+                      className={__bundleClass_6}
                       onClick={toVoidHandler(() =>
                         handleArchivePiece(
                           selectedPiece,
@@ -1575,7 +1586,7 @@ export default function MyPiecesView({
             </div>
 
             {pieceDetailLoading ? (
-              <div className="empty-state">Loading detail...</div>
+              <div className={__bundleClass_2}>Loading detail...</div>
             ) : null}
             {pieceDetailError ? (
               <div className="alert inline-alert">{pieceDetailError}</div>
@@ -1594,7 +1605,7 @@ export default function MyPiecesView({
                     }
                   />
                   <button
-                    className="btn btn-primary"
+                    className={__bundleClass_9}
                     onClick={toVoidHandler(() => handleAddNote("client"))}
                     disabled={isBusy(`addNote:${selectedPiece.key}:client`)}
                   >
@@ -1605,12 +1616,12 @@ export default function MyPiecesView({
                 </div>
 
                 {clientNotes.length === 0 ? (
-                  <div className="empty-state">No notes yet.</div>
+                  <div className={__bundleClass_2}>No notes yet.</div>
                 ) : (
                   <div className="note-list">
                     {clientNotes.map((note) => (
                       <div className="note-card" key={note.id}>
-                        <div className="piece-meta">
+                        <div className={__bundleClass_3}>
                           {note.authorName || "Member"} ·{" "}
                           {formatMaybeTimestamp(note.at)}
                           {note.updatedAt
@@ -1628,7 +1639,7 @@ export default function MyPiecesView({
                             />
                             <div className="form-actions">
                               <button
-                                className="btn btn-primary"
+                                className={__bundleClass_9}
                                 onClick={toVoidHandler(handleSaveNoteEdit)}
                                 disabled={isBusy(`editNote:${note.id}`)}
                               >
@@ -1637,7 +1648,7 @@ export default function MyPiecesView({
                                   : "Save"}
                               </button>
                               <button
-                                className="btn btn-ghost"
+                                className={__bundleClass_6}
                                 onClick={cancelEditingNote}
                               >
                                 Cancel
@@ -1649,7 +1660,7 @@ export default function MyPiecesView({
                             <div>{note.text}</div>
                             {canEditNote(note, "client") ? (
                               <button
-                                className="btn btn-ghost"
+                                className={__bundleClass_6}
                                 onClick={() => startEditingNote(note, "client")}
                               >
                                 Edit
@@ -1673,7 +1684,7 @@ export default function MyPiecesView({
                     placeholder="Add a studio note"
                   />
                   <button
-                    className="btn btn-primary"
+                    className={__bundleClass_9}
                     onClick={toVoidHandler(() => handleAddNote("studio"))}
                     disabled={isBusy(`addNote:${selectedPiece.key}:studio`)}
                   >
@@ -1684,12 +1695,12 @@ export default function MyPiecesView({
                 </div>
 
                 {studioNotes.length === 0 ? (
-                  <div className="empty-state">No studio notes yet.</div>
+                  <div className={__bundleClass_2}>No studio notes yet.</div>
                 ) : (
                   <div className="note-list">
                     {studioNotes.map((note) => (
                       <div className="note-card" key={note.id}>
-                        <div className="piece-meta">
+                        <div className={__bundleClass_3}>
                           {note.authorName || "Staff"} ·{" "}
                           {formatMaybeTimestamp(note.at)}
                           {note.updatedAt
@@ -1707,7 +1718,7 @@ export default function MyPiecesView({
                             />
                             <div className="form-actions">
                               <button
-                                className="btn btn-primary"
+                                className={__bundleClass_9}
                                 onClick={toVoidHandler(handleSaveNoteEdit)}
                                 disabled={isBusy(`editNote:${note.id}`)}
                               >
@@ -1716,7 +1727,7 @@ export default function MyPiecesView({
                                   : "Save"}
                               </button>
                               <button
-                                className="btn btn-ghost"
+                                className={__bundleClass_6}
                                 onClick={cancelEditingNote}
                               >
                                 Cancel
@@ -1728,7 +1739,7 @@ export default function MyPiecesView({
                             <div>{note.text}</div>
                             {canEditNote(note, "studio") ? (
                               <button
-                                className="btn btn-ghost"
+                                className={__bundleClass_6}
                                 onClick={() => startEditingNote(note, "studio")}
                               >
                                 Edit
@@ -1746,18 +1757,18 @@ export default function MyPiecesView({
             {selectedPieceTab === "photos" ? (
               <div>
                 {mediaItems.length === 0 ? (
-                  <div className="empty-state">No photos yet.</div>
+                  <div className={__bundleClass_2}>No photos yet.</div>
                 ) : (
                   <div className="note-list">
                     {mediaItems.map((item) => (
                       <div className="note-card" key={item.id}>
-                        <div className="piece-title-row">
+                        <div className={__bundleClass_4}>
                           <div className="piece-title">{item.storagePath}</div>
-                          <div className="pill piece-status">
+                          <div className={__bundleClass_5}>
                             {STAGE_LABELS[item.stage]}
                           </div>
                         </div>
-                        <div className="piece-meta">
+                        <div className={__bundleClass_3}>
                           {item.uploadedByName
                             ? `by ${item.uploadedByName}`
                             : ""}
@@ -1774,20 +1785,20 @@ export default function MyPiecesView({
             {selectedPieceTab === "audit" ? (
               <div>
                 {auditEvents.length === 0 ? (
-                  <div className="empty-state">No timeline events yet.</div>
+                  <div className={__bundleClass_2}>No timeline events yet.</div>
                 ) : (
                   <div className="note-list">
                     {auditEvents.map((event) => (
                       <div className="note-card" key={event.id}>
-                        <div className="piece-title-row">
+                        <div className={__bundleClass_4}>
                           <div className="piece-title">{event.type}</div>
                           {event.noteStream ? (
-                            <div className="pill piece-status">
+                            <div className={__bundleClass_5}>
                               {event.noteStream}
                             </div>
                           ) : null}
                         </div>
-                        <div className="piece-meta">
+                        <div className={__bundleClass_3}>
                           {event.actorName ? `by ${event.actorName}` : ""}
                           {event.at
                             ? ` · ${formatMaybeTimestamp(event.at)}`

@@ -4,6 +4,23 @@ import LendingCatalogEditor, {
   type LendingAdminItemDraft,
   type LendingAdminItemRecord,
 } from "./LendingCatalogEditor";
+const __bundleClass_0 = "staff-column";
+const __bundleClass_1 = "btn btn-secondary";
+const __bundleClass_2 = "staff-note";
+const __bundleClass_3 = "staff-module-grid";
+const __bundleClass_4 = "staff-subtitle";
+const __bundleClass_5 = "staff-actions-row";
+const __bundleClass_6 = "staff-table-wrap";
+const __bundleClass_7 = "staff-table";
+const __bundleClass_8 = "btn btn-ghost btn-small";
+const __bundleClass_9 = "staff-troubleshooting";
+const __bundleClass_10 = "staff-member-search";
+const __bundleClass_11 = "staff-mini";
+const __bundleClass_12 = "staff-kpi";
+const __bundleClass_13 = "staff-member-role-filter";
+const __bundleClass_14 = "staff-note staff-note-error";
+const __bundleClass_15 = "btn btn-primary btn-small";
+
 
 type RunAction = (key: string, fn: () => Promise<void>) => Promise<void>;
 
@@ -603,41 +620,41 @@ export default function LendingModule({
   return (
     <section className="card staff-console-card" data-testid="lending-tools-page">
       <div className="card-title-row">
-        <div className="staff-column">
+        <div className={__bundleClass_0}>
           <div className="card-title">Lending</div>
           <p className="card-subtitle">
             Deeper lending operations live here after titles land in the catalog.
           </p>
         </div>
-        <button className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => void run("refreshLending", loadLending)}>
+        <button className={__bundleClass_1} disabled={Boolean(busy)} onClick={() => void run("refreshLending", loadLending)}>
           Refresh lending
         </button>
       </div>
       {hasFunctionsAuthMismatch ? (
-        <div className="staff-note">
+        <div className={__bundleClass_2}>
           Local functions detected at <code>{fBaseUrl}</code> while Auth emulator is off. The intake page, provider policy/probe controls, and rollout phase controls are paused to prevent false auth failures.
         </div>
       ) : null}
-      <div className="staff-note">
+      <div className={__bundleClass_2}>
         ISBN scan and bulk import moved to a dedicated intake page so staff can stay in a clean ready/importing/matching loop while this workspace stays readable.
       </div>
-      <div className="staff-module-grid">
-        <section className="staff-column">
-          <div className="staff-subtitle">Lending intake</div>
-          <div className="staff-note">
+      <div className={__bundleClass_3}>
+        <section className={__bundleClass_0}>
+          <div className={__bundleClass_4}>Lending intake</div>
+          <div className={__bundleClass_2}>
             Use the dedicated intake page for scanner-led ISBN entry, batch ISBN imports, and the manual-pass cleanup queue.
           </div>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_5}>
             <button type="button" className="btn btn-primary" onClick={openLendingIntake}>
               Open lending intake
             </button>
           </div>
         </section>
-        <section className="staff-column">
-          <div className="staff-subtitle">External source provider diagnostics</div>
+        <section className={__bundleClass_0}>
+          <div className={__bundleClass_4}>External source provider diagnostics</div>
           <label className="staff-field">
             Provider policy
-            <div className="staff-actions-row">
+            <div className={__bundleClass_5}>
               <label>
                 <input
                   type="checkbox"
@@ -681,18 +698,18 @@ export default function LendingModule({
               Cover approvals are handled in Staff / Lending / Cover review queue.
             </span>
           </label>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_5}>
             <button
-              className="btn btn-secondary"
+              className={__bundleClass_1}
               disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
               onClick={() => void saveExternalLookupProviderPolicy()}
             >
               {externalLookupPolicyBusy ? "Saving..." : "Save provider policy"}
             </button>
           </div>
-          {externalLookupPolicyStatus ? <div className="staff-note">{externalLookupPolicyStatus}</div> : null}
+          {externalLookupPolicyStatus ? <div className={__bundleClass_2}>{externalLookupPolicyStatus}</div> : null}
           {externalLookupPolicyUpdatedAtMs > 0 ? (
-            <div className="staff-note">
+            <div className={__bundleClass_2}>
               Policy updated {when(externalLookupPolicyUpdatedAtMs)}
               {externalLookupPolicyUpdatedByUid ? ` by ${externalLookupPolicyUpdatedByUid}` : ""}
             </div>
@@ -707,18 +724,18 @@ export default function LendingModule({
             />
             <span className="helper">Runs the same route members use for external fallback and reports provider health.</span>
           </label>
-          {externalLookupProbeStatus ? <div className="staff-note">{externalLookupProbeStatus}</div> : null}
-          <div className="staff-actions-row">
+          {externalLookupProbeStatus ? <div className={__bundleClass_2}>{externalLookupProbeStatus}</div> : null}
+          <div className={__bundleClass_5}>
             <button
-              className="btn btn-secondary"
+              className={__bundleClass_1}
               disabled={Boolean(busy) || externalLookupProbeBusy || hasFunctionsAuthMismatch}
               onClick={() => void runExternalLookupProviderProbe()}
             >
               {externalLookupProbeBusy ? "Probing..." : "Run provider probe"}
             </button>
           </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          <div className={__bundleClass_6}>
+            <table className={__bundleClass_7}>
               <thead><tr><th>Provider</th><th>Healthy</th><th>Policy</th><th>Items</th><th>Cache</th></tr></thead>
               <tbody>
                 {externalLookupProbeProviders.length === 0 ? (
@@ -738,8 +755,8 @@ export default function LendingModule({
             </table>
           </div>
         </section>
-        <section className="staff-column">
-          <div className="staff-subtitle">Library rollout phase</div>
+        <section className={__bundleClass_0}>
+          <div className={__bundleClass_4}>Library rollout phase</div>
           <label className="staff-field">
             Phase selector
             <select
@@ -767,48 +784,48 @@ export default function LendingModule({
               disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
             />
           </label>
-          <div className="staff-note">
+          <div className={__bundleClass_2}>
             Member interactions are currently {libraryRolloutMemberWritesEnabled ? "enabled" : "paused"}.
           </div>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_5}>
             <button
-              className="btn btn-secondary"
+              className={__bundleClass_1}
               disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
               onClick={() => void saveLibraryRolloutPhasePolicy()}
             >
               {libraryRolloutPhaseBusy ? "Saving..." : "Save rollout phase"}
             </button>
           </div>
-          {libraryRolloutPhaseStatus ? <div className="staff-note">{libraryRolloutPhaseStatus}</div> : null}
+          {libraryRolloutPhaseStatus ? <div className={__bundleClass_2}>{libraryRolloutPhaseStatus}</div> : null}
           {libraryRolloutUpdatedAtMs > 0 ? (
-            <div className="staff-note">
+            <div className={__bundleClass_2}>
               Rollout updated {when(libraryRolloutUpdatedAtMs)}
               {libraryRolloutUpdatedByUid ? ` by ${libraryRolloutUpdatedByUid}` : ""}
             </div>
           ) : null}
-          <div className="staff-subtitle">Phase metrics snapshot</div>
-          <div className="staff-note">
+          <div className={__bundleClass_4}>Phase metrics snapshot</div>
+          <div className={__bundleClass_2}>
             Tracks library route health over the last {libraryPhaseMetricsWindowMinutes} minutes for go/no-go checks.
           </div>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_5}>
             <button
-              className="btn btn-ghost btn-small"
+              className={__bundleClass_8}
               disabled={Boolean(busy)}
               onClick={() => void refreshLibraryPhaseMetricsSnapshot()}
             >
               Refresh phase metrics
             </button>
             <button
-              className="btn btn-ghost btn-small"
+              className={__bundleClass_8}
               disabled={!libraryPhaseMetricsArtifact}
               onClick={() => void copy(libraryPhaseMetricsArtifact ? safeJsonStringify(libraryPhaseMetricsArtifact) : "")}
             >
               Copy phase metrics JSON
             </button>
           </div>
-          {libraryPhaseMetricsStatus ? <div className="staff-note">{libraryPhaseMetricsStatus}</div> : null}
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          {libraryPhaseMetricsStatus ? <div className={__bundleClass_2}>{libraryPhaseMetricsStatus}</div> : null}
+          <div className={__bundleClass_6}>
+            <table className={__bundleClass_7}>
               <tbody>
                 <tr>
                   <th>Requests</th>
@@ -851,8 +868,8 @@ export default function LendingModule({
               </tbody>
             </table>
           </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          <div className={__bundleClass_6}>
+            <table className={__bundleClass_7}>
               <thead>
                 <tr>
                   <th>Endpoint</th>
@@ -886,26 +903,26 @@ export default function LendingModule({
       </div>
       <details
         ref={catalogAdminRef}
-        className="staff-troubleshooting"
+        className={__bundleClass_9}
         open={catalogAdminOpen}
         onToggle={(event) => setCatalogAdminOpen(event.currentTarget.open)}
       >
         <summary>Catalog admin (create/edit/delete + ISBN resolve)</summary>
-        <div className="staff-note">
+        <div className={__bundleClass_2}>
           Item save/delete dispatches to v1 admin routes when present and falls back to direct Firestore writes when routes are unavailable.
         </div>
-        <div className="staff-module-grid">
-          <section className="staff-column">
-            <div className="staff-actions-row">
+        <div className={__bundleClass_3}>
+          <section className={__bundleClass_0}>
+            <div className={__bundleClass_5}>
               <input
-                className="staff-member-search"
+                className={__bundleClass_10}
                 placeholder="Search library items by title, author, ISBN, ID"
                 value={lendingAdminItemSearch}
                 onChange={(event) => setLendingAdminItemSearch(event.target.value)}
               />
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_8}
                 onClick={() => {
                   setCatalogAdminOpen(true);
                   handleStartLendingAdminItemCreate();
@@ -915,8 +932,8 @@ export default function LendingModule({
                 New item
               </button>
             </div>
-            <div className="staff-table-wrap">
-              <table className="staff-table">
+            <div className={__bundleClass_6}>
+              <table className={__bundleClass_7}>
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -948,9 +965,9 @@ export default function LendingModule({
                       >
                         <td>
                           <div>{item.title}</div>
-                          <div className="staff-mini">{item.authorLine}</div>
-                          <div className="staff-mini"><code>{item.id}</code></div>
-                          {item.isbn ? <div className="staff-mini">ISBN {item.isbn}</div> : null}
+                          <div className={__bundleClass_11}>{item.authorLine}</div>
+                          <div className={__bundleClass_11}><code>{item.id}</code></div>
+                          {item.isbn ? <div className={__bundleClass_11}>ISBN {item.isbn}</div> : null}
                         </td>
                         <td><span className="pill">{item.status}</span></td>
                         <td>{item.availableCopies}/{item.totalCopies}</td>
@@ -986,34 +1003,34 @@ export default function LendingModule({
         </div>
       </details>
       <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Catalog items</span><strong>{libraryAdminItems.length}</strong></div>
-        <div className="staff-kpi"><span>Requests</span><strong>{libraryRequests.length}</strong></div>
-        <div className="staff-kpi"><span>Loans</span><strong>{libraryLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Filtered requests</span><strong>{lendingTriage.requestView.length}</strong></div>
-        <div className="staff-kpi"><span>Filtered loans</span><strong>{lendingTriage.loanView.length}</strong></div>
-        <div className="staff-kpi"><span>Open requests</span><strong>{lendingTriage.openRequests.length}</strong></div>
-        <div className="staff-kpi"><span>Active loans</span><strong>{lendingTriage.activeLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Overdue loans</span><strong>{lendingTriage.overdueLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Returned loans</span><strong>{lendingTriage.returnedLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Recommendations</span><strong>{recommendationModerationKpis.total}</strong></div>
-        <div className="staff-kpi"><span>Pending review</span><strong>{recommendationModerationKpis.pendingReview}</strong></div>
-        <div className="staff-kpi"><span>Approved recs</span><strong>{recommendationModerationKpis.approved}</strong></div>
-        <div className="staff-kpi"><span>Hidden recs</span><strong>{recommendationModerationKpis.hidden}</strong></div>
-        <div className="staff-kpi"><span>Tag queue</span><strong>{tagModerationKpis.pending}</strong></div>
-        <div className="staff-kpi"><span>Total tag subs</span><strong>{tagModerationKpis.total}</strong></div>
-        <div className="staff-kpi"><span>Cover review queue</span><strong>{libraryCoverReviews.length}</strong></div>
-        <div className="staff-kpi"><span>Metadata pending</span><strong>{metadataEnrichmentSummary.pendingCount}</strong></div>
-        <div className="staff-kpi"><span>Thin metadata backlog</span><strong>{metadataEnrichmentSummary.thinBacklogCount}</strong></div>
+        <div className={__bundleClass_12}><span>Catalog items</span><strong>{libraryAdminItems.length}</strong></div>
+        <div className={__bundleClass_12}><span>Requests</span><strong>{libraryRequests.length}</strong></div>
+        <div className={__bundleClass_12}><span>Loans</span><strong>{libraryLoans.length}</strong></div>
+        <div className={__bundleClass_12}><span>Filtered requests</span><strong>{lendingTriage.requestView.length}</strong></div>
+        <div className={__bundleClass_12}><span>Filtered loans</span><strong>{lendingTriage.loanView.length}</strong></div>
+        <div className={__bundleClass_12}><span>Open requests</span><strong>{lendingTriage.openRequests.length}</strong></div>
+        <div className={__bundleClass_12}><span>Active loans</span><strong>{lendingTriage.activeLoans.length}</strong></div>
+        <div className={__bundleClass_12}><span>Overdue loans</span><strong>{lendingTriage.overdueLoans.length}</strong></div>
+        <div className={__bundleClass_12}><span>Returned loans</span><strong>{lendingTriage.returnedLoans.length}</strong></div>
+        <div className={__bundleClass_12}><span>Recommendations</span><strong>{recommendationModerationKpis.total}</strong></div>
+        <div className={__bundleClass_12}><span>Pending review</span><strong>{recommendationModerationKpis.pendingReview}</strong></div>
+        <div className={__bundleClass_12}><span>Approved recs</span><strong>{recommendationModerationKpis.approved}</strong></div>
+        <div className={__bundleClass_12}><span>Hidden recs</span><strong>{recommendationModerationKpis.hidden}</strong></div>
+        <div className={__bundleClass_12}><span>Tag queue</span><strong>{tagModerationKpis.pending}</strong></div>
+        <div className={__bundleClass_12}><span>Total tag subs</span><strong>{tagModerationKpis.total}</strong></div>
+        <div className={__bundleClass_12}><span>Cover review queue</span><strong>{libraryCoverReviews.length}</strong></div>
+        <div className={__bundleClass_12}><span>Metadata pending</span><strong>{metadataEnrichmentSummary.pendingCount}</strong></div>
+        <div className={__bundleClass_12}><span>Thin metadata backlog</span><strong>{metadataEnrichmentSummary.thinBacklogCount}</strong></div>
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_5}>
         <input
-          className="staff-member-search"
+          className={__bundleClass_10}
           placeholder="Search lending by title, member, email, UID, or ID"
           value={lendingSearch}
           onChange={(event) => setLendingSearch(event.target.value)}
         />
         <select
-          className="staff-member-role-filter"
+          className={__bundleClass_13}
           value={lendingStatusFilter}
           onChange={(event) => setLendingStatusFilter(event.target.value)}
         >
@@ -1023,7 +1040,7 @@ export default function LendingModule({
           ))}
         </select>
         <select
-          className="staff-member-role-filter"
+          className={__bundleClass_13}
           value={lendingFocusFilter}
           onChange={(event) =>
             setLendingFocusFilter(
@@ -1038,7 +1055,7 @@ export default function LendingModule({
           <option value="returned">Returned loans</option>
         </select>
         <select
-          className="staff-member-role-filter"
+          className={__bundleClass_13}
           value={lendingRecommendationFilter}
           onChange={(event) => setLendingRecommendationFilter(event.target.value)}
         >
@@ -1048,12 +1065,12 @@ export default function LendingModule({
           ))}
         </select>
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Requests</div>
-          {requestsLoadError ? <div className="staff-note staff-note-error">{requestsLoadError}</div> : null}
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+      <div className={__bundleClass_3}>
+        <div className={__bundleClass_0}>
+          <div className={__bundleClass_4}>Requests</div>
+          {requestsLoadError ? <div className={__bundleClass_14}>{requestsLoadError}</div> : null}
+          <div className={__bundleClass_6}>
+            <table className={__bundleClass_7}>
               <thead><tr><th>Title</th><th>Status</th><th>Requester</th><th>Created</th></tr></thead>
               <tbody>
                 {lendingTriage.requestView.length === 0 ? (
@@ -1074,7 +1091,7 @@ export default function LendingModule({
                     >
                       <td>
                         <div>{request.title}</div>
-                        <div className="staff-mini"><code>{request.id}</code></div>
+                        <div className={__bundleClass_11}><code>{request.id}</code></div>
                       </td>
                       <td><span className="pill">{request.status}</span></td>
                       <td>{request.requesterName}</td>
@@ -1086,11 +1103,11 @@ export default function LendingModule({
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Loans</div>
-          {loansLoadError ? <div className="staff-note staff-note-error">{loansLoadError}</div> : null}
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+        <div className={__bundleClass_0}>
+          <div className={__bundleClass_4}>Loans</div>
+          {loansLoadError ? <div className={__bundleClass_14}>{loansLoadError}</div> : null}
+          <div className={__bundleClass_6}>
+            <table className={__bundleClass_7}>
               <thead><tr><th>Title</th><th>Status</th><th>Borrower</th><th>Created</th></tr></thead>
               <tbody>
                 {lendingTriage.loanView.length === 0 ? (
@@ -1111,7 +1128,7 @@ export default function LendingModule({
                     >
                       <td>
                         <div>{loan.title}</div>
-                        <div className="staff-mini"><code>{loan.id}</code></div>
+                        <div className={__bundleClass_11}><code>{loan.id}</code></div>
                       </td>
                         <td>
                         <span className="pill">{loan.status}</span>
@@ -1129,10 +1146,10 @@ export default function LendingModule({
           </div>
         </div>
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Selected request</div>
-          <div className="staff-note">
+      <div className={__bundleClass_3}>
+        <div className={__bundleClass_0}>
+          <div className={__bundleClass_4}>Selected request</div>
+          <div className={__bundleClass_2}>
             {selectedRequest ? (
               <>
                 <strong>{selectedRequest.title}</strong><br />
@@ -1146,16 +1163,16 @@ export default function LendingModule({
             )}
           </div>
           {selectedRequest ? (
-            <div className="staff-actions-row">
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedRequest.requesterEmail || "")}>
+            <div className={__bundleClass_5}>
+              <button type="button" className={__bundleClass_8} onClick={() => void copy(selectedRequest.requesterEmail || "")}>
                 Copy email
               </button>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedRequest.requesterUid || selectedRequest.id)}>
+              <button type="button" className={__bundleClass_8} onClick={() => void copy(selectedRequest.requesterUid || selectedRequest.id)}>
                 Copy UID
               </button>
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_8}
                 onClick={() =>
                   void copy(
                     `Hi ${selectedRequest.requesterName || "there"} — your lending request for "${selectedRequest.title}" is in review. We'll update you with pickup timing soon.`
@@ -1167,15 +1184,15 @@ export default function LendingModule({
             </div>
           ) : null}
           {selectedRequest ? (
-            <details className="staff-troubleshooting">
+            <details className={__bundleClass_9}>
               <summary>Raw request document</summary>
               <pre>{safeJsonStringify(selectedRequest.rawDoc)}</pre>
             </details>
           ) : null}
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Selected loan</div>
-          <div className="staff-note">
+        <div className={__bundleClass_0}>
+          <div className={__bundleClass_4}>Selected loan</div>
+          <div className={__bundleClass_2}>
             {selectedLoan ? (
               <>
                 <strong>{selectedLoan.title}</strong><br />
@@ -1190,16 +1207,16 @@ export default function LendingModule({
             )}
           </div>
           {selectedLoan ? (
-            <div className="staff-actions-row">
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedLoan.borrowerEmail || "")}>
+            <div className={__bundleClass_5}>
+              <button type="button" className={__bundleClass_8} onClick={() => void copy(selectedLoan.borrowerEmail || "")}>
                 Copy borrower email
               </button>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedLoan.borrowerUid || selectedLoan.id)}>
+              <button type="button" className={__bundleClass_8} onClick={() => void copy(selectedLoan.borrowerUid || selectedLoan.id)}>
                 Copy borrower UID
               </button>
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_8}
                 onClick={() =>
                   void copy(
                     `Hi ${selectedLoan.borrowerName || "there"} — reminder that "${selectedLoan.title}" is due ${when(selectedLoan.dueAtMs)}. Reply if you need an extension.`
@@ -1212,8 +1229,8 @@ export default function LendingModule({
           ) : null}
           {selectedLoan ? (
             <>
-              <div className="staff-subtitle">Loan recovery</div>
-              <div className="staff-actions-row">
+              <div className={__bundleClass_4}>Loan recovery</div>
+              <div className={__bundleClass_5}>
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
@@ -1228,7 +1245,7 @@ export default function LendingModule({
                   {loanRecoveryBusy ? "Saving..." : "Mark lost"}
                 </button>
                 <input
-                  className="staff-member-search"
+                  className={__bundleClass_10}
                   placeholder="Replacement fee cents (optional)"
                   value={loanReplacementFeeAmountInput}
                   onChange={(event) => setLoanReplacementFeeAmountInput(event.target.value)}
@@ -1243,9 +1260,9 @@ export default function LendingModule({
                   {loanRecoveryBusy ? "Saving..." : "Assess replacement fee"}
                 </button>
               </div>
-              <div className="staff-actions-row">
+              <div className={__bundleClass_5}>
                 <select
-                  className="staff-member-role-filter"
+                  className={__bundleClass_13}
                   value={loanOverrideStatusDraft}
                   onChange={(event) =>
                     setLoanOverrideStatusDraft(
@@ -1262,7 +1279,7 @@ export default function LendingModule({
                   <option value="archived">archived</option>
                 </select>
                 <input
-                  className="staff-member-search"
+                  className={__bundleClass_10}
                   placeholder="Override note (optional)"
                   value={loanOverrideNoteDraft}
                   onChange={(event) => setLoanOverrideNoteDraft(event.target.value)}
@@ -1270,29 +1287,29 @@ export default function LendingModule({
                 />
                 <button
                   type="button"
-                  className="btn btn-ghost btn-small"
+                  className={__bundleClass_8}
                   disabled={Boolean(busy) || loanRecoveryBusy}
                   onClick={() => void handleLoanItemStatusOverride(selectedLoan)}
                 >
                   {loanRecoveryBusy ? "Saving..." : "Override item status"}
                 </button>
               </div>
-              {loanRecoveryStatus ? <div className="staff-note">{loanRecoveryStatus}</div> : null}
+              {loanRecoveryStatus ? <div className={__bundleClass_2}>{loanRecoveryStatus}</div> : null}
             </>
           ) : null}
           {selectedLoan ? (
-            <details className="staff-troubleshooting">
+            <details className={__bundleClass_9}>
               <summary>Raw loan document</summary>
               <pre>{safeJsonStringify(selectedLoan.rawDoc)}</pre>
             </details>
           ) : null}
         </div>
       </div>
-      <div className="staff-subtitle">Recommendation moderation</div>
-      {recommendationsLoadError ? <div className="staff-note staff-note-error">{recommendationsLoadError}</div> : null}
-      {recommendationModerationStatus ? <div className="staff-note">{recommendationModerationStatus}</div> : null}
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_4}>Recommendation moderation</div>
+      {recommendationsLoadError ? <div className={__bundleClass_14}>{recommendationsLoadError}</div> : null}
+      {recommendationModerationStatus ? <div className={__bundleClass_2}>{recommendationModerationStatus}</div> : null}
+      <div className={__bundleClass_6}>
+        <table className={__bundleClass_7}>
           <thead>
             <tr>
               <th>Title</th>
@@ -1313,22 +1330,22 @@ export default function LendingModule({
                   <tr key={row.id}>
                     <td>
                       <div>{row.title}</div>
-                      {row.author ? <div className="staff-mini">by {row.author}</div> : null}
-                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
-                      {row.rationale ? <div className="staff-mini">{row.rationale}</div> : null}
-                      <div className="staff-mini"><code>{row.id}</code></div>
+                      {row.author ? <div className={__bundleClass_11}>by {row.author}</div> : null}
+                      {row.isbn ? <div className={__bundleClass_11}>ISBN {row.isbn}</div> : null}
+                      {row.rationale ? <div className={__bundleClass_11}>{row.rationale}</div> : null}
+                      <div className={__bundleClass_11}><code>{row.id}</code></div>
                     </td>
                     <td>
                       <div>{row.recommenderName || "Unknown"}</div>
-                      <div className="staff-mini"><code>{row.recommenderUid || "-"}</code></div>
+                      <div className={__bundleClass_11}><code>{row.recommenderUid || "-"}</code></div>
                     </td>
                     <td><span className="pill">{row.moderationStatus || "pending_review"}</span></td>
                     <td>{when(row.createdAtMs)}</td>
                     <td>
-                      <div className="staff-actions-row">
+                      <div className={__bundleClass_5}>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_8}
                           disabled={Boolean(busy) || rowBusy || statusLower === "approved"}
                           onClick={() => void handleRecommendationModeration(row, "approve")}
                         >
@@ -1336,7 +1353,7 @@ export default function LendingModule({
                         </button>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_8}
                           disabled={Boolean(busy) || rowBusy || statusLower === "hidden"}
                           onClick={() => void handleRecommendationModeration(row, "hide")}
                         >
@@ -1344,7 +1361,7 @@ export default function LendingModule({
                         </button>
                         <button
                           type="button"
-                          className="btn btn-primary btn-small"
+                          className={__bundleClass_15}
                           disabled={Boolean(busy) || rowBusy || statusLower !== "hidden"}
                           onClick={() => void handleRecommendationModeration(row, "restore")}
                         >
@@ -1359,11 +1376,11 @@ export default function LendingModule({
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Tag moderation queue</div>
-      {tagSubmissionsLoadError ? <div className="staff-note staff-note-error">{tagSubmissionsLoadError}</div> : null}
-      {tagModerationStatus ? <div className="staff-note">{tagModerationStatus}</div> : null}
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_4}>Tag moderation queue</div>
+      {tagSubmissionsLoadError ? <div className={__bundleClass_14}>{tagSubmissionsLoadError}</div> : null}
+      {tagModerationStatus ? <div className={__bundleClass_2}>{tagModerationStatus}</div> : null}
+      <div className={__bundleClass_6}>
+        <table className={__bundleClass_7}>
           <thead>
             <tr>
               <th>Item</th>
@@ -1385,22 +1402,22 @@ export default function LendingModule({
                   <tr key={row.id}>
                     <td>
                       <div>{row.itemTitle || "Library item"}</div>
-                      <div className="staff-mini"><code>{row.itemId || row.id}</code></div>
+                      <div className={__bundleClass_11}><code>{row.itemId || row.id}</code></div>
                     </td>
                     <td>
                       <div>{row.tag || "(empty)"}</div>
-                      <div className="staff-mini"><code>{row.normalizedTag || "-"}</code></div>
+                      <div className={__bundleClass_11}><code>{row.normalizedTag || "-"}</code></div>
                     </td>
                     <td>
                       <div>{row.submittedByName || "Member"}</div>
-                      <div className="staff-mini"><code>{row.submittedByUid || "-"}</code></div>
+                      <div className={__bundleClass_11}><code>{row.submittedByUid || "-"}</code></div>
                     </td>
                     <td>{when(row.createdAtMs)}</td>
                     <td>
-                      <div className="staff-actions-row">
+                      <div className={__bundleClass_5}>
                         <input
                           type="text"
-                          className="staff-member-search"
+                          className={__bundleClass_10}
                           value={draftName}
                           placeholder="Canonical tag name"
                           maxLength={80}
@@ -1414,7 +1431,7 @@ export default function LendingModule({
                         />
                         <button
                           type="button"
-                          className="btn btn-primary btn-small"
+                          className={__bundleClass_15}
                           disabled={Boolean(busy) || rowBusy || !canApprove}
                           onClick={() => void handleTagSubmissionApprove(row)}
                         >
@@ -1429,27 +1446,27 @@ export default function LendingModule({
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Tag merge</div>
-      <div className="staff-note">
+      <div className={__bundleClass_4}>Tag merge</div>
+      <div className={__bundleClass_2}>
         Merge duplicate tags by canonical tag ID. Source is marked merged and item-tag links are migrated.
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_5}>
         <input
-          className="staff-member-search"
+          className={__bundleClass_10}
           placeholder="Source tag ID (tag_...)"
           value={tagMergeSourceId}
           onChange={(event) => setTagMergeSourceId(event.target.value)}
           disabled={Boolean(busy) || tagMergeBusy}
         />
         <input
-          className="staff-member-search"
+          className={__bundleClass_10}
           placeholder="Target tag ID (tag_...)"
           value={tagMergeTargetId}
           onChange={(event) => setTagMergeTargetId(event.target.value)}
           disabled={Boolean(busy) || tagMergeBusy}
         />
         <input
-          className="staff-member-search"
+          className={__bundleClass_10}
           placeholder="Merge note (optional)"
           value={tagMergeNote}
           onChange={(event) => setTagMergeNote(event.target.value)}
@@ -1457,22 +1474,22 @@ export default function LendingModule({
         />
         <button
           type="button"
-          className="btn btn-secondary"
+          className={__bundleClass_1}
           onClick={() => void handleTagMerge()}
           disabled={Boolean(busy) || tagMergeBusy}
         >
           {tagMergeBusy ? "Merging..." : "Merge tags"}
         </button>
       </div>
-      <div className="staff-subtitle">Metadata enrichment</div>
-      <div className="staff-note">
+      <div className={__bundleClass_4}>Metadata enrichment</div>
+      <div className={__bundleClass_2}>
         Bulk-flesh imported books here. Use recent imports for the newest scan batches, or backfill thin records to revisit sparse descriptions, subjects, and covers without overwriting staff-locked fields.
       </div>
-      {metadataEnrichmentStatus ? <div className="staff-note">{metadataEnrichmentStatus}</div> : null}
-      <div className="staff-actions-row">
+      {metadataEnrichmentStatus ? <div className={__bundleClass_2}>{metadataEnrichmentStatus}</div> : null}
+      <div className={__bundleClass_5}>
         <button
           type="button"
-          className="btn btn-secondary"
+          className={__bundleClass_1}
           onClick={() => void handleMetadataEnrichmentRun("recent_imports")}
           disabled={Boolean(busy) || metadataEnrichmentBusy || hasFunctionsAuthMismatch}
         >
@@ -1487,22 +1504,22 @@ export default function LendingModule({
           {metadataEnrichmentBusy ? "Running..." : "Backfill thin records"}
         </button>
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_2}>
         Pending {metadataEnrichmentSummary.pendingCount} | Thin backlog {metadataEnrichmentSummary.thinBacklogCount}
         {metadataEnrichmentSummary.lastRunAtMs > 0
           ? ` | Last run ${when(metadataEnrichmentSummary.lastRunAtMs)} (${metadataEnrichmentSummary.lastRunStatus || "unknown"} via ${metadataEnrichmentSummary.lastRunSource || "unknown"})`
           : ""}
       </div>
       {(metadataEnrichmentSummary.lastRunAtMs > 0 || metadataEnrichmentSummary.lastRunAttempted > 0) ? (
-        <div className="staff-note">
+        <div className={__bundleClass_2}>
           Last run queued {metadataEnrichmentSummary.lastRunQueued} | attempted {metadataEnrichmentSummary.lastRunAttempted} | enriched {metadataEnrichmentSummary.lastRunEnriched} | skipped {metadataEnrichmentSummary.lastRunSkipped} | errors {metadataEnrichmentSummary.lastRunErrors} | still pending {metadataEnrichmentSummary.lastRunStillPending}
         </div>
       ) : null}
-      <div className="staff-subtitle">Metadata gap queue</div>
-      <div className="staff-note">
+      <div className={__bundleClass_4}>Metadata gap queue</div>
+      <div className={__bundleClass_2}>
         Work placeholder titles, missing covers, and thin descriptions from here. Selecting a row jumps straight into the catalog editor so staff can finish the record without hunting for it first.
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_5}>
         <button
           type="button"
           className={metadataGapFilter === "all" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
@@ -1539,8 +1556,8 @@ export default function LendingModule({
           Thin metadata ({metadataGapSummary.thin_metadata})
         </button>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_6}>
+        <table className={__bundleClass_7}>
           <thead>
             <tr>
               <th>Title</th>
@@ -1567,11 +1584,11 @@ export default function LendingModule({
                   >
                     <td>
                       <div>{row.title}</div>
-                      <div className="staff-mini"><code>{row.itemId}</code></div>
-                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
+                      <div className={__bundleClass_11}><code>{row.itemId}</code></div>
+                      {row.isbn ? <div className={__bundleClass_11}>ISBN {row.isbn}</div> : null}
                     </td>
                     <td>
-                      <div className="staff-actions-row">
+                      <div className={__bundleClass_5}>
                         {row.gapReasons.map((reason) => (
                           <span className="pill" key={`${row.itemId}-${reason}`}>{reason.replace(/_/g, " ")}</span>
                         ))}
@@ -1579,7 +1596,7 @@ export default function LendingModule({
                     </td>
                     <td>
                       <div>{row.coverQualityStatus || "needs_review"}</div>
-                      <div className="staff-mini">
+                      <div className={__bundleClass_11}>
                         {row.mediaType || "book"} | {row.source || "manual"}{row.detailStatus ? ` | ${row.detailStatus}` : ""}
                       </div>
                     </td>
@@ -1591,16 +1608,16 @@ export default function LendingModule({
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Cover review queue</div>
-      <div className="staff-note">
+      <div className={__bundleClass_4}>Cover review queue</div>
+      <div className={__bundleClass_2}>
         Review and approve imported covers here. Reconcile imported covers first to auto-clear trusted matches, then work the remaining manual-review and missing-cover cases.
       </div>
-      {coverReviewsLoadError ? <div className="staff-note staff-note-error">{coverReviewsLoadError}</div> : null}
-      {coverReviewStatus ? <div className="staff-note">{coverReviewStatus}</div> : null}
-      <div className="staff-actions-row">
+      {coverReviewsLoadError ? <div className={__bundleClass_14}>{coverReviewsLoadError}</div> : null}
+      {coverReviewStatus ? <div className={__bundleClass_2}>{coverReviewStatus}</div> : null}
+      <div className={__bundleClass_5}>
         <button
           type="button"
-          className="btn btn-secondary"
+          className={__bundleClass_1}
           onClick={() => void handleCoverReviewReconcile()}
           disabled={Boolean(busy) || coverReviewReconcileBusy || hasFunctionsAuthMismatch}
         >
@@ -1630,11 +1647,11 @@ export default function LendingModule({
           Missing cover ({coverReviewSummary.missing})
         </button>
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_2}>
         Missing {coverReviewSummary.missing} | Invalid {coverReviewSummary.invalid} | Low confidence {coverReviewSummary.low_confidence} | Untrusted {coverReviewSummary.untrusted} | Non-book mismatch {coverReviewSummary.non_book_mismatch} | Manual review {coverReviewSummary.manual_review}
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_6}>
+        <table className={__bundleClass_7}>
           <thead>
             <tr>
               <th>Title</th>
@@ -1656,29 +1673,29 @@ export default function LendingModule({
                   <tr key={row.id}>
                     <td>
                       <div>{row.title}</div>
-                      <div className="staff-mini"><code>{row.id}</code></div>
-                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
-                      <div className="staff-mini">
+                      <div className={__bundleClass_11}><code>{row.id}</code></div>
+                      {row.isbn ? <div className={__bundleClass_11}>ISBN {row.isbn}</div> : null}
+                      <div className={__bundleClass_11}>
                         Source {row.source || "manual"} | Media {row.mediaType || "book"} | Provider {row.coverProvider}
                       </div>
                       {row.coverUrl ? (
-                        <a className="staff-mini" href={row.coverUrl} target="_blank" rel="noreferrer">
+                        <a className={__bundleClass_11} href={row.coverUrl} target="_blank" rel="noreferrer">
                           Open current cover
                         </a>
                       ) : null}
-                      {!currentCoverValid ? <div className="staff-mini">Current cover URL is missing or invalid.</div> : null}
+                      {!currentCoverValid ? <div className={__bundleClass_11}>Current cover URL is missing or invalid.</div> : null}
                     </td>
                     <td><span className="pill">{row.coverQualityStatus || "needs_review"}</span></td>
                     <td>
                       <div>{formatCoverIssueKindLabel(row.coverIssueKind)}</div>
-                      <div className="staff-mini">{row.coverQualityReason || "manual_review_required"}</div>
+                      <div className={__bundleClass_11}>{row.coverQualityReason || "manual_review_required"}</div>
                     </td>
                     <td>{when(row.updatedAtMs)}</td>
                     <td>
-                      <div className="staff-actions-row">
+                      <div className={__bundleClass_5}>
                         <input
                           type="url"
-                          className="staff-member-search"
+                          className={__bundleClass_10}
                           placeholder="https://cover-image-url"
                           value={coverReviewDraftById[row.id] ?? ""}
                           onChange={(event) => {
@@ -1693,7 +1710,7 @@ export default function LendingModule({
                         />
                         <button
                           type="button"
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_8}
                           onClick={() => void handleCoverReviewResolve(row, "approve_existing")}
                           disabled={Boolean(busy) || rowBusy || !currentCoverValid}
                         >
@@ -1701,14 +1718,14 @@ export default function LendingModule({
                         </button>
                         <button
                           type="button"
-                          className="btn btn-primary btn-small"
+                          className={__bundleClass_15}
                           onClick={() => void handleCoverReviewResolve(row, "set_replacement")}
                           disabled={Boolean(busy) || rowBusy}
                         >
                           {rowBusy ? "Saving..." : "Use replacement URL"}
                         </button>
                       </div>
-                      {rowError ? <div className="staff-note staff-note-error">{rowError}</div> : null}
+                      {rowError ? <div className={__bundleClass_14}>{rowError}</div> : null}
                     </td>
                   </tr>
                 );

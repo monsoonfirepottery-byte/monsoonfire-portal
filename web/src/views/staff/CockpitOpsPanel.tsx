@@ -3,6 +3,15 @@ import { safeJsonStringify, type LastRequest } from "../../api/functionsClient";
 import type { ShiftStatusSummary } from "./shiftStatus";
 import type { AutomationDashboardState } from "./automationStatus";
 import { AdminPageHeader, AdminWorkflow } from "./admin/AdminWorkspace";
+const __bundleClass_0 = "card staff-console-card";
+const __bundleClass_1 = "btn btn-secondary";
+const __bundleClass_2 = "staff-column";
+const __bundleClass_3 = "staff-subtitle";
+const __bundleClass_4 = "staff-actions-row";
+const __bundleClass_5 = "btn btn-ghost btn-small";
+const __bundleClass_6 = "staff-table-wrap";
+const __bundleClass_7 = "btn btn-ghost";
+
 
 const COCKPIT_TABS = [
   { key: "triage", label: "Today" },
@@ -236,12 +245,12 @@ export default function CockpitOpsPanel({
 
   return (
     <section className={`staff-module-grid staff-workspace-panel${isAdminWorkspace ? " staff-admin-workspace" : ""}`}>
-      <section className="card staff-console-card" hidden={cockpitTab === "policyAgentOps"}>
+      <section className={__bundleClass_0} hidden={cockpitTab === "policyAgentOps"}>
         {!["finance", "operations"].includes(cockpitTab) && !isAdminWorkspace ? <>
         <div className="card-title-row">
           <div className="card-title">{COCKPIT_TABS.find((tab) => tab.key === cockpitTab)?.label}</div>
           <button
-            className="btn btn-secondary"
+            className={__bundleClass_1}
             disabled={Boolean(busy)}
             onClick={() =>
               void run("refreshCockpit", async () => {
@@ -283,8 +292,8 @@ export default function CockpitOpsPanel({
           <>
             <section className="staff-shift-status-card" data-tone={shiftStatus.tone}>
               <div className="staff-shift-status-header">
-                <div className="staff-column">
-                  <div className="staff-subtitle">Shift status</div>
+                <div className={__bundleClass_2}>
+                  <div className={__bundleClass_3}>Shift status</div>
                   <div className="staff-shift-status-headline">{shiftStatus.headline}</div>
                 </div>
                 <span className={`pill staff-shift-status-pill staff-shift-status-pill-${shiftStatus.tone}`}>
@@ -306,9 +315,9 @@ export default function CockpitOpsPanel({
                         </span>
                         <div className="staff-shift-status-reason-label">{reason.label}</div>
                       </div>
-                      <div className="staff-actions-row">
+                      <div className={__bundleClass_4}>
                         <button
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_5}
                           onClick={() => openShiftStatusTarget(reason.actionTarget)}
                         >
                           {reason.actionLabel}
@@ -319,7 +328,7 @@ export default function CockpitOpsPanel({
                 </div>
               ) : null}
             </section>
-            <div className="staff-subtitle">Action queue</div>
+            <div className={__bundleClass_3}>Action queue</div>
             {actionableOverviewAlerts.length === 0 ? (
               <div className={`staff-note ${shiftStatus.reasons.length === 0 ? "staff-note-ok" : "staff-note-muted"}`}>
                 {shiftStatus.reasons.length === 0
@@ -337,7 +346,7 @@ export default function CockpitOpsPanel({
                     <div className="staff-log-message">
                       {alert.label}
                       <div className="staff-actions-row staff-actions-row--mt8">
-                        <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
+                        <button className={__bundleClass_5} onClick={() => openModuleFromCockpit(alert.module)}>
                           {alert.actionLabel}
                         </button>
                       </div>
@@ -350,7 +359,7 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "automation" ? (
           <>
-            <AdminPageHeader eyebrow="Administration" title="Automations" description="Check recent runs and follow up on anything that needs attention." art="/staff-facelift/automations.webp"><div className="staff-actions-row">
+            <AdminPageHeader eyebrow="Administration" title="Automations" description="Check recent runs and follow up on anything that needs attention." art="/staff-facelift/automations.webp"><div className={__bundleClass_4}>
               <button
                 className="btn btn-secondary btn-small"
                 disabled={Boolean(busy) || automationDashboard.loading}
@@ -359,7 +368,7 @@ export default function CockpitOpsPanel({
                 {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
               </button>
               <a
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_5}
                 href={`https://github.com/${githubRepoSlug}/actions/workflows/portal-automation-health-daily.yml`}
                 target="_blank"
                 rel="noreferrer"
@@ -367,7 +376,7 @@ export default function CockpitOpsPanel({
                 Open daily workflow
               </a>
               <a
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_5}
                 href={`https://github.com/${githubRepoSlug}/actions/workflows/portal-automation-weekly-digest.yml`}
                 target="_blank"
                 rel="noreferrer"
@@ -385,7 +394,7 @@ export default function CockpitOpsPanel({
               Source: shared GitHub status for <code>{githubRepoSlug}</code>.
               {automationKpis.loadedAtMs ? ` Last GitHub check ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
             </div>
-            <div className="staff-table-wrap">
+            <div className={__bundleClass_6}>
               <table className="staff-table">
                 <thead>
                   <tr>
@@ -430,8 +439,8 @@ export default function CockpitOpsPanel({
                 </tbody>
               </table>
             </div>
-            <div className="staff-subtitle">Rolling output threads</div>
-            <div className="staff-table-wrap">
+            <div className={__bundleClass_3}>Rolling output threads</div>
+            <div className={__bundleClass_6}>
               <table className="staff-table">
                 <thead>
                   <tr>
@@ -466,40 +475,40 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "platform" ? (
           <>
-            <AdminPageHeader eyebrow="Administration" title="System health" description={hasFunctionsAuthMismatch ? "Checks are unavailable in this session." : busy === "cockpitHealthCheck" ? "Checking functions and calendar…" : failedHealthCheck ? `${failedHealthCheck.label} needs attention.` : healthChecks.every(Boolean) ? "Functions and calendar checks passed." : "Run read-only checks to see what needs attention."} art="/staff-facelift/system-health.webp"><div className="staff-actions-row"><button className="btn btn-primary" disabled={Boolean(busy) || hasFunctionsAuthMismatch} onClick={() => void run("cockpitHealthCheck", async () => { await Promise.allSettled([runSystemPing(), runCalendarProbe()]); })}>{busy === "cockpitHealthCheck" ? "Checking…" : "Run health check"}</button></div></AdminPageHeader>
+            <AdminPageHeader eyebrow="Administration" title="System health" description={hasFunctionsAuthMismatch ? "Checks are unavailable in this session." : busy === "cockpitHealthCheck" ? "Checking functions and calendar…" : failedHealthCheck ? `${failedHealthCheck.label} needs attention.` : healthChecks.every(Boolean) ? "Functions and calendar checks passed." : "Run read-only checks to see what needs attention."} art="/staff-facelift/system-health.webp"><div className={__bundleClass_4}><button className="btn btn-primary" disabled={Boolean(busy) || hasFunctionsAuthMismatch} onClick={() => void run("cockpitHealthCheck", async () => { await Promise.allSettled([runSystemPing(), runCalendarProbe()]); })}>{busy === "cockpitHealthCheck" ? "Checking…" : "Run health check"}</button></div></AdminPageHeader>
             <AdminWorkflow label="Read-only checks" stages={healthChecks.map((check, index) => ({ label: index === 0 ? "Functions ping" : "Calendar probe", state: hasFunctionsAuthMismatch ? "warn" : busy === "cockpitHealthCheck" ? "neutral" : check ? check.ok ? "ok" : "danger" : "neutral", detail: hasFunctionsAuthMismatch ? "Unavailable" : busy === "cockpitHealthCheck" ? "Checking…" : check ? `${check.ok ? "Passed" : "Needs attention"} · ${when(check.atMs)}` : "Not checked" }))} />
             <details className="staff-troubleshooting"><summary>Individual checks and diagnostics</summary>
-            <div className="staff-actions-row">
+            <div className={__bundleClass_4}>
               <button
-                className="btn btn-secondary"
+                className={__bundleClass_1}
                 disabled={Boolean(busy) || hasFunctionsAuthMismatch}
                 onClick={() => void run("cockpitSystemPing", runSystemPing)}
               >
                 Ping functions
               </button>
               <button
-                className="btn btn-secondary"
+                className={__bundleClass_1}
                 disabled={Boolean(busy) || hasFunctionsAuthMismatch}
                 onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
               >
                 Probe calendar
               </button>
               <button
-                className="btn btn-secondary"
+                className={__bundleClass_1}
                 disabled={Boolean(busy) || hasFunctionsAuthMismatch}
                 onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
               >
                 Refresh notif metrics
               </button>
               <button
-                className="btn btn-secondary"
+                className={__bundleClass_1}
                 disabled={Boolean(busy) || hasFunctionsAuthMismatch}
                 onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
               >
                 Run push failure drill
               </button>
               <button
-                className="btn btn-secondary"
+                className={__bundleClass_1}
                 disabled={Boolean(busy) || hasFunctionsAuthMismatch}
                 onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
               >
@@ -514,10 +523,10 @@ export default function CockpitOpsPanel({
             ) : null}
             {reservationNotificationPolicyContent}
             <div className="card-title-row">
-              <div className="staff-subtitle">Recent handler errors</div>
+              <div className={__bundleClass_3}>Recent handler errors</div>
               <div className="staff-log-actions">
-                <button type="button" className="btn btn-ghost" onClick={onRefreshHandlerLog}>Refresh</button>
-                <button type="button" className="btn btn-ghost" onClick={onClearHandlerLog}>Clear</button>
+                <button type="button" className={__bundleClass_7} onClick={onRefreshHandlerLog}>Refresh</button>
+                <button type="button" className={__bundleClass_7} onClick={onClearHandlerLog}>Clear</button>
               </div>
             </div>
             <div className="staff-log-list">
@@ -526,9 +535,9 @@ export default function CockpitOpsPanel({
             <details className="staff-troubleshooting">
               <summary>Developer troubleshooting and raw diagnostics</summary>
               <div className="staff-module-grid">
-                <div className="staff-column">
-                  <div className="staff-subtitle">System checks</div>
-                  <div className="staff-table-wrap">
+                <div className={__bundleClass_2}>
+                  <div className={__bundleClass_3}>System checks</div>
+                  <div className={__bundleClass_6}>
                     <table className="staff-table">
                       <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
                       <tbody>
@@ -548,30 +557,30 @@ export default function CockpitOpsPanel({
                     </table>
                   </div>
                 </div>
-                <div className="staff-column">
+                <div className={__bundleClass_2}>
                   {devAdminEnabled ? (
                     <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
                   ) : (
                     <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
                   )}
-                  {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={onOpenEmulatorUi}>Open Emulator UI</button> : null}
-                  <div className="staff-subtitle">Last Firestore write</div>
+                  {showEmulatorTools ? <button type="button" className={__bundleClass_1} onClick={onOpenEmulatorUi}>Open Emulator UI</button> : null}
+                  <div className={__bundleClass_3}>Last Firestore write</div>
                   <pre>{safeJsonStringify(lastWrite)}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+                  <button className={__bundleClass_7} onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
                 </div>
-                <div className="staff-column">
-                  <div className="staff-subtitle">Last query params</div>
+                <div className={__bundleClass_2}>
+                  <div className={__bundleClass_3}>Last query params</div>
                   <pre>{safeJsonStringify(lastQuery)}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
-                  <div className="staff-subtitle">Last GitHub/Functions call</div>
+                  <button className={__bundleClass_7} onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
+                  <div className={__bundleClass_3}>Last GitHub/Functions call</div>
                   <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
+                  <button className={__bundleClass_7} onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
                   <div className="staff-mini">curl hint</div>
                   <pre>{lastReq?.curlExample ?? "(none)"}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
+                  <button className={__bundleClass_7} onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
                 </div>
-                <div className="staff-column">
-                  <div className="staff-subtitle">Last error stack/message</div>
+                <div className={__bundleClass_2}>
+                  <div className={__bundleClass_3}>Last error stack/message</div>
                   <pre>{safeJsonStringify(lastErr)}</pre>
                   {copyStatus ? (
                     <div className="staff-note" role="status" aria-live="polite">
@@ -585,11 +594,11 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "moduleTelemetry" ? (
           <>
-            <AdminPageHeader eyebrow="Administration" title="Usage reports" description="Activity recorded in this browser only." art="/staff-facelift/usage.webp"><div className="staff-actions-row">
-              <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
+            <AdminPageHeader eyebrow="Administration" title="Usage reports" description="Activity recorded in this browser only." art="/staff-facelift/usage.webp"><div className={__bundleClass_4}>
+              <button className={__bundleClass_5} onClick={resetModuleTelemetry}>
                 Reset telemetry
               </button>
-              <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
+              <button className={__bundleClass_5} onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
                 Copy telemetry JSON
               </button>
             </div></AdminPageHeader>
@@ -600,7 +609,7 @@ export default function CockpitOpsPanel({
                 : `Low-engagement modules in the current telemetry sample: ${lowEngagementModules.join(", ")}`}
             </div>
             <div className="admin-ranked-list" aria-label="Visits by module">{moduleUsageRows.slice().sort((a, b) => b.visits - a.visits).map((row) => <div className="admin-ranked-row" key={`bar-${row.key}`}><span>{row.label}</span><div className="admin-ranked-bar"><span style={{ "--bar": `${Math.round((row.visits / Math.max(...moduleUsageRows.map((item) => item.visits), 1)) * 100)}%` } as React.CSSProperties} /></div><strong>{row.visits} visits</strong></div>)}</div>
-            <div className="staff-table-wrap">
+            <div className={__bundleClass_6}>
               <table className="staff-table">
                 <thead>
                   <tr>
@@ -649,13 +658,13 @@ export default function CockpitOpsPanel({
       </section>
       {cockpitTab === "policyAgentOps" ? (
         <>
-          <div className="card staff-console-card"><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Review the rules and connections that keep studio tools safe." art="/staff-facelift/policies.webp"><div className="staff-actions-row"><a href="#staff-access-roles" className="btn btn-secondary">Access &amp; roles</a><a href="#staff-integrations" className="btn btn-secondary">Integrations</a><a href="#staff-policies" className="btn btn-secondary">Policies</a></div></AdminPageHeader></div>
-          <div id="staff-policies" className="card staff-console-card"><h2>Policies</h2>{governanceContent}</div>
-          <div id="staff-access-roles" className="card staff-console-card">{accessRoleContent}</div>
-          <div id="staff-integrations" className="card staff-console-card"><h2>Integrations & access</h2>{agentOpsContent}</div>
+          <div className={__bundleClass_0}><AdminPageHeader eyebrow="Administration" title="Policies & integrations" description="Review the rules and connections that keep studio tools safe." art="/staff-facelift/policies.webp"><div className={__bundleClass_4}><a href="#staff-access-roles" className={__bundleClass_1}>Access &amp; roles</a><a href="#staff-integrations" className={__bundleClass_1}>Integrations</a><a href="#staff-policies" className={__bundleClass_1}>Policies</a></div></AdminPageHeader></div>
+          <div id="staff-policies" className={__bundleClass_0}><h2>Policies</h2>{governanceContent}</div>
+          <div id="staff-access-roles" className={__bundleClass_0}>{accessRoleContent}</div>
+          <div id="staff-integrations" className={__bundleClass_0}><h2>Integrations & access</h2>{agentOpsContent}</div>
         </>
       ) : null}
-      {cockpitTab === "reports" ? <div className="card staff-console-card">{reportsContent}</div> : null}
+      {cockpitTab === "reports" ? <div className={__bundleClass_0}>{reportsContent}</div> : null}
     </section>
   );
 }

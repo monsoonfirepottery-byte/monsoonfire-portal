@@ -21,6 +21,13 @@ import type { Announcement, DirectMessageThread } from "../types/messaging";
 import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
 import { formatDateTime, formatMaybeTimestamp } from "../utils/format";
 import { DASHBOARD_MOCK_NON_DEV_ACK, resolveDashboardMockPolicy } from "./dashboardMockPolicy";
+const __bundleClass_0 = "btn btn-ghost";
+const __bundleClass_1 = "snapshot-block";
+const __bundleClass_2 = "snapshot-label";
+const __bundleClass_3 = "snapshot-value";
+const __bundleClass_4 = "card card-3d";
+const __bundleClass_5 = "pieces-next-meta";
+
 
 const DASHBOARD_PIECES_PREVIEW = 3;
 const DASHBOARD_BATCH_PIECES_QUERY_LIMIT = 12;
@@ -816,42 +823,42 @@ export default function DashboardView({
             <button className="btn btn-primary" onClick={onOpenCheckin}>
               Start a check-in
             </button>
-            <button className="btn btn-ghost" onClick={() => onOpenPieces()}>
+            <button className={__bundleClass_0} onClick={() => onOpenPieces()}>
               Open My Pieces
             </button>
-            <button className="btn btn-ghost" onClick={onOpenQueues}>
+            <button className={__bundleClass_0} onClick={onOpenQueues}>
               View the queues
             </button>
-            <button className="btn btn-ghost" onClick={onOpenMessages}>
+            <button className={__bundleClass_0} onClick={onOpenMessages}>
               Message the studio
             </button>
-            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
+            <button className={__bundleClass_0} onClick={onOpenGlazeBoard}>
               Glaze inspiration
             </button>
             {isStaff ? (
-              <button className="btn btn-ghost" onClick={onOpenFirings}>
+              <button className={__bundleClass_0} onClick={onOpenFirings}>
                 Firings
               </button>
             ) : null}
           </div>
           <div className="snapshot-grid">
-            <div className="snapshot-block">
-              <div className="snapshot-label">What this is</div>
-              <div className="snapshot-value">Your studio home</div>
+            <div className={__bundleClass_1}>
+              <div className={__bundleClass_2}>What this is</div>
+              <div className={__bundleClass_3}>Your studio home</div>
               <div className="snapshot-meta">
                 See the status of your work, the queue, and the next step without unpacking the whole app.
               </div>
             </div>
-            <div className="snapshot-block">
-              <div className="snapshot-label">What you can do here</div>
-              <div className="snapshot-value">Check in, track, and coordinate</div>
+            <div className={__bundleClass_1}>
+              <div className={__bundleClass_2}>What you can do here</div>
+              <div className={__bundleClass_3}>Check in, track, and coordinate</div>
               <div className="snapshot-meta">
                 Start a check-in, open My Pieces, review firings, message the studio, or browse the rest of the portal when you need it.
               </div>
             </div>
-            <div className="snapshot-block">
-              <div className="snapshot-label">Recommended next actions</div>
-              <div className="snapshot-value">Pick the next useful step</div>
+            <div className={__bundleClass_1}>
+              <div className={__bundleClass_2}>Recommended next actions</div>
+              <div className={__bundleClass_3}>Pick the next useful step</div>
               <div className="snapshot-meta">
                 New drop-off: start a check-in. Existing work: open My Pieces. Need timing: view the queues.
               </div>
@@ -890,10 +897,10 @@ export default function DashboardView({
             <button className="btn btn-primary" onClick={onOpenKilnRentals}>
               Firing Services
             </button>
-            <button className="btn btn-ghost" onClick={onOpenStudioResources}>
+            <button className={__bundleClass_0} onClick={onOpenStudioResources}>
               Studio &amp; resources
             </button>
-            <button className="btn btn-ghost" onClick={onOpenCommunity}>
+            <button className={__bundleClass_0} onClick={onOpenCommunity}>
               Community
             </button>
           </div>
@@ -924,7 +931,7 @@ export default function DashboardView({
       </RevealCard>
 
       <section className="dashboard-grid">
-        <RevealCard className="card card-3d" index={2} enabled={motionEnabled}>
+        <RevealCard className={__bundleClass_4} index={2} enabled={motionEnabled}>
           <div className="card-title">Your pieces</div>
           <div className="card-subtitle">Recent piece activity + archive</div>
           {piecePreview.length === 0 ? (
@@ -933,7 +940,7 @@ export default function DashboardView({
                 <div className="pieces-next">
                   <div className="pieces-next-label">Latest check-in</div>
                   <div className="pieces-next-title">{nextReservationStatus}</div>
-                  <div className="pieces-next-meta">{nextReservationEta}</div>
+                  <div className={__bundleClass_5}>{nextReservationEta}</div>
                 </div>
                 <div className="pieces-thumbs">
                   {reservationPreview.map((reservation, index) => (
@@ -949,7 +956,7 @@ export default function DashboardView({
                     </button>
                   ))}
                 </div>
-                <div className="pieces-next-meta">Recent check-ins are queued.</div>
+                <div className={__bundleClass_5}>Recent check-ins are queued.</div>
               </div>
             ) : (
               <div className="empty-block">
@@ -965,11 +972,11 @@ export default function DashboardView({
               <div className="pieces-next">
                 <div className="pieces-next-label">{nextPiece?.isArchived ? "Archived piece" : "Recently updated piece"}</div>
                 <div className="pieces-next-title">{nextPieceTitle}</div>
-                <div className="pieces-next-meta">{nextPieceStatus}</div>
-                <div className="pieces-next-meta">Check-in: {nextPiece?.batchTitle || "Check-in"}</div>
-                <div className="pieces-next-meta">Updated: {nextPieceEta}</div>
+                <div className={__bundleClass_5}>{nextPieceStatus}</div>
+                <div className={__bundleClass_5}>Check-in: {nextPiece?.batchTitle || "Check-in"}</div>
+                <div className={__bundleClass_5}>Updated: {nextPieceEta}</div>
                 {nextReservation ? (
-                  <div className="pieces-next-meta">
+                  <div className={__bundleClass_5}>
                     Latest check-in queued{nextReservationOwnerLabel ? ` for ${nextReservationOwnerLabel}` : ""}:{" "}
                     {nextReservationStatus} ({nextReservationEta})
                   </div>
@@ -1008,33 +1015,33 @@ export default function DashboardView({
           </button>
         </RevealCard>
 
-        <RevealCard className="card card-3d" index={3} enabled={motionEnabled}>
+        <RevealCard className={__bundleClass_4} index={3} enabled={motionEnabled}>
           <div className="card-title">Firing snapshot</div>
           <div className="card-subtitle">Studio timing + your recent loads</div>
           <div className="snapshot-grid">
-            <div className="snapshot-block">
-              <div className="snapshot-label">Next scheduled firing</div>
-              <div className="snapshot-value">{nextFiringLabel}</div>
+            <div className={__bundleClass_1}>
+              <div className={__bundleClass_2}>Next scheduled firing</div>
+              <div className={__bundleClass_3}>{nextFiringLabel}</div>
             </div>
-            <div className="snapshot-block">
-              <div className="snapshot-label">Open loads</div>
-              <div className="snapshot-value">{openLoadCount}</div>
+            <div className={__bundleClass_1}>
+              <div className={__bundleClass_2}>Open loads</div>
+              <div className={__bundleClass_3}>{openLoadCount}</div>
               <div className="snapshot-meta">
                 {openLoadCount === 0
                   ? "No active firing loads right now."
                   : `${openLoadCount} load${openLoadCount === 1 ? "" : "s"} currently in progress.`}
               </div>
             </div>
-            <div className="snapshot-block">
-              <div className="snapshot-label">Recent turnaround average</div>
-              <div className="snapshot-value">
+            <div className={__bundleClass_1}>
+              <div className={__bundleClass_2}>Recent turnaround average</div>
+              <div className={__bundleClass_3}>
                 {averageTurnaroundDays ? `${averageTurnaroundDays} days` : "We are still collecting data"}
               </div>
             </div>
           </div>
         </RevealCard>
 
-        <RevealCard className="card card-3d" index={4} enabled={motionEnabled}>
+        <RevealCard className={__bundleClass_4} index={4} enabled={motionEnabled}>
           <div className="card-title">Kilns firing now</div>
           {mockNotice ? <div className="notice">{mockNotice}</div> : null}
           {mockPolicyNotice ? (
@@ -1079,7 +1086,7 @@ export default function DashboardView({
           ) : null}
         </RevealCard>
 
-        <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
+        <RevealCard className={__bundleClass_4} index={5} enabled={motionEnabled}>
           <div className="card-title">Workshop calendar</div>
           {workshopsLoading ? (
             <GuidedStateCard
@@ -1120,7 +1127,7 @@ export default function DashboardView({
           ) : null}
         </RevealCard>
 
-        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
+        <RevealCard className={__bundleClass_4} index={6} enabled={motionEnabled}>
           <div className="card-title">Direct messages</div>
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
@@ -1144,7 +1151,7 @@ export default function DashboardView({
               ))
             )}
           </div>
-          <button className="btn btn-ghost" onClick={onOpenMessages}>
+          <button className={__bundleClass_0} onClick={onOpenMessages}>
             Open messages inbox
           </button>
         </RevealCard>

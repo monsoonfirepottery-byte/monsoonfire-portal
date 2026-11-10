@@ -5,6 +5,18 @@ import { missingArtistContactFields } from "./staffContactValidation";
 import { sortFiringTickets, type TicketSortKey } from "./staffTicketSorting";
 import { requiresPickupReview } from "./pickupReviewQueue";
 import { firingQueueStatus } from "./firingQueueStatus";
+const __bundleClass_0 = "staff-note staff-note-error";
+const __bundleClass_1 = "firing-workflow-stage";
+const __bundleClass_2 = "firing-workflow-art";
+const __bundleClass_3 = "firing-workflow-copy";
+const __bundleClass_4 = "staff-note";
+const __bundleClass_5 = "btn btn-ghost";
+const __bundleClass_6 = "btn btn-secondary";
+const __bundleClass_7 = "firing-billing-recovery";
+const __bundleClass_8 = "staff-module-grid";
+const __bundleClass_9 = "field-issue-hint";
+const __bundleClass_10 = "staff-field";
+
 
 type BillingOutcome =
   | "normal_billable"
@@ -848,7 +860,7 @@ export default function FiringPickupBillingModule({
   }, [adjustmentAction, adjustmentAmount, adjustmentArtistNote, adjustmentPrivateNote, adjustmentReason, busy, client, confirmedAdjustment, load, selected, showFieldIssue, writesReady]);
 
   if (!isStaff) {
-    return <section className="card staff-console-card"><div className="staff-note staff-note-error">Staff claim required.</div></section>;
+    return <section className="card staff-console-card"><div className={__bundleClass_0}>Staff claim required.</div></section>;
   }
 
   const canPrepareReview = selected ? isOpenFiringTicket(selected) : false;
@@ -880,21 +892,21 @@ export default function FiringPickupBillingModule({
         <section className="firing-workflow" aria-label="Follow the ware">
           <h2>Follow the ware</h2>
           <ol className="firing-workflow-stages">
-            <li><button type="button" className="firing-workflow-stage" onClick={onOpenCheckins}>
-              <span className="firing-workflow-art" data-stage="intake" aria-hidden="true" />
-              <span className="firing-workflow-copy"><strong>Incoming ware</strong><span>Plan a drop-off in Pathfinder</span></span>
+            <li><button type="button" className={__bundleClass_1} onClick={onOpenCheckins}>
+              <span className={__bundleClass_2} data-stage="intake" aria-hidden="true" />
+              <span className={__bundleClass_3}><strong>Incoming ware</strong><span>Plan a drop-off in Pathfinder</span></span>
             </button></li>
-            <li><button type="button" className="firing-workflow-stage" onClick={onOpenFirings}>
-              <span className="firing-workflow-art" data-stage="kiln" aria-hidden="true" />
-              <span className="firing-workflow-copy"><strong>Firing lanes</strong><span>Open kiln schedule</span></span>
+            <li><button type="button" className={__bundleClass_1} onClick={onOpenFirings}>
+              <span className={__bundleClass_2} data-stage="kiln" aria-hidden="true" />
+              <span className={__bundleClass_3}><strong>Firing lanes</strong><span>Open kiln schedule</span></span>
             </button></li>
-            <li><button type="button" className="firing-workflow-stage" aria-pressed={filter === "review"} onClick={() => setFilter("review")}>
-              <span className="firing-workflow-art" data-stage="unload" aria-hidden="true" />
-              <span className="firing-workflow-copy"><strong>Unloading</strong><span>Review tickets after firing</span>{hasLoaded ? <small>{tickets.filter(needsPickupReview).length} to review</small> : null}</span>
+            <li><button type="button" className={__bundleClass_1} aria-pressed={filter === "review"} onClick={() => setFilter("review")}>
+              <span className={__bundleClass_2} data-stage="unload" aria-hidden="true" />
+              <span className={__bundleClass_3}><strong>Unloading</strong><span>Review tickets after firing</span>{hasLoaded ? <small>{tickets.filter(needsPickupReview).length} to review</small> : null}</span>
             </button></li>
-            <li><button type="button" className="firing-workflow-stage" aria-pressed={filter === "pickup"} onClick={() => setFilter("pickup")}>
-              <span className="firing-workflow-art" data-stage="billing" aria-hidden="true" />
-              <span className="firing-workflow-copy"><strong>Billing &amp; pickup</strong><span>View payment and pickup status</span>{hasLoaded ? <small>{queueCounts.pickup} awaiting pickup</small> : null}</span>
+            <li><button type="button" className={__bundleClass_1} aria-pressed={filter === "pickup"} onClick={() => setFilter("pickup")}>
+              <span className={__bundleClass_2} data-stage="billing" aria-hidden="true" />
+              <span className={__bundleClass_3}><strong>Billing &amp; pickup</strong><span>View payment and pickup status</span>{hasLoaded ? <small>{queueCounts.pickup} awaiting pickup</small> : null}</span>
             </button></li>
           </ol>
         </section>
@@ -907,9 +919,9 @@ export default function FiringPickupBillingModule({
             : runtime.liveWritesEnabled ? " · Payments enabled." : " · Payments paused. Check Payment settings."}
         </div>
       ) : null}
-      {status ? <div className="staff-note" role="status" aria-live="polite">{status}</div> : null}
-      {error ? <div className="staff-note staff-note-error" role="alert">{error}</div> : null}
-      {missingInitialTicket && !selected ? <div className="staff-note" role="status">That ticket is no longer in this queue. Choose a ticket below or return to Today.</div> : null}
+      {status ? <div className={__bundleClass_4} role="status" aria-live="polite">{status}</div> : null}
+      {error ? <div className={__bundleClass_0} role="alert">{error}</div> : null}
+      {missingInitialTicket && !selected ? <div className={__bundleClass_4} role="status">That ticket is no longer in this queue. Choose a ticket below or return to Today.</div> : null}
 
       <div className="staff-actions-row firing-billing-filters" role="group" aria-label="Filter firing tickets">
         <label className="staff-field firing-ticket-search">Find a ticket<input type="search" placeholder="Name, email, or ticket number" value={ticketSearch} onChange={(event) => setTicketSearch(event.target.value)} /></label>
@@ -959,7 +971,7 @@ export default function FiringPickupBillingModule({
             <strong>{visibleTickets.length} {visibleTickets.length === 1 ? "ticket" : "tickets"}</strong>
             <span className="staff-mini">{selectedTicketIndex >= 0 ? `${selectedTicketIndex + 1} of ${visibleTickets.length}` : "No ticket selected"}</span>
           </div> : null}
-          {hasLoaded && visibleTickets.length === 0 ? <div className="staff-note">{(searchQuery || ticketSearch).trim() ? "No tickets match that search." : filter === "work" ? "No tickets need work. Check Awaiting pickup or History." : "No tickets in this view."}</div> : null}
+          {hasLoaded && visibleTickets.length === 0 ? <div className={__bundleClass_4}>{(searchQuery || ticketSearch).trim() ? "No tickets match that search." : filter === "work" ? "No tickets need work. Check Awaiting pickup or History." : "No tickets in this view."}</div> : null}
           {visibleTickets.map((ticket, ticketIndex) => {
             const queueStatus = firingQueueStatus(ticket);
             return (
@@ -992,7 +1004,7 @@ export default function FiringPickupBillingModule({
         </nav>
 
         <div className="firing-billing-detail">
-          {!selected ? (hasLoaded ? <div className="staff-note">Select a firing ticket to review it.</div> : null) : (
+          {!selected ? (hasLoaded ? <div className={__bundleClass_4}>Select a firing ticket to review it.</div> : null) : (
             <>
               <header className="firing-billing-summary">
                 <div>
@@ -1001,15 +1013,15 @@ export default function FiringPickupBillingModule({
                   {selected.email ? <div className="staff-mini">{selected.email}</div> : null}
                   <div className="firing-ticket-amount">{selected.finalChargeCents === null ? "Not billed yet" : formatMoney(selected.finalChargeCents)}{selected.refundedAmountCents > 0 ? ` · ${formatMoney(selected.refundedAmountCents)} refunded` : ""}</div>
                   <div className="firing-billing-ticket-nav" aria-label="Ticket navigation">
-                    <button className="btn btn-ghost" type="button" disabled={selectedTicketIndex <= 0} onClick={() => moveSelection(-1)}>Previous ticket</button>
+                    <button className={__bundleClass_5} type="button" disabled={selectedTicketIndex <= 0} onClick={() => moveSelection(-1)}>Previous ticket</button>
                     <span className="staff-mini">{selectedTicketIndex >= 0 ? `Ticket ${selectedTicketIndex + 1} of ${visibleTickets.length}` : "Ticket not in this view"}</span>
-                    <button className="btn btn-secondary" type="button" disabled={selectedTicketIndex < 0 || selectedTicketIndex >= visibleTickets.length - 1} onClick={() => moveSelection(1)}>Next ticket</button>
+                    <button className={__bundleClass_6} type="button" disabled={selectedTicketIndex < 0 || selectedTicketIndex >= visibleTickets.length - 1} onClick={() => moveSelection(1)}>Next ticket</button>
                   </div>
                 </div>
                 <div>
                   <div className="staff-mini">Ticket status: {humanStudioStage(selected.status)}<br />Pickup email: {humanNoticeStatus(selected.noticeStatus)}</div>
                   <button
-                    className="btn btn-ghost"
+                    className={__bundleClass_5}
                     type="button"
                     disabled={Boolean(busy)}
                     onClick={() => void queueWorkSlip(selected)}
@@ -1027,15 +1039,15 @@ export default function FiringPickupBillingModule({
               </header>
 
               {selected.canResumeBilling ? (
-                <div className="firing-billing-recovery">
-                  <div className="staff-note staff-note-error">A previous billing update needs to finish before you make another change. Resume it to continue.</div>
+                <div className={__bundleClass_7}>
+                  <div className={__bundleClass_0}>A previous billing update needs to finish before you make another change. Resume it to continue.</div>
                   <button className="btn btn-primary" type="button" disabled={Boolean(busy)} onClick={() => void resume()}>{busy === "resume" ? "Continuing…" : "Continue saved billing update"}</button>
                 </div>
               ) : null}
 
               {selected.billingStatus === "paid" ? (
                 <div className={`firing-billing-recovery ${["needs_review", "failed"].includes(selected.stripeReceiptPrint?.status ?? "") ? "has-field-issue" : ""}`}>
-                  <div className="staff-note">
+                  <div className={__bundleClass_4}>
                     <strong>Payment receipt:</strong>{" "}
                     {selected.stripeReceiptPrint?.status === "printed"
                       ? `Printed${selected.stripeReceiptPrint.cupsJobId ? ` · ${selected.stripeReceiptPrint.cupsJobId}` : ""}.`
@@ -1048,29 +1060,29 @@ export default function FiringPickupBillingModule({
                             : "Not queued yet."}
                   </div>
                   {selected.stripeReceiptPrint?.status === "printed" ? (
-                    <button className="btn btn-ghost" type="button" disabled={Boolean(busy)} onClick={() => void queuePaymentReceipt("reprint")}>{busy === "receipt-reprint" ? "Queuing…" : "Print another receipt"}</button>
+                    <button className={__bundleClass_5} type="button" disabled={Boolean(busy)} onClick={() => void queuePaymentReceipt("reprint")}>{busy === "receipt-reprint" ? "Queuing…" : "Print another receipt"}</button>
                   ) : null}
                   {["needs_review", "failed", "submitting", "accepted"].includes(selected.stripeReceiptPrint?.status ?? "") ? (
-                    <button className="btn btn-secondary" type="button" disabled={Boolean(busy)} onClick={() => void queuePaymentReceipt("retry")}>{busy === "receipt-retry" ? "Queuing…" : "I checked · retry receipt"}</button>
+                    <button className={__bundleClass_6} type="button" disabled={Boolean(busy)} onClick={() => void queuePaymentReceipt("retry")}>{busy === "receipt-retry" ? "Queuing…" : "I checked · retry receipt"}</button>
                   ) : null}
-                  <button className="btn btn-ghost" type="button" disabled={Boolean(busy)} onClick={() => void emailPaidInvoice()}>{busy === "receipt-email" ? "Queuing email…" : selected.receiptMailStatus === "sent" ? "Email paid invoice again" : "Email paid invoice"}</button>
+                  <button className={__bundleClass_5} type="button" disabled={Boolean(busy)} onClick={() => void emailPaidInvoice()}>{busy === "receipt-email" ? "Queuing email…" : selected.receiptMailStatus === "sent" ? "Email paid invoice again" : "Email paid invoice"}</button>
                 </div>
               ) : null}
 
               {selected.hasInvoiceLink && selected.billingStatus !== "paid" ? (
-                <div className="firing-billing-recovery">
-                  <div className="staff-note"><strong>Invoice email:</strong> {selected.invoiceMailStatus === "sent" ? "The current invoice was emailed." : selected.invoiceMailStatus === "queued" ? "The invoice email is queued." : "The current Stripe invoice is available."}</div>
-                  <button className="btn btn-secondary" type="button" disabled={Boolean(busy)} onClick={() => void resendInvoice()}>{busy === "invoice-resend" ? "Sending…" : selected.invoiceMailStatus === "sent" ? "Resend invoice" : "Email invoice"}</button>
+                <div className={__bundleClass_7}>
+                  <div className={__bundleClass_4}><strong>Invoice email:</strong> {selected.invoiceMailStatus === "sent" ? "The current invoice was emailed." : selected.invoiceMailStatus === "queued" ? "The invoice email is queued." : "The current Stripe invoice is available."}</div>
+                  <button className={__bundleClass_6} type="button" disabled={Boolean(busy)} onClick={() => void resendInvoice()}>{busy === "invoice-resend" ? "Sending…" : selected.invoiceMailStatus === "sent" ? "Resend invoice" : "Email invoice"}</button>
                 </div>
               ) : null}
 
               {["partially_refunded", "refunded"].includes(selected.billingStatus) ? (
-                <div className="staff-note"><strong>Refund record:</strong> Refunds stay digital in Stripe so the artist always sees the current amount. No automatic paper receipt is printed after a refund.</div>
+                <div className={__bundleClass_4}><strong>Refund record:</strong> Refunds stay digital in Stripe so the artist always sees the current amount. No automatic paper receipt is printed after a refund.</div>
               ) : null}
 
               {canPrepareReview ? (
-                <div className="firing-billing-recovery">
-                  <div className="staff-note"><strong>Work is out of the kiln.</strong> Open this ticket to choose the firing outcome and send its ready note.</div>
+                <div className={__bundleClass_7}>
+                  <div className={__bundleClass_4}><strong>Work is out of the kiln.</strong> Open this ticket to choose the firing outcome and send its ready note.</div>
                   <button className="btn btn-primary" type="button" disabled={Boolean(busy)} onClick={() => void prepareReview()}>{busy === "prepare" ? "Opening review…" : "Review this unloaded firing"}</button>
                 </div>
               ) : null}
@@ -1082,12 +1094,12 @@ export default function FiringPickupBillingModule({
                   </div>
                   <fieldset className={hasFieldIssue("artist-contact") ? "has-field-issue" : ""}>
                     <legend>Artist contact</legend>
-                    <div className="staff-module-grid">
-                      <label className={`staff-field ${hasFieldIssue("artist-name") ? "has-field-issue" : ""}`}>Name or nickname<input id="firing-field-artist-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); clearFieldIssue("artist-name"); }} disabled={Boolean(busy)} aria-invalid={hasFieldIssue("artist-name")} aria-describedby={hasFieldIssue("artist-name") ? "firing-field-artist-name-hint" : undefined} />{hasFieldIssue("artist-name") ? <span id="firing-field-artist-name-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label>
-                      <label className={`staff-field ${hasFieldIssue("artist-email") ? "has-field-issue" : ""}`}>Email<input id="firing-field-artist-email" type="email" value={email} onChange={(event) => { setEmail(event.target.value); setEmailEditedByStaff(true); clearFieldIssue("artist-email"); }} disabled={Boolean(busy)} aria-invalid={hasFieldIssue("artist-email")} aria-describedby={hasFieldIssue("artist-email") ? "firing-field-artist-email-hint" : undefined} />{hasFieldIssue("artist-email") ? <span id="firing-field-artist-email-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label>
+                    <div className={__bundleClass_8}>
+                      <label className={`staff-field ${hasFieldIssue("artist-name") ? "has-field-issue" : ""}`}>Name or nickname<input id="firing-field-artist-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); clearFieldIssue("artist-name"); }} disabled={Boolean(busy)} aria-invalid={hasFieldIssue("artist-name")} aria-describedby={hasFieldIssue("artist-name") ? "firing-field-artist-name-hint" : undefined} />{hasFieldIssue("artist-name") ? <span id="firing-field-artist-name-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label>
+                      <label className={`staff-field ${hasFieldIssue("artist-email") ? "has-field-issue" : ""}`}>Email<input id="firing-field-artist-email" type="email" value={email} onChange={(event) => { setEmail(event.target.value); setEmailEditedByStaff(true); clearFieldIssue("artist-email"); }} disabled={Boolean(busy)} aria-invalid={hasFieldIssue("artist-email")} aria-describedby={hasFieldIssue("artist-email") ? "firing-field-artist-email-hint" : undefined} />{hasFieldIssue("artist-email") ? <span id="firing-field-artist-email-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label>
                     </div>
-                    {artistMatches.length ? <div className="staff-note" role="group" aria-label="Recent artist matches"><strong>Recent artist matches</strong><span className="helper">Choose one only if it is the same person.</span><div className="staff-actions-row">{artistMatches.map((match) => <button className="btn btn-ghost" key={match.ticketId} type="button" disabled={Boolean(busy)} onClick={() => { setDisplayName(match.displayName); setEmail(match.email ?? ""); setEmailEditedByStaff(false); clearFieldIssue("artist-contact"); }}>Use {match.displayName} · {match.email}</button>)}</div></div> : null}
-                    {hasFieldIssue("artist-contact") ? <p className="field-issue-hint">{fieldIssue?.message}</p> : null}
+                    {artistMatches.length ? <div className={__bundleClass_4} role="group" aria-label="Recent artist matches"><strong>Recent artist matches</strong><span className="helper">Choose one only if it is the same person.</span><div className="staff-actions-row">{artistMatches.map((match) => <button className={__bundleClass_5} key={match.ticketId} type="button" disabled={Boolean(busy)} onClick={() => { setDisplayName(match.displayName); setEmail(match.email ?? ""); setEmailEditedByStaff(false); clearFieldIssue("artist-contact"); }}>Use {match.displayName} · {match.email}</button>)}</div></div> : null}
+                    {hasFieldIssue("artist-contact") ? <p className={__bundleClass_9}>{fieldIssue?.message}</p> : null}
                   </fieldset>
 
                   <fieldset>
@@ -1102,15 +1114,15 @@ export default function FiringPickupBillingModule({
 
                   <fieldset disabled={Boolean(busy) || outcome === "hold_for_review" || outcome === "studio_fault_no_charge"}>
                     <legend>Actual kiln space used</legend>
-                    <div className="staff-module-grid">
-                      {selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") ? <label className="staff-field">Custom firing quote before add-ons<input inputMode="decimal" value={customBaseCharge} onChange={(event) => setCustomBaseCharge(event.target.value)} /></label> : null}
-                      <label className="staff-field">Billing unit
+                    <div className={__bundleClass_8}>
+                      {selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") ? <label className={__bundleClass_10}>Custom firing quote before add-ons<input inputMode="decimal" value={customBaseCharge} onChange={(event) => setCustomBaseCharge(event.target.value)} /></label> : null}
+                      <label className={__bundleClass_10}>Billing unit
                         <select value={billingUnit} onChange={(event) => { const next = event.target.value as BillingUnit; setBillingUnit(next); if (next !== "half_shelf") setQuantity(1); }}>
                           <option value="half_shelf">Half shelf</option><option value="whole_kiln">Whole kiln</option><option value="custom">Custom / unusual firing</option>
                         </select>
                       </label>
-                      {billingUnit === "half_shelf" ? <label className="staff-field">Half shelves<select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>{Array.from({ length: selected?.pricingVersion === 2 ? 20 : 3 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} half {index === 0 ? "shelf" : "shelves"}</option>)}</select></label> : null}
-                      <label className={`staff-field ${hasFieldIssue("final-charge") ? "has-field-issue" : ""}`}>Final charge<span className="firing-billing-money-input"><span aria-hidden="true">$</span><input id="firing-field-final-charge" inputMode="decimal" value={finalCharge} onChange={(event) => { setFinalCharge(event.target.value); clearFieldIssue("final-charge"); }} aria-invalid={hasFieldIssue("final-charge")} aria-describedby={hasFieldIssue("final-charge") ? "firing-field-final-charge-hint" : undefined} /></span><span className="helper">Usual price: {formatMoney(derivedRate.cents)}. Change it when this firing needs a different price.</span>{hasFieldIssue("final-charge") ? <span id="firing-field-final-charge-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label>
+                      {billingUnit === "half_shelf" ? <label className={__bundleClass_10}>Half shelves<select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>{Array.from({ length: selected?.pricingVersion === 2 ? 20 : 3 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} half {index === 0 ? "shelf" : "shelves"}</option>)}</select></label> : null}
+                      <label className={`staff-field ${hasFieldIssue("final-charge") ? "has-field-issue" : ""}`}>Final charge<span className="firing-billing-money-input"><span aria-hidden="true">$</span><input id="firing-field-final-charge" inputMode="decimal" value={finalCharge} onChange={(event) => { setFinalCharge(event.target.value); clearFieldIssue("final-charge"); }} aria-invalid={hasFieldIssue("final-charge")} aria-describedby={hasFieldIssue("final-charge") ? "firing-field-final-charge-hint" : undefined} /></span><span className="helper">Usual price: {formatMoney(derivedRate.cents)}. Change it when this firing needs a different price.</span>{hasFieldIssue("final-charge") ? <span id="firing-field-final-charge-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label>
                     </div>
                     {(selected?.addOnRequests?.private || selected?.addOnRequests?.rush) ? <div className="firing-billing-choice-grid">
                       {selected.addOnRequests?.private ? <label><input type="checkbox" checked={privateFulfilled} onChange={(event) => setPrivateFulfilled(event.target.checked)} /> Private firing fulfilled · $20</label> : null}
@@ -1119,12 +1131,12 @@ export default function FiringPickupBillingModule({
                     {selected?.addOnRequests?.communitySharing ? <p>Client permits unused space to be donated to community work.</p> : null}
                     {selected?.otherRequestedServices?.length ? <p>Review other requested services before billing: {selected.otherRequestedServices.join(", ")}{selected.reservationId ? ` (check-in ${selected.reservationId})` : ""}. Include any applicable charges in the final amount and explain how they were handled.</p> : null}
                     {selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") ? <p>Enter the custom quote before add-ons; fulfilled services are added to the total.</p> : null}
-                    {(Boolean(selected?.otherRequestedServices?.length) || (dollarsToCents(finalCharge) !== derivedRate.cents && !(selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) === null))) ? <label className={`staff-field ${hasFieldIssue("override-reason") ? "has-field-issue" : ""}`}>Price adjustment note <span className="helper">Record changes to the usual price and how other requested services were handled.</span><input id="firing-field-override-reason" value={overrideReason} onChange={(event) => { setOverrideReason(event.target.value); clearFieldIssue("override-reason"); }} placeholder="Example: extra shelf space" maxLength={500} aria-invalid={hasFieldIssue("override-reason")} aria-describedby={hasFieldIssue("override-reason") ? "firing-field-override-reason-hint" : undefined} />{hasFieldIssue("override-reason") ? <span id="firing-field-override-reason-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label> : null}
+                    {(Boolean(selected?.otherRequestedServices?.length) || (dollarsToCents(finalCharge) !== derivedRate.cents && !(selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) === null))) ? <label className={`staff-field ${hasFieldIssue("override-reason") ? "has-field-issue" : ""}`}>Price adjustment note <span className="helper">Record changes to the usual price and how other requested services were handled.</span><input id="firing-field-override-reason" value={overrideReason} onChange={(event) => { setOverrideReason(event.target.value); clearFieldIssue("override-reason"); }} placeholder="Example: extra shelf space" maxLength={500} aria-invalid={hasFieldIssue("override-reason")} aria-describedby={hasFieldIssue("override-reason") ? "firing-field-override-reason-hint" : undefined} />{hasFieldIssue("override-reason") ? <span id="firing-field-override-reason-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label> : null}
                   </fieldset>
 
-                  <div className="staff-module-grid">
-                    <label className="staff-field">Firing note for the artist <span className="helper">Optional · included in the pickup email.</span><textarea value={artistVisibleNote} onChange={(event) => setArtistVisibleNote(event.target.value)} rows={3} maxLength={1200} /></label>
-                    <label className="staff-field">Private studio note <span className="helper">Optional · only the studio can see this.</span><textarea value={privateStaffNote} onChange={(event) => setPrivateStaffNote(event.target.value)} rows={3} maxLength={2000} /></label>
+                  <div className={__bundleClass_8}>
+                    <label className={__bundleClass_10}>Firing note for the artist <span className="helper">Optional · included in the pickup email.</span><textarea value={artistVisibleNote} onChange={(event) => setArtistVisibleNote(event.target.value)} rows={3} maxLength={1200} /></label>
+                    <label className={__bundleClass_10}>Private studio note <span className="helper">Optional · only the studio can see this.</span><textarea value={privateStaffNote} onChange={(event) => setPrivateStaffNote(event.target.value)} rows={3} maxLength={2000} /></label>
                   </div>
                 </div>
               ) : null}
@@ -1132,34 +1144,34 @@ export default function FiringPickupBillingModule({
               {(canAdjustOpen || canRefund) && !selected.canResumeBilling ? (
                 <details className="staff-troubleshooting firing-billing-adjustments">
                   <summary>Change this bill</summary>
-                  <div className="staff-note">Use this only when a payment needs a correction. The artist gets one clear update.</div>
-                  <div className="staff-module-grid">
-                    <label className="staff-field">Action<select value={adjustmentAction} onChange={(event) => { setAdjustmentAction(event.target.value as AdjustmentAction); setConfirmedAdjustment(false); }}>{canAdjustOpen ? <option value="void_invoice">Cancel the open invoice</option> : null}{canAdjustOpen ? <option value="credit_open_invoice">Reduce the open invoice</option> : null}{canRefund ? <option value="refund_paid_invoice">Refund a paid invoice</option> : null}</select></label>
-                    {adjustmentAction !== "void_invoice" ? <label className={`staff-field ${hasFieldIssue("adjustment-amount") ? "has-field-issue" : ""}`}>Amount<span className="firing-billing-money-input"><span aria-hidden="true">$</span><input id="firing-field-adjustment-amount" inputMode="decimal" value={adjustmentAmount} onChange={(event) => { setAdjustmentAmount(event.target.value); clearFieldIssue("adjustment-amount"); }} aria-invalid={hasFieldIssue("adjustment-amount")} aria-describedby={hasFieldIssue("adjustment-amount") ? "firing-field-adjustment-amount-hint" : undefined} /></span>{hasFieldIssue("adjustment-amount") ? <span id="firing-field-adjustment-amount-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label> : null}
-                    <label className={`staff-field ${hasFieldIssue("adjustment-reason") ? "has-field-issue" : ""}`}>Adjustment note<input id="firing-field-adjustment-reason" value={adjustmentReason} onChange={(event) => { setAdjustmentReason(event.target.value); clearFieldIssue("adjustment-reason"); }} maxLength={500} aria-invalid={hasFieldIssue("adjustment-reason")} aria-describedby={hasFieldIssue("adjustment-reason") ? "firing-field-adjustment-reason-hint" : undefined} />{hasFieldIssue("adjustment-reason") ? <span id="firing-field-adjustment-reason-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label>
+                  <div className={__bundleClass_4}>Use this only when a payment needs a correction. The artist gets one clear update.</div>
+                  <div className={__bundleClass_8}>
+                    <label className={__bundleClass_10}>Action<select value={adjustmentAction} onChange={(event) => { setAdjustmentAction(event.target.value as AdjustmentAction); setConfirmedAdjustment(false); }}>{canAdjustOpen ? <option value="void_invoice">Cancel the open invoice</option> : null}{canAdjustOpen ? <option value="credit_open_invoice">Reduce the open invoice</option> : null}{canRefund ? <option value="refund_paid_invoice">Refund a paid invoice</option> : null}</select></label>
+                    {adjustmentAction !== "void_invoice" ? <label className={`staff-field ${hasFieldIssue("adjustment-amount") ? "has-field-issue" : ""}`}>Amount<span className="firing-billing-money-input"><span aria-hidden="true">$</span><input id="firing-field-adjustment-amount" inputMode="decimal" value={adjustmentAmount} onChange={(event) => { setAdjustmentAmount(event.target.value); clearFieldIssue("adjustment-amount"); }} aria-invalid={hasFieldIssue("adjustment-amount")} aria-describedby={hasFieldIssue("adjustment-amount") ? "firing-field-adjustment-amount-hint" : undefined} /></span>{hasFieldIssue("adjustment-amount") ? <span id="firing-field-adjustment-amount-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label> : null}
+                    <label className={`staff-field ${hasFieldIssue("adjustment-reason") ? "has-field-issue" : ""}`}>Adjustment note<input id="firing-field-adjustment-reason" value={adjustmentReason} onChange={(event) => { setAdjustmentReason(event.target.value); clearFieldIssue("adjustment-reason"); }} maxLength={500} aria-invalid={hasFieldIssue("adjustment-reason")} aria-describedby={hasFieldIssue("adjustment-reason") ? "firing-field-adjustment-reason-hint" : undefined} />{hasFieldIssue("adjustment-reason") ? <span id="firing-field-adjustment-reason-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label>
                   </div>
-                  <div className="staff-module-grid">
-                    <label className="staff-field">Note for the artist<textarea value={adjustmentArtistNote} onChange={(event) => setAdjustmentArtistNote(event.target.value)} rows={2} maxLength={1200} /></label>
-                    <label className="staff-field">Private studio note<textarea value={adjustmentPrivateNote} onChange={(event) => setAdjustmentPrivateNote(event.target.value)} rows={2} maxLength={2000} /></label>
+                  <div className={__bundleClass_8}>
+                    <label className={__bundleClass_10}>Note for the artist<textarea value={adjustmentArtistNote} onChange={(event) => setAdjustmentArtistNote(event.target.value)} rows={2} maxLength={1200} /></label>
+                    <label className={__bundleClass_10}>Private studio note<textarea value={adjustmentPrivateNote} onChange={(event) => setAdjustmentPrivateNote(event.target.value)} rows={2} maxLength={2000} /></label>
                   </div>
-                  <label className={`firing-billing-confirm ${hasFieldIssue("adjustment-confirmation") ? "has-field-issue" : ""}`}><input id="firing-field-adjustment-confirmation" type="checkbox" checked={confirmedAdjustment} onChange={(event) => { setConfirmedAdjustment(event.target.checked); clearFieldIssue("adjustment-confirmation"); }} aria-invalid={hasFieldIssue("adjustment-confirmation")} aria-describedby={hasFieldIssue("adjustment-confirmation") ? "firing-field-adjustment-confirmation-hint" : undefined} />I checked the ticket and amount. Apply this change.{hasFieldIssue("adjustment-confirmation") ? <span id="firing-field-adjustment-confirmation-hint" className="field-issue-hint">{fieldIssue?.message}</span> : null}</label>
-                  <button className="btn btn-secondary" type="button" disabled={Boolean(busy) || !confirmedAdjustment} onClick={() => void adjust()}>{busy === "adjust" ? "Applying change…" : "Apply change"}</button>
+                  <label className={`firing-billing-confirm ${hasFieldIssue("adjustment-confirmation") ? "has-field-issue" : ""}`}><input id="firing-field-adjustment-confirmation" type="checkbox" checked={confirmedAdjustment} onChange={(event) => { setConfirmedAdjustment(event.target.checked); clearFieldIssue("adjustment-confirmation"); }} aria-invalid={hasFieldIssue("adjustment-confirmation")} aria-describedby={hasFieldIssue("adjustment-confirmation") ? "firing-field-adjustment-confirmation-hint" : undefined} />I checked the ticket and amount. Apply this change.{hasFieldIssue("adjustment-confirmation") ? <span id="firing-field-adjustment-confirmation-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label>
+                  <button className={__bundleClass_6} type="button" disabled={Boolean(busy) || !confirmedAdjustment} onClick={() => void adjust()}>{busy === "adjust" ? "Applying change…" : "Apply change"}</button>
                 </details>
               ) : null}
 
               {canMarkPickedUp ? (
-                <div className="firing-billing-recovery">
+                <div className={__bundleClass_7}>
                   {PAYMENT_OPEN_STATUSES.has(selected.billingStatus) ? <div className="staff-note staff-note-warn"><strong>Payment is still open.</strong> Pickup does not collect payment automatically.</div> : null}
-                  <button className="btn btn-secondary" type="button" disabled={Boolean(busy)} onClick={() => void markPickedUp()}>{busy === "picked-up" ? "Marking picked up…" : "Mark work picked up"}</button>
+                  <button className={__bundleClass_6} type="button" disabled={Boolean(busy)} onClick={() => void markPickedUp()}>{busy === "picked-up" ? "Marking picked up…" : "Mark work picked up"}</button>
                 </div>
               ) : selected.status === "picked_up" ? (
-                <div className="staff-note"><strong>Picked up.</strong> The work has left the studio. Billing can still be corrected independently if needed.</div>
+                <div className={__bundleClass_4}><strong>Picked up.</strong> The work has left the studio. Billing can still be corrected independently if needed.</div>
               ) : null}
 
-              {selected.status === "ready_for_pickup" && selected.noticeStatus && selected.noticeStatus !== "not_queued" ? <div className="staff-actions-row"><button className="btn btn-ghost" type="button" disabled={Boolean(busy)} onClick={() => void resend()}>{busy === "resend" ? "Sending…" : "Resend pickup details"}</button></div> : null}
+              {selected.status === "ready_for_pickup" && selected.noticeStatus && selected.noticeStatus !== "not_queued" ? <div className="staff-actions-row"><button className={__bundleClass_5} type="button" disabled={Boolean(busy)} onClick={() => void resend()}>{busy === "resend" ? "Sending…" : "Resend pickup details"}</button></div> : null}
 
               <div className="staff-actions-row firing-ticket-footer" role="group" aria-label="Ticket actions">
-                <button className="btn btn-ghost" type="button" disabled={Boolean(busy) || Boolean(selected.stripeInvoiceId) || ["paid", "partially_refunded", "refunded", "picked_up"].includes(selected.billingStatus) || selected.status === "picked_up"} onClick={() => void deleteTicket()}>
+                <button className={__bundleClass_5} type="button" disabled={Boolean(busy) || Boolean(selected.stripeInvoiceId) || ["paid", "partially_refunded", "refunded", "picked_up"].includes(selected.billingStatus) || selected.status === "picked_up"} onClick={() => void deleteTicket()}>
                   {busy === "delete-ticket" ? "Deleting…" : "Delete ticket"}
                 </button>
                 {selected.stripeInvoiceId || ["paid", "partially_refunded", "refunded"].includes(selected.billingStatus) ? <span className="staff-mini">Invoices and payment history must be retained.</span> : null}
@@ -1168,14 +1180,14 @@ export default function FiringPickupBillingModule({
 
               <details className="firing-billing-reference">
                 <summary>Ticket details</summary>
-                {selected.firingType || selected.firingId ? <div className="staff-note"><strong>Firing</strong><br />{selected.firingType || "Type not recorded"}{selected.firingId ? ` · ${selected.firingId}` : ""}</div> : null}
-                {selected.manualFiring?.date ? <div className="staff-note"><strong>Studio firing record</strong><br />{selected.manualFiring.date} · {selected.manualFiring.kiln}<br />Verified by: {selected.manualFiring.evidence}</div> : null}
-                {selected.privateStaffNote ? <div className="staff-note"><strong>Staff note</strong><br />{selected.privateStaffNote}</div> : null}
+                {selected.firingType || selected.firingId ? <div className={__bundleClass_4}><strong>Firing</strong><br />{selected.firingType || "Type not recorded"}{selected.firingId ? ` · ${selected.firingId}` : ""}</div> : null}
+                {selected.manualFiring?.date ? <div className={__bundleClass_4}><strong>Studio firing record</strong><br />{selected.manualFiring.date} · {selected.manualFiring.kiln}<br />Verified by: {selected.manualFiring.evidence}</div> : null}
+                {selected.privateStaffNote ? <div className={__bundleClass_4}><strong>Staff note</strong><br />{selected.privateStaffNote}</div> : null}
                 <div className="staff-module-grid firing-billing-facts">
-                  <div className="staff-note"><strong>Artist’s estimate</strong><br />{selected.estimatedSpace ?? "No estimate"} {selected.estimatedPrice ? `· ${selected.estimatedPrice}` : ""}</div>
-                  <div className="staff-note"><strong>Final billing</strong><br />{formatMoney(selected.finalChargeCents)} {selected.refundedAmountCents > 0 ? `· ${formatMoney(selected.refundedAmountCents)} refunded` : ""}</div>
+                  <div className={__bundleClass_4}><strong>Artist’s estimate</strong><br />{selected.estimatedSpace ?? "No estimate"} {selected.estimatedPrice ? `· ${selected.estimatedPrice}` : ""}</div>
+                  <div className={__bundleClass_4}><strong>Final billing</strong><br />{formatMoney(selected.finalChargeCents)} {selected.refundedAmountCents > 0 ? `· ${formatMoney(selected.refundedAmountCents)} refunded` : ""}</div>
                 </div>
-                {selected.artistNote ? <div className="staff-note"><strong>Artist note</strong><br />{selected.artistNote}</div> : null}
+                {selected.artistNote ? <div className={__bundleClass_4}><strong>Artist note</strong><br />{selected.artistNote}</div> : null}
               </details>
             </>
           )}

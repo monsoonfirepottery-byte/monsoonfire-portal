@@ -32,6 +32,12 @@ import {
   type ProfileAvatarMime,
   validateAvatarSignature,
 } from "../lib/profileAvatars";
+const __bundleClass_0 = "summary-label";
+const __bundleClass_1 = "alert form-alert";
+const __bundleClass_2 = "notice form-alert";
+const __bundleClass_3 = "summary-value";
+const __bundleClass_4 = "notification-group";
+
 
 type ImportMetaEnvShape = {
   VITE_USE_EMULATORS?: string;
@@ -719,7 +725,7 @@ export default function ProfileView({
               }}
             />
             <div className="avatar-picklist">
-              <span className="summary-label">Choose from presets</span>
+              <span className={__bundleClass_0}>Choose from presets</span>
               <div className="avatar-preset-grid">
                 {PROFILE_AVATAR_OPTIONS.map((option) => (
                   <button
@@ -738,39 +744,39 @@ export default function ProfileView({
                 ))}
               </div>
             </div>
-            {avatarError ? <div className="alert form-alert">{avatarError}</div> : null}
-            {avatarStatus ? <div className="notice form-alert">{avatarStatus}</div> : null}
+            {avatarError ? <div className={__bundleClass_1}>{avatarError}</div> : null}
+            {avatarStatus ? <div className={__bundleClass_2}>{avatarStatus}</div> : null}
           </div>
           <div className="summary-separator" aria-hidden="true" />
           <div className="card-title">Account summary</div>
           <div className="summary-row">
             <div>
-              <div className="summary-label">Display name</div>
-              <div className="summary-value">{displayNameInput || "Member"}</div>
+              <div className={__bundleClass_0}>Display name</div>
+              <div className={__bundleClass_3}>{displayNameInput || "Member"}</div>
             </div>
             <div>
-              <div className="summary-label">Email</div>
-              <div className="summary-value">{user.email}</div>
-            </div>
-          </div>
-          <div className="summary-row">
-            <div>
-              <div className="summary-label">Member since</div>
-              <div className="summary-value">{membershipSince ? formatDateTime(membershipSince) : "—"}</div>
-            </div>
-            <div>
-              <div className="summary-label">Membership tier</div>
-              <div className="summary-value">{membershipTier}</div>
+              <div className={__bundleClass_0}>Email</div>
+              <div className={__bundleClass_3}>{user.email}</div>
             </div>
           </div>
           <div className="summary-row">
             <div>
-              <div className="summary-label">Pieces tracked</div>
-              <div className="summary-value">{totalPieces}</div>
+              <div className={__bundleClass_0}>Member since</div>
+              <div className={__bundleClass_3}>{membershipSince ? formatDateTime(membershipSince) : "—"}</div>
             </div>
             <div>
-              <div className="summary-label">Success rate</div>
-              <div className="summary-value">{successRate !== null ? `${successRate}%` : "—"}</div>
+              <div className={__bundleClass_0}>Membership tier</div>
+              <div className={__bundleClass_3}>{membershipTier}</div>
+            </div>
+          </div>
+          <div className="summary-row">
+            <div>
+              <div className={__bundleClass_0}>Pieces tracked</div>
+              <div className={__bundleClass_3}>{totalPieces}</div>
+            </div>
+            <div>
+              <div className={__bundleClass_0}>Success rate</div>
+              <div className={__bundleClass_3}>{successRate !== null ? `${successRate}%` : "—"}</div>
             </div>
           </div>
           <div className="membership-meta">
@@ -831,7 +837,7 @@ export default function ProfileView({
               </span>
             </div>
             <div className="notification-toggles">
-              <span className="summary-label">Notification preferences</span>
+              <span className={__bundleClass_0}>Notification preferences</span>
               {NOTIFICATION_PREFS.map((pref) => (
                 <label key={pref.key} className="toggle">
                   <input
@@ -843,12 +849,12 @@ export default function ProfileView({
                 </label>
               ))}
             </div>
-            {themeError ? <div className="alert form-alert">{themeError}</div> : null}
-            {themeStatus ? <div className="notice form-alert">{themeStatus}</div> : null}
-            {motionError ? <div className="alert form-alert">{motionError}</div> : null}
-            {motionStatus ? <div className="notice form-alert">{motionStatus}</div> : null}
-            {formError ? <div className="alert form-alert">{formError}</div> : null}
-            {formStatus ? <div className="notice form-alert">{formStatus}</div> : null}
+            {themeError ? <div className={__bundleClass_1}>{themeError}</div> : null}
+            {themeStatus ? <div className={__bundleClass_2}>{themeStatus}</div> : null}
+            {motionError ? <div className={__bundleClass_1}>{motionError}</div> : null}
+            {motionStatus ? <div className={__bundleClass_2}>{motionStatus}</div> : null}
+            {formError ? <div className={__bundleClass_1}>{formError}</div> : null}
+            {formStatus ? <div className={__bundleClass_2}>{formStatus}</div> : null}
             <button type="submit" className="btn btn-primary" disabled={isSaving}>
               {isSaving ? "Saving..." : "Save profile"}
             </button>
@@ -872,8 +878,8 @@ export default function ProfileView({
               <span>Enable notifications</span>
             </label>
 
-            <div className="notification-group">
-              <div className="summary-label">Channels</div>
+            <div className={__bundleClass_4}>
+              <div className={__bundleClass_0}>Channels</div>
               {NOTIFICATION_CHANNEL_OPTIONS.map((option) => {
                 const disabled = "disabled" in option && option.disabled === true;
                 return (
@@ -890,8 +896,8 @@ export default function ProfileView({
               })}
             </div>
 
-            <div className="notification-group">
-              <div className="summary-label">Reservations & pickup</div>
+            <div className={__bundleClass_4}>
+              <div className={__bundleClass_0}>Reservations & pickup</div>
               <label className="toggle">
                 <input
                   type="checkbox"
@@ -912,8 +918,8 @@ export default function ProfileView({
               ))}
             </div>
 
-            <div className="notification-group">
-              <div className="summary-label">Studio updates</div>
+            <div className={__bundleClass_4}>
+              <div className={__bundleClass_0}>Studio updates</div>
               {STUDIO_NOTIFICATION_EVENT_OPTIONS.map((option) => (
                 <label key={option.key} className="toggle">
                   <input
@@ -926,8 +932,8 @@ export default function ProfileView({
               ))}
             </div>
 
-            <div className="notification-group">
-              <div className="summary-label">Quiet hours</div>
+            <div className={__bundleClass_4}>
+              <div className={__bundleClass_0}>Quiet hours</div>
               <label className="toggle">
                 <input
                   type="checkbox"
@@ -964,8 +970,8 @@ export default function ProfileView({
               </label>
             </div>
 
-            <div className="notification-group">
-              <div className="summary-label">Delivery timing</div>
+            <div className={__bundleClass_4}>
+              <div className={__bundleClass_0}>Delivery timing</div>
               <label>
                 Frequency
                 <select
@@ -995,8 +1001,8 @@ export default function ProfileView({
               ) : null}
             </div>
 
-            {notificationError ? <div className="alert form-alert">{notificationError}</div> : null}
-            {notificationStatus ? <div className="notice form-alert">{notificationStatus}</div> : null}
+            {notificationError ? <div className={__bundleClass_1}>{notificationError}</div> : null}
+            {notificationStatus ? <div className={__bundleClass_2}>{notificationStatus}</div> : null}
             <button
               type="button"
               className="btn btn-primary"
@@ -1015,7 +1021,7 @@ export default function ProfileView({
           {profileError ? <div className="alert">{profileError}</div> : null}
           <div className="history-section">
             <div className="history-meta">
-              <div className="summary-label">Kiln preferences</div>
+              <div className={__bundleClass_0}>Kiln preferences</div>
               <div className="chips">
                 {preferredKilns.length === 0 ? (
                   <span className="chip subtle">No preferred kilns yet</span>
@@ -1029,7 +1035,7 @@ export default function ProfileView({
               </div>
             </div>
             <div className="history-meta">
-              <div className="summary-label">Studio notes</div>
+              <div className={__bundleClass_0}>Studio notes</div>
               <p className="studio-notes">{profileDoc?.studioNotes ?? "Studio has no notes yet."}</p>
             </div>
           </div>
@@ -1045,7 +1051,7 @@ export default function ProfileView({
                   <article key={batch.id} className="history-row">
                     <div>
                       <strong>{batch.title ?? "Untitled batch"}</strong>
-                      <div className="summary-label">
+                      <div className={__bundleClass_0}>
                         {typeof batch.kilnId === "string" ? `Kiln ${batch.kilnId}` : "Unassigned"}
                       </div>
                     </div>

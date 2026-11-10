@@ -1,5 +1,9 @@
 import "./StudioResourcesView.css";
 import { STUDIO_BOOKINGS_PAUSED } from "../utils/reservationsPaths";
+const __bundleClass_0 = "studio-step-button";
+const __bundleClass_1 = "studio-step-title";
+const __bundleClass_2 = "studio-step-copy";
+
 
 type Props = {
   onOpenReservations: () => void;
@@ -31,33 +35,33 @@ export default function StudioResourcesView({
             If you feel a little lost, start with your pieces. Everything else supports that work.
           </p>
           <div className="studio-resources-steps">
-            {!STUDIO_BOOKINGS_PAUSED ? <button className="studio-step-button" onClick={onOpenReservations}>
-              <div className="studio-step-title">Reservations</div>
-              <div className="studio-step-copy">
+            {!STUDIO_BOOKINGS_PAUSED ? <button className={__bundleClass_0} onClick={onOpenReservations}>
+              <div className={__bundleClass_1}>Reservations</div>
+              <div className={__bundleClass_2}>
                 Book throwing, handbuilding, glazing, kitchen, dropoff, or community time through the shared reservation board.
               </div>
             </button> : null}
-            <button className="studio-step-button" onClick={onOpenPieces}>
-              <div className="studio-step-title">My Pieces</div>
-              <div className="studio-step-copy">
+            <button className={__bundleClass_0} onClick={onOpenPieces}>
+              <div className={__bundleClass_1}>My Pieces</div>
+              <div className={__bundleClass_2}>
                 Track wares, add notes, and keep the studio queue tidy.
               </div>
             </button>
-            <button className="studio-step-button" onClick={onOpenMaterials}>
-              <div className="studio-step-title">Store</div>
-              <div className="studio-step-copy">
+            <button className={__bundleClass_0} onClick={onOpenMaterials}>
+              <div className={__bundleClass_1}>Store</div>
+              <div className={__bundleClass_2}>
                 Stock up on clay and tools so momentum doesn’t stall.
               </div>
             </button>
-            <button className="studio-step-button" onClick={onOpenMembership}>
-              <div className="studio-step-title">Membership</div>
-              <div className="studio-step-copy">
+            <button className={__bundleClass_0} onClick={onOpenMembership}>
+              <div className={__bundleClass_1}>Membership</div>
+              <div className={__bundleClass_2}>
                 See what your plan includes and what’s coming next.
               </div>
             </button>
-            <button className="studio-step-button" onClick={onOpenProfile}>
-              <div className="studio-step-title">Profile &amp; Billing</div>
-              <div className="studio-step-copy">
+            <button className={__bundleClass_0} onClick={onOpenProfile}>
+              <div className={__bundleClass_1}>Profile &amp; Billing</div>
+              <div className={__bundleClass_2}>
                 Manage account details and open billing from your profile.
               </div>
             </button>

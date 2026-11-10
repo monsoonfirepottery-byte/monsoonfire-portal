@@ -16,6 +16,11 @@ import {
 } from "../../lib/studioReservations";
 import "../StudioReservationsView.css";
 import "./StudioReservationsModule.css";
+const __bundleClass_0 = "studio-detail-button-row";
+const __bundleClass_1 = "card card-3d studio-reservations-admin-card";
+const __bundleClass_2 = "studio-detail-field";
+const __bundleClass_3 = "studio-reservations-admin-inline";
+
 
 type Props = {
   user: User;
@@ -315,7 +320,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
               </button>
             ))}
           </div>
-          <div className="studio-detail-button-row">
+          <div className={__bundleClass_0}>
             {onOpenWareCheckIn ? (
               <button className="btn btn-ghost" type="button" onClick={onOpenWareCheckIn}>
                 Open ware check-in
@@ -328,7 +333,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
         </div>
 
         <div className="studio-reservations-admin-grid">
-          <div className="card card-3d studio-reservations-admin-card">
+          <div className={__bundleClass_1}>
             <div className="card-title">Reservations in view</div>
             <div className="studio-mine-list">
               {visibleReservations.length === 0 ? (
@@ -353,7 +358,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                             ? `Assigned: ${assignedResourceIds.join(", ")}`
                             : `${reservation.quantity} ${reservation.quantity === 1 ? "spot" : "spots"}`}
                         </div>
-                        <div className="studio-detail-button-row">
+                        <div className={__bundleClass_0}>
                           {reservation.status === "waitlisted" ? (
                             <button
                               className="btn btn-primary"
@@ -393,10 +398,10 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
             </div>
           </div>
 
-          <div className="card card-3d studio-reservations-admin-card">
+          <div className={__bundleClass_1}>
             <div className="card-title">Space settings</div>
             {inventoryBusy ? <div className="studio-day-empty">Loading space inventory...</div> : null}
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Load existing space</span>
               <select
                 value={spaceEditor.id}
@@ -412,26 +417,26 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                 ))}
               </select>
             </label>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Space id</span>
               <input value={spaceEditor.id} onChange={(event) => setSpaceEditor((current) => ({ ...current, id: event.target.value }))} />
             </label>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Name</span>
               <input value={spaceEditor.name} onChange={(event) => setSpaceEditor((current) => ({ ...current, name: event.target.value }))} />
             </label>
-            <div className="studio-reservations-admin-inline">
-              <label className="studio-detail-field">
+            <div className={__bundleClass_3}>
+              <label className={__bundleClass_2}>
                 <span>Slug</span>
                 <input value={spaceEditor.slug} onChange={(event) => setSpaceEditor((current) => ({ ...current, slug: event.target.value }))} />
               </label>
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>Category</span>
                 <input value={spaceEditor.category} onChange={(event) => setSpaceEditor((current) => ({ ...current, category: event.target.value }))} />
               </label>
             </div>
-            <div className="studio-reservations-admin-inline">
-              <label className="studio-detail-field">
+            <div className={__bundleClass_3}>
+              <label className={__bundleClass_2}>
                 <span>Booking mode</span>
                 <select
                   value={spaceEditor.bookingMode}
@@ -446,7 +451,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                   <option value="resource">Named resources</option>
                 </select>
               </label>
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>Capacity</span>
                 <input
                   value={spaceEditor.capacity}
@@ -455,38 +460,38 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                 />
               </label>
             </div>
-            <div className="studio-reservations-admin-inline">
-              <label className="studio-detail-field">
+            <div className={__bundleClass_3}>
+              <label className={__bundleClass_2}>
                 <span>Window start</span>
                 <input value={spaceEditor.windowStart} onChange={(event) => setSpaceEditor((current) => ({ ...current, windowStart: event.target.value }))} />
               </label>
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>Window end</span>
                 <input value={spaceEditor.windowEnd} onChange={(event) => setSpaceEditor((current) => ({ ...current, windowEnd: event.target.value }))} />
               </label>
             </div>
-            <div className="studio-reservations-admin-inline">
-              <label className="studio-detail-field">
+            <div className={__bundleClass_3}>
+              <label className={__bundleClass_2}>
                 <span>Slot minutes</span>
                 <input value={spaceEditor.duration} onChange={(event) => setSpaceEditor((current) => ({ ...current, duration: event.target.value }))} />
               </label>
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>Increment minutes</span>
                 <input value={spaceEditor.increment} onChange={(event) => setSpaceEditor((current) => ({ ...current, increment: event.target.value }))} />
               </label>
             </div>
-            <div className="studio-reservations-admin-inline">
-              <label className="studio-detail-field">
+            <div className={__bundleClass_3}>
+              <label className={__bundleClass_2}>
                 <span>Lead time</span>
                 <input value={spaceEditor.leadTime} onChange={(event) => setSpaceEditor((current) => ({ ...current, leadTime: event.target.value }))} />
               </label>
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>Advance days</span>
                 <input value={spaceEditor.advanceDays} onChange={(event) => setSpaceEditor((current) => ({ ...current, advanceDays: event.target.value }))} />
               </label>
             </div>
             {spaceEditor.bookingMode === "resource" ? (
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>Resources</span>
                 <textarea
                   rows={5}
@@ -496,15 +501,15 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                 />
               </label>
             ) : null}
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Description</span>
               <textarea rows={3} value={spaceEditor.description} onChange={(event) => setSpaceEditor((current) => ({ ...current, description: event.target.value }))} />
             </label>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Member help text</span>
               <textarea rows={2} value={spaceEditor.memberHelpText} onChange={(event) => setSpaceEditor((current) => ({ ...current, memberHelpText: event.target.value }))} />
             </label>
-            <div className="studio-detail-button-row">
+            <div className={__bundleClass_0}>
               <button className="btn btn-primary" type="button" onClick={() => void handleSaveSpace()} disabled={busy === "space"}>
                 {busy === "space" ? "Saving..." : "Save space"}
               </button>
@@ -519,9 +524,9 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
             </div>
           </div>
 
-          <div className="card card-3d studio-reservations-admin-card">
+          <div className={__bundleClass_1}>
             <div className="card-title">Calendar blocks</div>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Type</span>
               <select
                 value={blockEditor.type}
@@ -537,11 +542,11 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                 <option value="private">Private hold</option>
               </select>
             </label>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Title</span>
               <input value={blockEditor.title} onChange={(event) => setBlockEditor((current) => ({ ...current, title: event.target.value }))} />
             </label>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Space</span>
               <select
                 value={blockEditor.spaceId}
@@ -555,8 +560,8 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                 ))}
               </select>
             </label>
-            <div className="studio-reservations-admin-inline">
-              <label className="studio-detail-field">
+            <div className={__bundleClass_3}>
+              <label className={__bundleClass_2}>
                 <span>Start</span>
                 <input
                   type="datetime-local"
@@ -564,7 +569,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                   onChange={(event) => setBlockEditor((current) => ({ ...current, startAtLocal: event.target.value }))}
                 />
               </label>
-              <label className="studio-detail-field">
+              <label className={__bundleClass_2}>
                 <span>End</span>
                 <input
                   type="datetime-local"
@@ -573,7 +578,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
                 />
               </label>
             </div>
-            <label className="studio-detail-field">
+            <label className={__bundleClass_2}>
               <span>Description</span>
               <textarea rows={3} value={blockEditor.description} onChange={(event) => setBlockEditor((current) => ({ ...current, description: event.target.value }))} />
             </label>
@@ -582,7 +587,7 @@ export default function StudioReservationsModule({ user, adminToken, onOpenWareC
             </button>
           </div>
 
-          <div className="card card-3d studio-reservations-admin-card">
+          <div className={__bundleClass_1}>
             <div className="card-title">Calendar feed snapshot</div>
             <div className="studio-mine-list">
               {entries.filter((entry) => !STUDIO_BOOKINGS_PAUSED || entry.kind !== "availability").slice(0, 12).map((entry) => (

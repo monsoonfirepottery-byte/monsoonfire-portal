@@ -1,4 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "staff-kpi";
+const __bundleClass_2 = "staff-actions-row";
+const __bundleClass_3 = "btn btn-ghost btn-small";
+
 
 type RunAction = (key: string, fn: () => Promise<void>) => Promise<void>;
 
@@ -128,7 +133,7 @@ export default function EventsModule(props: Props) {
       <div className="card-title-row">
         <div className="card-title">Events</div>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(props.busy)}
           onClick={() =>
             void props.run("refreshEvents", async () => {
@@ -160,13 +165,13 @@ export default function EventsModule(props: Props) {
       ) : null}
       <div className="staff-subtitle">Workshop programming intelligence</div>
       <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Technique clusters</span><strong>{props.workshopProgrammingKpis.totalClusters}</strong></div>
-        <div className="staff-kpi"><span>High pressure</span><strong>{props.workshopProgrammingKpis.highPressure}</strong></div>
-        <div className="staff-kpi"><span>Waitlist pressure</span><strong>{props.workshopProgrammingKpis.totalWaitlist}</strong></div>
-        <div className="staff-kpi"><span>Demand score</span><strong>{props.workshopProgrammingKpis.totalDemandScore}</strong></div>
-        <div className="staff-kpi"><span>No upcoming coverage</span><strong>{props.workshopProgrammingKpis.noUpcomingCoverage}</strong></div>
+        <div className={__bundleClass_1}><span>Technique clusters</span><strong>{props.workshopProgrammingKpis.totalClusters}</strong></div>
+        <div className={__bundleClass_1}><span>High pressure</span><strong>{props.workshopProgrammingKpis.highPressure}</strong></div>
+        <div className={__bundleClass_1}><span>Waitlist pressure</span><strong>{props.workshopProgrammingKpis.totalWaitlist}</strong></div>
+        <div className={__bundleClass_1}><span>Demand score</span><strong>{props.workshopProgrammingKpis.totalDemandScore}</strong></div>
+        <div className={__bundleClass_1}><span>No upcoming coverage</span><strong>{props.workshopProgrammingKpis.noUpcomingCoverage}</strong></div>
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <button className="btn btn-ghost" onClick={props.handleExportWorkshopProgrammingBrief}>
           Export programming brief
         </button>
@@ -196,17 +201,17 @@ export default function EventsModule(props: Props) {
         </table>
       </div>
       <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Total events</span><strong>{props.eventKpis.total}</strong></div>
-        <div className="staff-kpi"><span>Upcoming</span><strong>{props.eventKpis.upcoming}</strong></div>
-        <div className="staff-kpi"><span>Published</span><strong>{props.eventKpis.published}</strong></div>
-        <div className="staff-kpi"><span>Needs review</span><strong>{props.eventKpis.reviewRequired}</strong></div>
-        <div className="staff-kpi"><span>Open seats</span><strong>{props.eventKpis.openSeats}</strong></div>
-        <div className="staff-kpi"><span>Waitlisted</span><strong>{props.eventKpis.waitlisted}</strong></div>
-        <div className="staff-kpi"><span>Signups loaded</span><strong>{props.filteredSignups.length}</strong></div>
-        <div className="staff-kpi"><span>Checked in</span><strong>{props.filteredSignups.filter((signup) => signup.status === "checked_in").length}</strong></div>
-        <div className="staff-kpi"><span>Paid</span><strong>{props.filteredSignups.filter((signup) => signup.paymentStatus === "paid").length}</strong></div>
+        <div className={__bundleClass_1}><span>Total events</span><strong>{props.eventKpis.total}</strong></div>
+        <div className={__bundleClass_1}><span>Upcoming</span><strong>{props.eventKpis.upcoming}</strong></div>
+        <div className={__bundleClass_1}><span>Published</span><strong>{props.eventKpis.published}</strong></div>
+        <div className={__bundleClass_1}><span>Needs review</span><strong>{props.eventKpis.reviewRequired}</strong></div>
+        <div className={__bundleClass_1}><span>Open seats</span><strong>{props.eventKpis.openSeats}</strong></div>
+        <div className={__bundleClass_1}><span>Waitlisted</span><strong>{props.eventKpis.waitlisted}</strong></div>
+        <div className={__bundleClass_1}><span>Signups loaded</span><strong>{props.filteredSignups.length}</strong></div>
+        <div className={__bundleClass_1}><span>Checked in</span><strong>{props.filteredSignups.filter((signup) => signup.status === "checked_in").length}</strong></div>
+        <div className={__bundleClass_1}><span>Paid</span><strong>{props.filteredSignups.filter((signup) => signup.paymentStatus === "paid").length}</strong></div>
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <label className="staff-field staff-field-flex-2">
           Quick title
           <input
@@ -238,14 +243,14 @@ export default function EventsModule(props: Props) {
           />
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(props.busy)}
           onClick={() => void props.run("createQuickEvent", props.createQuickEvent)}
         >
           Create quick event
         </button>
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <label className="staff-field staff-field-flex-1">
           Publish override reason (optional)
           <input
@@ -255,14 +260,14 @@ export default function EventsModule(props: Props) {
           />
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(props.busy) || !props.selectedEvent || props.selectedEvent.status === "published"}
           onClick={() => void props.run("publishSelectedEvent", props.publishSelectedEvent)}
         >
           Publish selected
         </button>
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <label className="staff-field staff-field-flex-1">
           Status change reason {props.selectedEvent?.status !== "cancelled" ? "(required for cancel)" : "(optional)"}
           <input
@@ -272,14 +277,14 @@ export default function EventsModule(props: Props) {
           />
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(props.busy) || !props.selectedEvent || props.selectedEvent.status === "draft"}
           onClick={() => void props.run("setEventDraft", async () => props.setSelectedEventStatus("draft"))}
         >
           Move to draft
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(props.busy) || !props.selectedEvent || props.selectedEvent.status === "cancelled"}
           onClick={() => void props.run("setEventCancelled", async () => props.setSelectedEventStatus("cancelled"))}
         >
@@ -291,7 +296,7 @@ export default function EventsModule(props: Props) {
       </div>
       <div className="staff-module-grid">
         <div className="staff-column">
-          <div className="staff-actions-row">
+          <div className={__bundleClass_2}>
             <input
               className="staff-member-search"
               placeholder="Search events by title, status, or location"
@@ -324,7 +329,7 @@ export default function EventsModule(props: Props) {
                       <td>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_3}
                           aria-pressed={props.selectedEventId === eventRow.id}
                           onClick={() => props.setSelectedEventId(eventRow.id)}
                         >
@@ -367,7 +372,7 @@ export default function EventsModule(props: Props) {
       </div>
       <div className="staff-module-grid">
         <div className="staff-column">
-          <div className="staff-actions-row">
+          <div className={__bundleClass_2}>
             <input
               className="staff-member-search"
               placeholder="Search signups by name, email, or UID"
@@ -400,7 +405,7 @@ export default function EventsModule(props: Props) {
                       <td>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_3}
                           aria-pressed={props.selectedSignupId === signup.id}
                           onClick={() => props.setSelectedSignupId(signup.id)}
                         >
@@ -413,7 +418,7 @@ export default function EventsModule(props: Props) {
                       <td>{signup.paymentStatus}</td>
                       <td>
                         <button
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_3}
                           disabled={Boolean(props.busy) || signup.status === "checked_in" || !props.selectedEventId}
                             onClick={() =>
                               void props.run(`checkin-${signup.id}`, async () => {

@@ -145,6 +145,28 @@ import { contactEmailAddress } from "./staff/contactEmail";
 import { firingTicketContacts } from "./staff/firingTicketContacts";
 import type { FiringTicket, QueueResponse } from "./staff/FiringPickupBillingModule";
 import "./staff/staffDeskGuide.css";
+const __bundleClass_0 = "staff-field";
+const __bundleClass_1 = "card-title-row";
+const __bundleClass_2 = "btn btn-secondary";
+const __bundleClass_3 = "staff-actions-row";
+const __bundleClass_4 = "staff-note";
+const __bundleClass_5 = "staff-note staff-note-error";
+const __bundleClass_6 = "staff-table-wrap";
+const __bundleClass_7 = "btn btn-ghost";
+const __bundleClass_8 = "btn btn-primary";
+const __bundleClass_9 = "staff-troubleshooting";
+const __bundleClass_10 = "staff-subtitle";
+const __bundleClass_11 = "staff-module-grid";
+const __bundleClass_12 = "staff-kpi-grid";
+const __bundleClass_13 = "staff-kpi";
+const __bundleClass_14 = "card staff-console-card";
+const __bundleClass_15 = "staff-column";
+const __bundleClass_16 = "staff-member-role-filter";
+const __bundleClass_17 = "btn btn-ghost btn-small";
+const __bundleClass_18 = "staff-mini";
+const __bundleClass_19 = "pill staff-pill-margin-right";
+const __bundleClass_20 = "staff-actions-row staff-actions-row--mt8";
+
 
 type Props = {
   user: User;
@@ -2657,7 +2679,7 @@ export default function StaffView({
     key: ReservationNotificationPolicyBooleanKey,
     label: string
   ) => (
-    <label key={key} className="staff-field">
+    <label key={key} className={__bundleClass_0}>
       <span>{label}</span>
       <input
         type="checkbox"
@@ -2677,7 +2699,7 @@ export default function StaffView({
     min: number,
     max: number
   ) => (
-    <label key={key} className="staff-field">
+    <label key={key} className={__bundleClass_0}>
       <span>{label}</span>
       <input
         type="number"
@@ -7029,11 +7051,11 @@ export default function StaffView({
 
   const membersContent = (
     <section className="card staff-console-card staff-contacts-surface">
-      <div className="card-title-row">
+      <div className={__bundleClass_1}>
         <h1 className="card-title">Contacts</h1>
         <button
           type="button"
-          className="btn btn-secondary"
+          className={__bundleClass_2}
           disabled={Boolean(busy)}
           onClick={() => void run("refreshMembers", loadUsers)}
         >
@@ -7042,7 +7064,7 @@ export default function StaffView({
       </div>
       <div className="staff-contacts-grid" data-detail-open={contactDetailOpen}>
         <div className="staff-column staff-contacts-list">
-          <div className="staff-actions-row">
+          <div className={__bundleClass_3}>
             <input
               id="staff-client-search"
               aria-label="Search contacts by name or email"
@@ -7052,10 +7074,10 @@ export default function StaffView({
               onChange={(event) => setMemberSearch(event.target.value)}
             />
           </div>
-          <p className="staff-note">Search is limited to available contacts. Enter an email address to start a draft even if it is not listed.</p>
-          {contactDirectoryNotice ? <p className="staff-note staff-note-error" role="status">{contactDirectoryNotice}</p> : null}
-          {contactEmailAddress(memberSearch) ? <a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(memberSearch)!) }`}>Email this address</a> : null}
-          <div className="staff-table-wrap">
+          <p className={__bundleClass_4}>Search is limited to available contacts. Enter an email address to start a draft even if it is not listed.</p>
+          {contactDirectoryNotice ? <p className={__bundleClass_5} role="status">{contactDirectoryNotice}</p> : null}
+          {contactEmailAddress(memberSearch) ? <a className={__bundleClass_2} href={`mailto:${encodeURIComponent(contactEmailAddress(memberSearch)!) }`}>Email this address</a> : null}
+          <div className={__bundleClass_6}>
             <table className="staff-table staff-client-directory-table">
               <thead>
                 <tr>
@@ -7084,30 +7106,30 @@ export default function StaffView({
             </table>
           </div>
           <h3>Stripe customers</h3>
-          <p className="staff-note">Search at least three characters. Stripe customer records are separate from portal accounts and may take time to appear. Guest checkouts can also be searched by name or full email below.</p>
+          <p className={__bundleClass_4}>Search at least three characters. Stripe customer records are separate from portal accounts and may take time to appear. Guest checkouts can also be searched by name or full email below.</p>
           {memberSearch.trim().length >= 3 && (memberSearch.trim().length > 100 || /["\\]/.test(memberSearch) || Array.from(memberSearch).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) ? <p role="status">Stripe search accepts up to 100 characters without double quotes, backslashes, or control characters.</p> : null}
-          {stripeMode === "test" ? <p className="staff-note">Stripe test mode: these are test customers.</p> : stripeMode === "live" ? <p className="staff-note">Stripe live customers.</p> : null}
+          {stripeMode === "test" ? <p className={__bundleClass_4}>Stripe test mode: these are test customers.</p> : stripeMode === "live" ? <p className={__bundleClass_4}>Stripe live customers.</p> : null}
           {stripeSearchState === "loading" ? <p role="status">Searching Stripe customers…</p> : null}
-          {stripeSearchState === "error" ? <p role="status">Stripe customer search is unavailable. <button type="button" className="btn btn-ghost" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage ?? undefined)}>Try again</button></p> : null}
+          {stripeSearchState === "error" ? <p role="status">Stripe customer search is unavailable. <button type="button" className={__bundleClass_7} onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage ?? undefined)}>Try again</button></p> : null}
           {stripeSearchState === "ready" && stripeContacts.length === 0 ? <p>No Stripe customers found.</p> : null}
-          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <div className="staff-actions-row"><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a><button type="button" className="btn btn-ghost" onClick={() => void copy(contact.email)}>Copy email</button></div> : null}</div>)}
-          {stripeNextPage && stripeSearchState !== "loading" && stripeSearchState !== "error" ? <button type="button" className="btn btn-secondary" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage)}>Load more Stripe customers</button> : null}
+          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <div className={__bundleClass_3}><a className={__bundleClass_2} href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a><button type="button" className={__bundleClass_7} onClick={() => void copy(contact.email)}>Copy email</button></div> : null}</div>)}
+          {stripeNextPage && stripeSearchState !== "loading" && stripeSearchState !== "error" ? <button type="button" className={__bundleClass_2} onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage)}>Load more Stripe customers</button> : null}
           {memberSearch.trim().length >= 3 ? <section aria-label="Stripe guest checkouts"><h3>Stripe guest checkouts</h3>
-            <p className="staff-note">{contactEmailAddress(memberSearch) ? "Exact email matches from completed guest checkouts; records can represent the same person." : "Search completed guest checkouts by name, starting with the most recent. This separate search may take longer."}</p>
-            {!contactEmailAddress(memberSearch) && guestSearchState === "idle" ? <button type="button" className="btn btn-secondary" onClick={() => void searchStripeGuestsByName(memberSearch.trim())}>Search guest checkouts by name</button> : null}
-            {guestStripeMode === "test" ? <p className="staff-note">Stripe test mode: these are test checkouts.</p> : null}
+            <p className={__bundleClass_4}>{contactEmailAddress(memberSearch) ? "Exact email matches from completed guest checkouts; records can represent the same person." : "Search completed guest checkouts by name, starting with the most recent. This separate search may take longer."}</p>
+            {!contactEmailAddress(memberSearch) && guestSearchState === "idle" ? <button type="button" className={__bundleClass_2} onClick={() => void searchStripeGuestsByName(memberSearch.trim())}>Search guest checkouts by name</button> : null}
+            {guestStripeMode === "test" ? <p className={__bundleClass_4}>Stripe test mode: these are test checkouts.</p> : null}
             {guestSearchState === "loading" ? <p role="status">Searching guest checkouts…</p> : null}
-            {guestSearchState === "error" ? <p role="status">Guest checkout search is unavailable. <button type="button" className="btn btn-ghost" onClick={() => { const email = contactEmailAddress(memberSearch); void (email ? searchStripeGuests(email, guestNextPage ?? undefined) : searchStripeGuestsByName(memberSearch.trim(), guestNextPage ?? undefined)); }}>Try again</button></p> : null}
+            {guestSearchState === "error" ? <p role="status">Guest checkout search is unavailable. <button type="button" className={__bundleClass_7} onClick={() => { const email = contactEmailAddress(memberSearch); void (email ? searchStripeGuests(email, guestNextPage ?? undefined) : searchStripeGuestsByName(memberSearch.trim(), guestNextPage ?? undefined)); }}>Try again</button></p> : null}
             {!contactEmailAddress(memberSearch) && guestSearchState === "ready" ? <p role="status">Checked {guestScanned} checkouts. {guestNextPage ? "More remain to search." : "Search complete."}</p> : null}
             {guestSearchState === "ready" && stripeGuests.length === 0 && !guestNextPage ? <p>No guest checkouts found.</p> : null}
-            {stripeGuests.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Guest checkout"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <div className="staff-actions-row"><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!)}`}>Email</a><button type="button" className="btn btn-ghost" onClick={() => void copy(contactEmailAddress(contact.email)!)}>Copy email</button></div> : null}</div>)}
-            {guestNextPage && guestSearchState === "ready" ? <button type="button" className="btn btn-secondary" onClick={() => { const email = contactEmailAddress(memberSearch); void (email ? searchStripeGuests(email, guestNextPage) : searchStripeGuestsByName(memberSearch.trim(), guestNextPage)); }}>Search more guest checkouts</button> : null}
+            {stripeGuests.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Guest checkout"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <div className={__bundleClass_3}><a className={__bundleClass_2} href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!)}`}>Email</a><button type="button" className={__bundleClass_7} onClick={() => void copy(contactEmailAddress(contact.email)!)}>Copy email</button></div> : null}</div>)}
+            {guestNextPage && guestSearchState === "ready" ? <button type="button" className={__bundleClass_2} onClick={() => { const email = contactEmailAddress(memberSearch); void (email ? searchStripeGuests(email, guestNextPage) : searchStripeGuestsByName(memberSearch.trim(), guestNextPage)); }}>Search more guest checkouts</button> : null}
           </section> : null}
           <h3>Firing ticket contacts</h3>
-          <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person. Enter a name or email to search.</p>
-          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : memberSearch.trim() ? firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><div className="staff-actions-row"><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a><button type="button" className="btn btn-ghost" onClick={() => void copy(contact.email)}>Copy email</button></div></div>) : null}
+          <p className={__bundleClass_4}>Limited to the available firing ticket queue; records may represent the same person. Enter a name or email to search.</p>
+          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : memberSearch.trim() ? firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><div className={__bundleClass_3}><a className={__bundleClass_2} href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a><button type="button" className={__bundleClass_7} onClick={() => void copy(contact.email)}>Copy email</button></div></div>) : null}
           {copyStatus ? <p role="status">{copyStatus}</p> : null}
-          <details className="staff-note"><summary>Directory sources</summary>
+          <details className={__bundleClass_4}><summary>Directory sources</summary>
             Users: {memberSourceStats.usersDocs}. Profiles: {memberSourceStats.profilesDocs}.
             {memberSourceStats.inferredMembers > 0 ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}` : ""}
           </details>
@@ -7115,7 +7137,7 @@ export default function StaffView({
 
         <div className="staff-column staff-contacts-detail">
           <button type="button" className="btn btn-ghost staff-contacts-back" onClick={() => { setContactDetailOpen(false); requestAnimationFrame(() => document.getElementById("staff-client-search")?.focus()); }}>Back to results</button>
-          <div className="staff-note" id="staff-contact-detail" tabIndex={-1}>
+          <div className={__bundleClass_4} id="staff-contact-detail" tabIndex={-1}>
             {selectedMember ? (
               <>
                 <strong>{selectedMember.displayName}</strong><br />
@@ -7127,35 +7149,35 @@ export default function StaffView({
           </div>
           {selectedMember ? (
             <>
-              <div className="staff-actions-row">
-                {contactEmailAddress(selectedMember.email) ? <a className="btn btn-primary" href={`mailto:${encodeURIComponent(contactEmailAddress(selectedMember.email)!) }`}>Email</a> : <span>No usable email on file</span>}
-                {selectedMember.id !== user.uid ? messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "active" ? <button type="button" className="btn btn-secondary" onClick={() => { setStaffMessageRecipientId(selectedMember.id); openModuleFromCockpit("messages"); }}>Message in portal</button> : <button type="button" className="btn btn-secondary" disabled={messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "checking"} onClick={() => { const uid = selectedMember.id; setMessageRecipientCheck({ uid, status: "checking" }); void client.postJson<{ ok: boolean; data?: { uid: string; status: "active" | "disabled" | "not_found" } }>("staffVerifyMessageRecipient", { uid }).then((result) => { setMessageRecipientCheck((current) => current?.uid === uid ? { uid, status: result.ok && result.data?.uid === uid ? result.data.status : "unavailable" } : current); }).catch(() => { setMessageRecipientCheck((current) => current?.uid === uid ? { uid, status: "unavailable" } : current); }); }}>{messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "checking" ? "Checking portal account…" : "Check portal messaging"}</button> : null}
+              <div className={__bundleClass_3}>
+                {contactEmailAddress(selectedMember.email) ? <a className={__bundleClass_8} href={`mailto:${encodeURIComponent(contactEmailAddress(selectedMember.email)!) }`}>Email</a> : <span>No usable email on file</span>}
+                {selectedMember.id !== user.uid ? messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "active" ? <button type="button" className={__bundleClass_2} onClick={() => { setStaffMessageRecipientId(selectedMember.id); openModuleFromCockpit("messages"); }}>Message in portal</button> : <button type="button" className={__bundleClass_2} disabled={messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "checking"} onClick={() => { const uid = selectedMember.id; setMessageRecipientCheck({ uid, status: "checking" }); void client.postJson<{ ok: boolean; data?: { uid: string; status: "active" | "disabled" | "not_found" } }>("staffVerifyMessageRecipient", { uid }).then((result) => { setMessageRecipientCheck((current) => current?.uid === uid ? { uid, status: result.ok && result.data?.uid === uid ? result.data.status : "unavailable" } : current); }).catch(() => { setMessageRecipientCheck((current) => current?.uid === uid ? { uid, status: "unavailable" } : current); }); }}>{messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "checking" ? "Checking portal account…" : "Check portal messaging"}</button> : null}
                 {messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "disabled" ? <span>Portal account disabled.</span> : messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "not_found" ? <span>No portal account found.</span> : messageRecipientCheck?.uid === selectedMember.id && messageRecipientCheck.status === "unavailable" ? <span>Portal account check unavailable. Try again.</span> : null}
-                <button type="button" className="btn btn-ghost" onClick={() => void copy(selectedMember.id)}>
+                <button type="button" className={__bundleClass_7} onClick={() => void copy(selectedMember.id)}>
                   Copy UID
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={() => void copy(selectedMember.email)}>
+                <button type="button" className={__bundleClass_7} onClick={() => void copy(selectedMember.email)}>
                   Copy email
                 </button>
               </div>
-              <details className="staff-troubleshooting"><summary>Profile</summary>
-              <div className="staff-subtitle">Edit profile</div>
-              <div className="staff-module-grid">
-                <label className="staff-field">
+              <details className={__bundleClass_9}><summary>Profile</summary>
+              <div className={__bundleClass_10}>Edit profile</div>
+              <div className={__bundleClass_11}>
+                <label className={__bundleClass_0}>
                   Display name
                   <input
                     value={memberEditDraft.displayName}
                     onChange={(event) => setMemberEditDraft((prev) => ({ ...prev, displayName: event.target.value }))}
                   />
                 </label>
-                <label className="staff-field">
+                <label className={__bundleClass_0}>
                   Kiln preferences
                   <input
                     value={memberEditDraft.kilnPreferences}
                     onChange={(event) => setMemberEditDraft((prev) => ({ ...prev, kilnPreferences: event.target.value }))}
                   />
                 </label>
-                <label className="staff-field">
+                <label className={__bundleClass_0}>
                   Staff notes
                   <textarea
                     value={memberEditDraft.staffNotes}
@@ -7164,7 +7186,7 @@ export default function StaffView({
                   />
                 </label>
               </div>
-              <label className="staff-field">
+              <label className={__bundleClass_0}>
                 Edit reason (audit log)
                 <input
                   value={memberEditDraft.reason}
@@ -7172,35 +7194,35 @@ export default function StaffView({
                   placeholder="Why this change was made"
                 />
               </label>
-              <div className="staff-actions-row">
-                <button type="button" className="btn btn-primary" disabled={Boolean(busy)} onClick={handleSaveMemberProfile}>
+              <div className={__bundleClass_3}>
+                <button type="button" className={__bundleClass_8} disabled={Boolean(busy)} onClick={handleSaveMemberProfile}>
                   {busy === "saveMemberProfile" ? "Saving..." : "Save profile changes"}
                 </button>
               </div>
-              <div className="staff-kpi-grid">
-                <div className="staff-kpi"><span>Role</span><strong>{memberRoleLabel(selectedMember.role)}</strong></div>
-                <div className="staff-kpi"><span>Account type</span><strong>{selectedMember.accountType}</strong></div>
-                <div className="staff-kpi"><span>Created</span><strong>{when(selectedMember.createdAtMs)}</strong></div>
-                <div className="staff-kpi"><span>Updated</span><strong>{when(selectedMember.updatedAtMs)}</strong></div>
-                <div className="staff-kpi"><span>Last seen</span><strong>{when(selectedMember.lastSeenAtMs)}</strong></div>
-                <div className="staff-kpi"><span>Kiln prefs</span><strong>{selectedMember.kilnPreferences || "-"}</strong></div>
+              <div className={__bundleClass_12}>
+                <div className={__bundleClass_13}><span>Role</span><strong>{memberRoleLabel(selectedMember.role)}</strong></div>
+                <div className={__bundleClass_13}><span>Account type</span><strong>{selectedMember.accountType}</strong></div>
+                <div className={__bundleClass_13}><span>Created</span><strong>{when(selectedMember.createdAtMs)}</strong></div>
+                <div className={__bundleClass_13}><span>Updated</span><strong>{when(selectedMember.updatedAtMs)}</strong></div>
+                <div className={__bundleClass_13}><span>Last seen</span><strong>{when(selectedMember.lastSeenAtMs)}</strong></div>
+                <div className={__bundleClass_13}><span>Kiln prefs</span><strong>{selectedMember.kilnPreferences || "-"}</strong></div>
               </div>
-              <div className="staff-subtitle">Operational footprint</div>
+              <div className={__bundleClass_10}>Operational footprint</div>
               {memberStatsBusy ? (
-                <div className="staff-note">Loading client usage stats...</div>
+                <div className={__bundleClass_4}>Loading client usage stats...</div>
               ) : memberStatsError ? (
-                <div className="staff-note staff-note-error">{memberStatsError}</div>
+                <div className={__bundleClass_5}>{memberStatsError}</div>
               ) : (
-                <div className="staff-kpi-grid">
-                  <div className="staff-kpi"><span>Batches</span><strong>{memberStats?.batches ?? 0}</strong></div>
-                  <div className="staff-kpi"><span>Reservations</span><strong>{memberStats?.reservations ?? 0}</strong></div>
-                  <div className="staff-kpi"><span>Event signups</span><strong>{memberStats?.eventSignups ?? 0}</strong></div>
-                  <div className="staff-kpi"><span>Store orders</span><strong>{memberStats?.materialsOrders ?? 0}</strong></div>
-                  <div className="staff-kpi"><span>Message threads</span><strong>{memberStats?.directMessageThreads ?? 0}</strong></div>
-                  <div className="staff-kpi"><span>Library loans</span><strong>{memberStats?.libraryLoans ?? 0}</strong></div>
+                <div className={__bundleClass_12}>
+                  <div className={__bundleClass_13}><span>Batches</span><strong>{memberStats?.batches ?? 0}</strong></div>
+                  <div className={__bundleClass_13}><span>Reservations</span><strong>{memberStats?.reservations ?? 0}</strong></div>
+                  <div className={__bundleClass_13}><span>Event signups</span><strong>{memberStats?.eventSignups ?? 0}</strong></div>
+                  <div className={__bundleClass_13}><span>Store orders</span><strong>{memberStats?.materialsOrders ?? 0}</strong></div>
+                  <div className={__bundleClass_13}><span>Message threads</span><strong>{memberStats?.directMessageThreads ?? 0}</strong></div>
+                  <div className={__bundleClass_13}><span>Library loans</span><strong>{memberStats?.libraryLoans ?? 0}</strong></div>
                 </div>
               )}
-              <details className="staff-troubleshooting">
+              <details className={__bundleClass_9}>
                 <summary>Raw member document</summary>
                 <pre>{safeJsonStringify(selectedMember.rawDoc)}</pre>
               </details>
@@ -7213,11 +7235,11 @@ export default function StaffView({
   );
 
   const piecesContent = (
-    <section className="card staff-console-card">
-      <div className="card-title-row">
+    <section className={__bundleClass_14}>
+      <div className={__bundleClass_1}>
         <div className="card-title">Pieces & batches</div>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_2}
           disabled={Boolean(busy)}
           onClick={() =>
             void run("refreshBatches", async () => {
@@ -7229,27 +7251,27 @@ export default function StaffView({
           Refresh batches
         </button>
       </div>
-      <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Loaded batches</span><strong>{batches.length}</strong></div>
-        <div className="staff-kpi"><span>Total batches (all)</span><strong>{batchesTotalCount ?? "-"}</strong></div>
-        <div className="staff-kpi"><span>Open</span><strong>{batches.filter((batch) => !batch.isClosed).length}</strong></div>
-        <div className="staff-kpi"><span>Closed</span><strong>{batches.filter((batch) => batch.isClosed).length}</strong></div>
-        <div className="staff-kpi"><span>Likely artifacts</span><strong>{batchArtifactCandidates.length}</strong></div>
-        <div className="staff-kpi"><span>High-confidence artifacts</span><strong>{batchArtifactSummary.highConfidence}</strong></div>
-        <div className="staff-kpi"><span>Manual review hints</span><strong>{batchArtifactSummary.manualReview}</strong></div>
-        <div className="staff-kpi"><span>Cleanup preview scope</span><strong>{batchCleanupSelectionCandidates.length}</strong></div>
-        <div className="staff-kpi"><span>In current filter</span><strong>{filteredBatches.length}</strong></div>
-        <div className="staff-kpi"><span>Pieces in selected</span><strong>{batchPieces.length}</strong></div>
+      <div className={__bundleClass_12}>
+        <div className={__bundleClass_13}><span>Loaded batches</span><strong>{batches.length}</strong></div>
+        <div className={__bundleClass_13}><span>Total batches (all)</span><strong>{batchesTotalCount ?? "-"}</strong></div>
+        <div className={__bundleClass_13}><span>Open</span><strong>{batches.filter((batch) => !batch.isClosed).length}</strong></div>
+        <div className={__bundleClass_13}><span>Closed</span><strong>{batches.filter((batch) => batch.isClosed).length}</strong></div>
+        <div className={__bundleClass_13}><span>Likely artifacts</span><strong>{batchArtifactCandidates.length}</strong></div>
+        <div className={__bundleClass_13}><span>High-confidence artifacts</span><strong>{batchArtifactSummary.highConfidence}</strong></div>
+        <div className={__bundleClass_13}><span>Manual review hints</span><strong>{batchArtifactSummary.manualReview}</strong></div>
+        <div className={__bundleClass_13}><span>Cleanup preview scope</span><strong>{batchCleanupSelectionCandidates.length}</strong></div>
+        <div className={__bundleClass_13}><span>In current filter</span><strong>{filteredBatches.length}</strong></div>
+        <div className={__bundleClass_13}><span>Pieces in selected</span><strong>{batchPieces.length}</strong></div>
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_4}>
         Batch table loads the most recent 80 records for operator speed.
         {batchesTotalCount !== null && batchesTotalCount > batches.length
           ? ` ${batchesTotalCount - batches.length} older batch record(s) are outside the current sample.`
           : ""}
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-actions-row">
+      <div className={__bundleClass_11}>
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_3}>
             <input
               className="staff-member-search"
               placeholder="Search batch by title, owner UID, status, or ID"
@@ -7257,7 +7279,7 @@ export default function StaffView({
               onChange={(event) => setBatchSearch(event.target.value)}
             />
             <select
-              className="staff-member-role-filter"
+              className={__bundleClass_16}
               value={batchStatusFilter}
               onChange={(event) => setBatchStatusFilter(event.target.value)}
             >
@@ -7271,7 +7293,7 @@ export default function StaffView({
               ))}
             </select>
             <select
-              className="staff-member-role-filter"
+              className={__bundleClass_16}
               value={batchArtifactFilter}
               onChange={(event) => setBatchArtifactFilter(event.target.value as "all" | "artifact" | "nonArtifact")}
             >
@@ -7280,14 +7302,14 @@ export default function StaffView({
               <option value="nonArtifact">Likely production</option>
             </select>
             <button
-              className="btn btn-ghost btn-small"
+              className={__bundleClass_17}
               disabled={batchArtifactCandidates.length === 0}
               onClick={() => void copy(batchArtifactCandidates.map((batch) => batch.id).join("\n"))}
             >
               Copy artifact IDs
             </button>
           </div>
-          <div className="staff-table-wrap">
+          <div className={__bundleClass_6}>
             <table className="staff-table">
               <thead>
                 <tr>
@@ -7320,7 +7342,7 @@ export default function StaffView({
                     >
                       <td>
                         <div>{batch.title}</div>
-                        <div className="staff-mini">
+                        <div className={__bundleClass_18}>
                           <code>{batch.id}</code>
                         </div>
                       </td>
@@ -7328,13 +7350,13 @@ export default function StaffView({
                       <td>
                         {(() => {
                           const triage = batchArtifactInventoryById.get(batch.id);
-                          if (!triage) return <span className="staff-mini">-</span>;
+                          if (!triage) return <span className={__bundleClass_18}>-</span>;
                           return (
                             <>
                               <span className={`pill staff-triage-pill staff-triage-pill-${triage.confidence}`}>
                                 {triage.category}
                               </span>
-                              <div className="staff-mini">
+                              <div className={__bundleClass_18}>
                                 {triage.confidence} confidence · {triage.dispositionHints.join(", ")}
                               </div>
                             </>
@@ -7351,8 +7373,8 @@ export default function StaffView({
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-note">
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_4}>
             {selectedBatch ? (
               <>
                 <strong>{selectedBatch.title}</strong><br />
@@ -7377,20 +7399,20 @@ export default function StaffView({
             )}
           </div>
           {selectedBatch ? (
-            <div className="staff-note">
+            <div className={__bundleClass_4}>
               Recommended next actions:{" "}
               {recommendedBatchActions.length ? (
                 recommendedBatchActions.map((entry) => (
-                  <span key={entry.action} className="pill staff-pill-margin-right">
+                  <span key={entry.action} className={__bundleClass_19}>
                     {entry.label}
                   </span>
                 ))
               ) : (
-                <span className="staff-mini">No lifecycle actions available for this status.</span>
+                <span className={__bundleClass_18}>No lifecycle actions available for this status.</span>
               )}
             </div>
           ) : null}
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             Notes
             <textarea
               value={batchNotes}
@@ -7398,29 +7420,29 @@ export default function StaffView({
               placeholder="Optional staff note for timeline event"
             />
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             Kiln ID
             <input value={kilnId} onChange={(event) => setKilnId(event.target.value)} placeholder="studio-electric" />
           </label>
-          <div className="staff-actions-row">
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.shelveBatch} onClick={() => batchAction("shelveBatch")}>Shelve</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.kilnLoad} onClick={() => batchAction("kilnLoad")}>Kiln load</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.kilnUnload} onClick={() => batchAction("kilnUnload")}>Kiln unload</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.readyForPickup} onClick={() => batchAction("readyForPickup")}>Ready for pickup</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.pickedUpAndClose} onClick={() => batchAction("pickedUpAndClose")}>Close picked up</button>
-            <button className="btn btn-primary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.continueJourney} onClick={() => batchAction("continueJourney")}>Continue journey</button>
+          <div className={__bundleClass_3}>
+            <button className={__bundleClass_2} disabled={!selectedBatchId || !!busy || !batchActionAvailability.shelveBatch} onClick={() => batchAction("shelveBatch")}>Shelve</button>
+            <button className={__bundleClass_2} disabled={!selectedBatchId || !!busy || !batchActionAvailability.kilnLoad} onClick={() => batchAction("kilnLoad")}>Kiln load</button>
+            <button className={__bundleClass_2} disabled={!selectedBatchId || !!busy || !batchActionAvailability.kilnUnload} onClick={() => batchAction("kilnUnload")}>Kiln unload</button>
+            <button className={__bundleClass_2} disabled={!selectedBatchId || !!busy || !batchActionAvailability.readyForPickup} onClick={() => batchAction("readyForPickup")}>Ready for pickup</button>
+            <button className={__bundleClass_2} disabled={!selectedBatchId || !!busy || !batchActionAvailability.pickedUpAndClose} onClick={() => batchAction("pickedUpAndClose")}>Close picked up</button>
+            <button className={__bundleClass_8} disabled={!selectedBatchId || !!busy || !batchActionAvailability.continueJourney} onClick={() => batchAction("continueJourney")}>Continue journey</button>
           </div>
-          {batchDetailBusy ? <div className="staff-note">Loading selected batch details...</div> : null}
-          {batchDetailError ? <div className="staff-note staff-note-error">{batchDetailError}</div> : null}
+          {batchDetailBusy ? <div className={__bundleClass_4}>Loading selected batch details...</div> : null}
+          {batchDetailError ? <div className={__bundleClass_5}>{batchDetailError}</div> : null}
         </div>
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Artifact triage inventory (deterministic)</div>
-          <div className="staff-note">
+      <div className={__bundleClass_11}>
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_10}>Artifact triage inventory (deterministic)</div>
+          <div className={__bundleClass_4}>
             Triage inventory is deterministic for the current sample and includes category, confidence, and disposition hints.
           </div>
-          <div className="staff-table-wrap">
+          <div className={__bundleClass_6}>
             <table className="staff-table">
               <thead>
                 <tr>
@@ -7441,7 +7463,7 @@ export default function StaffView({
                     <tr key={entry.batchId}>
                       <td>
                         <div>{entry.title}</div>
-                        <div className="staff-mini"><code>{entry.batchId}</code></div>
+                        <div className={__bundleClass_18}><code>{entry.batchId}</code></div>
                       </td>
                       <td><span className="pill">{entry.category}</span></td>
                       <td>
@@ -7449,8 +7471,8 @@ export default function StaffView({
                       </td>
                       <td>{entry.dispositionHints.join(", ")}</td>
                       <td>
-                        <div className="staff-mini">{entry.rationale.join(" ") || "-"}</div>
-                        {entry.ageDays !== null ? <div className="staff-mini">Age: {entry.ageDays}d</div> : null}
+                        <div className={__bundleClass_18}>{entry.rationale.join(" ") || "-"}</div>
+                        {entry.ageDays !== null ? <div className={__bundleClass_18}>Age: {entry.ageDays}d</div> : null}
                       </td>
                     </tr>
                   ))
@@ -7459,14 +7481,14 @@ export default function StaffView({
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Safe cleanup path</div>
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_10}>Safe cleanup path</div>
           <div className="staff-note staff-note-warning">
             Cleanup defaults to dry-run preview. Destructive cleanup requires an explicit confirmation phrase and is preview-only
             unless backend dispatch is explicitly enabled.
           </div>
-          <div className="staff-module-grid">
-            <label className="staff-field">
+          <div className={__bundleClass_11}>
+            <label className={__bundleClass_0}>
               Cleanup selection scope
               <select
                 value={batchCleanupSelectionMode}
@@ -7479,7 +7501,7 @@ export default function StaffView({
                 <option value="current_filter_artifacts">Current filter (artifact-only)</option>
               </select>
             </label>
-            <label className="staff-field">
+            <label className={__bundleClass_0}>
               Dispatch mode
               <select
                 value={batchCleanupDispatchMode}
@@ -7489,7 +7511,7 @@ export default function StaffView({
                 <option value="attempt_backend">Attempt backend endpoint dispatch</option>
               </select>
             </label>
-            <label className="staff-field">
+            <label className={__bundleClass_0}>
               Reason code
               <input
                 value={batchCleanupReasonCodeInput}
@@ -7497,7 +7519,7 @@ export default function StaffView({
                 placeholder="ARTIFACT_BATCH_TRIAGE"
               />
             </label>
-            <label className="staff-field">
+            <label className={__bundleClass_0}>
               Ticket refs (comma/newline)
               <input
                 value={batchCleanupTicketRefsInput}
@@ -7506,7 +7528,7 @@ export default function StaffView({
               />
             </label>
           </div>
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             Operator reason (audit required)
             <textarea
               value={batchCleanupReason}
@@ -7514,23 +7536,23 @@ export default function StaffView({
               placeholder="Why this cleanup is safe and needed"
             />
           </label>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_3}>
             <button
-              className="btn btn-secondary"
+              className={__bundleClass_2}
               disabled={Boolean(busy) || batchCleanupSelectionCandidates.length === 0}
               onClick={handleGenerateBatchCleanupPreview}
             >
               Generate dry-run preview
             </button>
             <button
-              className="btn btn-ghost"
+              className={__bundleClass_7}
               disabled={!batchCleanupPreviewPayload}
               onClick={() => void copy(batchCleanupPreviewPayload ? safeJsonStringify(batchCleanupPreviewPayload) : "")}
             >
               Copy preview JSON
             </button>
           </div>
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             Confirmation phrase for destructive cleanup
             <input
               value={batchCleanupConfirmPhraseInput}
@@ -7541,9 +7563,9 @@ export default function StaffView({
               Type <code>{expectedBatchCleanupConfirmationPhrase}</code> to enable destructive payload dispatch.
             </span>
           </label>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_3}>
             <button
-              className="btn btn-primary"
+              className={__bundleClass_8}
               disabled={Boolean(busy) || !canConfirmDestructiveCleanup || batchCleanupSelectionCandidates.length === 0}
               onClick={handleRunBatchCleanupDestructive}
             >
@@ -7553,25 +7575,25 @@ export default function StaffView({
             </button>
           </div>
           {batchCleanupDispatchMode === "preview_only" ? (
-            <div className="staff-note">
+            <div className={__bundleClass_4}>
               Preview mode is active: no destructive writes occur from this console flow. Use script{" "}
               <code>scripts/staff-batch-artifact-cleanup.mjs</code> for offline artifact logging and handoff.
             </div>
           ) : null}
           {batchCleanupPreviewLog ? (
-            <details className="staff-troubleshooting" open>
+            <details className={__bundleClass_9} open>
               <summary>Cleanup preview log</summary>
               <pre>{batchCleanupPreviewLog}</pre>
             </details>
           ) : (
-            <div className="staff-note">Generate dry-run preview to inspect payload, scope, and audit metadata.</div>
+            <div className={__bundleClass_4}>Generate dry-run preview to inspect payload, scope, and audit metadata.</div>
           )}
         </div>
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Pieces in selected batch</div>
-          <div className="staff-table-wrap">
+      <div className={__bundleClass_11}>
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_10}>Pieces in selected batch</div>
+          <div className={__bundleClass_6}>
             <table className="staff-table">
               <thead>
                 <tr>
@@ -7592,7 +7614,7 @@ export default function StaffView({
                     <tr key={piece.id}>
                       <td>
                         <div>{piece.pieceCode}</div>
-                        {piece.isArchived ? <div className="staff-mini">Archived</div> : null}
+                        {piece.isArchived ? <div className={__bundleClass_18}>Archived</div> : null}
                       </td>
                       <td>{piece.shortDesc}</td>
                       <td><span className="pill">{piece.stage}</span></td>
@@ -7605,22 +7627,22 @@ export default function StaffView({
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Timeline</div>
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_10}>Timeline</div>
           <div className="staff-list-compact">
             {batchTimeline.length === 0 ? (
-              <div className="staff-note">No timeline events found for selected batch.</div>
+              <div className={__bundleClass_4}>No timeline events found for selected batch.</div>
             ) : (
               batchTimeline.map((eventRow) => (
                 <div key={eventRow.id} className="staff-list-item">
                   <div>
                     <strong>{eventRow.type}</strong>
-                    <div className="staff-mini">
+                    <div className={__bundleClass_18}>
                       {eventRow.actorName} · {eventRow.kilnName !== "-" ? eventRow.kilnName : "no kiln"}
                     </div>
-                    {eventRow.notes ? <div className="staff-mini">{eventRow.notes}</div> : null}
+                    {eventRow.notes ? <div className={__bundleClass_18}>{eventRow.notes}</div> : null}
                   </div>
-                  <div className="staff-mini">{when(eventRow.atMs)}</div>
+                  <div className={__bundleClass_18}>{when(eventRow.atMs)}</div>
                 </div>
               ))
             )}
@@ -7631,28 +7653,28 @@ export default function StaffView({
   );
 
   const firingsContent = (
-    <section className="card staff-console-card">
-      <div className="card-title-row">
+    <section className={__bundleClass_14}>
+      <div className={__bundleClass_1}>
         <div className="card-title">Firing records and controls</div>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_2}
           disabled={Boolean(busy)}
           onClick={() => void run("refreshFirings", async () => { await loadFirings(); setStatus("Firings refreshed"); })}
         >
           Refresh firings
         </button>
       </div>
-      <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Total firings</span><strong>{firings.length}</strong></div>
-        <div className="staff-kpi"><span>Active now</span><strong>{firingTriage.active.length}</strong></div>
-        <div className="staff-kpi"><span>Needs attention</span><strong>{firingTriage.attention.length}</strong></div>
-        <div className="staff-kpi"><span>Scheduled</span><strong>{firings.filter((firing) => firing.status === "scheduled").length}</strong></div>
-        <div className="staff-kpi"><span>Completed</span><strong>{firingTriage.done.length}</strong></div>
-        <div className="staff-kpi"><span>In current filter</span><strong>{firingTriage.view.length}</strong></div>
+      <div className={__bundleClass_12}>
+        <div className={__bundleClass_13}><span>Total firings</span><strong>{firings.length}</strong></div>
+        <div className={__bundleClass_13}><span>Active now</span><strong>{firingTriage.active.length}</strong></div>
+        <div className={__bundleClass_13}><span>Needs attention</span><strong>{firingTriage.attention.length}</strong></div>
+        <div className={__bundleClass_13}><span>Scheduled</span><strong>{firings.filter((firing) => firing.status === "scheduled").length}</strong></div>
+        <div className={__bundleClass_13}><span>Completed</span><strong>{firingTriage.done.length}</strong></div>
+        <div className={__bundleClass_13}><span>In current filter</span><strong>{firingTriage.view.length}</strong></div>
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-actions-row">
+      <div className={__bundleClass_11}>
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_3}>
             <input
               className="staff-member-search"
               placeholder="Search firing by title, kiln, status, cycle, or ID"
@@ -7660,7 +7682,7 @@ export default function StaffView({
               onChange={(event) => setFiringSearch(event.target.value)}
             />
             <select
-              className="staff-member-role-filter"
+              className={__bundleClass_16}
               value={firingStatusFilter}
               onChange={(event) => setFiringStatusFilter(event.target.value)}
             >
@@ -7670,7 +7692,7 @@ export default function StaffView({
               ))}
             </select>
             <select
-              className="staff-member-role-filter"
+              className={__bundleClass_16}
               value={firingKilnFilter}
               onChange={(event) => setFiringKilnFilter(event.target.value)}
             >
@@ -7680,7 +7702,7 @@ export default function StaffView({
               ))}
             </select>
             <select
-              className="staff-member-role-filter"
+              className={__bundleClass_16}
               value={firingFocusFilter}
               onChange={(event) =>
                 setFiringFocusFilter(event.target.value as "all" | "active" | "attention" | "done")
@@ -7692,14 +7714,14 @@ export default function StaffView({
               <option value="done">Done only</option>
             </select>
             <button
-              className="btn btn-ghost"
+              className={__bundleClass_7}
               disabled={Boolean(busy) || firingTriage.active.length === 0}
               onClick={() => setSelectedFiringId(firingTriage.active[0].id)}
             >
               Jump to next active
             </button>
           </div>
-          <div className="staff-table-wrap">
+          <div className={__bundleClass_6}>
             <table className="staff-table">
               <thead>
                 <tr>
@@ -7731,7 +7753,7 @@ export default function StaffView({
                     >
                       <td>
                         <div>{firing.title}</div>
-                        <div className="staff-mini"><code>{firing.id}</code></div>
+                        <div className={__bundleClass_18}><code>{firing.id}</code></div>
                       </td>
                       <td>{firing.kilnName || firing.kilnId || "-"}</td>
                       <td><span className="pill">{firing.status}</span></td>
@@ -7744,8 +7766,8 @@ export default function StaffView({
             </table>
           </div>
         </div>
-        <div className="staff-column">
-          <div className="staff-note">
+        <div className={__bundleClass_15}>
+          <div className={__bundleClass_4}>
             {selectedFiring ? (
               <>
                 <strong>{selectedFiring.title}</strong><br />
@@ -7759,37 +7781,37 @@ export default function StaffView({
             )}
           </div>
           {selectedFiring ? (
-            <div className="staff-kpi-grid">
-              <div className="staff-kpi"><span>Start</span><strong>{when(selectedFiring.startAtMs)}</strong></div>
-              <div className="staff-kpi"><span>End</span><strong>{when(selectedFiring.endAtMs)}</strong></div>
-              <div className="staff-kpi"><span>Unloaded</span><strong>{when(selectedFiring.unloadedAtMs)}</strong></div>
-              <div className="staff-kpi"><span>Updated</span><strong>{when(selectedFiring.updatedAtMs)}</strong></div>
+            <div className={__bundleClass_12}>
+              <div className={__bundleClass_13}><span>Start</span><strong>{when(selectedFiring.startAtMs)}</strong></div>
+              <div className={__bundleClass_13}><span>End</span><strong>{when(selectedFiring.endAtMs)}</strong></div>
+              <div className={__bundleClass_13}><span>Unloaded</span><strong>{when(selectedFiring.unloadedAtMs)}</strong></div>
+              <div className={__bundleClass_13}><span>Updated</span><strong>{when(selectedFiring.updatedAtMs)}</strong></div>
             </div>
           ) : null}
           {selectedFiring ? (
-            <div className="staff-note">
+            <div className={__bundleClass_4}>
               Flags:{" "}
-              {selectedFiring.confidence.toLowerCase() === "low" ? <span className="pill staff-pill-margin-right">low confidence</span> : null}
-              {selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0 ? <span className="pill staff-pill-margin-right">missing end window</span> : null}
+              {selectedFiring.confidence.toLowerCase() === "low" ? <span className={__bundleClass_19}>low confidence</span> : null}
+              {selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0 ? <span className={__bundleClass_19}>missing end window</span> : null}
               {selectedFiring.updatedAtMs > 0 && Date.now() - selectedFiring.updatedAtMs > 12 * 60 * 60 * 1000 && ["loading", "firing", "cooling", "unloading", "loaded"].includes(selectedFiring.status.toLowerCase()) ? (
-                <span className="pill staff-pill-margin-right">stale active</span>
+                <span className={__bundleClass_19}>stale active</span>
               ) : null}
               {selectedFiring.confidence.toLowerCase() !== "low" && !(selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0) && !(selectedFiring.updatedAtMs > 0 && Date.now() - selectedFiring.updatedAtMs > 12 * 60 * 60 * 1000 && ["loading", "firing", "cooling", "unloading", "loaded"].includes(selectedFiring.status.toLowerCase())) ? (
-                <span className="staff-mini">No triage flags.</span>
+                <span className={__bundleClass_18}>No triage flags.</span>
               ) : null}
             </div>
           ) : null}
-          {selectedFiring?.notes ? <div className="staff-note">{selectedFiring.notes}</div> : null}
+          {selectedFiring?.notes ? <div className={__bundleClass_4}>{selectedFiring.notes}</div> : null}
           {hasFunctionsAuthMismatch ? (
-            <div className="staff-note">
+            <div className={__bundleClass_4}>
               Calendar sync actions require function auth. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or point Functions to production.
             </div>
           ) : (
-            <div className="staff-note">
+            <div className={__bundleClass_4}>
               Calendar sync/debug controls are deprecated for day-to-day staff operations.
-              <div className="staff-actions-row staff-actions-row--mt8">
+              <div className={__bundleClass_20}>
                 <button
-                  className="btn btn-ghost btn-small"
+                  className={__bundleClass_17}
                   type="button"
                   onClick={() => setShowDeprecatedFiringControls((prev) => !prev)}
                 >
@@ -7797,10 +7819,10 @@ export default function StaffView({
                 </button>
               </div>
               {showDeprecatedFiringControls ? (
-                <div className="staff-actions-row staff-actions-row--mt8">
-                  <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("syncFiringsNow", async () => { await client.postJson("syncFiringsNow", {}); await loadFirings(); setStatus("syncFiringsNow requested"); })}>Sync now</button>
-                  <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("acceptFiringsCalendar", async () => { await client.postJson("acceptFiringsCalendar", {}); setStatus("acceptFiringsCalendar requested"); })}>Accept calendar</button>
-                  <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("debugCalendarId", async () => { await client.postJson("debugCalendarId", {}); setStatus("debugCalendarId requested"); })}>Debug calendar</button>
+                <div className={__bundleClass_20}>
+                  <button className={__bundleClass_2} disabled={!!busy} onClick={() => void run("syncFiringsNow", async () => { await client.postJson("syncFiringsNow", {}); await loadFirings(); setStatus("syncFiringsNow requested"); })}>Sync now</button>
+                  <button className={__bundleClass_2} disabled={!!busy} onClick={() => void run("acceptFiringsCalendar", async () => { await client.postJson("acceptFiringsCalendar", {}); setStatus("acceptFiringsCalendar requested"); })}>Accept calendar</button>
+                  <button className={__bundleClass_2} disabled={!!busy} onClick={() => void run("debugCalendarId", async () => { await client.postJson("debugCalendarId", {}); setStatus("debugCalendarId requested"); })}>Debug calendar</button>
                 </div>
               ) : null}
             </div>
@@ -9389,16 +9411,16 @@ export default function StaffView({
   };
 
   const checkinsContent = (
-    <section className="staff-module-grid">
-      <div className="staff-column">
-        <div className="card-title-row">
+    <section className={__bundleClass_11}>
+      <div className={__bundleClass_15}>
+        <div className={__bundleClass_1}>
           <div className="card-title">Ware check-in</div>
         </div>
-        <div className="staff-note">
+        <div className={__bundleClass_4}>
           Use Pathfinder to plan a firing and start a new ticket. The queue below is for check-ins already in progress.
         </div>
-        <div className="staff-actions-row">
-          <a className="btn btn-primary" href={FIRING_PATHFINDER_URL} target="_blank" rel="noreferrer">Open Firing Pathfinder (new tab)</a>
+        <div className={__bundleClass_3}>
+          <a className={__bundleClass_8} href={FIRING_PATHFINDER_URL} target="_blank" rel="noreferrer">Open Firing Pathfinder (new tab)</a>
         </div>
         <WareCheckInView
           user={user}
@@ -9411,7 +9433,7 @@ export default function StaffView({
   );
   const studioReservationsContent = (
     <>
-      {STUDIO_BOOKINGS_PAUSED ? <div className="staff-note" role="status">Studio bookings are paused. This workspace is for existing reservation records.</div> : null}
+      {STUDIO_BOOKINGS_PAUSED ? <div className={__bundleClass_4} role="status">Studio bookings are paused. This workspace is for existing reservation records.</div> : null}
       <StudioReservationsModule user={user} adminToken={devAdminToken} onOpenWareCheckIn={onOpenCheckin} />
     </>
   );
@@ -9450,17 +9472,17 @@ export default function StaffView({
 
   const reservationNotificationPolicyContent = (
     <>
-      <div className="card-title-row">
-        <div className="staff-subtitle">Reservation notification policy</div>
+      <div className={__bundleClass_1}>
+        <div className={__bundleClass_10}>Reservation notification policy</div>
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_4}>
         Tune global pickup and delay rules here. Client channel + event preferences still win at delivery time.
       </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
+      <div className={__bundleClass_11}>
+        <div className={__bundleClass_15}>
           {renderReservationNotificationPolicyCheckbox("pickupReadyEnabled", "Pickup-ready notice")}
           {renderReservationNotificationPolicyCheckbox("pickupReminderEnabled", "Pickup reminders")}
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             <span>Reminder timing mode</span>
             <select
               value={reservationNotificationPolicy.pickupReminderMode}
@@ -9476,7 +9498,7 @@ export default function StaffView({
               <option value="fixed_hours">Fixed hours after pickup-ready</option>
             </select>
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_0}>
             <span>Reminder hours after pickup-ready</span>
             <input
               type="text"
@@ -9495,11 +9517,11 @@ export default function StaffView({
               }
             />
           </label>
-          <div className="staff-mini">
+          <div className={__bundleClass_18}>
             Example: <code>168, 336</code> sends reminders after 1 week and 2 weeks.
           </div>
         </div>
-        <div className="staff-column">
+        <div className={__bundleClass_15}>
           {renderReservationNotificationPolicyCheckbox("delayFollowUpEnabled", "Delay follow-ups")}
           {renderReservationNotificationPolicyNumberField(
             "delayFollowUpInitialHours",
@@ -9525,7 +9547,7 @@ export default function StaffView({
           )}
         </div>
       </div>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         <span>Operator note</span>
         <textarea
           value={reservationNotificationPolicy.note ?? ""}
@@ -9534,21 +9556,21 @@ export default function StaffView({
           onChange={(event) => updateReservationNotificationPolicy({ note: event.target.value })}
         />
       </label>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_3}>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_2}
           disabled={reservationNotificationPolicyControlsDisabled}
           onClick={() => void saveReservationNotificationPolicy()}
         >
           {reservationNotificationPolicyBusy ? "Saving..." : "Save notification policy"}
         </button>
       </div>
-      <div className="staff-mini">
+      <div className={__bundleClass_18}>
         Last updated: {reservationNotificationPolicy.updatedAtMs ? when(reservationNotificationPolicy.updatedAtMs) : "-"}
         {reservationNotificationPolicy.updatedByUid ? ` by ${reservationNotificationPolicy.updatedByUid}` : ""}
       </div>
       {reservationNotificationPolicyStatus ? (
-        <div className="staff-note" role="status" aria-live="polite">
+        <div className={__bundleClass_4} role="status" aria-live="polite">
           {reservationNotificationPolicyStatus}
         </div>
       ) : null}
@@ -9559,10 +9581,10 @@ export default function StaffView({
     <section aria-labelledby="staff-access-roles-title">
       <h2 id="staff-access-roles-title">Access &amp; roles</h2>
       <p>Choose a person to review their access. Role changes are recorded in the audit log.</p>
-      <button type="button" className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => void run("refreshMembers", loadUsers)}>
+      <button type="button" className={__bundleClass_2} disabled={Boolean(busy)} onClick={() => void run("refreshMembers", loadUsers)}>
         {busy === "refreshMembers" ? "Loading contacts…" : "Refresh contacts"}
       </button>
-      <label className="staff-field">
+      <label className={__bundleClass_0}>
         Person
         <select value={selectedMember?.id ?? ""} onChange={(event) => setSelectedMemberId(event.target.value)}>
           <option value="">Select a contact</option>
@@ -9570,23 +9592,23 @@ export default function StaffView({
         </select>
       </label>
       {selectedMember ? <>
-        <div className="staff-note">Current role: <strong>{memberRoleLabel(selectedMember.role)}</strong>. Role changes update Firebase Auth claims and the mirrored user record.</div>
+        <div className={__bundleClass_4}>Current role: <strong>{memberRoleLabel(selectedMember.role)}</strong>. Role changes update Firebase Auth claims and the mirrored user record.</div>
         {hasAdminAuthority ? <>
-          <div className="staff-module-grid">
-            <label className="staff-field">Role
+          <div className={__bundleClass_11}>
+            <label className={__bundleClass_0}>Role
               <select value={memberRoleDraft} onChange={(event) => setMemberRoleDraft(event.target.value as MemberRoleValue)}>
                 <option value="member">Client</option><option value="staff">Staff</option><option value="admin">Admin</option>
               </select>
             </label>
-            <label className="staff-field">Role change reason (audit log)
+            <label className={__bundleClass_0}>Role change reason (audit log)
               <input value={memberRoleReason} onChange={(event) => setMemberRoleReason(event.target.value)} placeholder="Why this role change was made" />
             </label>
           </div>
-          {selectedMember.id === user.uid ? <div className="staff-note">Use another admin session to change your own role so you do not lock yourself out mid-session.</div> : null}
-          {hasDevAdminAuthority && !isAdmin ? <div className="staff-note">Role management is currently authorized by the dev admin token for this session.</div> : null}
-          <div className="staff-actions-row"><button type="button" className="btn btn-secondary" disabled={Boolean(busy) || selectedMember.id === user.uid} onClick={handleSaveMemberRole}>{busy === "saveMemberRole" ? "Saving role..." : "Save role change"}</button></div>
-        </> : <div className="staff-note">Admin claim required to change roles.</div>}
-      </> : <div className="staff-note">Select a contact to view access.</div>}
+          {selectedMember.id === user.uid ? <div className={__bundleClass_4}>Use another admin session to change your own role so you do not lock yourself out mid-session.</div> : null}
+          {hasDevAdminAuthority && !isAdmin ? <div className={__bundleClass_4}>Role management is currently authorized by the dev admin token for this session.</div> : null}
+          <div className={__bundleClass_3}><button type="button" className={__bundleClass_2} disabled={Boolean(busy) || selectedMember.id === user.uid} onClick={handleSaveMemberRole}>{busy === "saveMemberRole" ? "Saving role..." : "Save role change"}</button></div>
+        </> : <div className={__bundleClass_4}>Admin claim required to change roles.</div>}
+      </> : <div className={__bundleClass_4}>Select a contact to view access.</div>}
     </section>
   );
 
@@ -9774,7 +9796,7 @@ export default function StaffView({
         : cockpitContent;
 
   const moduleLoadingFallback = (
-    <section className="card staff-console-card" role="status" aria-live="polite">
+    <section className={__bundleClass_14} role="status" aria-live="polite">
       <div className="card-title">Loading workspace</div>
       <p className="card-subtitle">Pulling in the selected staff tools for this surface.</p>
     </section>
@@ -9782,12 +9804,12 @@ export default function StaffView({
 
   if (!hasStaffAuthority) {
     return (
-      <section className="card staff-console-card" role="alert" aria-live="assertive">
+      <section className={__bundleClass_14} role="alert" aria-live="assertive">
         <div className="card-title">Staff Console Access Required</div>
         <p className="card-subtitle">
           Staff actions are disabled because this session has no staff/admin claim and no dev admin token.
         </p>
-        <div className="staff-note">
+        <div className={__bundleClass_4}>
           Sign in with a staff account, or in emulator-only mode provide a dev admin token.
         </div>
       </section>
@@ -9814,10 +9836,10 @@ export default function StaffView({
             ? "A task-first board for live staff work. Open the workflow you need without hunting through cockpit tabs."
             : "Manage clients, pieces, firings, events, billing, lending, and system health."}
         </p>
-        <div className="staff-actions-row">
+        <div className={__bundleClass_3}>
           {toolbarRefreshPlan.visible ? (
             <button
-              className="btn btn-secondary"
+              className={__bundleClass_2}
               disabled={Boolean(busy)}
               onClick={() => void run(toolbarRefreshPlan.key, refreshVisibleData)}
             >
@@ -9825,23 +9847,23 @@ export default function StaffView({
             </button>
           ) : null}
           {!isTaskHomeRoute ? (
-            <button className="btn btn-ghost" type="button" onClick={openTaskHome}>
+            <button className={__bundleClass_7} type="button" onClick={openTaskHome}>
               Open task home
             </button>
           ) : null}
           {onOpenClientStart ? (
-            <button className="btn btn-ghost" type="button" onClick={onOpenClientStart}>
+            <button className={__bundleClass_7} type="button" onClick={onOpenClientStart}>
               Open client start
             </button>
           ) : null}
           {onOpenCheckin ? (
-            <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
+            <button className={__bundleClass_7} type="button" onClick={onOpenCheckin}>
               Open firing planner
             </button>
           ) : null}
           {isCockpitModule && !forceCockpitWorkspace && !isTaskHomeRoute ? (
             <button
-              className="btn btn-ghost"
+              className={__bundleClass_7}
               type="button"
               onClick={() => setCockpitWorkspaceMode((prev) => !prev)}
             >
@@ -9850,7 +9872,7 @@ export default function StaffView({
           ) : null}
           {!isTaskHomeRoute && (isCockpitModule || forceCockpitWorkspace) ? (
             <button
-              className="btn btn-ghost"
+              className={__bundleClass_7}
               type="button"
               onClick={() => {
                 if (typeof window === "undefined") return;
@@ -9861,34 +9883,34 @@ export default function StaffView({
             </button>
           ) : null}
         </div>
-        <div className="staff-mini">
+        <div className={__bundleClass_18}>
           {isTaskHomeRoute && !forceCockpitWorkspace
             ? "The main board is task-first. Use More tools for rare admin surfaces, and use cockpit only when you want the full operations shell."
             : toolbarRefreshPlan.visible
             ? "Data loads lazily. Use Refresh visible data for the current cockpit surface, and keep deep module refreshes inside their cards."
             : "Data loads lazily. Use the refresh controls inside the visible module cards to avoid runaway reload chains."}
         </div>
-        {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
+        {hasFunctionsAuthMismatch ? <div className={__bundleClass_4}>Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
         {studioBrainUiState ? (
           <div
             className={`staff-note ${studioBrainUiState.tone === "error" ? "staff-note-error" : `staff-note-${studioBrainUiState.tone}`}`}
             role={studioBrainUiState.alert ? "alert" : "status"}
           >
             <strong>{studioBrainUiState.title}</strong> - {studioBrainUiState.message}
-            <div className="staff-mini">Reason code: <code>{studioBrainUiState.reasonCode}</code></div>
-            <div className="staff-mini">Reason: {studioBrainUiState.reason}</div>
-            <div className="staff-mini">Checked: {studioBrainUiState.checkedAtLabel}</div>
-            <div className="staff-mini">Last known good: {studioBrainUiState.lastKnownGoodLabel}</div>
-            <div className="staff-mini">Snapshot age: {studioBrainUiState.snapshotAgeLabel}</div>
+            <div className={__bundleClass_18}>Reason code: <code>{studioBrainUiState.reasonCode}</code></div>
+            <div className={__bundleClass_18}>Reason: {studioBrainUiState.reason}</div>
+            <div className={__bundleClass_18}>Checked: {studioBrainUiState.checkedAtLabel}</div>
+            <div className={__bundleClass_18}>Last known good: {studioBrainUiState.lastKnownGoodLabel}</div>
+            <div className={__bundleClass_18}>Snapshot age: {studioBrainUiState.snapshotAgeLabel}</div>
           </div>
         ) : null}
         {status ? (
-          <div className="staff-note" role="status" aria-live="polite">
+          <div className={__bundleClass_4} role="status" aria-live="polite">
             {status}
           </div>
         ) : null}
         {error ? (
-          <div className="staff-note staff-note-error" role="alert" aria-live="assertive">
+          <div className={__bundleClass_5} role="alert" aria-live="assertive">
             {error}
           </div>
         ) : null}
@@ -9897,10 +9919,10 @@ export default function StaffView({
       <div className={`staff-console-layout ${isWorkspaceFocused ? "staff-console-layout-cockpit" : ""}`}>
         {!isWorkspaceFocused ? (
           <aside className="card staff-console-nav">
-          <div className="staff-subtitle">Modules</div>
-          <div className="staff-actions-row staff-actions-row--mt8">
+          <div className={__bundleClass_10}>Modules</div>
+          <div className={__bundleClass_20}>
             <button
-              className="btn btn-ghost btn-small"
+              className={__bundleClass_17}
               onClick={() =>
                 setAdaptiveNavEnabled((prev) => {
                   const next = !prev;
@@ -9913,7 +9935,7 @@ export default function StaffView({
               {adaptiveNavEnabled ? "Adaptive order: on" : "Adaptive order: off"}
             </button>
           </div>
-          <div className="staff-mini">
+          <div className={__bundleClass_18}>
             {adaptiveNavEnabled
               ? "Modules are sorted by engagement (Cockpit pinned first)."
               : "Modules use default static order."}

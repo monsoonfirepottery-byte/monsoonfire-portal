@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FunctionsClient } from "../../api/functionsClient";
 import { AdminWorkflow } from "./admin/AdminWorkspace";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "staff-note";
+const __bundleClass_2 = "staff-actions-row";
+const __bundleClass_3 = "staff-field";
+
 
 type PolicyRule = {
   id: string;
@@ -381,7 +386,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
     <section className="card staff-console-card">
       <div className="card-title-row">
         <div className="card-title">Governance policy</div>
-        <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("refreshPolicies", loadAll)}>
+        <button className={__bundleClass_0} disabled={Boolean(busy) || disabled} onClick={() => void run("refreshPolicies", loadAll)}>
           Refresh policy
         </button>
       </div>
@@ -394,26 +399,26 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       ]} />
 
       {disabled ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           Governance policy module requires function auth. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or point Functions to production.
         </div>
       ) : null}
 
-      {loaded && !error && !disabled ? <><div className="staff-note">
+      {loaded && !error && !disabled ? <><div className={__bundleClass_1}>
         Active Code of Conduct version: <strong>{activeVersion || "none published"}</strong>
       </div>
 
       {currentPolicy ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           <strong>{currentPolicy.title}</strong><br />
           <span>{currentPolicy.summary}</span><br />
           <span>Rules: {currentPolicy.rules.length} · Last updated: {when(currentPolicy.updatedAtMs)}</span>
         </div>
       ) : (
-        <div className="staff-note">No published policy yet. Draft and publish one before taking moderation actions.</div>
+        <div className={__bundleClass_1}>No published policy yet. Draft and publish one before taking moderation actions.</div>
       )}</> : null}
 
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <select value={versionDraft} onChange={(event) => setVersionDraft(event.target.value)}>
           <option value="">New version draft</option>
           {policies.map((policy) => (
@@ -429,17 +434,17 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         />
       </div>
 
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Policy title
         <input value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} placeholder="Community Code of Conduct" />
       </label>
 
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Summary
         <textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} placeholder="Short policy summary" />
       </label>
 
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Rules (`id | title | description | severityHint`)
         <textarea
           value={rulesDraft}
@@ -448,7 +453,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         />
       </label>
 
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <button
           className="btn btn-primary"
           disabled={Boolean(busy) || disabled || !versionDraft.trim() || !titleDraft.trim() || parseRulesFromText(rulesDraft).length === 0}
@@ -470,7 +475,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </button>
 
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled || !versionDraft.trim()}
           onClick={() =>
             void run("publishPolicy", async () => {
@@ -488,13 +493,13 @@ export default function PolicyModule({ client, active, disabled }: Props) {
 
       <hr />
       <div className="card-title">Proactive moderation safety controls</div>
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         These controls apply to community publishing flows and staff draft scans.
       </div>
       <div className={`staff-note ${loaded && safetyStatusKnown && safetyPosture.level !== "healthy" ? "staff-note-error" : ""}`}>
         {loaded && safetyStatusKnown && !error && !disabled ? <>Safety posture: <strong>{safetyPosture.level}</strong> · {safetyPosture.message}</> : "Safety posture unavailable until controls load."}
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         <strong>What each control changes</strong>
         <ul className="staff-list">
           <li>
@@ -517,11 +522,11 @@ export default function PolicyModule({ client, active, disabled }: Props) {
             : "no recorded updates yet"}
         </div>
       </div>
-      {!safetyConfigComplete ? <div className="staff-note" role="status">Refresh policy to load all safety settings before changing them.</div> : null}
+      {!safetyConfigComplete ? <div className={__bundleClass_1} role="status">Refresh policy to load all safety settings before changing them.</div> : null}
       <fieldset disabled={!safetyConfigComplete || !loaded || disabled} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled || safetyConfig.publishKillSwitch}
           onClick={() =>
             void run("engageKillSwitch", async () => {
@@ -537,7 +542,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           Pause all community publishing
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled}
           onClick={() =>
             void run("restoreSafetyDefaults", async () => {
@@ -560,11 +565,11 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         after mitigation verification.
       </div>
       <div className="staff-subtitle">Safety presets</div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         {SAFETY_PRESETS.map((preset) => (
-          <div key={preset.id} className="staff-actions-row">
+          <div key={preset.id} className={__bundleClass_2}>
             <button
-              className="btn btn-secondary"
+              className={__bundleClass_0}
               disabled={Boolean(busy) || disabled}
               onClick={() => {
                 setSafetyConfig((prev) => ({
@@ -599,10 +604,10 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           </div>
         ))}
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         {SAFETY_PRESETS.map((preset) => `${preset.label}: ${preset.description}`).join(" | ")}
       </div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <label className="staff-inline-check">
           <input
             type="checkbox"
@@ -635,8 +640,8 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </label>
       </div>
 
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_2}>
+        <label className={__bundleClass_3}>
           Medium threshold
           <input
             type="number"
@@ -651,7 +656,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
             }
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_3}>
           High threshold
           <input
             type="number"
@@ -668,7 +673,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </label>
       </div>
 
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Blocked terms (one per line)
         <textarea
           value={blockedTermsDraft}
@@ -676,7 +681,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           placeholder="scam&#10;counterfeit&#10;violent threat"
         />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Blocked URL hosts (one per line)
         <textarea
           value={blockedHostsDraft}
@@ -684,7 +689,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           placeholder="tinyurl.com&#10;bit.ly"
         />
       </label>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <button
           className="btn btn-primary"
           disabled={Boolean(busy) || disabled}
@@ -712,28 +717,28 @@ export default function PolicyModule({ client, active, disabled }: Props) {
 
       <hr />
       <div className="card-title">Draft risk scan</div>
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         Run a pre-publish scan for event/community copy before publishing.
       </div>
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Scan title
         <input value={scanTitle} onChange={(event) => setScanTitle(event.target.value)} placeholder="Draft title" />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Scan summary
         <textarea value={scanSummary} onChange={(event) => setScanSummary(event.target.value)} placeholder="Draft summary" />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Scan description
         <textarea value={scanDescription} onChange={(event) => setScanDescription(event.target.value)} placeholder="Draft description" />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_3}>
         Scan URLs (one per line)
         <textarea value={scanUrls} onChange={(event) => setScanUrls(event.target.value)} placeholder="https://..." />
       </label>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_2}>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled}
           onClick={() =>
             void run("scanDraft", async () => {
@@ -752,7 +757,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </button>
       </div>
       {scanResult ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           <strong>Risk: {scanResult.severity.toUpperCase()}</strong> · score {scanResult.score} · triggers {scanResult.triggers.length}<br />
           {scanResult.triggers.length ? (
             <span>
@@ -767,7 +772,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       ) : null}
 
       {status ? (
-        <div className="staff-note" role="status" aria-live="polite">
+        <div className={__bundleClass_1} role="status" aria-live="polite">
           {status}
         </div>
       ) : null}

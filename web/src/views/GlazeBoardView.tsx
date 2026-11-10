@@ -39,6 +39,17 @@ import {
 import { safeStorageReadJson, safeStorageSetItem } from "../lib/safeStorage";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./GlazeBoardView.css";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "btn btn-ghost";
+const __bundleClass_2 = "glaze-subtitle";
+const __bundleClass_3 = "card-title";
+const __bundleClass_4 = "glaze-filter-toggle";
+const __bundleClass_5 = "glaze-filter-group";
+const __bundleClass_6 = "glaze-filter-group-title";
+const __bundleClass_7 = "glaze-empty";
+const __bundleClass_8 = "glaze-staff-row glaze-staff-mapping";
+const __bundleClass_9 = "glaze-status";
+
 
 const GLAZY_SEARCH_BASE = "https://glazy.org/search?search=";
 const MAX_IMAGE_EDGE = 1600;
@@ -1156,7 +1167,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       <div className="glaze-toolbar">
         <button
           type="button"
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           onClick={() => setFiltersOpen(true)}
         >
           Filters
@@ -1164,7 +1175,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         <div className="glaze-filter-count">Matching tiles: {matchingCount}</div>
         <button
           type="button"
-          className="btn btn-ghost"
+          className={__bundleClass_1}
           onClick={() => {
             setFiltersCollapsed((prev) => {
               const next = !prev;
@@ -1176,12 +1187,12 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           {filtersCollapsed ? "Show filters" : "Hide filters"}
         </button>
         {filtersActive ? (
-          <button type="button" className="btn btn-ghost" onClick={resetFilters}>
+          <button type="button" className={__bundleClass_1} onClick={resetFilters}>
             Reset filters
           </button>
         ) : null}
       </div>
-      <div className="glaze-subtitle">
+      <div className={__bundleClass_2}>
         Live tile streams are capped to {GLAZE_LISTENER_LIMIT} records per board in this view.
       </div>
 
@@ -1230,8 +1241,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       >
         <div className="glaze-filter-header">
           <div>
-            <div className="card-title">Filters</div>
-            <div className="glaze-subtitle">
+            <div className={__bundleClass_3}>Filters</div>
+            <div className={__bundleClass_2}>
               Use tags to narrow to the {isComboMode ? "combos" : "glazes"} you want.
             </div>
           </div>
@@ -1248,7 +1259,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         </label>
 
         <div className="glaze-filter-toggles">
-          <label className="glaze-filter-toggle">
+          <label className={__bundleClass_4}>
             <input
               type="checkbox"
               checked={filterHasPhoto}
@@ -1256,7 +1267,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             />
             <span>Has photo</span>
           </label>
-          <label className="glaze-filter-toggle">
+          <label className={__bundleClass_4}>
             <input
               type="checkbox"
               checked={filterHasNotes}
@@ -1266,8 +1277,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           </label>
         </div>
 
-        <div className="glaze-filter-group">
-          <div className="glaze-filter-group-title">Quick tags</div>
+        <div className={__bundleClass_5}>
+          <div className={__bundleClass_6}>Quick tags</div>
           <div className="glaze-tag-row">
             {QUICK_TAGS.map((tag) => (
               <button
@@ -1294,8 +1305,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         </div>
 
         {TAG_GROUPS.map((group) => (
-          <div key={group.id} className="glaze-filter-group">
-            <div className="glaze-filter-group-title">{group.label}</div>
+          <div key={group.id} className={__bundleClass_5}>
+            <div className={__bundleClass_6}>{group.label}</div>
             <div className="glaze-tag-row">
               {group.tags.map((tag) => (
                 <button
@@ -1312,7 +1323,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         ))}
 
         {isComboMode ? (
-          <label className="glaze-filter-toggle">
+          <label className={__bundleClass_4}>
             <input
               type="checkbox"
               checked={filterFavorites}
@@ -1327,7 +1338,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         {isComboMode ? (
           <>
             <section className="glaze-list-panel card card-3d glaze-panel-base">
-              <div className="card-title">Base glazes</div>
+              <div className={__bundleClass_3}>Base glazes</div>
               <div className="glaze-list">
                 {filteredBaseGlazes.map((glaze) => {
                   const hasMatch = baseMatches.get(glaze.id) ?? true;
@@ -1345,7 +1356,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                   );
                 })}
                 {filteredBaseGlazes.length === 0 ? (
-                  <div className="glaze-empty">No base glazes match.</div>
+                  <div className={__bundleClass_7}>No base glazes match.</div>
                 ) : null}
               </div>
             </section>
@@ -1354,7 +1365,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
               {selectedCombo ? (
                 <>
                   <div className="glaze-detail-header">
-                    <div className="card-title">Combo details</div>
+                    <div className={__bundleClass_3}>Combo details</div>
                     <div className="glaze-detail-actions">
                       <button
                         type="button"
@@ -1409,7 +1420,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                       ))}
                     </div>
                   ) : (
-                    <div className="glaze-empty">No photos yet.</div>
+                    <div className={__bundleClass_7}>No photos yet.</div>
                   )}
                   <div className="glaze-note">
                     <strong>Notes</strong>
@@ -1451,16 +1462,16 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                       <div className="glaze-staff-row">
                         <button
                           type="button"
-                          className="btn btn-secondary"
+                          className={__bundleClass_0}
                           onClick={() => openSheet("add")}
                         >
                           Add photo + note
                         </button>
-                        <button type="button" className="btn btn-ghost" onClick={() => openSheet("edit")}>
+                        <button type="button" className={__bundleClass_1} onClick={() => openSheet("edit")}>
                           Edit notes
                         </button>
                       </div>
-                      <div className="glaze-staff-row glaze-staff-mapping">
+                      <div className={__bundleClass_8}>
                         <label>
                           Base Glazy URL
                           <input
@@ -1472,7 +1483,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                         </label>
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className={__bundleClass_1}
                           onClick={toVoidHandler(() =>
                             handleSaveGlazyUrl(selectedCombo.base.id, glazyBaseUrl)
                           )}
@@ -1480,7 +1491,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                           Save base link
                         </button>
                       </div>
-                      <div className="glaze-staff-row glaze-staff-mapping">
+                      <div className={__bundleClass_8}>
                         <label>
                           Top Glazy URL
                           <input
@@ -1492,7 +1503,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                         </label>
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className={__bundleClass_1}
                           onClick={toVoidHandler(() =>
                             handleSaveGlazyUrl(selectedCombo.top.id, glazyTopUrl)
                           )}
@@ -1500,13 +1511,13 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                           Save top link
                         </button>
                       </div>
-                      {glazyStatus ? <div className="glaze-status">{glazyStatus}</div> : null}
+                      {glazyStatus ? <div className={__bundleClass_9}>{glazyStatus}</div> : null}
                     </div>
                   ) : null}
 
                   <button
                     type="button"
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     onClick={() => {
                       setAttachOpen(true);
                       setAttachStatus("");
@@ -1514,16 +1525,16 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                   >
                     Attach to a piece
                   </button>
-                  {tileStatus ? <div className="glaze-status">{tileStatus}</div> : null}
+                  {tileStatus ? <div className={__bundleClass_9}>{tileStatus}</div> : null}
                 </>
               ) : (
-                <div className="glaze-empty">Tap a combo to see photos, notes, and cone details.</div>
+                <div className={__bundleClass_7}>Tap a combo to see photos, notes, and cone details.</div>
               )}
             </aside>
 
             <section className="glaze-list-panel card card-3d glaze-panel-top">
-              <div className="card-title">Top glazes</div>
-              <div className="glaze-subtitle">
+              <div className={__bundleClass_3}>Top glazes</div>
+              <div className={__bundleClass_2}>
                 Base: {selectedCombo?.base.name ?? "Select a base glaze"}
               </div>
               <div className="glaze-list">
@@ -1543,7 +1554,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                   );
                 })}
                 {filteredTopGlazes.length === 0 ? (
-                  <div className="glaze-empty">No top glazes match.</div>
+                  <div className={__bundleClass_7}>No top glazes match.</div>
                 ) : null}
               </div>
             </section>
@@ -1551,7 +1562,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         ) : (
           <>
             <section className="glaze-list-panel card card-3d">
-              <div className="card-title">All glazes</div>
+              <div className={__bundleClass_3}>All glazes</div>
               <div className="glaze-list">
                 {filteredGlazes.map((glaze) => {
                   const hasMatch = singleMatches.map.get(glaze.id) ?? true;
@@ -1569,7 +1580,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                   );
                 })}
                 {filteredGlazes.length === 0 ? (
-                  <div className="glaze-empty">No glazes match.</div>
+                  <div className={__bundleClass_7}>No glazes match.</div>
                 ) : null}
               </div>
             </section>
@@ -1578,7 +1589,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
               {selectedSingle ? (
                 <>
                   <div className="glaze-detail-header">
-                    <div className="card-title">Glaze details</div>
+                    <div className={__bundleClass_3}>Glaze details</div>
                     <div className="glaze-detail-actions">
                       {!selectedTileMatches ? (
                         <span className="glaze-filter-flag">Doesn&apos;t match filters</span>
@@ -1625,7 +1636,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                       ))}
                     </div>
                   ) : (
-                    <div className="glaze-empty">No photos yet.</div>
+                    <div className={__bundleClass_7}>No photos yet.</div>
                   )}
                   <div className="glaze-note">
                     <strong>Notes</strong>
@@ -1651,16 +1662,16 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                       <div className="glaze-staff-row">
                         <button
                           type="button"
-                          className="btn btn-secondary"
+                          className={__bundleClass_0}
                           onClick={() => openSheet("add")}
                         >
                           Add photo + note
                         </button>
-                        <button type="button" className="btn btn-ghost" onClick={() => openSheet("edit")}>
+                        <button type="button" className={__bundleClass_1} onClick={() => openSheet("edit")}>
                           Edit notes
                         </button>
                       </div>
-                      <div className="glaze-staff-row glaze-staff-mapping">
+                      <div className={__bundleClass_8}>
                         <label>
                           Glazy URL
                           <input
@@ -1672,7 +1683,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                         </label>
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className={__bundleClass_1}
                           onClick={toVoidHandler(() =>
                             handleSaveGlazyUrl(selectedSingle.glaze.id, glazyBaseUrl)
                           )}
@@ -1680,13 +1691,13 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                           Save glaze link
                         </button>
                       </div>
-                      {glazyStatus ? <div className="glaze-status">{glazyStatus}</div> : null}
+                      {glazyStatus ? <div className={__bundleClass_9}>{glazyStatus}</div> : null}
                     </div>
                   ) : null}
-                  {tileStatus ? <div className="glaze-status">{tileStatus}</div> : null}
+                  {tileStatus ? <div className={__bundleClass_9}>{tileStatus}</div> : null}
                 </>
               ) : (
-                <div className="glaze-empty">Tap a glaze to see its photos and notes.</div>
+                <div className={__bundleClass_7}>Tap a glaze to see its photos and notes.</div>
               )}
             </aside>
           </>
@@ -1705,15 +1716,15 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       <div className={`glaze-attach-modal ${attachOpen ? "open" : ""}`}>
         <div className="glaze-attach-header">
           <div>
-            <div className="card-title">Attach this combo</div>
-            <div className="glaze-subtitle">
+            <div className={__bundleClass_3}>Attach this combo</div>
+            <div className={__bundleClass_2}>
               Add a glaze combo to one of your pieces for studio reference.
             </div>
-            <div className="glaze-subtitle">
+            <div className={__bundleClass_2}>
               Showing pieces from up to {ATTACH_BATCH_LIMIT} recent check-ins ({ATTACH_PIECES_PER_BATCH_LIMIT} pieces each).
             </div>
           </div>
-          <button type="button" className="btn btn-ghost" onClick={() => setAttachOpen(false)}>
+          <button type="button" className={__bundleClass_1} onClick={() => setAttachOpen(false)}>
             Close
           </button>
         </div>
@@ -1726,23 +1737,23 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             placeholder="Search by piece code or note"
           />
         </label>
-        {attachLoading ? <div className="glaze-empty">Loading pieces...</div> : null}
+        {attachLoading ? <div className={__bundleClass_7}>Loading pieces...</div> : null}
         {!attachLoading && filteredAttachPieces.length === 0 ? (
-          <div className="glaze-empty">No pieces available yet.</div>
+          <div className={__bundleClass_7}>No pieces available yet.</div>
         ) : null}
         <div className="glaze-attach-list">
           {filteredAttachPieces.map((piece) => (
             <div key={`${piece.batchId}-${piece.pieceId}`} className="glaze-attach-row">
               <div>
                 <div className="glaze-attach-title">{piece.pieceCode}</div>
-                <div className="glaze-subtitle">
+                <div className={__bundleClass_2}>
                   {piece.shortDesc || "No description"}
                   {piece.stage ? ` · ${piece.stage}` : ""}
                 </div>
               </div>
               <button
                 type="button"
-                className="btn btn-secondary"
+                className={__bundleClass_0}
                 onClick={toVoidHandler(() => handleAttachPiece(piece))}
               >
                 Attach
@@ -1750,18 +1761,18 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             </div>
           ))}
         </div>
-        {attachStatus ? <div className="glaze-status">{attachStatus}</div> : null}
+        {attachStatus ? <div className={__bundleClass_9}>{attachStatus}</div> : null}
       </div>
 
       <div className={`glaze-sheet ${sheetOpen ? "open" : ""}`}>
         <div className="glaze-sheet-header">
           <div>
-            <div className="card-title">
+            <div className={__bundleClass_3}>
               {sheetMode === "add" ? "Add photo + note" : "Update notes"}
             </div>
-            <div className="glaze-subtitle">Fast updates for staff. Add at least a photo or note.</div>
+            <div className={__bundleClass_2}>Fast updates for staff. Add at least a photo or note.</div>
           </div>
-          <button type="button" className="btn btn-ghost" onClick={closeSheet}>
+          <button type="button" className={__bundleClass_1} onClick={closeSheet}>
             Close
           </button>
         </div>
@@ -1784,7 +1795,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
           <button
             type="button"
-            className="btn btn-ghost"
+            className={__bundleClass_1}
             onClick={() => {
               if (selectedTileRecord) {
                 setSheetNote(selectedTileRecord.notes ?? "");
@@ -1819,8 +1830,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             </label>
           ) : null}
 
-          <div className="glaze-filter-group">
-            <div className="glaze-filter-group-title">Quick tags</div>
+          <div className={__bundleClass_5}>
+            <div className={__bundleClass_6}>Quick tags</div>
             <div className="glaze-tag-row">
               {QUICK_TAGS.map((tag) => (
                 <button
@@ -1843,8 +1854,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           </div>
 
           {TAG_GROUPS.map((group) => (
-            <div key={group.id} className="glaze-filter-group">
-              <div className="glaze-filter-group-title">{group.label}</div>
+            <div key={group.id} className={__bundleClass_5}>
+              <div className={__bundleClass_6}>{group.label}</div>
               <div className="glaze-tag-row">
                 {group.tags.map((tag) => (
                   <button
@@ -1860,7 +1871,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             </div>
           ))}
 
-          <label className="glaze-filter-toggle">
+          <label className={__bundleClass_4}>
             <input
               type="checkbox"
               checked={sheetNeedsRetest}
@@ -1869,10 +1880,10 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             <span>Mark as needs retest</span>
           </label>
 
-          {sheetStatus ? <div className="glaze-status">{sheetStatus}</div> : null}
+          {sheetStatus ? <div className={__bundleClass_9}>{sheetStatus}</div> : null}
         </div>
         <div className="glaze-sheet-footer">
-          <button type="button" className="btn btn-ghost" onClick={closeSheet}>
+          <button type="button" className={__bundleClass_1} onClick={closeSheet}>
             Cancel
           </button>
           <button

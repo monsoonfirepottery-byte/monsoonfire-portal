@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FunctionsClient } from "../../api/functionsClient";
 import { safeJsonStringify } from "../../api/functionsClient";
+const __bundleClass_0 = "staff-note staff-note-error";
+const __bundleClass_1 = "staff-note";
+const __bundleClass_2 = "staff-field";
+
 
 type StripeAuditEntry = {
   id: string;
@@ -232,7 +236,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
     return (
       <section className="card staff-console-card">
         <div className="card-title">Stripe settings</div>
-        <div className="staff-note staff-note-error">Staff claim required.</div>
+        <div className={__bundleClass_0}>Staff claim required.</div>
       </section>
     );
   }
@@ -245,17 +249,17 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
           Refresh
         </button>
       </div>
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         Safe to edit in-app: {safeFields.join(", ") || "mode, publishable keys, IDs, URLs, feature toggles"}.
         Secrets stay server-side only: {restrictedFields.join(", ")}. One webhook endpoint serves portal, materials, events, and commission payments for the active mode.
       </div>
-      {loading ? <div className="staff-note">Loading Stripe configuration...</div> : null}
-      {status ? <div className="staff-note">{status}</div> : null}
-      {error ? <div className="staff-note staff-note-error">{error}</div> : null}
-      {copyStatus ? <div className="staff-note">{copyStatus}</div> : null}
+      {loading ? <div className={__bundleClass_1}>Loading Stripe configuration...</div> : null}
+      {status ? <div className={__bundleClass_1}>{status}</div> : null}
+      {error ? <div className={__bundleClass_0}>{error}</div> : null}
+      {copyStatus ? <div className={__bundleClass_1}>{copyStatus}</div> : null}
 
       <div className="staff-module-grid">
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Mode
           <select value={mode} onChange={(event) => setMode(event.target.value as "test" | "live")} disabled={saving || validating}>
             <option value="test">test</option>
@@ -263,7 +267,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
           </select>
           <span className="helper">Switch mode only when corresponding secrets are configured on Cloud Functions.</span>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Publishable key (test)
           <input
             value={pkTest}
@@ -272,7 +276,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
             disabled={saving || validating}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Publishable key (live)
           <input
             value={pkLive}
@@ -281,18 +285,18 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
             disabled={saving || validating}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Checkout success URL
           <input value={successUrl} onChange={(event) => setSuccessUrl(event.target.value)} disabled={saving || validating} />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Checkout cancel URL
           <input value={cancelUrl} onChange={(event) => setCancelUrl(event.target.value)} disabled={saving || validating} />
         </label>
       </div>
 
       <div className="staff-module-grid">
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Price IDs (`key=price_...`, one per line)
           <textarea
             value={priceIdsText}
@@ -301,7 +305,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
             placeholder={"membership_studio=price_123\nfiring_credit=price_456"}
           />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           Product IDs (`key=prod_...`, one per line)
           <textarea
             value={productIdsText}
@@ -313,7 +317,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
       </div>
 
       <div className="staff-actions-row">
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           <input
             type="checkbox"
             checked={checkoutEnabled}
@@ -322,7 +326,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
           />
           Enable Checkout
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           <input
             type="checkbox"
             checked={customerPortalEnabled}
@@ -331,7 +335,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
           />
           Enable customer portal
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_2}>
           <input
             type="checkbox"
             checked={invoicesEnabled}
@@ -342,7 +346,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
         </label>
       </div>
 
-      {publishableKeyError ? <div className="staff-note staff-note-error">{publishableKeyError}</div> : null}
+      {publishableKeyError ? <div className={__bundleClass_0}>{publishableKeyError}</div> : null}
 
       <div className="staff-actions-row">
         <button className="btn btn-primary" disabled={saving || validating || loading} onClick={() => void save()}>
@@ -356,7 +360,7 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
         </button>
       </div>
 
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         Webhook endpoint: <code>{webhookEndpointUrl || "(not available)"}</code>
         <button className="btn btn-ghost btn-small" disabled={!webhookEndpointUrl} onClick={() => void copyWebhookUrl()}>
           Copy
@@ -374,11 +378,11 @@ export default function StripeSettingsModule({ client, isStaff }: { client: Func
         <details className="staff-troubleshooting" open>
           <summary>Secret rotation checklist</summary>
           <div className="staff-list-compact">
-            <div className="staff-note">1. In Stripe Dashboard, create the API secret key and webhook signing secret for the target mode.</div>
-            <div className="staff-note">2. Update the matching Cloud Functions secret pair: `STRIPE_TEST_SECRET_KEY` + `STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_SECRET_KEY` + `STRIPE_LIVE_WEBHOOK_SECRET`.</div>
-            <div className="staff-note">3. Deploy functions with new secrets bound.</div>
-            <div className="staff-note">4. Run “Validate configuration” in this panel to confirm the active mode and unified webhook endpoint.</div>
-            <div className="staff-note">5. After successful validation, remove old keys in Stripe Dashboard.</div>
+            <div className={__bundleClass_1}>1. In Stripe Dashboard, create the API secret key and webhook signing secret for the target mode.</div>
+            <div className={__bundleClass_1}>2. Update the matching Cloud Functions secret pair: `STRIPE_TEST_SECRET_KEY` + `STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_SECRET_KEY` + `STRIPE_LIVE_WEBHOOK_SECRET`.</div>
+            <div className={__bundleClass_1}>3. Deploy functions with new secrets bound.</div>
+            <div className={__bundleClass_1}>4. Run “Validate configuration” in this panel to confirm the active mode and unified webhook endpoint.</div>
+            <div className={__bundleClass_1}>5. After successful validation, remove old keys in Stripe Dashboard.</div>
           </div>
         </details>
       ) : null}

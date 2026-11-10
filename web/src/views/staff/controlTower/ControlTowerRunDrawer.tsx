@@ -1,5 +1,14 @@
 import { useEffect } from "react";
 import type { AgentRuntimeRunDetail } from "../../../utils/studioBrainControlTower";
+const __bundleClass_0 = "control-tower-room-meta-card";
+const __bundleClass_1 = "control-tower-section";
+const __bundleClass_2 = "control-tower-section-header";
+const __bundleClass_3 = "control-tower-timeline";
+const __bundleClass_4 = "control-tower-event-meta";
+const __bundleClass_5 = "control-tower-event-footer";
+const __bundleClass_6 = "staff-note staff-note-muted";
+const __bundleClass_7 = "control-tower-event-card control-tower-event-info";
+
 
 type Props = {
   open: boolean;
@@ -82,17 +91,17 @@ export default function ControlTowerRunDrawer({
         </div>
 
         <div className="control-tower-room-meta-grid">
-          <div className="control-tower-room-meta-card">
+          <div className={__bundleClass_0}>
             <span>Status</span>
             <strong>{summary?.status || "unknown"}</strong>
             <p>{summary?.riskLane || "No lane recorded"}</p>
           </div>
-          <div className="control-tower-room-meta-card">
+          <div className={__bundleClass_0}>
             <span>Host</span>
             <strong>{summary?.hostId || "unassigned"}</strong>
             <p>{summary?.environment || "environment unknown"}</p>
           </div>
-          <div className="control-tower-room-meta-card">
+          <div className={__bundleClass_0}>
             <span>Updated</span>
             <strong>{formatTimestamp(summary?.updatedAt || detail.generatedAt)}</strong>
             <p>{detail.whyStuck || "No active blocker recorded."}</p>
@@ -102,8 +111,8 @@ export default function ControlTowerRunDrawer({
         {statusMessage ? <div className="staff-note staff-note-ok">{statusMessage}</div> : null}
         {errorMessage ? <div className="staff-note staff-note-danger">{errorMessage}</div> : null}
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_1}>
+          <div className={__bundleClass_2}>
             <div>
               <h3>Why this is stuck</h3>
               <p>Intent, execution, and evidence stay separate here so failure stays legible.</p>
@@ -121,15 +130,15 @@ export default function ControlTowerRunDrawer({
               <span>{summary?.lastEventType || "No event type recorded"}</span>
             </div>
           </article>
-          <div className="control-tower-timeline">
+          <div className={__bundleClass_3}>
             {(detail.diagnostics ?? []).map((diagnostic) => (
               <article key={diagnostic.id} className={`control-tower-event-card control-tower-tone-${diagnosticTone(diagnostic.severity)}`}>
-                <div className="control-tower-event-meta">
+                <div className={__bundleClass_4}>
                   <strong>{diagnostic.title}</strong>
                   <span className={`pill control-tower-pill-${diagnosticTone(diagnostic.severity)}`}>{diagnostic.severity}</span>
                 </div>
                 <p>{diagnostic.summary}</p>
-                {diagnostic.recommendedAction ? <div className="control-tower-event-footer"><span>{diagnostic.recommendedAction}</span></div> : null}
+                {diagnostic.recommendedAction ? <div className={__bundleClass_5}><span>{diagnostic.recommendedAction}</span></div> : null}
               </article>
             ))}
             {!(detail.diagnostics ?? []).length ? (
@@ -138,22 +147,22 @@ export default function ControlTowerRunDrawer({
           </div>
         </section>
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_1}>
+          <div className={__bundleClass_2}>
             <div>
               <h3>Step trace</h3>
               <p>Streaming run steps stay visible without dropping you into raw logs first.</p>
             </div>
           </div>
-          <div className="control-tower-timeline">
+          <div className={__bundleClass_3}>
             {detail.steps.map((step) => (
               <article key={step.stepId} className={`control-tower-event-card control-tower-tone-${stepTone(step.status)}`}>
-                <div className="control-tower-event-meta">
+                <div className={__bundleClass_4}>
                   <strong>{step.title}</strong>
                   <span className={`pill control-tower-pill-${stepTone(step.status)}`}>{step.status}</span>
                 </div>
                 <p>{step.summary}</p>
-                <div className="control-tower-event-footer">
+                <div className={__bundleClass_5}>
                   <span>{step.kind}</span>
                   <span>{formatTimestamp(step.finishedAt || step.startedAt)}</span>
                 </div>
@@ -167,27 +176,27 @@ export default function ControlTowerRunDrawer({
               </article>
             ))}
             {!detail.steps.length ? (
-              <div className="staff-note staff-note-muted">No projected steps are available for this run yet.</div>
+              <div className={__bundleClass_6}>No projected steps are available for this run yet.</div>
             ) : null}
           </div>
         </section>
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_1}>
+          <div className={__bundleClass_2}>
             <div>
               <h3>Artifacts and evidence</h3>
               <p>Structured artifacts stay one click away from the run that produced them.</p>
             </div>
           </div>
-          <div className="control-tower-timeline">
+          <div className={__bundleClass_3}>
             {detail.artifacts.map((artifact) => (
-              <article key={artifact.artifactId} className="control-tower-event-card control-tower-event-info">
-                <div className="control-tower-event-meta">
+              <article key={artifact.artifactId} className={__bundleClass_7}>
+                <div className={__bundleClass_4}>
                   <strong>{artifact.label}</strong>
                   <span className="pill control-tower-pill-neutral">{artifact.kind}</span>
                 </div>
                 <p>{artifact.path}</p>
-                <div className="control-tower-event-footer">
+                <div className={__bundleClass_5}>
                   <span>{artifact.sizeBytes ? `${artifact.sizeBytes} bytes` : "size unknown"}</span>
                   <span>{formatTimestamp(artifact.updatedAt)}</span>
                 </div>
@@ -200,49 +209,49 @@ export default function ControlTowerRunDrawer({
               </article>
             ))}
             {!detail.artifacts.length ? (
-              <div className="staff-note staff-note-muted">No evidence artifacts were found for this run.</div>
+              <div className={__bundleClass_6}>No evidence artifacts were found for this run.</div>
             ) : null}
           </div>
         </section>
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_1}>
+          <div className={__bundleClass_2}>
             <div>
               <h3>Tool calls</h3>
               <p>Tool activity appears here when the runtime emits tool-scoped events.</p>
             </div>
           </div>
-          <div className="control-tower-timeline">
+          <div className={__bundleClass_3}>
             {detail.toolCalls.map((toolCall) => (
-              <article key={toolCall.toolCallId} className="control-tower-event-card control-tower-event-info">
-                <div className="control-tower-event-meta">
+              <article key={toolCall.toolCallId} className={__bundleClass_7}>
+                <div className={__bundleClass_4}>
                   <strong>{toolCall.toolName}</strong>
                   <span className="pill control-tower-pill-neutral">{toolCall.status}</span>
                 </div>
                 <p>{toolCall.summary}</p>
-                <div className="control-tower-event-footer">
+                <div className={__bundleClass_5}>
                   <span>{toolCall.sideEffectClass}</span>
                   <span>{formatTimestamp(toolCall.completedAt || toolCall.requestedAt)}</span>
                 </div>
               </article>
             ))}
             {!detail.toolCalls.length ? (
-              <div className="staff-note staff-note-muted">No tool-call telemetry has been recorded for this run yet.</div>
+              <div className={__bundleClass_6}>No tool-call telemetry has been recorded for this run yet.</div>
             ) : null}
           </div>
         </section>
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_1}>
+          <div className={__bundleClass_2}>
             <div>
               <h3>Event ledger</h3>
               <p>Raw event envelopes stay collapsible instead of swallowing the whole screen.</p>
             </div>
           </div>
-          <div className="control-tower-timeline">
+          <div className={__bundleClass_3}>
             {detail.events.map((event) => (
-              <article key={event.eventId} className="control-tower-event-card control-tower-event-info">
-                <div className="control-tower-event-meta">
+              <article key={event.eventId} className={__bundleClass_7}>
+                <div className={__bundleClass_4}>
                   <strong>{event.type}</strong>
                   <time>{formatTimestamp(event.occurredAt)}</time>
                 </div>
@@ -253,7 +262,7 @@ export default function ControlTowerRunDrawer({
               </article>
             ))}
             {!detail.events.length ? (
-              <div className="staff-note staff-note-muted">No ledger events have been captured for this run.</div>
+              <div className={__bundleClass_6}>No ledger events have been captured for this run.</div>
             ) : null}
           </div>
         </section>

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import type { ControlTowerRoomDetail } from "../../../utils/studioBrainControlTower";
+const __bundleClass_0 = "btn btn-ghost btn-small";
+const __bundleClass_1 = "control-tower-room-meta-card";
+const __bundleClass_2 = "control-tower-section";
+const __bundleClass_3 = "control-tower-section-header";
+
 
 type Props = {
   open: boolean;
@@ -64,27 +69,27 @@ export default function ControlTowerRoomDrawer({
             <p>{room.objective}</p>
           </div>
           <div className="control-tower-drawer-header-actions">
-            <button type="button" className="btn btn-ghost btn-small" onClick={onRefresh}>
+            <button type="button" className={__bundleClass_0} onClick={onRefresh}>
               Refresh
             </button>
-            <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>
+            <button type="button" className={__bundleClass_0} onClick={onClose}>
               Close
             </button>
           </div>
         </div>
 
         <div className="control-tower-room-meta-grid">
-          <div className="control-tower-room-meta-card">
+          <div className={__bundleClass_1}>
             <span>Status</span>
             <strong>{room.status}</strong>
             <p>{room.summary}</p>
           </div>
-          <div className="control-tower-room-meta-card">
+          <div className={__bundleClass_1}>
             <span>Project</span>
             <strong>{room.project || "General"}</strong>
             <p>{formatMinutes(room.ageMinutes)}</p>
           </div>
-          <div className="control-tower-room-meta-card">
+          <div className={__bundleClass_1}>
             <span>Tool</span>
             <strong>{room.tool}</strong>
             <p>{room.cwd || "No working directory recorded"}</p>
@@ -94,8 +99,8 @@ export default function ControlTowerRoomDrawer({
         {statusMessage ? <div className="staff-note staff-note-ok">{statusMessage}</div> : null}
         {errorMessage ? <div className="staff-note staff-note-danger">{errorMessage}</div> : null}
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_2}>
+          <div className={__bundleClass_3}>
             <div>
               <h3>Operator actions</h3>
               <p>Use explicit actions here first. Attach only when you need shell-level recovery.</p>
@@ -115,7 +120,7 @@ export default function ControlTowerRoomDrawer({
             {room.attach ? (
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_0}
                 onClick={() => {
                   void onCopyAttach(room.attach!.sshCommand);
                 }}
@@ -160,8 +165,8 @@ export default function ControlTowerRoomDrawer({
           </div>
         </section>
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_2}>
+          <div className={__bundleClass_3}>
             <div>
               <h3>Recent events</h3>
               <p>The short story of what just happened here.</p>
@@ -184,8 +189,8 @@ export default function ControlTowerRoomDrawer({
           )}
         </section>
 
-        <section className="control-tower-section">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_2}>
+          <div className={__bundleClass_3}>
             <div>
               <h3>Live lanes</h3>
               <p>tmux remains backstage here for recovery and long-running work.</p>

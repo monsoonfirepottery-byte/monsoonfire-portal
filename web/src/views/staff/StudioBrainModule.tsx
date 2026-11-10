@@ -14,6 +14,18 @@ import {
   resolveStudioBrainBaseUrlResolution,
   setStoredStudioBrainBaseUrlOverride,
 } from "../../utils/studioBrain";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "staff-actions-row";
+const __bundleClass_2 = "staff-note staff-note-error";
+const __bundleClass_3 = "staff-subtitle";
+const __bundleClass_4 = "staff-kpi";
+const __bundleClass_5 = "staff-table-wrap";
+const __bundleClass_6 = "staff-table";
+const __bundleClass_7 = "staff-mini";
+const __bundleClass_8 = "staff-field";
+const __bundleClass_9 = "staff-field staff-field-flex-1";
+const __bundleClass_10 = "btn btn-ghost btn-small";
+
 
 type Props = {
   user: User;
@@ -540,7 +552,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
     <section className="card staff-console-card">
       <div className="card-title-row">
         <div className="card-title">Studio Brain Admin</div>
-        <button className="btn btn-secondary" disabled={Boolean(busy) || disabledByToken} onClick={() => void run("refreshStudioBrain", loadAll)}>
+        <button className={__bundleClass_0} disabled={Boolean(busy) || disabledByToken} onClick={() => void run("refreshStudioBrain", loadAll)}>
           Refresh
         </button>
       </div>
@@ -569,11 +581,11 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
               autoComplete="off"
             />
           </label>
-          <div className="staff-actions-row" style={{ marginTop: "10px" }}>
+          <div className={__bundleClass_1} style={{ marginTop: "10px" }}>
             <button type="button" className="btn btn-primary" onClick={saveBaseUrlOverride}>
               Save URL
             </button>
-            <button type="button" className="btn btn-secondary" onClick={clearBaseUrlOverride}>
+            <button type="button" className={__bundleClass_0} onClick={clearBaseUrlOverride}>
               Clear
             </button>
           </div>
@@ -581,19 +593,19 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </div>
       ) : null}
       {!hasAdminToken ? (
-        <div className="staff-note staff-note-error">Set a Dev admin token in System module to access Studio Brain endpoints.</div>
+        <div className={__bundleClass_2}>Set a Dev admin token in System module to access Studio Brain endpoints.</div>
       ) : null}
       {scorecard ? (
         <>
-          <div className="staff-subtitle">SLO scorecard</div>
+          <div className={__bundleClass_3}>SLO scorecard</div>
           <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Overall</span><strong>{scorecard.overallStatus}</strong></div>
-            <div className="staff-kpi"><span>Computed</span><strong>{when(scorecard.computedAt)}</strong></div>
-            <div className="staff-kpi"><span>Last breach</span><strong>{when(scorecard.lastBreachAt ?? undefined)}</strong></div>
-            <div className="staff-kpi"><span>Metrics tracked</span><strong>{scorecard.metrics.length}</strong></div>
+            <div className={__bundleClass_4}><span>Overall</span><strong>{scorecard.overallStatus}</strong></div>
+            <div className={__bundleClass_4}><span>Computed</span><strong>{when(scorecard.computedAt)}</strong></div>
+            <div className={__bundleClass_4}><span>Last breach</span><strong>{when(scorecard.lastBreachAt ?? undefined)}</strong></div>
+            <div className={__bundleClass_4}><span>Metrics tracked</span><strong>{scorecard.metrics.length}</strong></div>
           </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          <div className={__bundleClass_5}>
+            <table className={__bundleClass_6}>
               <thead><tr><th>Metric</th><th>Status</th><th>Value</th><th>Owner</th><th>On-call</th></tr></thead>
               <tbody>
                 {scorecard.metrics.map((row) => (
@@ -612,15 +624,15 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       ) : null}
       {policyLint ? (
         <>
-          <div className="staff-subtitle">Policy lint</div>
+          <div className={__bundleClass_3}>Policy lint</div>
           <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Checked</span><strong>{when(policyLint.checkedAt)}</strong></div>
-            <div className="staff-kpi"><span>Capabilities</span><strong>{policyLint.capabilitiesChecked}</strong></div>
-            <div className="staff-kpi"><span>Violations</span><strong>{policyLint.violations.length}</strong></div>
+            <div className={__bundleClass_4}><span>Checked</span><strong>{when(policyLint.checkedAt)}</strong></div>
+            <div className={__bundleClass_4}><span>Capabilities</span><strong>{policyLint.capabilitiesChecked}</strong></div>
+            <div className={__bundleClass_4}><span>Violations</span><strong>{policyLint.violations.length}</strong></div>
           </div>
           {policyLint.violations.length > 0 ? (
-            <div className="staff-table-wrap">
-              <table className="staff-table">
+            <div className={__bundleClass_5}>
+              <table className={__bundleClass_6}>
                 <thead><tr><th>Capability</th><th>Code</th><th>Message</th></tr></thead>
                 <tbody>
                   {policyLint.violations.map((row, index) => (
@@ -641,22 +653,22 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
 
       {supportQueueSummary ? (
         <>
-          <div className="staff-subtitle">Support ops queue</div>
+          <div className={__bundleClass_3}>Support ops queue</div>
           <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Unread</span><strong>{supportQueueSummary.unread}</strong></div>
-            <div className="staff-kpi"><span>Awaiting info</span><strong>{supportQueueSummary.awaitingInfo}</strong></div>
-            <div className="staff-kpi"><span>Awaiting approval</span><strong>{supportQueueSummary.awaitingApproval}</strong></div>
-            <div className="staff-kpi"><span>Security hold</span><strong>{supportQueueSummary.securityHold}</strong></div>
-            <div className="staff-kpi"><span>Staff review</span><strong>{supportQueueSummary.staffReview}</strong></div>
-            <div className="staff-kpi"><span>Warm touches due</span><strong>{supportQueueSummary.warmTouchesDue}</strong></div>
-            <div className="staff-kpi"><span>Split thread suspects</span><strong>{supportQueueSummary.splitThreadSuspects}</strong></div>
-            <div className="staff-kpi"><span>Oldest open</span><strong>{when(supportQueueSummary.oldestOpenAt ?? undefined)}</strong></div>
-            <div className="staff-kpi"><span>SLA fresh</span><strong>{supportQueueSummary.slaAging.fresh}</strong></div>
-            <div className="staff-kpi"><span>SLA warning</span><strong>{supportQueueSummary.slaAging.warning}</strong></div>
-            <div className="staff-kpi"><span>SLA overdue</span><strong>{supportQueueSummary.slaAging.overdue}</strong></div>
+            <div className={__bundleClass_4}><span>Unread</span><strong>{supportQueueSummary.unread}</strong></div>
+            <div className={__bundleClass_4}><span>Awaiting info</span><strong>{supportQueueSummary.awaitingInfo}</strong></div>
+            <div className={__bundleClass_4}><span>Awaiting approval</span><strong>{supportQueueSummary.awaitingApproval}</strong></div>
+            <div className={__bundleClass_4}><span>Security hold</span><strong>{supportQueueSummary.securityHold}</strong></div>
+            <div className={__bundleClass_4}><span>Staff review</span><strong>{supportQueueSummary.staffReview}</strong></div>
+            <div className={__bundleClass_4}><span>Warm touches due</span><strong>{supportQueueSummary.warmTouchesDue}</strong></div>
+            <div className={__bundleClass_4}><span>Split thread suspects</span><strong>{supportQueueSummary.splitThreadSuspects}</strong></div>
+            <div className={__bundleClass_4}><span>Oldest open</span><strong>{when(supportQueueSummary.oldestOpenAt ?? undefined)}</strong></div>
+            <div className={__bundleClass_4}><span>SLA fresh</span><strong>{supportQueueSummary.slaAging.fresh}</strong></div>
+            <div className={__bundleClass_4}><span>SLA warning</span><strong>{supportQueueSummary.slaAging.warning}</strong></div>
+            <div className={__bundleClass_4}><span>SLA overdue</span><strong>{supportQueueSummary.slaAging.overdue}</strong></div>
           </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          <div className={__bundleClass_5}>
+            <table className={__bundleClass_6}>
               <thead><tr><th>Received</th><th>Case</th><th>Queue</th><th>Care</th><th>Risk</th><th>Decision</th><th>Policy</th></tr></thead>
               <tbody>
                 {supportCaseRows.length === 0 ? (
@@ -667,33 +679,33 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                       <td>{when(row.lastReceivedAt)}</td>
                       <td>
                         <code>{row.supportRequestId}</code>
-                        <div className="staff-mini">{row.subject}</div>
-                        {row.senderEmail ? <div className="staff-mini">{row.senderEmail}</div> : null}
-                        {row.supportSummary ? <div className="staff-mini">{row.supportSummary}</div> : null}
-                        {row.emberSummary ? <div className="staff-mini">Ember: {row.emberSummary}</div> : null}
-                        {row.emberMemoryScope ? <div className="staff-mini"><code>{row.emberMemoryScope}</code></div> : null}
-                        {row.threadDriftFlag ? <div className="staff-mini">Thread drift suspect</div> : null}
+                        <div className={__bundleClass_7}>{row.subject}</div>
+                        {row.senderEmail ? <div className={__bundleClass_7}>{row.senderEmail}</div> : null}
+                        {row.supportSummary ? <div className={__bundleClass_7}>{row.supportSummary}</div> : null}
+                        {row.emberSummary ? <div className={__bundleClass_7}>Ember: {row.emberSummary}</div> : null}
+                        {row.emberMemoryScope ? <div className={__bundleClass_7}><code>{row.emberMemoryScope}</code></div> : null}
+                        {row.threadDriftFlag ? <div className={__bundleClass_7}>Thread drift suspect</div> : null}
                         {row.linkedMemoryReviewCaseIds && row.linkedMemoryReviewCaseIds.length > 0 ? (
-                          <div className="staff-mini">Memory reviews: {row.linkedMemoryReviewCaseIds.join(", ")}</div>
+                          <div className={__bundleClass_7}>Memory reviews: {row.linkedMemoryReviewCaseIds.join(", ")}</div>
                         ) : null}
                       </td>
                       <td>{row.queueBucket}</td>
                       <td>
                         {row.memberCareState}
-                        {row.memberCareReason ? <div className="staff-mini">{row.memberCareReason.replaceAll("_", " ")}</div> : null}
-                        {row.lastCareTouchAt ? <div className="staff-mini">Last touch {when(row.lastCareTouchAt)}</div> : null}
+                        {row.memberCareReason ? <div className={__bundleClass_7}>{row.memberCareReason.replaceAll("_", " ")}</div> : null}
+                        {row.lastCareTouchAt ? <div className={__bundleClass_7}>Last touch {when(row.lastCareTouchAt)}</div> : null}
                       </td>
                       <td>
                         {row.riskState}
-                        {row.confusionState !== "none" ? <div className="staff-mini">Confusion: {row.confusionState}</div> : null}
-                        {row.confusionReason ? <div className="staff-mini">{row.confusionReason}</div> : null}
-                        {row.humanHandoff ? <div className="staff-mini">Human handoff</div> : null}
+                        {row.confusionState !== "none" ? <div className={__bundleClass_7}>Confusion: {row.confusionState}</div> : null}
+                        {row.confusionReason ? <div className={__bundleClass_7}>{row.confusionReason}</div> : null}
+                        {row.humanHandoff ? <div className={__bundleClass_7}>Human handoff</div> : null}
                       </td>
                       <td>
                         {row.decision}
-                        <div className="staff-mini">{row.automationState}</div>
-                        {row.proposalId ? <div className="staff-mini">Proposal: {row.proposalId}</div> : null}
-                        {row.nextRecommendedAction ? <div className="staff-mini">{row.nextRecommendedAction}</div> : null}
+                        <div className={__bundleClass_7}>{row.automationState}</div>
+                        {row.proposalId ? <div className={__bundleClass_7}>Proposal: {row.proposalId}</div> : null}
+                        {row.nextRecommendedAction ? <div className={__bundleClass_7}>{row.nextRecommendedAction}</div> : null}
                       </td>
                       <td>{row.policyResolution?.policySlug ?? "-"}</td>
                     </tr>
@@ -702,9 +714,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
               </tbody>
             </table>
           </div>
-          <div className="staff-subtitle">Memory review</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          <div className={__bundleClass_3}>Memory review</div>
+          <div className={__bundleClass_5}>
+            <table className={__bundleClass_6}>
               <thead><tr><th>Updated</th><th>Case</th><th>Scope</th><th>Linked memories</th><th>Verifier</th><th>Actions</th></tr></thead>
               <tbody>
                 {memoryReviewCaseRows.length === 0 ? (
@@ -717,34 +729,34 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                         <td>{when(row.updatedAt)}</td>
                         <td>
                           <code>{row.id}</code>
-                          <div className="staff-mini">{row.caseType}</div>
-                          <div className="staff-mini">{row.status}</div>
-                          {row.resolution ? <div className="staff-mini">{row.resolution}</div> : null}
+                          <div className={__bundleClass_7}>{row.caseType}</div>
+                          <div className={__bundleClass_7}>{row.status}</div>
+                          {row.resolution ? <div className={__bundleClass_7}>{row.resolution}</div> : null}
                         </td>
                         <td>{row.scope ?? "-"}</td>
                         <td>
-                          <div className="staff-mini">{row.primaryMemoryId ?? "-"}</div>
-                          <div className="staff-mini">{row.linkedMemoryIds.join(", ") || "-"}</div>
-                          {row.reasonCodes.length > 0 ? <div className="staff-mini">{row.reasonCodes.join(", ")}</div> : null}
+                          <div className={__bundleClass_7}>{row.primaryMemoryId ?? "-"}</div>
+                          <div className={__bundleClass_7}>{row.linkedMemoryIds.join(", ") || "-"}</div>
+                          {row.reasonCodes.length > 0 ? <div className={__bundleClass_7}>{row.reasonCodes.join(", ")}</div> : null}
                         </td>
                         <td>
                           {verification ? (
                             <>
                               <div>{verification.resultStatus}</div>
-                              <div className="staff-mini">{verification.verifierKind}</div>
-                              {verification.resultSummary ? <div className="staff-mini">{verification.resultSummary}</div> : null}
+                              <div className={__bundleClass_7}>{verification.verifierKind}</div>
+                              {verification.resultSummary ? <div className={__bundleClass_7}>{verification.resultSummary}</div> : null}
                             </>
                           ) : (
                             row.lastVerificationRunId ?? "-"
                           )}
                         </td>
                         <td>
-                          <div className="staff-actions-row" style={{ flexWrap: "wrap" }}>
+                          <div className={__bundleClass_1} style={{ flexWrap: "wrap" }}>
                             {row.recommendedActions.slice(0, 3).map((action) => (
                               <button
                                 key={`${row.id}-${action}`}
                                 type="button"
-                                className="btn btn-secondary"
+                                className={__bundleClass_0}
                                 disabled={Boolean(busy) || disabledByToken}
                                 onClick={() =>
                                   void run(`memory-review:${action}`, async () => {
@@ -773,9 +785,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
               </tbody>
             </table>
           </div>
-          <div className="staff-subtitle">Support dead letters</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+          <div className={__bundleClass_3}>Support dead letters</div>
+          <div className={__bundleClass_5}>
+            <table className={__bundleClass_6}>
               <thead><tr><th>At</th><th>Mailbox</th><th>Message</th><th>Error</th></tr></thead>
               <tbody>
                 {supportDeadLetterRows.length === 0 ? (
@@ -798,8 +810,8 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
 
       <div className="staff-module-grid">
         <div className="staff-column">
-          <div className="staff-subtitle">Create proposal</div>
-          <label className="staff-field">
+          <div className={__bundleClass_3}>Create proposal</div>
+          <label className={__bundleClass_8}>
             Capability
             <select value={capabilityId} onChange={(event) => setCapabilityId(event.target.value)}>
               {capabilities.map((row) => (
@@ -809,19 +821,19 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
               ))}
             </select>
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_8}>
             Batch ID
             <input value={batchIdDraft} onChange={(event) => setBatchIdDraft(event.target.value)} />
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_8}>
             Tenant
             <input value={tenantContext} onChange={(event) => setTenantContext(event.target.value)} />
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_8}>
             Rationale
             <textarea value={rationale} onChange={(event) => setRationale(event.target.value)} />
           </label>
-          <label className="staff-field">
+          <label className={__bundleClass_8}>
             Reject reason
             <textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} />
           </label>
@@ -855,9 +867,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </div>
 
         <div className="staff-column">
-      <div className="staff-subtitle">Capabilities</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
+      <div className={__bundleClass_3}>Capabilities</div>
+          <div className={__bundleClass_5}>
+            <table className={__bundleClass_6}>
               <thead><tr><th>ID</th><th>Target</th><th>Approval</th><th>Risk</th></tr></thead>
               <tbody>
                 {capabilities.length === 0 ? <tr><td colSpan={4}>No capabilities loaded.</td></tr> : capabilities.map((row) => (
@@ -874,19 +886,19 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </div>
       </div>
 
-      <div className="staff-subtitle">Policy controls</div>
+      <div className={__bundleClass_3}>Policy controls</div>
       <div className="staff-note">
         Kill switch: <strong>{policy.killSwitch.enabled ? "ENABLED" : "disabled"}</strong>
         {policy.killSwitch.updatedAt ? ` (updated ${when(policy.killSwitch.updatedAt)} by ${policy.killSwitch.updatedBy ?? "unknown"})` : ""}
       </div>
       {policy.killSwitch.rationale ? <div className="staff-note">Last rationale: {policy.killSwitch.rationale}</div> : null}
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_9}>
           Kill switch rationale
           <input value={killSwitchRationale} onChange={(event) => setKillSwitchRationale(event.target.value)} />
         </label>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabledByToken || !killSwitchRationale.trim()}
           onClick={() =>
             void run("toggle-kill-switch", async () => {
@@ -905,18 +917,18 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           {policy.killSwitch.enabled ? "Disable kill switch" : "Enable kill switch"}
         </button>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_8}>
           Exemption owner UID (optional)
           <input value={exemptionOwnerUid} onChange={(event) => setExemptionOwnerUid(event.target.value)} placeholder="all owners if blank" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Expires at (optional ISO)
           <input value={exemptionExpiresAt} onChange={(event) => setExemptionExpiresAt(event.target.value)} placeholder="2026-02-13T05:00:00.000Z" />
         </label>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_9}>
           Exemption justification
           <input value={exemptionJustification} onChange={(event) => setExemptionJustification(event.target.value)} />
         </label>
@@ -942,8 +954,8 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           Create exemption
         </button>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>Capability</th><th>Owner</th><th>Status</th><th>Expires</th><th>Action</th></tr></thead>
           <tbody>
             {policy.exemptions.length === 0 ? <tr><td colSpan={5}>No exemptions.</td></tr> : policy.exemptions.slice(0, 25).map((row) => (
@@ -954,7 +966,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                 <td>{when(row.expiresAt)}</td>
                 <td>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || row.status !== "active" || !exemptionRevokeReason.trim()}
                     onClick={() =>
                       void run(`revoke-${row.id}`, async () => {
@@ -975,15 +987,15 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_9}>
           Exemption revoke reason
           <input value={exemptionRevokeReason} onChange={(event) => setExemptionRevokeReason(event.target.value)} />
         </label>
       </div>
-      <div className="staff-subtitle">Connector health</div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_3}>Connector health</div>
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>Connector</th><th>Status</th><th>Latency ms</th></tr></thead>
           <tbody>
             {connectorRows.length === 0 ? <tr><td colSpan={3}>No connector health rows.</td></tr> : connectorRows.map((row) => (
@@ -997,22 +1009,22 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </table>
       </div>
 
-      <div className="staff-subtitle">Recent proposals</div>
+      <div className={__bundleClass_3}>Recent proposals</div>
       {intakeQueueRows.length > 0 ? (
-        <div className="staff-note staff-note-error">
+        <div className={__bundleClass_2}>
           Intake risk banner: {intakeQueueRows.length} high-risk intake item(s) are blocked pending staff review.
         </div>
       ) : null}
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_8}>
           Pilot idempotency key
           <input value={pilotIdempotencyKey} onChange={(event) => setPilotIdempotencyKey(event.target.value)} placeholder="pilot-key-..." />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Pilot rollback reason
           <input value={pilotRollbackReason} onChange={(event) => setPilotRollbackReason(event.target.value)} />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Risk
           <select value={proposalRiskFilter} onChange={(event) => setProposalRiskFilter(event.target.value)}>
             <option value="">All</option>
@@ -1022,7 +1034,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
             <option value="critical">critical</option>
           </select>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Capability
           <select value={proposalCapabilityFilter} onChange={(event) => setProposalCapabilityFilter(event.target.value)}>
             <option value="">All</option>
@@ -1031,15 +1043,15 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
             ))}
           </select>
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Owner
           <input value={proposalOwnerFilter} onChange={(event) => setProposalOwnerFilter(event.target.value)} placeholder="requestedBy uid" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Tenant
           <input value={proposalTenantFilter} onChange={(event) => setProposalTenantFilter(event.target.value)} placeholder="tenant id" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Age
           <select value={proposalAgeFilter} onChange={(event) => setProposalAgeFilter(event.target.value)}>
             <option value="all">All</option>
@@ -1049,8 +1061,8 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </select>
         </label>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Capability</th><th>Status</th><th>Impact</th><th>Audit</th><th>Actions</th></tr></thead>
           <tbody>
             {filteredProposals.length === 0 ? <tr><td colSpan={6}>No proposals matching filters.</td></tr> : filteredProposals.slice(0, 25).map((row) => (
@@ -1059,18 +1071,18 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                 <td><code>{row.capabilityId}</code></td>
                 <td>{row.status}</td>
                 <td>
-                  <div className="staff-mini">{row.preview?.summary ?? row.rationale}</div>
-                  <div className="staff-mini">tenant: {row.tenantId ?? "-"}</div>
-                  <div className="staff-mini">{(row.preview?.expectedEffects ?? []).slice(0, 1).join("")}</div>
+                  <div className={__bundleClass_7}>{row.preview?.summary ?? row.rationale}</div>
+                  <div className={__bundleClass_7}>tenant: {row.tenantId ?? "-"}</div>
+                  <div className={__bundleClass_7}>{(row.preview?.expectedEffects ?? []).slice(0, 1).join("")}</div>
                 </td>
                 <td>
-                  <div className="staff-mini">
+                  <div className={__bundleClass_7}>
                     chain: {auditRows.filter((evt) => String(evt.metadata?.proposalId ?? "") === row.id).length}
                   </div>
                 </td>
-                <td className="staff-actions-row">
+                <td className={__bundleClass_1}>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={
                       !canApproveProposalAction({
                         busy: Boolean(busy),
@@ -1092,7 +1104,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Approve
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken}
                     onClick={() =>
                       void run(`dry-run-${row.id}`, async () => {
@@ -1106,7 +1118,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Dry run
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={
                       !canExecuteProposalAction({
                         busy: Boolean(busy),
@@ -1139,7 +1151,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Execute
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={
                       !canRollbackProposalAction({
                         busy: Boolean(busy),
@@ -1168,7 +1180,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Rollback
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || !rejectReason.trim()}
                     onClick={() =>
                       void run(`reject-${row.id}`, async () => {
@@ -1184,7 +1196,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Reject
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || row.status !== "rejected" || !reopenReason.trim()}
                     onClick={() =>
                       void run(`reopen-${row.id}`, async () => {
@@ -1205,26 +1217,26 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_9}>
           Approval rationale
           <input value={approvalRationale} onChange={(event) => setApprovalRationale(event.target.value)} />
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_9}>
           Reopen reason (admin only)
           <input value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} />
         </label>
       </div>
 
-      <div className="staff-subtitle">Quota buckets</div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_3}>Quota buckets</div>
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_9}>
           Reset reason
           <input value={resetReason} onChange={(event) => setResetReason(event.target.value)} />
         </label>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>Bucket</th><th>Count</th><th>Window start</th><th>Reset</th></tr></thead>
           <tbody>
             {quotaBuckets.length === 0 ? <tr><td colSpan={4}>No quota buckets yet.</td></tr> : quotaBuckets.slice(0, 25).map((bucket) => (
@@ -1234,7 +1246,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                 <td>{when(bucket.windowStart)}</td>
                 <td>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || !resetReason.trim()}
                     onClick={() =>
                       void run(`reset-${bucket.bucket}`, async () => {
@@ -1255,9 +1267,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Rate limit events</div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_3}>Rate limit events</div>
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Actor</th><th>Bucket</th><th>Path</th><th>Retry after</th></tr></thead>
           <tbody>
             {rateLimitRows.length === 0 ? <tr><td colSpan={5}>No recent rate-limit events.</td></tr> : rateLimitRows.slice(0, 25).map((row) => (
@@ -1273,17 +1285,17 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </table>
       </div>
 
-      <div className="staff-subtitle">Capability audit</div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_3}>Capability audit</div>
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_8}>
           Action prefix
           <input value={auditActionPrefix} onChange={(event) => setAuditActionPrefix(event.target.value)} placeholder="capability.firestore" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Actor ID
           <input value={auditActorFilter} onChange={(event) => setAuditActorFilter(event.target.value)} placeholder="staff uid" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_8}>
           Approval
           <select value={auditApprovalFilter} onChange={(event) => setAuditApprovalFilter(event.target.value)}>
             <option value="">All</option>
@@ -1295,9 +1307,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </label>
       </div>
 
-      <div className="staff-subtitle">Delegation traces</div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_3}>Delegation traces</div>
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Action</th><th>Actor</th><th>Approval</th><th>Rationale</th></tr></thead>
           <tbody>
             {delegationTraceRows.length === 0 ? <tr><td colSpan={5}>No delegation traces yet.</td></tr> : delegationTraceRows.slice(0, 20).map((row) => (
@@ -1313,9 +1325,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </table>
       </div>
 
-      <div className="staff-subtitle">Ops recommendation drafts</div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_3}>Ops recommendation drafts</div>
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Rule</th><th>Severity</th><th>Title</th><th>Recommendation</th></tr></thead>
           <tbody>
             {opsRecommendationRows.length === 0 ? <tr><td colSpan={5}>No recommendation drafts yet.</td></tr> : opsRecommendationRows.slice(0, 20).map((row) => (
@@ -1330,16 +1342,16 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Marketing drafts</div>
-      <div className="staff-actions-row">
-        <label className="staff-field staff-field-flex-1">
+      <div className={__bundleClass_3}>Marketing drafts</div>
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_9}>
           Review rationale
           <input value={marketingReviewRationale} onChange={(event) => setMarketingReviewRationale(event.target.value)} />
         </label>
       </div>
-      <div className="staff-subtitle">Intake review queue</div>
-      <div className="staff-actions-row">
-        <label className="staff-field">
+      <div className={__bundleClass_3}>Intake review queue</div>
+      <div className={__bundleClass_1}>
+        <label className={__bundleClass_8}>
           Decision reason code
           <select value={intakeDecisionReasonCode} onChange={(event) => setIntakeDecisionReasonCode(event.target.value)}>
             <option value="staff_override_context_verified">staff_override_context_verified</option>
@@ -1348,13 +1360,13 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
             <option value="policy_confirmed_illegal">policy_confirmed_illegal</option>
           </select>
         </label>
-        <label className="staff-field staff-field-flex-1">
+        <label className={__bundleClass_9}>
           Decision rationale
           <input value={intakeDecisionRationale} onChange={(event) => setIntakeDecisionRationale(event.target.value)} />
         </label>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Category</th><th>Reason</th><th>Capability</th><th>Actor</th><th>Action</th></tr></thead>
           <tbody>
             {intakeQueueRows.length === 0 ? <tr><td colSpan={6}>No blocked intake items.</td></tr> : intakeQueueRows.slice(0, 20).map((row) => (
@@ -1364,9 +1376,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                 <td><code>{row.reasonCode}</code></td>
                 <td><code>{row.capabilityId ?? "-"}</code></td>
                 <td><code>{row.actorId ?? "-"}</code></td>
-                <td className="staff-actions-row">
+                <td className={__bundleClass_1}>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || intakeDecisionRationale.trim().length < 10 || !intakeDecisionReasonCode.startsWith("staff_override_")}
                     onClick={() =>
                       void run(`intake-grant-${row.intakeId}`, async () => {
@@ -1386,7 +1398,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Grant override
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || intakeDecisionRationale.trim().length < 10 || !intakeDecisionReasonCode.startsWith("policy_")}
                     onClick={() =>
                       void run(`intake-deny-${row.intakeId}`, async () => {
@@ -1411,9 +1423,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Finance reconciliation drafts</div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_3}>Finance reconciliation drafts</div>
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Rule</th><th>Severity</th><th>Title</th><th>Action</th></tr></thead>
           <tbody>
             {financeDraftRows.length === 0 ? (
@@ -1426,13 +1438,13 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                   <td>{row.severity}</td>
                   <td>
                     {row.title}
-                    <div className="staff-mini">{row.rationale}</div>
-                    <div className="staff-mini">{row.recommendation}</div>
-                    {row.evidenceRefs?.length ? <div className="staff-mini">Evidence: {row.evidenceRefs.join(", ")}</div> : null}
+                    <div className={__bundleClass_7}>{row.rationale}</div>
+                    <div className={__bundleClass_7}>{row.recommendation}</div>
+                    {row.evidenceRefs?.length ? <div className={__bundleClass_7}>Evidence: {row.evidenceRefs.join(", ")}</div> : null}
                   </td>
                   <td>
                     <button
-                      className="btn btn-ghost btn-small"
+                      className={__bundleClass_10}
                       disabled={Boolean(busy) || disabledByToken}
                       onClick={() =>
                         void run(`finance-proposal-${row.id}`, async () => {
@@ -1468,10 +1480,10 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Audit export</div>
-      <div className="staff-actions-row">
+      <div className={__bundleClass_3}>Audit export</div>
+      <div className={__bundleClass_1}>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabledByToken}
           onClick={() =>
             void run("exportAuditBundle", async () => {
@@ -1484,8 +1496,8 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           Copy audit export bundle
         </button>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Draft</th><th>Channel</th><th>Status</th><th>Title</th><th>Action</th></tr></thead>
           <tbody>
             {marketingDraftRows.length === 0 ? <tr><td colSpan={6}>No marketing drafts yet.</td></tr> : marketingDraftRows.slice(0, 20).map((row) => (
@@ -1495,9 +1507,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                 <td>{row.channel}</td>
                 <td>{row.status}</td>
                 <td>{row.title}</td>
-                <td className="staff-actions-row">
+                <td className={__bundleClass_1}>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || row.status !== "draft" || marketingReviewRationale.trim().length < 10}
                     onClick={() =>
                       void run(`mk-review-${row.draftId}`, async () => {
@@ -1516,7 +1528,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                     Mark needs_review
                   </button>
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     disabled={Boolean(busy) || disabledByToken || row.status !== "needs_review" || marketingReviewRationale.trim().length < 10}
                     onClick={() =>
                       void run(`mk-approve-${row.draftId}`, async () => {
@@ -1540,8 +1552,8 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Action</th><th>Actor</th><th>Approval</th><th>Rationale</th></tr></thead>
           <tbody>
             {auditRows.length === 0 ? <tr><td colSpan={5}>No capability audit events yet.</td></tr> : auditRows.slice(0, 30).map((row) => (
@@ -1556,9 +1568,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
           </tbody>
         </table>
       </div>
-      <div className="staff-subtitle">Ops audit timeline</div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
+      <div className={__bundleClass_3}>Ops audit timeline</div>
+      <div className={__bundleClass_5}>
+        <table className={__bundleClass_6}>
           <thead><tr><th>At</th><th>Action</th><th>Actor</th><th>Rationale</th></tr></thead>
           <tbody>
             {opsAuditRows.length === 0 ? (
@@ -1578,7 +1590,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       </div>
 
       {status ? <div className="staff-note">{status}</div> : null}
-      {error ? <div className="staff-note staff-note-error">{error}</div> : null}
+      {error ? <div className={__bundleClass_2}>{error}</div> : null}
     </section>
   );
 }

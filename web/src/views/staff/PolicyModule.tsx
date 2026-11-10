@@ -243,6 +243,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [safetyStatusKnown, setSafetyStatusKnown] = useState(false);
+  const [safetyConfigComplete, setSafetyConfigComplete] = useState(false);
   const [activeVersion, setActiveVersion] = useState("");
   const [policies, setPolicies] = useState<PolicyVersion[]>([]);
   const [currentPolicy, setCurrentPolicy] = useState<PolicyVersion | null>(null);
@@ -315,6 +316,8 @@ export default function PolicyModule({ client, active, disabled }: Props) {
   };
 
   const loadAll = async () => {
+    // Do not allow saving defaults or stale values while a refresh is pending or fails.
+    setSafetyConfigComplete(false);
     const [currentResp, listResp, safetyResp] = await Promise.all([
       client.postJson<CurrentPolicyResponse>("getModerationPolicyCurrent", {}),
       client.postJson<ListPoliciesResponse>("listModerationPolicies", { includeArchived: false, limit: 40 }),
@@ -337,6 +340,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
     );
     const safetyRow = safetyResp.config;
     setSafetyStatusKnown(Boolean(safetyRow && typeof safetyRow.enabled === "boolean" && typeof safetyRow.publishKillSwitch === "boolean" && typeof safetyRow.autoFlagEnabled === "boolean"));
+    setSafetyConfigComplete(Boolean(safetyResp.ok && safetyRow && typeof safetyRow.enabled === "boolean" && typeof safetyRow.publishKillSwitch === "boolean" && typeof safetyRow.autoFlagEnabled === "boolean" && Number.isFinite(safetyRow.highSeverityThreshold) && Number.isFinite(safetyRow.mediumSeverityThreshold) && Array.isArray(safetyRow.blockedTerms) && safetyRow.blockedTerms.every((item) => typeof item === "string") && Array.isArray(safetyRow.blockedUrlHosts) && safetyRow.blockedUrlHosts.every((item) => typeof item === "string")));
     setSafetyConfig(normalizedSafety);
     setLoaded(true);
     setBlockedTermsDraft(normalizedSafety.blockedTerms.join("\n"));
@@ -353,6 +357,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
   };
 
   const persistSafetyPatch = async (patch: Partial<CommunitySafetyConfig>, successMessage: string) => {
+    if (!safetyConfigComplete || !loaded || disabled) throw new Error("Refresh safety controls before making changes.");
     await client.postJson<BasicResponse>("staffUpdateCommunitySafetyConfig", patch);
     await loadAll();
     setStatus(successMessage);
@@ -511,6 +516,8 @@ export default function PolicyModule({ client, active, disabled }: Props) {
             : "no recorded updates yet"}
         </div>
       </div>
+      {!safetyConfigComplete ? <div className="staff-note" role="status">Refresh policy to load all safety settings before changing them.</div> : null}
+      <fieldset disabled={!safetyConfigComplete || !loaded || disabled} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="staff-actions-row">
         <button
           className="btn btn-secondary"
@@ -700,6 +707,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           Save safety controls
         </button>
       </div>
+      </fieldset>
 
       <hr />
       <div className="card-title">Draft risk scan</div>

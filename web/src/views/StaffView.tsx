@@ -7074,18 +7074,8 @@ export default function StaffView({
                       key={member.id}
                       className={`staff-click-row ${selectedMemberId === member.id ? "active" : ""}`}
                       onClick={() => { setMessageRecipientCheck(null); setSelectedMemberId(member.id); setContactDetailOpen(true); requestAnimationFrame(() => document.getElementById("staff-contact-detail")?.focus()); }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setMessageRecipientCheck(null);
-                          setSelectedMemberId(member.id);
-                          setContactDetailOpen(true);
-                          requestAnimationFrame(() => document.getElementById("staff-contact-detail")?.focus());
-                        }
-                      }}
-                      tabIndex={0}
                     >
-                      <td>{member.displayName}</td>
+                      <td><button type="button" className="staff-contact-open" aria-label={`Open contact ${member.displayName}`}>{member.displayName}</button></td>
                       <td>{member.email || "No email on file"}</td>
                     </tr>
                   ))

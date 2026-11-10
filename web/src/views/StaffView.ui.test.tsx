@@ -258,6 +258,7 @@ describe("StaffView cockpit routing", () => {
       window.history.replaceState({}, "", "/staff/cockpit/members");
       render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
       expect((await screen.findAllByText("Quick Contact")).length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "Open contact Quick Contact" })).toBeTruthy();
     } finally {
       vi.mocked(getDocs).mockImplementation(async () => empty as never);
       postJsonMock.mockImplementation(original!);

@@ -15,3 +15,5 @@
   .staff-contacts-grid[data-detail-open="true"] .staff-contacts-list { display: none; }
   .staff-contacts-back { display: inline-flex; }
 }
+.staff-contact-open { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.staff-contact-open:focus-visible { outline: 2px solid #8de0bd; outline-offset: 3px; border-radius: 2px; }

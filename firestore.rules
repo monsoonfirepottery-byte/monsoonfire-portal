@@ -1,5 +1,9 @@
 rules_version='2'
 
+// Shared production database contract: the Portal and Studio Check-in apps both
+// use the Firebase project's `(default)` Firestore database. Keep both rule
+// namespaces in this file so a deploy from either app cannot erase the other.
+
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
@@ -19,6 +23,85 @@ service cloud.firestore {
 
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function checkinProfilePath(userID) {
+      return /databases/$(database)/documents/monsoonfireCheckin/v1/userProfiles/$(userID);
+    }
+
+    function isCheckinOwner() {
+      return isSignedIn()
+        && exists(checkinProfilePath(request.auth.uid))
+        && get(checkinProfilePath(request.auth.uid)).data.role == "owner";
+    }
+
+    function isCheckinSelf(userID) {
+      return isSignedIn() && request.auth.uid == userID;
+    }
+
+    function validCheckinClientAppointmentKeys() {
+      return [
+        "clientUID",
+        "clientName",
+        "clientEmail",
+        "kind",
+        "title",
+        "itemCount",
+        "wareLocation",
+        "isFragile",
+        "isHeavy",
+        "paymentDue",
+        "specialHandling",
+        "bringReminder",
+        "serviceMode",
+        "shelfName",
+        "shelfInstructions",
+        "windowLabel",
+        "status",
+        "lastEvent",
+        "createdAt",
+        "updatedAt"
+      ];
+    }
+
+    function isCheckinClientAppointmentCreate() {
+      return isSignedIn()
+        && request.resource.data.clientUID == request.auth.uid
+        && (
+          request.resource.data.status in ["scheduled", "needsHelp"]
+          || (request.resource.data.status == "complete" && request.resource.data.kind in ["pickup", "dropoff"])
+        )
+        && request.resource.data.kind in ["pickup", "dropoff"]
+        && request.resource.data.serviceMode in ["humanAssisted", "selfServeShelf"]
+        && request.resource.data.itemCount is int
+        && request.resource.data.itemCount >= 1
+        && request.resource.data.itemCount <= 99
+        && request.resource.data.clientName is string
+        && request.resource.data.clientName.size() > 0
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.windowLabel is string
+        && request.resource.data.windowLabel.size() > 0
+        && request.resource.data.keys().hasOnly(validCheckinClientAppointmentKeys());
+    }
+
+    function isCheckinClientAppointmentUpdate() {
+      return isSignedIn()
+        && resource.data.clientUID == request.auth.uid
+        && request.resource.data.clientUID == resource.data.clientUID
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "lastEvent",
+          "requestedWindowLabel",
+          "requestedWindowID",
+          "updatedAt"
+        ])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(["updatedAt"])
+        && request.resource.data.status in ["scheduled", "onTheWay", "runningLate", "atGate", "needsHelp", "complete", "moveRequested", "canceled"]
+        && request.resource.data.updatedAt is timestamp
+        && (!("lastEvent" in request.resource.data) || (request.resource.data.lastEvent is string && request.resource.data.lastEvent.size() <= 240))
+        && (!("requestedWindowLabel" in request.resource.data) || (request.resource.data.requestedWindowLabel is string && request.resource.data.requestedWindowLabel.size() <= 120))
+        && (!("requestedWindowID" in request.resource.data) || (request.resource.data.requestedWindowID is string && request.resource.data.requestedWindowID.size() <= 120));
     }
 
     function hasOnlyKeys(keys) {
@@ -93,6 +176,51 @@ service cloud.firestore {
           get(/databases/$(database)/documents/directMessages/$(threadId)).data.participantUids is list
           && get(/databases/$(database)/documents/directMessages/$(threadId)).data.participantUids.hasAny([request.auth.uid])
         );
+    }
+
+    match /monsoonfireCheckin/v1/userProfiles/{userID} {
+      allow read: if isCheckinOwner() || isCheckinSelf(userID);
+      allow create, update: if isCheckinOwner()
+        || (isCheckinSelf(userID)
+          && request.resource.data.role == "client"
+          && request.resource.data.keys().hasOnly(["role", "displayName", "email", "updatedAt"]));
+      allow delete: if isCheckinOwner();
+    }
+
+    match /monsoonfireCheckin/v1/appointments/{appointmentID} {
+      allow read: if isCheckinOwner() || (isSignedIn() && resource.data.clientUID == request.auth.uid);
+      allow create: if isCheckinOwner() || isCheckinClientAppointmentCreate();
+      allow update: if isCheckinOwner() || isCheckinClientAppointmentUpdate();
+      allow delete: if isCheckinOwner();
+    }
+
+    match /monsoonfireCheckin/v1/studioWindows/{studioWindowID} {
+      allow read: if isCheckinOwner() || (isSignedIn() && resource.data.isActive == true);
+      allow write: if isCheckinOwner();
+    }
+
+    match /monsoonfireCheckin/v1/clientNotificationTokens/{userID} {
+      allow read: if isCheckinOwner() || isCheckinSelf(userID);
+      allow write: if isCheckinSelf(userID)
+        && request.resource.data.userID == request.auth.uid
+        && request.resource.data.role == "client"
+        && request.resource.data.token is string
+        && request.resource.data.token.size() >= 20
+        && request.resource.data.keys().hasOnly(["token", "userID", "role", "updatedAt"]);
+    }
+
+    match /monsoonfireCheckin/v1/{collectionName}/{documentID} {
+      allow read, write: if isCheckinOwner()
+        && collectionName in [
+          "ownerAlerts",
+          "gateAccessPolicy",
+          "ownerNotificationTokens",
+          "studioResponses"
+        ];
+    }
+
+    match /monsoonfireCheckin/v1/{document=**} {
+      allow read, write: if false;
     }
 
     match /batches/{batchId} {
@@ -332,6 +460,8 @@ service cloud.firestore {
         )
         && (
           !request.resource.data.keys().hasAny(["membershipTier"])
+          || (resource != null
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["membershipTier"]))
           || isMembershipTier(request.resource.data.membershipTier)
         )
         && (
@@ -370,6 +500,22 @@ service cloud.firestore {
           !request.resource.data.keys().hasAny(["uiEnhancedMotion"])
           || request.resource.data.uiEnhancedMotion is bool
           || request.resource.data.uiEnhancedMotion == null
+        )
+        && (
+          resource == null
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "membershipTier",
+            "membershipSince",
+            "membershipExpiresAt"
+          ])
+        )
+        && (
+          resource != null
+          || !request.resource.data.keys().hasAny([
+            "membershipTier",
+            "membershipSince",
+            "membershipExpiresAt"
+          ])
         )
         && (
           resource == null
@@ -574,6 +720,56 @@ service cloud.firestore {
     }
 
     match /rateLimits/{rateId} {
+      allow read, write: if false;
+    }
+
+    // Server-only migration and billing identity records. These documents may
+    // contain legacy source data or Stripe object references and must never be
+    // exposed directly to browser clients, including staff sessions.
+    match /billingAccounts/{userId} {
+      allow read, write: if false;
+    }
+
+    // Firing billing is exposed only through authenticated Cloud Functions.
+    // Source tickets contain staff-only notes and Stripe joins; operation and
+    // webhook documents may also contain bearer payment URLs or replay state.
+    match /firingTickets/{ticketId} {
+      allow read, write: if false;
+
+      match /events/{eventId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /firingBillingOperations/{operationId} {
+      allow read, write: if false;
+    }
+
+    match /firingBillingCustomerLinks/{linkId} {
+      allow read, write: if false;
+    }
+
+    match /stripeObjectBindings/{objectId} {
+      allow read, write: if false;
+    }
+
+    match /stripeWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /stripeWebhookAttestations/{mode} {
+      allow read, write: if false;
+    }
+
+    match /legacyUserRecords/{userId} {
+      allow read, write: if false;
+    }
+
+    match /legacyStripeReviews/{reviewId} {
+      allow read, write: if false;
+    }
+
+    match /migrationRuns/{runId} {
       allow read, write: if false;
     }
 

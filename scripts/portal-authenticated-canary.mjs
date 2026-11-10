@@ -902,6 +902,29 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   return true;
 }
 
+// Ware Check-in intentionally leaves the portal for the website Pathfinder.
+// Always return to the portal, including on failure, so later checks do not
+// accidentally inspect the external website as though it were the portal.
+export async function verifyPathfinderHandoff(page, portalBaseUrl, exerciseFlow = false, navigate = clickNavSubItem) {
+  try {
+    await navigate(page, "Firing Services", "Ware Check-in", true);
+    await page.waitForURL((url) => url.origin === "https://monsoonfire.com" && url.pathname.replace(/\/+$/, "") === "/firing-services/pathfinder", { timeout: 30000 });
+    await page.getByRole("heading", { name: /^Plan your firing\.?$/i }).first().waitFor({ timeout: 30000 });
+    const start = page.getByRole("radio", { name: /Drop off work/i });
+    await start.waitFor({ state: "visible", timeout: 15000 });
+    if (exerciseFlow) {
+      await start.check();
+      await page.getByRole("button", { name: /^Continue$/i }).click();
+      await page.getByRole("heading", { name: /^Which firing comes next\?$/i }).waitFor({ timeout: 15000 });
+      await page.getByRole("button", { name: /^Back$/i }).click();
+      if (!(await start.isChecked())) throw new Error("Pathfinder did not preserve the selected task after going back.");
+    }
+  } finally {
+    await page.goto(portalBaseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.getByRole("button", { name: /Start here/i }).first().waitFor({ state: "visible", timeout: 30000 });
+  }
+}
+
 function normalizeObservedPath(pathname) {
   const sanitized = String(pathname || "")
     .trim()
@@ -1274,101 +1297,6 @@ function formatMyPiecesStateForError(state) {
     `recognizedEmptyGuidance=${String(state.hasRecognizedEmptyGuidance)}; ` +
     `emptyStatePreview=${previews || "none"}`
   );
-}
-
-async function detailsIsOpen(detailsLocator) {
-  return detailsLocator.evaluate((node) => {
-    if (!(node instanceof HTMLDetailsElement)) return false;
-    return node.open;
-  });
-}
-
-async function setDetailsOpen(detailsLocator, shouldOpen, label) {
-  const current = await detailsIsOpen(detailsLocator);
-  if (current === shouldOpen) return;
-
-  const summary = detailsLocator.locator("summary").first();
-  if ((await summary.count()) === 0) {
-    throw new Error(`Details summary not found for ${label}`);
-  }
-
-  await summary.click({ timeout: 10000 });
-  await detailsLocator.waitFor({ timeout: 10000 });
-  await new Promise((resolve) => setTimeout(resolve, 250));
-
-  const next = await detailsIsOpen(detailsLocator);
-  if (next !== shouldOpen) {
-    throw new Error(`Could not ${shouldOpen ? "open" : "close"} details for ${label}`);
-  }
-}
-
-async function verifyCheckInOptionalSections(page) {
-  const form = page.locator(".checkin-form").first();
-  await form.waitFor({ timeout: 15000 });
-
-  const optionalSteps = form.locator("details.checkin-optional-step");
-  const optionalCount = await optionalSteps.count();
-  if (optionalCount < 3) {
-    throw new Error(`Expected at least 3 optional check-in sections, found ${optionalCount}.`);
-  }
-
-  const photoStep = optionalSteps.nth(0);
-  const extrasStep = optionalSteps.nth(1);
-  const notesStep = optionalSteps.nth(2);
-
-  const checks = [
-    { label: "photo", locator: photoStep },
-    { label: "extras", locator: extrasStep },
-    { label: "notes", locator: notesStep },
-  ];
-
-  for (const check of checks) {
-    if (await detailsIsOpen(check.locator)) {
-      throw new Error(`Optional check-in section should start collapsed: ${check.label}`);
-    }
-  }
-
-  await setDetailsOpen(photoStep, true, "photo optional section");
-  const photoPlaceholder = photoStep.locator(".photo-placeholder").first();
-  if ((await photoPlaceholder.count()) === 0) {
-    throw new Error("Photo optional section did not render expected placeholder content.");
-  }
-  await setDetailsOpen(photoStep, false, "photo optional section");
-
-  await setDetailsOpen(extrasStep, true, "extras optional section");
-  const firstAddonToggle = extrasStep.locator('input[type="checkbox"]').first();
-  if ((await firstAddonToggle.count()) === 0) {
-    throw new Error("Extras optional section is missing addon toggles.");
-  }
-  await firstAddonToggle.check({ timeout: 10000 });
-  if (!(await firstAddonToggle.isChecked())) {
-    throw new Error("Extras optional toggle did not check.");
-  }
-  await firstAddonToggle.uncheck({ timeout: 10000 });
-  await setDetailsOpen(extrasStep, false, "extras optional section");
-
-  await setDetailsOpen(notesStep, true, "notes optional section");
-  const noteText = "Canary note persistence check";
-  const notesInput = notesStep.getByLabel("General notes").first();
-  await notesInput.fill(noteText);
-
-  const firstTag = notesStep.getByRole("button", { name: /^Fragile handles$/i }).first();
-  await firstTag.click({ timeout: 10000 });
-  const tagSelected = await firstTag.getAttribute("aria-pressed");
-  if (tagSelected !== "true") {
-    throw new Error("Notes tag selection did not persist pressed state after click.");
-  }
-
-  await setDetailsOpen(notesStep, false, "notes optional section");
-  await setDetailsOpen(notesStep, true, "notes optional section");
-  const persistedNoteText = await notesInput.inputValue();
-  if (persistedNoteText !== noteText) {
-    throw new Error("Notes optional section did not preserve general notes text after collapse/reopen.");
-  }
-  const persistedTagSelected = await firstTag.getAttribute("aria-pressed");
-  if (persistedTagSelected !== "true") {
-    throw new Error("Notes optional section did not preserve note-tag selection after collapse/reopen.");
-  }
 }
 
 function getThemeToggle(page, label) {
@@ -2655,31 +2583,12 @@ async function run() {
         await takeScreenshot(page, options.outputDir, "canary-05-messages.png", summary, "messages");
       });
 
-      await check(summary, "ware check-in page loads without check-in/index errors", async () => {
-        await clickNavSubItem(page, "Firing Services", "Ware Check-in", true);
-        await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
-
-        const listError = page.locator("text=/^Check-ins failed:/i").first();
-        if ((await listError.count()) > 0) {
-          const message = (await listError.textContent())?.trim() || "Check-ins failed";
-          throw new Error(message);
-        }
-
-        await assertNoPermissionOrIndexError(page, ["Check-ins failed:"]);
-        await takeScreenshot(page, options.outputDir, "canary-06-ware-checkin.png", summary, "ware check-in");
+      await check(summary, "ware check-in opens the website Pathfinder", async () => {
+        await verifyPathfinderHandoff(page, options.baseUrl);
       });
 
-      await check(summary, "ware check-in optional sections stay collapsed by default and preserve values", async () => {
-        await clickNavSubItem(page, "Firing Services", "Ware Check-in", true);
-        await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
-        await verifyCheckInOptionalSections(page);
-        await takeScreenshot(
-          page,
-          options.outputDir,
-          "canary-06b-ware-checkin-optional-sections.png",
-          summary,
-          "ware check-in optional sections"
-        );
+      await check(summary, "Pathfinder preserves the selected task when navigating back", async () => {
+        await verifyPathfinderHandoff(page, options.baseUrl, true);
       });
     }
 
@@ -2725,10 +2634,10 @@ async function run() {
           },
         },
         {
-          label: "Ware Check-in",
+          label: "Firing Services",
           navigate: async () => {
-            await clickNavSubItem(page, "Firing Services", "Ware Check-in", true);
-            await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
+            await clickNavSubItem(page, "Firing Services", "Overview", true);
+            await page.getByRole("heading", { name: /^Firing Services$/i }).first().waitFor({ timeout: 30000 });
           },
         },
       ];

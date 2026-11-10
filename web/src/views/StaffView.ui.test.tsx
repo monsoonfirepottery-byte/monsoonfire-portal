@@ -54,6 +54,8 @@ const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string }) => {
       return { data: { tickets: pickupTickets, runtime: {
         stripeMode: "test", invoicesEnabled: true, firingBillingEnabled: true, liveWritesEnabled: false,
       } } };
+    case "staffSearchStripeGuests":
+      return { ok: true, data: { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], hasMore: false, nextPage: null } };
     case "staffFinalizeFiringPickup":
       pickupTickets = pickupTickets.map((ticket) => ticket.ticketId === body?.ticketId
         ? { ...ticket, status: "ready_for_pickup", billingStatus: "invoice_open" }
@@ -170,6 +172,14 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("searches guest checkouts by exact email without request telemetry", async () => {
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "guest@example.com" } });
+    expect(await screen.findByText("Guest Example")).toBeTruthy();
+    expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuests", { email: "guest@example.com" }, { suppressTelemetry: true });
+    expect(postJsonMock).toHaveBeenCalledWith("staffListFiringPickupReviews", {}, { suppressTelemetry: true });
+  });
   it("shows the first user page while profiles and a later user page are stalled", async () => {
     const empty = { docs: [], empty: true, forEach: () => undefined };
     const docs = Array.from({ length: 240 }, (_, i) => ({ id: `user-${i}`, data: () => ({ displayName: `Page Contact ${i}` }) }));
@@ -190,25 +200,32 @@ describe("StaffView cockpit routing", () => {
   });
   it("searches Stripe separately, loads another page, and keeps search out of request telemetry", async () => {
     const priorFetch = globalThis.fetch;
-    const stripeRequests: Array<{ url: string; body: string }> = [];
+    const stripeRequests: Array<{ url: string; body: string; adminToken: string | null }> = [];
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (!url.endsWith("/staffSearchStripeContacts")) return priorFetch(input, init);
-      stripeRequests.push({ url, body: String(init?.body) });
+      stripeRequests.push({ url, body: String(init?.body), adminToken: new Headers(init?.headers).get("x-admin-token") });
       const body = JSON.parse(String(init?.body)) as { page?: string };
       return new Response(JSON.stringify({ ok: true, data: body.page
         ? { contacts: [{ id: "cus_2", displayName: "Second Stripe", email: "second@example.com" }, { id: "cus_3", displayName: "No Email Stripe", email: "" }], hasMore: false, nextPage: null }
         : { contacts: [{ id: "cus_1", displayName: "First Stripe", email: "first@example.com" }], hasMore: true, nextPage: "cursor-1" } }), { status: 200, headers: { "content-type": "application/json" } });
     }));
     window.history.replaceState({}, "", "/staff/cockpit/members");
-    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    render(<StaffView user={buildUser()} isStaff devAdminToken="dev-test-token" onDevAdminTokenChange={() => undefined} devAdminEnabled showEmulatorTools={false} forceCockpitWorkspace />);
     fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "stripe" } });
     expect(await screen.findByText("First Stripe")).toBeTruthy();
+    const stripeRow = screen.getByText("First Stripe").closest(".staff-ticket-contact");
+    expect(stripeRow).toBeTruthy();
+    fireEvent.click(within(stripeRow as HTMLElement).getByRole("button", { name: "Copy email" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("first@example.com"));
     fireEvent.click(screen.getByRole("button", { name: "Load more Stripe customers" }));
     expect(await screen.findByText("Second Stripe")).toBeTruthy();
     expect(screen.getByText("No Email Stripe")).toBeTruthy();
     expect(screen.getByText("No usable email on file")).toBeTruthy();
     expect(stripeRequests.map((entry) => JSON.parse(entry.body) as { search: string; page?: string })).toEqual([{ search: "stripe" }, { search: "stripe", page: "cursor-1" }]);
+    expect(stripeRequests.every((entry) => entry.adminToken === "dev-test-token")).toBe(true);
     expect(postJsonMock.mock.calls.some(([fn]) => fn === "staffSearchStripeContacts")).toBe(false);
   });
   it("shows directory contacts even while the ticket source is slow", async () => {

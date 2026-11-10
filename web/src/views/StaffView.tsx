@@ -2343,6 +2343,11 @@ export default function StaffView({
   const [stripeSearchState, setStripeSearchState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const stripeRequest = useRef(0);
   const stripeAbort = useRef<AbortController | null>(null);
+  const [stripeGuests, setStripeGuests] = useState<Array<{ id: string; displayName: string; email: string }>>([]);
+  const [guestNextPage, setGuestNextPage] = useState<string | null>(null);
+  const [guestStripeMode, setGuestStripeMode] = useState<"test" | "live" | null>(null);
+  const [guestSearchState, setGuestSearchState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const guestRequest = useRef(0);
   const [contactDirectoryNotice, setContactDirectoryNotice] = useState("");
   const contactLoadInFlight = useRef(false);
   const contactsMounted = useRef(true);
@@ -2603,7 +2608,7 @@ export default function StaffView({
       // Search terms and results are deliberately not passed to request telemetry.
       const response = await fetch(`${fBaseUrl.replace(/\/+$/, "")}/staffSearchStripeContacts`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(devAdminEnabled && devAdminToken.trim() ? { "x-admin-token": devAdminToken.trim() } : {}) },
         body: JSON.stringify({ search, ...(page ? { page } : {}) }),
         signal: controller.signal,
       });
@@ -2620,7 +2625,7 @@ export default function StaffView({
       if (controller.signal.aborted || request !== stripeRequest.current) return;
       setStripeSearchState("error");
     }
-  }, [fBaseUrl, user]);
+  }, [devAdminEnabled, devAdminToken, fBaseUrl, user]);
 
   useEffect(() => {
     stripeAbort.current?.abort();
@@ -2775,6 +2780,35 @@ export default function StaffView({
       }),
     [devAdminEnabled, devAdminToken, fBaseUrl, user]
   );
+
+  const searchStripeGuests = useCallback(async (email: string, startingAfter?: string) => {
+    const request = ++guestRequest.current;
+    setGuestSearchState("loading");
+    try {
+      const result = await client.postJson<{ ok: boolean; data?: { contacts: Array<{ id: string; displayName: string; email: string }>; hasMore: boolean; nextPage: string | null; mode?: "test" | "live" } }>("staffSearchStripeGuests", { email, ...(startingAfter ? { startingAfter } : {}) }, { suppressTelemetry: true });
+      if (request !== guestRequest.current) return;
+      if (!result.ok || !Array.isArray(result.data?.contacts)) throw new Error("Search unavailable");
+      const contacts = result.data.contacts.filter((contact) => typeof contact.id === "string" && typeof contact.displayName === "string" && typeof contact.email === "string" && contactEmailAddress(contact.email));
+      setStripeGuests((previous) => startingAfter ? [...previous, ...contacts.filter((contact) => !previous.some((prior) => prior.id === contact.id))] : contacts);
+      setGuestNextPage(result.data.hasMore && typeof result.data.nextPage === "string" ? result.data.nextPage : null);
+      setGuestStripeMode(result.data.mode === "test" || result.data.mode === "live" ? result.data.mode : null);
+      setGuestSearchState("ready");
+    } catch {
+      if (request === guestRequest.current) setGuestSearchState("error");
+    }
+  }, [client]);
+
+  useEffect(() => {
+    guestRequest.current += 1;
+    setStripeGuests([]);
+    setGuestNextPage(null);
+    setGuestStripeMode(null);
+    const email = contactEmailAddress(memberSearch);
+    if (moduleKey !== "members" || !email) { setGuestSearchState("idle"); return; }
+    setGuestSearchState("loading");
+    const timer = window.setTimeout(() => void searchStripeGuests(email), 500);
+    return () => { window.clearTimeout(timer); guestRequest.current += 1; };
+  }, [memberSearch, moduleKey, searchStripeGuests]);
 
   const selectedBatch = useMemo(
     () => batches.find((b) => b.id === selectedBatchId) ?? null,
@@ -3924,7 +3958,7 @@ export default function StaffView({
       }
     };
     const ticketRequest = ++contactTicketRequest.current;
-    void client.postJson<QueueResponse>("staffListFiringPickupReviews", {}).then((result) => {
+    void client.postJson<QueueResponse>("staffListFiringPickupReviews", {}, { suppressTelemetry: true }).then((result) => {
       if (!contactsMounted.current || ticketRequest !== contactTicketRequest.current) return;
       if (!Array.isArray(result.data?.tickets)) throw new Error("Ticket contacts unavailable");
       setContactTickets(result.data.tickets);
@@ -7040,17 +7074,27 @@ export default function StaffView({
             </table>
           </div>
           <h3>Stripe customers</h3>
-          <p className="staff-note">Search at least three characters. Results come from the configured Stripe account and may take time to appear; they are separate from portal accounts.</p>
+          <p className="staff-note">Search at least three characters. Stripe customer records are separate from portal accounts and may take time to appear. Enter a full email to also search guest checkouts.</p>
           {memberSearch.trim().length >= 3 && (memberSearch.trim().length > 100 || /["\\]/.test(memberSearch) || Array.from(memberSearch).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) ? <p role="status">Stripe search accepts up to 100 characters without double quotes, backslashes, or control characters.</p> : null}
           {stripeMode === "test" ? <p className="staff-note">Stripe test mode: these are test customers.</p> : stripeMode === "live" ? <p className="staff-note">Stripe live customers.</p> : null}
           {stripeSearchState === "loading" ? <p role="status">Searching Stripe customers…</p> : null}
           {stripeSearchState === "error" ? <p role="status">Stripe customer search is unavailable. <button type="button" className="btn btn-ghost" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage ?? undefined)}>Try again</button></p> : null}
           {stripeSearchState === "ready" && stripeContacts.length === 0 ? <p>No Stripe customers found.</p> : null}
-          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a> : null}</div>)}
+          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <div className="staff-actions-row"><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a><button type="button" className="btn btn-ghost" onClick={() => void copy(contact.email)}>Copy email</button></div> : null}</div>)}
           {stripeNextPage && stripeSearchState !== "loading" && stripeSearchState !== "error" ? <button type="button" className="btn btn-secondary" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage)}>Load more Stripe customers</button> : null}
+          {contactEmailAddress(memberSearch) ? <section aria-label="Stripe guest checkouts"><h3>Stripe guest checkouts</h3>
+            <p className="staff-note">Exact email matches from completed guest checkouts; records can represent the same person.</p>
+            {guestStripeMode === "test" ? <p className="staff-note">Stripe test mode: these are test checkouts.</p> : null}
+            {guestSearchState === "loading" ? <p role="status">Searching guest checkouts…</p> : null}
+            {guestSearchState === "error" ? <p role="status">Guest checkout search is unavailable. <button type="button" className="btn btn-ghost" onClick={() => void searchStripeGuests(contactEmailAddress(memberSearch)!, guestNextPage ?? undefined)}>Try again</button></p> : null}
+            {guestSearchState === "ready" && stripeGuests.length === 0 && !guestNextPage ? <p>No guest checkouts found.</p> : null}
+            {stripeGuests.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Guest checkout"}</strong><br />{contact.email}</span><div className="staff-actions-row"><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contact.email)}`}>Email</a><button type="button" className="btn btn-ghost" onClick={() => void copy(contact.email)}>Copy email</button></div></div>)}
+            {guestNextPage && guestSearchState === "ready" ? <button type="button" className="btn btn-secondary" onClick={() => void searchStripeGuests(contactEmailAddress(memberSearch)!, guestNextPage)}>Load more guest checkouts</button> : null}
+          </section> : null}
           <h3>Firing ticket contacts</h3>
           <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person. Enter a name or email to search.</p>
-          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : memberSearch.trim() ? firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>) : null}
+          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : memberSearch.trim() ? firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><div className="staff-actions-row"><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a><button type="button" className="btn btn-ghost" onClick={() => void copy(contact.email)}>Copy email</button></div></div>) : null}
+          {copyStatus ? <p role="status">{copyStatus}</p> : null}
           <details className="staff-note"><summary>Directory sources</summary>
             Users: {memberSourceStats.usersDocs}. Profiles: {memberSourceStats.profilesDocs}.
             {memberSourceStats.inferredMembers > 0 ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}` : ""}

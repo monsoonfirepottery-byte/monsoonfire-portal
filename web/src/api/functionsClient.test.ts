@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFunctionsClient } from "./functionsClient";
+import { getRecentRequestTelemetry } from "../lib/requestTelemetry";
 
 vi.mock("./requestId", () => ({
   makeRequestId: () => "req_test",
@@ -28,6 +29,26 @@ afterEach(() => {
 });
 
 describe("functionsClient", () => {
+  it("keeps sensitive success and error responses out of retained request history", async () => {
+    const recorded = vi.fn();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { fail?: boolean };
+      return body.fail
+        ? jsonResponse({ message: "private-error@example.test" }, 500)
+        : jsonResponse({ email: "private-result@example.test" });
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const client = createFunctionsClient({ baseUrl: "https://example.test", getIdToken: async () => "token", getAdminToken: () => "dev-token", onLastRequest: recorded });
+    const historyBefore = getRecentRequestTelemetry();
+    const result = await client.postJson("privateLookup", { name: "private-search" }, { suppressTelemetry: true });
+    expect(result).toEqual({ email: "private-result@example.test" });
+    expect(readHeaders(fetchMock.mock.calls[0]?.[1])["x-admin-token"]).toBe("dev-token");
+    await expect(client.postJson("privateLookup", { fail: true }, { suppressTelemetry: true })).rejects.toThrow();
+    expect(client.getLastRequest()).toBeNull();
+    expect(client.getLastCurl()).toBe("");
+    expect(recorded).not.toHaveBeenCalled();
+    expect(getRecentRequestTelemetry()).toEqual(historyBefore);
+  });
   it("sends authorization and trimmed admin token headers", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true, value: 1 }));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);

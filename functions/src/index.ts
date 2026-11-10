@@ -35,7 +35,7 @@ import { normalizeIntakeMode } from "./intakeMode";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import { verifyMessageRecipient } from "./messageRecipientVerification";
-import { stripeContactQuery, stripeContactRows } from "./stripeContactSearch";
+import { stripeContactQuery, stripeContactRows, stripeGuestEmail, stripeGuestRows } from "./stripeContactSearch";
 import { getStripeClient, loadStripeConfig } from "./stripeRuntime";
 import { STRIPE_SECRET_PARAMS } from "./stripeSecrets";
 import {
@@ -686,6 +686,35 @@ export const staffSearchStripeContacts = onRequest(
     } catch {
       logger.error("staffSearchStripeContacts failed");
       res.status(503).json({ ok: false, message: "Stripe contacts unavailable" });
+    }
+  }
+);
+
+export const staffSearchStripeGuests = onRequest(
+  { region: REGION, timeoutSeconds: 30, secrets: [...STRIPE_SECRET_PARAMS] },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") { res.status(405).json({ ok: false, message: "Use POST" }); return; }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) { res.status(401).json({ ok: false, message: auth.message }); return; }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) { res.status(403).json({ ok: false, message: "Forbidden" }); return; }
+    const parsed = parseBody(z.object({ email: z.string().max(254), startingAfter: z.string().regex(/^cs_(?:test|live)_[A-Za-z0-9]+$/u).max(255).optional() }).strict(), req.body);
+    if (!parsed.ok) { res.status(400).json({ ok: false, message: "Invalid guest search" }); return; }
+    const email = stripeGuestEmail(parsed.data.email);
+    if (!email) { res.status(400).json({ ok: false, message: "Enter one valid email address" }); return; }
+    try {
+      const config = await loadStripeConfig();
+      const result = await getStripeClient(config.mode).checkout.sessions.list({
+        customer_details: { email }, status: "complete", limit: 25,
+        ...(parsed.data.startingAfter ? { starting_after: parsed.data.startingAfter } : {}),
+      });
+      const nextPage = result.has_more ? result.data[result.data.length - 1]?.id ?? null : null;
+      res.status(200).json({ ok: true, data: { contacts: stripeGuestRows(result.data, email), mode: config.mode, hasMore: result.has_more, nextPage } });
+    } catch {
+      logger.error("staffSearchStripeGuests failed");
+      res.status(503).json({ ok: false, message: "Stripe guest contacts unavailable" });
     }
   }
 );

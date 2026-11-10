@@ -15,7 +15,7 @@
 import { makeRequestId as createRequestId } from "./requestId";
 import { toAppError } from "../errors/appError";
 import {
-  publishRequestTelemetry,
+  publishRequestTelemetry as emitRequestTelemetry,
   redactTelemetryPayload,
   stringifyResponseSnippet,
 } from "../lib/requestTelemetry";
@@ -146,7 +146,7 @@ export type FunctionsClient = {
   postJson<TResp>(
     fn: string,
     payload: unknown,
-    options?: { headers?: Record<string, string> }
+    options?: { headers?: Record<string, string>; suppressTelemetry?: boolean }
   ): Promise<TResp>;
   getLastRequest(): LastRequest | null;
 
@@ -174,7 +174,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
   async function postJson<TResp>(
     fn: string,
     payload: unknown,
-    options?: { headers?: Record<string, string> }
+    options?: { headers?: Record<string, string>; suppressTelemetry?: boolean }
   ): Promise<TResp> {
     const base = config.baseUrl.replace(/\/+$/, "");
     const path = fn.replace(/^\/+/, "");
@@ -183,6 +183,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     const actionKey = makeInFlightActionKey(path, {
       payload: normalizedPayload,
       headers: options?.headers ?? {},
+      suppressTelemetry: options?.suppressTelemetry === true,
     });
     const existingInFlight = inFlightByAction.get(actionKey) as Promise<TResp> | undefined;
     if (existingInFlight) {
@@ -190,6 +191,10 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     }
 
     const run = async (): Promise<TResp> => {
+      // Sensitive lookups may return contact data. Keep the request and its
+      // response out of both the client snapshot and shared request history.
+      const publishIfEnabled = options?.suppressTelemetry ? () => {} : publish;
+      const publishRequestTelemetry = options?.suppressTelemetry ? () => {} : emitRequestTelemetry;
       const startedAtMs = Date.now();
       const redactedPayload = redactTelemetryPayload(normalizedPayload);
       const req: LastRequest = {
@@ -203,7 +208,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         curlExample: buildCurlRedacted(url, normalizedPayload),
         includesAdminTokenHeader: false,
       };
-      publish(req);
+      publishIfEnabled(req);
       publishRequestTelemetry({
         atIso: req.atIso,
         requestId: req.requestId,
@@ -215,7 +220,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
       });
 
       const idToken = await config.getIdToken();
-      lastIdToken = idToken;
+      if (!options?.suppressTelemetry) lastIdToken = idToken;
       const routeRetryKey = makeRouteRetryKey(path);
       const tokenSignature = makeTokenSignature(idToken);
       const retryGuard = authRetryGuardByRoute.get(routeRetryKey);
@@ -237,7 +242,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
           ok: false,
           error: appError.debugMessage,
         };
-        publish(failed);
+        publishIfEnabled(failed);
         publishRequestTelemetry({
           atIso: failed.atIso,
           requestId: failed.requestId,
@@ -315,7 +320,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
           ok: false,
           error: appError.debugMessage,
         };
-        publish(failed);
+        publishIfEnabled(failed);
         publishRequestTelemetry({
           atIso: failed.atIso,
           requestId: failed.requestId,
@@ -373,7 +378,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         }
 
         updated.error = appError.debugMessage;
-        publish(updated);
+        publishIfEnabled(updated);
         publishRequestTelemetry({
           atIso: updated.atIso,
           requestId: updated.requestId,
@@ -399,7 +404,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         authRetryGuardByRoute.delete(routeRetryKey);
       }
 
-      publish(updated);
+      publishIfEnabled(updated);
       publishRequestTelemetry({
         atIso: updated.atIso,
         requestId: updated.requestId,

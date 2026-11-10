@@ -47,7 +47,7 @@ vi.mock("firebase/storage", () => ({
 
 let pickupTickets: Array<{ ticketId: string; displayName: string; status: string; billingStatus: string }> = [];
 let pickupQueueUnavailable = false;
-const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string }) => {
+const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string; startingAfter?: string }) => {
   switch (fn) {
     case "staffListFiringPickupReviews":
       if (pickupQueueUnavailable) throw new Error("Temporary ticket queue failure");
@@ -57,7 +57,9 @@ const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string }) => {
     case "staffSearchStripeGuests":
       return { ok: true, data: { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], hasMore: false, nextPage: null } };
     case "staffSearchStripeGuestsByName":
-      return { ok: true, data: { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], scanned: 100, hasMore: true, nextPage: "cs_test_next", mode: "test" } };
+      return { ok: true, data: body?.startingAfter
+        ? { contacts: [{ id: "cs_guest_2", displayName: "Guest No Email", email: "" }], scanned: 22, hasMore: false, nextPage: null, mode: "test" }
+        : { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], scanned: 100, hasMore: true, nextPage: "cs_test_next", mode: "test" } };
     case "staffFinalizeFiringPickup":
       pickupTickets = pickupTickets.map((ticket) => ticket.ticketId === body?.ticketId
         ? { ...ticket, status: "ready_for_pickup", billingStatus: "invoice_open" }
@@ -183,6 +185,10 @@ describe("StaffView cockpit routing", () => {
     expect(await screen.findByText("Guest Example")).toBeTruthy();
     expect(screen.getByText("Checked 100 checkouts. More remain to search.")).toBeTruthy();
     expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuestsByName", { search: "Guest" }, { suppressTelemetry: true });
+    fireEvent.click(screen.getByRole("button", { name: "Search more guest checkouts" }));
+    expect(await screen.findByText("Guest No Email")).toBeTruthy();
+    expect(screen.getByText("Checked 122 checkouts. Search complete.")).toBeTruthy();
+    expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuestsByName", { search: "Guest", startingAfter: "cs_test_next" }, { suppressTelemetry: true });
   });
   it("searches guest checkouts by exact email without request telemetry", async () => {
     window.history.replaceState({}, "", "/staff/cockpit/members");

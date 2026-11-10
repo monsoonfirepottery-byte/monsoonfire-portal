@@ -12,9 +12,8 @@ export function stripeContactQuery(search: string): string {
 }
 
 export function stripeContactRows(customers: Array<{ id: string; name?: string | null; email?: string | null }>) {
-  return customers.flatMap((customer) => {
+  return customers.map((customer) => {
     const email = customer.email?.trim() ?? "";
-    if (!email || hasControlCharacter(email)) return [];
-    return [{ id: customer.id, displayName: customer.name?.trim() || "Unnamed contact", email }];
+    return { id: customer.id, displayName: customer.name?.trim() || "Unnamed contact", email: hasControlCharacter(email) ? "" : email };
   });
 }

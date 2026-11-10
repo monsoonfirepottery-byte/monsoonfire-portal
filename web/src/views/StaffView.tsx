@@ -2611,7 +2611,7 @@ export default function StaffView({
       const body = await response.json() as { ok?: boolean; data?: { contacts?: Array<{ id: string; displayName: string; email: string }>; hasMore?: boolean; nextPage?: string | null; mode?: "test" | "live" } };
       if (!body.ok || !Array.isArray(body.data?.contacts)) throw new Error("Search unavailable");
       if (controller.signal.aborted || request !== stripeRequest.current) return;
-      const contacts = body.data.contacts.filter((contact) => typeof contact.id === "string" && typeof contact.displayName === "string" && typeof contact.email === "string" && contactEmailAddress(contact.email));
+      const contacts = body.data.contacts.filter((contact) => typeof contact.id === "string" && typeof contact.displayName === "string" && typeof contact.email === "string");
       setStripeContacts((previous) => page ? [...previous, ...contacts.filter((contact) => !previous.some((prior) => prior.id === contact.id))] : contacts);
       setStripeNextPage(body.data.hasMore && typeof body.data.nextPage === "string" ? body.data.nextPage : null);
       setStripeMode(body.data.mode === "test" || body.data.mode === "live" ? body.data.mode : null);
@@ -7046,7 +7046,7 @@ export default function StaffView({
           {stripeSearchState === "loading" ? <p role="status">Searching Stripe customers…</p> : null}
           {stripeSearchState === "error" ? <p role="status">Stripe customer search is unavailable. <button type="button" className="btn btn-ghost" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage ?? undefined)}>Try again</button></p> : null}
           {stripeSearchState === "ready" && stripeContacts.length === 0 ? <p>No Stripe customers found.</p> : null}
-          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>)}
+          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contactEmailAddress(contact.email) || "No usable email on file"}</span>{contactEmailAddress(contact.email) ? <a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a> : null}</div>)}
           {stripeNextPage && stripeSearchState !== "loading" && stripeSearchState !== "error" ? <button type="button" className="btn btn-secondary" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage)}>Load more Stripe customers</button> : null}
           <h3>Firing ticket contacts</h3>
           <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person. Enter a name or email to search.</p>

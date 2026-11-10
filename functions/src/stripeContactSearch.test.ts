@@ -10,10 +10,14 @@ test("search uses bounded escaped-by-rejection clauses", () => {
   assert.match(stripeContactQuery("O'Connor"), /O'Connor/);
 });
 
-test("returns only contact fields for customers with email", () => {
+test("returns only contact fields, including customers without usable email", () => {
   assert.deepEqual(stripeContactRows([
     { id: "cus_1", name: " Alex ", email: " alex@example.com " },
     { id: "cus_2", name: "No email", email: null },
     { id: "cus_3", name: null, email: "evil@example.com\r\nBcc:x" },
-  ]), [{ id: "cus_1", displayName: "Alex", email: "alex@example.com" }]);
+  ]), [
+    { id: "cus_1", displayName: "Alex", email: "alex@example.com" },
+    { id: "cus_2", displayName: "No email", email: "" },
+    { id: "cus_3", displayName: "Unnamed contact", email: "" },
+  ]);
 });

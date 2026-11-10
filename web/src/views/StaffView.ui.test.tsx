@@ -197,7 +197,7 @@ describe("StaffView cockpit routing", () => {
       stripeRequests.push({ url, body: String(init?.body) });
       const body = JSON.parse(String(init?.body)) as { page?: string };
       return new Response(JSON.stringify({ ok: true, data: body.page
-        ? { contacts: [{ id: "cus_2", displayName: "Second Stripe", email: "second@example.com" }], hasMore: false, nextPage: null }
+        ? { contacts: [{ id: "cus_2", displayName: "Second Stripe", email: "second@example.com" }, { id: "cus_3", displayName: "No Email Stripe", email: "" }], hasMore: false, nextPage: null }
         : { contacts: [{ id: "cus_1", displayName: "First Stripe", email: "first@example.com" }], hasMore: true, nextPage: "cursor-1" } }), { status: 200, headers: { "content-type": "application/json" } });
     }));
     window.history.replaceState({}, "", "/staff/cockpit/members");
@@ -206,6 +206,8 @@ describe("StaffView cockpit routing", () => {
     expect(await screen.findByText("First Stripe")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Load more Stripe customers" }));
     expect(await screen.findByText("Second Stripe")).toBeTruthy();
+    expect(screen.getByText("No Email Stripe")).toBeTruthy();
+    expect(screen.getByText("No usable email on file")).toBeTruthy();
     expect(stripeRequests.map((entry) => JSON.parse(entry.body) as { search: string; page?: string })).toEqual([{ search: "stripe" }, { search: "stripe", page: "cursor-1" }]);
     expect(postJsonMock.mock.calls.some(([fn]) => fn === "staffSearchStripeContacts")).toBe(false);
   });

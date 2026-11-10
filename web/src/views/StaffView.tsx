@@ -2337,6 +2337,12 @@ export default function StaffView({
   const [users, setUsers] = useState<MemberRecord[]>([]);
   const [contactTickets, setContactTickets] = useState<FiringTicket[]>([]);
   const [contactTicketsError, setContactTicketsError] = useState("");
+  const [stripeContacts, setStripeContacts] = useState<Array<{ id: string; displayName: string; email: string }>>([]);
+  const [stripeNextPage, setStripeNextPage] = useState<string | null>(null);
+  const [stripeMode, setStripeMode] = useState<"test" | "live" | null>(null);
+  const [stripeSearchState, setStripeSearchState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const stripeRequest = useRef(0);
+  const stripeAbort = useRef<AbortController | null>(null);
   const [contactDirectoryNotice, setContactDirectoryNotice] = useState("");
   const contactLoadInFlight = useRef(false);
   const contactsMounted = useRef(true);
@@ -2585,6 +2591,52 @@ export default function StaffView({
     [fBaseUrl]
   );
   const hasFunctionsAuthMismatch = usingLocalFunctions && !showEmulatorTools;
+  const searchStripeContacts = useCallback(async (search: string, page?: string) => {
+    const request = ++stripeRequest.current;
+    stripeAbort.current?.abort();
+    const controller = new AbortController();
+    stripeAbort.current = controller;
+    setStripeSearchState("loading");
+    try {
+      const token = await user.getIdToken();
+      if (controller.signal.aborted) return;
+      // Search terms and results are deliberately not passed to request telemetry.
+      const response = await fetch(`${fBaseUrl.replace(/\/+$/, "")}/staffSearchStripeContacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ search, ...(page ? { page } : {}) }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Search unavailable");
+      const body = await response.json() as { ok?: boolean; data?: { contacts?: Array<{ id: string; displayName: string; email: string }>; hasMore?: boolean; nextPage?: string | null; mode?: "test" | "live" } };
+      if (!body.ok || !Array.isArray(body.data?.contacts)) throw new Error("Search unavailable");
+      if (controller.signal.aborted || request !== stripeRequest.current) return;
+      const contacts = body.data.contacts.filter((contact) => typeof contact.id === "string" && typeof contact.displayName === "string" && typeof contact.email === "string" && contactEmailAddress(contact.email));
+      setStripeContacts((previous) => page ? [...previous, ...contacts.filter((contact) => !previous.some((prior) => prior.id === contact.id))] : contacts);
+      setStripeNextPage(body.data.hasMore && typeof body.data.nextPage === "string" ? body.data.nextPage : null);
+      setStripeMode(body.data.mode === "test" || body.data.mode === "live" ? body.data.mode : null);
+      setStripeSearchState("ready");
+    } catch {
+      if (controller.signal.aborted || request !== stripeRequest.current) return;
+      setStripeSearchState("error");
+    }
+  }, [fBaseUrl, user]);
+
+  useEffect(() => {
+    stripeAbort.current?.abort();
+    stripeRequest.current += 1;
+    setStripeContacts([]);
+    setStripeNextPage(null);
+    setStripeMode(null);
+    const search = memberSearch.trim();
+    if (moduleKey !== "members" || search.length < 3 || search.length > 100 || /["\\]/.test(search) || Array.from(search).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) {
+      setStripeSearchState("idle");
+      return;
+    }
+    setStripeSearchState("loading");
+    const timer = window.setTimeout(() => void searchStripeContacts(search), 500);
+    return () => { window.clearTimeout(timer); stripeAbort.current?.abort(); stripeRequest.current += 1; };
+  }, [memberSearch, moduleKey, searchStripeContacts]);
   const updateReservationNotificationPolicy = (
     patch: Partial<ReservationNotificationPolicyContract>
   ) => {
@@ -6932,9 +6984,18 @@ export default function StaffView({
               </tbody>
             </table>
           </div>
+          <h3>Stripe customers</h3>
+          <p className="staff-note">Search at least three characters. Results come from the configured Stripe account and may take time to appear; they are separate from portal accounts.</p>
+          {memberSearch.trim().length >= 3 && (memberSearch.trim().length > 100 || /["\\]/.test(memberSearch) || Array.from(memberSearch).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) ? <p role="status">Stripe search accepts up to 100 characters without double quotes, backslashes, or control characters.</p> : null}
+          {stripeMode === "test" ? <p className="staff-note">Stripe test mode: these are test customers.</p> : stripeMode === "live" ? <p className="staff-note">Stripe live customers.</p> : null}
+          {stripeSearchState === "loading" ? <p role="status">Searching Stripe customers…</p> : null}
+          {stripeSearchState === "error" ? <p role="status">Stripe customer search is unavailable. <button type="button" className="btn btn-ghost" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage ?? undefined)}>Try again</button></p> : null}
+          {stripeSearchState === "ready" && stripeContacts.length === 0 ? <p>No Stripe customers found.</p> : null}
+          {stripeContacts.map((contact) => <div className="staff-ticket-contact" key={contact.id}><span><strong>{contact.displayName || "Unnamed customer"}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>)}
+          {stripeNextPage && stripeSearchState !== "loading" && stripeSearchState !== "error" ? <button type="button" className="btn btn-secondary" onClick={() => void searchStripeContacts(memberSearch.trim(), stripeNextPage)}>Load more Stripe customers</button> : null}
           <h3>Firing ticket contacts</h3>
-          <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person.</p>
-          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>)}
+          <p className="staff-note">Limited to the available firing ticket queue; records may represent the same person. Enter a name or email to search.</p>
+          {contactTicketsError ? <p role="status">{contactTicketsError}</p> : memberSearch.trim() ? firingTicketContacts(contactTickets, memberSearch).filter((contact) => contactEmailAddress(contact.email)).map((contact) => <div className="staff-ticket-contact" key={contact.ticketId}><span><strong>{contact.displayName}</strong><br />{contact.email}</span><a className="btn btn-secondary" href={`mailto:${encodeURIComponent(contactEmailAddress(contact.email)!) }`}>Email</a></div>) : null}
           <details className="staff-note"><summary>Directory sources</summary>
             Users: {memberSourceStats.usersDocs}. Profiles: {memberSourceStats.profilesDocs}.
             {memberSourceStats.inferredMembers > 0 ? `, inferred ${memberSourceStats.inferredMembers} from ${memberSourceStats.fallbackCollections.join(", ")}` : ""}

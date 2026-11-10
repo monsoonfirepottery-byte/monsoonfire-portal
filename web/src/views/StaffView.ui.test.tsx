@@ -170,6 +170,44 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("searches Stripe separately, loads another page, and keeps search out of request telemetry", async () => {
+    const priorFetch = globalThis.fetch;
+    const stripeRequests: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.endsWith("/staffSearchStripeContacts")) return priorFetch(input, init);
+      stripeRequests.push({ url, body: String(init?.body) });
+      const body = JSON.parse(String(init?.body)) as { page?: string };
+      return new Response(JSON.stringify({ ok: true, data: body.page
+        ? { contacts: [{ id: "cus_2", displayName: "Second Stripe", email: "second@example.com" }], hasMore: false, nextPage: null }
+        : { contacts: [{ id: "cus_1", displayName: "First Stripe", email: "first@example.com" }], hasMore: true, nextPage: "cursor-1" } }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "stripe" } });
+    expect(await screen.findByText("First Stripe")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load more Stripe customers" }));
+    expect(await screen.findByText("Second Stripe")).toBeTruthy();
+    expect(stripeRequests.map((entry) => JSON.parse(entry.body) as { search: string; page?: string })).toEqual([{ search: "stripe" }, { search: "stripe", page: "cursor-1" }]);
+    expect(postJsonMock.mock.calls.some(([fn]) => fn === "staffSearchStripeContacts")).toBe(false);
+  });
+  it("shows directory contacts even while the ticket source is slow", async () => {
+    const original = postJsonMock.getMockImplementation();
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ segments?: string[] }> }).parts;
+      return (parts?.[0]?.segments?.at(-1) === "users" ? { docs: [{ id: "quick", data: () => ({ displayName: "Quick Contact", email: "quick@example.com" }) }] } : empty) as never;
+    });
+    postJsonMock.mockImplementation(async (fn, body) => fn === "staffListFiringPickupReviews" ? new Promise(() => undefined) : original!(fn, body));
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText("Quick Contact")).length).toBeGreaterThan(0);
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+      postJsonMock.mockImplementation(original!);
+    }
+  });
   it("shows directory results while firing ticket contacts are still loading", async () => {
     const empty = { docs: [], empty: true, forEach: () => undefined };
     vi.mocked(getDocs).mockImplementation(async (value) => {

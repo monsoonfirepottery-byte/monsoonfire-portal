@@ -2339,6 +2339,12 @@ export default function StaffView({
   const [contactTicketsError, setContactTicketsError] = useState("");
   const [contactDirectoryNotice, setContactDirectoryNotice] = useState("");
   const contactLoadInFlight = useRef(false);
+  const contactsMounted = useRef(true);
+  const contactTicketRequest = useRef(0);
+  useEffect(() => {
+    contactsMounted.current = true;
+    return () => { contactsMounted.current = false; };
+  }, []);
   const [messageRecipientCheck, setMessageRecipientCheck] = useState<{ uid: string; status: "checking" | "active" | "disabled" | "not_found" | "unavailable" } | null>(null);
   const [staffMessageRecipientId, setStaffMessageRecipientId] = useState<string | null>(null);
   const [staffMessageThreadId, setStaffMessageThreadId] = useState<string | null>(null);
@@ -3861,18 +3867,22 @@ export default function StaffView({
         return { docs, complete: false, error: true };
       }
     };
-    const [usersResult, profilesResult, ticketsResult] = await Promise.allSettled([
-      loadDirectory("users"),
-      loadDirectory("profiles"),
-      client.postJson<QueueResponse>("staffListFiringPickupReviews", {}),
-    ]);
-    if (ticketsResult.status === "fulfilled" && Array.isArray(ticketsResult.value.data?.tickets)) {
-      setContactTickets(ticketsResult.value.data.tickets);
+    const ticketRequest = ++contactTicketRequest.current;
+    void client.postJson<QueueResponse>("staffListFiringPickupReviews", {}).then((result) => {
+      if (!contactsMounted.current || ticketRequest !== contactTicketRequest.current) return;
+      if (!Array.isArray(result.data?.tickets)) throw new Error("Ticket contacts unavailable");
+      setContactTickets(result.data.tickets);
       setContactTicketsError("");
-    } else {
+    }).catch(() => {
+      if (!contactsMounted.current || ticketRequest !== contactTicketRequest.current) return;
       setContactTickets([]);
       setContactTicketsError("Firing ticket contacts are unavailable. Refresh contacts to retry.");
-    }
+    });
+    const [usersResult, profilesResult] = await Promise.allSettled([
+      loadDirectory("users"),
+      loadDirectory("profiles"),
+    ]);
+    if (!contactsMounted.current) return;
 
     const byUid = new Map<string, { userData: Record<string, unknown>; profileData: Record<string, unknown> }>();
     const usersDocsCount = usersResult.status === "fulfilled" ? usersResult.value.docs.length : 0;
@@ -3881,7 +3891,7 @@ export default function StaffView({
     let inferredMembers = 0;
 
     if (usersResult.status === "fulfilled") {
-      setStaffMessageDirectoryError("");
+      setStaffMessageDirectoryError(usersResult.value.error ? "Portal recipient directory is unavailable. Refresh contacts to retry." : "");
       usersResult.value.docs.forEach((docSnap) => {
         const row = byUid.get(docSnap.id) ?? { userData: {}, profileData: {} };
         row.userData = (docSnap.data() ?? {}) as Record<string, unknown>;
@@ -3927,6 +3937,7 @@ export default function StaffView({
       const fallbackResults = await Promise.allSettled(
         sources.map((source) => getDocs(query(collection(db, source.name), limit(240))))
       );
+      if (!contactsMounted.current) return;
 
       fallbackResults.forEach((result, index) => {
         if (result.status !== "fulfilled") return;

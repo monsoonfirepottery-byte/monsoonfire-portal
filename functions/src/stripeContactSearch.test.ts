@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { stripeContactQuery, stripeContactRows, stripeGuestEmail, stripeGuestRows } from "./stripeContactSearch";
+import { scanStripeGuestNames, stripeContactQuery, stripeContactRows, stripeGuestEmail, stripeGuestNameQuery, stripeGuestRows } from "./stripeContactSearch";
 
 test("search uses bounded escaped-by-rejection clauses", () => {
   assert.equal(stripeContactQuery(" Alex "), "name~\"Alex\" OR email~\"Alex\"");
@@ -24,6 +24,32 @@ test("guest results exclude customer-linked, mismatched, and missing email sessi
     { id: "cs_test_3", customer: null, customer_details: { email: "different@example.com" } },
     { id: "cs_test_4", customer: null, customer_details: null },
   ], "person@example.com"), [{ id: "cs_test_1", displayName: "Maker", email: "Person@Example.com" }]);
+});
+
+test("guest name scan is bounded, preserves cursor through unmatched pages, and exposes only contact fields", async () => {
+  const seen: Array<string | undefined> = [];
+  const result = await scanStripeGuestNames(async (after) => {
+    seen.push(after);
+    const page = seen.length;
+    return {
+      data: [{ id: `cs_test_${page}`, customer: null, customer_details: { name: page === 2 ? "  María Maker  " : "Other", email: "maker@example.com" } }],
+      has_more: true,
+    };
+  }, "MARÍA");
+  assert.deepEqual(seen, [undefined, "cs_test_1", "cs_test_2"]);
+  assert.deepEqual(result, { contacts: [{ id: "cs_test_2", displayName: "María Maker", email: "maker@example.com" }], scanned: 3, hasMore: true, nextPage: "cs_test_3" });
+});
+
+test("guest name scan stops at end and excludes customer-linked sessions", async () => {
+  const result = await scanStripeGuestNames(async () => ({
+    data: [
+      { id: "cs_test_1", customer: "cus_1", customer_details: { name: "Alex", email: "alex@example.com" } },
+      { id: "cs_test_2", customer: null, customer_details: { name: "Alex Guest", email: null } },
+    ], has_more: false,
+  }), "alex");
+  assert.deepEqual(result, { contacts: [{ id: "cs_test_2", displayName: "Alex Guest", email: "" }], scanned: 2, hasMore: false, nextPage: null });
+  for (const invalid of ["ab", "a\nbc"]) assert.equal(stripeGuestNameQuery(invalid), null);
+  await assert.rejects(scanStripeGuestNames(async () => ({ data: [], has_more: true }), "alex"));
 });
 
 test("returns only contact fields, including customers without usable email", () => {

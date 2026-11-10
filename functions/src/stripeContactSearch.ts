@@ -36,3 +36,39 @@ export function stripeGuestRows(sessions: Array<{ id: string; customer: unknown;
     return [{ id: session.id, displayName: session.customer_details?.name?.trim() || "Unnamed guest", email: address }];
   });
 }
+
+type GuestSession = { id: string; customer: unknown; customer_details: { email?: string | null; name?: string | null } | null };
+
+export function stripeGuestNameQuery(value: string): string | null {
+  const search = value.trim().normalize("NFKC").toLowerCase();
+  if (search.length < 3 || search.length > 100 || hasControlCharacter(search)) return null;
+  return search;
+}
+
+/** Scan bounded pages, advancing by the unfiltered Stripe cursor even for empty matches. */
+export async function scanStripeGuestNames(
+  list: (startingAfter?: string) => Promise<{ data: GuestSession[]; has_more: boolean }>,
+  search: string,
+  startingAfter?: string
+) {
+  const query = stripeGuestNameQuery(search);
+  if (!query) throw new Error("Invalid guest name search");
+  const contacts: Array<{ id: string; displayName: string; email: string }> = [];
+  let scanned = 0;
+  let cursor = startingAfter;
+  let hasMore = true;
+  for (let page = 0; page < 3 && hasMore; page += 1) {
+    const result = await list(cursor);
+    scanned += result.data.length;
+    for (const session of result.data) {
+      const displayName = session.customer_details?.name?.trim() ?? "";
+      if (session.customer || !displayName || hasControlCharacter(displayName) || !displayName.normalize("NFKC").toLowerCase().includes(query)) continue;
+      contacts.push({ id: session.id, displayName, email: stripeGuestEmail(session.customer_details?.email ?? "") ?? "" });
+    }
+    hasMore = result.has_more;
+    const next = result.data[result.data.length - 1]?.id;
+    if (hasMore && (!next || next === cursor)) throw new Error("Invalid Stripe pagination");
+    cursor = next;
+  }
+  return { contacts, scanned, hasMore, nextPage: hasMore ? cursor ?? null : null };
+}

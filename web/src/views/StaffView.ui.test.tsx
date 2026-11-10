@@ -56,6 +56,8 @@ const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string }) => {
       } } };
     case "staffSearchStripeGuests":
       return { ok: true, data: { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], hasMore: false, nextPage: null } };
+    case "staffSearchStripeGuestsByName":
+      return { ok: true, data: { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], scanned: 100, hasMore: true, nextPage: "cs_test_next", mode: "test" } };
     case "staffFinalizeFiringPickup":
       pickupTickets = pickupTickets.map((ticket) => ticket.ticketId === body?.ticketId
         ? { ...ticket, status: "ready_for_pickup", billingStatus: "invoice_open" }
@@ -172,6 +174,16 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("searches guest names only on request and labels an incomplete scan", async () => {
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "Guest" } });
+    expect(postJsonMock).not.toHaveBeenCalledWith("staffSearchStripeGuestsByName", expect.anything(), expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: "Search guest checkouts by name" }));
+    expect(await screen.findByText("Guest Example")).toBeTruthy();
+    expect(screen.getByText("Checked 100 checkouts. More remain to search.")).toBeTruthy();
+    expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuestsByName", { search: "Guest" }, { suppressTelemetry: true });
+  });
   it("searches guest checkouts by exact email without request telemetry", async () => {
     window.history.replaceState({}, "", "/staff/cockpit/members");
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);

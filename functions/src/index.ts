@@ -35,7 +35,7 @@ import { normalizeIntakeMode } from "./intakeMode";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import { verifyMessageRecipient } from "./messageRecipientVerification";
-import { stripeContactQuery, stripeContactRows, stripeGuestEmail, stripeGuestRows } from "./stripeContactSearch";
+import { scanStripeGuestNames, stripeContactQuery, stripeContactRows, stripeGuestEmail, stripeGuestNameQuery, stripeGuestRows } from "./stripeContactSearch";
 import { getStripeClient, loadStripeConfig } from "./stripeRuntime";
 import { STRIPE_SECRET_PARAMS } from "./stripeSecrets";
 import {
@@ -715,6 +715,31 @@ export const staffSearchStripeGuests = onRequest(
     } catch {
       logger.error("staffSearchStripeGuests failed");
       res.status(503).json({ ok: false, message: "Stripe guest contacts unavailable" });
+    }
+  }
+);
+
+export const staffSearchStripeGuestsByName = onRequest(
+  { region: REGION, timeoutSeconds: 30, secrets: [...STRIPE_SECRET_PARAMS] },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") { res.status(405).json({ ok: false, message: "Use POST" }); return; }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) { res.status(401).json({ ok: false, message: auth.message }); return; }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) { res.status(403).json({ ok: false, message: "Forbidden" }); return; }
+    const parsed = parseBody(z.object({ search: z.string().trim().min(3).max(100), startingAfter: z.string().regex(/^cs_(?:test|live)_[A-Za-z0-9]+$/u).max(255).optional() }).strict(), req.body);
+    if (!parsed.ok || !stripeGuestNameQuery(parsed.data.search)) { res.status(400).json({ ok: false, message: "Invalid guest name search" }); return; }
+    try {
+      const config = await loadStripeConfig();
+      const stripe = getStripeClient(config.mode);
+      const result = await scanStripeGuestNames((startingAfter) => stripe.checkout.sessions.list({
+        status: "complete", limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }), parsed.data.search, parsed.data.startingAfter);
+      res.status(200).json({ ok: true, data: { ...result, mode: config.mode } });
+    } catch {
+      res.status(503).json({ ok: false, message: "Stripe guest name search unavailable" });
     }
   }
 );

@@ -339,8 +339,9 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       (safetyResp.config ?? {}) as Record<string, unknown>
     );
     const safetyRow = safetyResp.config;
-    setSafetyStatusKnown(Boolean(safetyRow && typeof safetyRow.enabled === "boolean" && typeof safetyRow.publishKillSwitch === "boolean" && typeof safetyRow.autoFlagEnabled === "boolean"));
-    setSafetyConfigComplete(Boolean(safetyResp.ok && safetyRow && typeof safetyRow.enabled === "boolean" && typeof safetyRow.publishKillSwitch === "boolean" && typeof safetyRow.autoFlagEnabled === "boolean" && Number.isFinite(safetyRow.highSeverityThreshold) && Number.isFinite(safetyRow.mediumSeverityThreshold) && Array.isArray(safetyRow.blockedTerms) && safetyRow.blockedTerms.every((item) => typeof item === "string") && Array.isArray(safetyRow.blockedUrlHosts) && safetyRow.blockedUrlHosts.every((item) => typeof item === "string")));
+    const completeSafety = Boolean(safetyResp.ok && safetyRow && typeof safetyRow.enabled === "boolean" && typeof safetyRow.publishKillSwitch === "boolean" && typeof safetyRow.autoFlagEnabled === "boolean" && Number.isFinite(safetyRow.highSeverityThreshold) && Number.isFinite(safetyRow.mediumSeverityThreshold) && Array.isArray(safetyRow.blockedTerms) && safetyRow.blockedTerms.every((item) => typeof item === "string") && Array.isArray(safetyRow.blockedUrlHosts) && safetyRow.blockedUrlHosts.every((item) => typeof item === "string"));
+    setSafetyStatusKnown(completeSafety);
+    setSafetyConfigComplete(completeSafety);
     setSafetyConfig(normalizedSafety);
     setLoaded(true);
     setBlockedTermsDraft(normalizedSafety.blockedTerms.join("\n"));

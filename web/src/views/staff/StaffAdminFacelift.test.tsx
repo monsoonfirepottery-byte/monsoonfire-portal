@@ -49,11 +49,24 @@ describe("staff administration", () => {
     expect(screen.getByRole("button", { name: "Save safety controls" }).closest("fieldset")?.disabled).toBe(false);
   });
 
+  it("keeps safety controls locked when the server returns incomplete settings", async () => {
+    const postJson = vi.fn(async (endpoint: string) => endpoint === "staffGetCommunitySafetyConfig"
+      ? { ok: true, config: { enabled: true, publishKillSwitch: false, autoFlagEnabled: true } }
+      : { ok: true, policies: [] });
+    render(<PolicyModule client={{ postJson } as unknown as FunctionsClient} active disabled={false} />);
+    await screen.findByText("Status unavailable · review controls");
+    expect(screen.queryByText("Safety controls are active and auto-flagging is enabled.")).toBeNull();
+    const save = screen.getByRole("button", { name: "Save safety controls" });
+    expect(save.closest("fieldset")?.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(postJson.mock.calls.some(([endpoint]) => endpoint === "staffUpdateCommunitySafetyConfig")).toBe(false);
+  });
+
   it("shows the published policy and actual safety warning", async () => {
     const client = { postJson: async (endpoint: string) => {
       if (endpoint === "getModerationPolicyCurrent") return { policy: null };
       if (endpoint === "listModerationPolicies") return { activeVersion: "v1", policies: [] };
-      return { config: { enabled: true, publishKillSwitch: true, autoFlagEnabled: true } };
+      return { ok: true, config: { enabled: true, publishKillSwitch: true, autoFlagEnabled: true, highSeverityThreshold: 70, mediumSeverityThreshold: 30, blockedTerms: [], blockedUrlHosts: [] } };
     } } as unknown as FunctionsClient;
     render(<PolicyModule client={client} active disabled={false} />);
     expect(await screen.findByText("Version v1")).toBeTruthy();

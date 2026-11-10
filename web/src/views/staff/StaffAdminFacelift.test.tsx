@@ -26,6 +26,19 @@ describe("staff administration", () => {
     expect(screen.queryByText("Safety controls are active and auto-flagging is enabled.")).toBeNull();
   });
 
+  it("prevents safety updates when settings cannot be loaded", async () => {
+    const postJson = vi.fn(async (endpoint: string) => {
+      if (endpoint === "staffGetCommunitySafetyConfig") throw new Error("Unavailable");
+      return { ok: true, policies: [] };
+    });
+    render(<PolicyModule client={{ postJson } as unknown as FunctionsClient} active disabled={false} />);
+    expect(await screen.findByText("Refresh policy to load all safety settings before changing them.")).toBeTruthy();
+    const save = screen.getByRole("button", { name: "Save safety controls" });
+    expect(save.closest("fieldset")?.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(postJson.mock.calls.some(([endpoint]) => endpoint === "staffUpdateCommunitySafetyConfig")).toBe(false);
+  });
+
   it("shows the published policy and actual safety warning", async () => {
     const client = { postJson: async (endpoint: string) => {
       if (endpoint === "getModerationPolicyCurrent") return { policy: null };

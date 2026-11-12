@@ -30,6 +30,25 @@ import {
 } from "../../utils/studioBrainControlTower";
 import "./studioBrainControlTower.css";
 import { AdminWorkflow } from "./admin/AdminWorkspace";
+const __bundleClass_0 = "control-tower-kicker";
+const __bundleClass_1 = "btn btn-secondary";
+const __bundleClass_2 = "control-tower-next-card";
+const __bundleClass_3 = "control-tower-title-row";
+const __bundleClass_4 = "pill control-tower-pill-neutral";
+const __bundleClass_5 = "control-tower-next-footer";
+const __bundleClass_6 = "control-tower-stat-card";
+const __bundleClass_7 = "control-tower-card-top";
+const __bundleClass_8 = "control-tower-room-name";
+const __bundleClass_9 = "control-tower-room-project";
+const __bundleClass_10 = "btn btn-ghost btn-small";
+const __bundleClass_11 = "card staff-console-card control-tower-section-card";
+const __bundleClass_12 = "control-tower-section-header";
+const __bundleClass_13 = "control-tower-memory-list";
+const __bundleClass_14 = "control-tower-memory-card";
+const __bundleClass_15 = "control-tower-partner-loop-actions";
+const __bundleClass_16 = "control-tower-board-label";
+const __bundleClass_17 = "control-tower-pinned-list";
+
 
 type Props = {
   user: User;
@@ -690,7 +709,7 @@ export default function StudioBrainControlTowerModule({
   if (isDisabled) {
     return (
       <section className="card staff-console-card control-tower-shell">
-        <div className="control-tower-kicker">Studio Brain Control Tower</div>
+        <div className={__bundleClass_0}>Studio Brain Control Tower</div>
         <h2>Control Tower needs operator access</h2>
         <p className="card-subtitle">
           This browser session is signed in, but it does not currently have the Studio Brain operator access needed to
@@ -698,7 +717,7 @@ export default function StudioBrainControlTowerModule({
         </p>
         <div className="staff-note">Ask for staff operator access, or use advanced admin for deeper governance work.</div>
         <div className="staff-actions-row">
-          <button type="button" className="btn btn-secondary" onClick={() => onNavigateTarget("system")}>
+          <button type="button" className={__bundleClass_1} onClick={() => onNavigateTarget("system")}>
             Open advanced admin
           </button>
         </div>
@@ -709,7 +728,7 @@ export default function StudioBrainControlTowerModule({
   if (!resolution.baseUrl) {
     return (
       <section className="card staff-console-card control-tower-shell">
-        <div className="control-tower-kicker">Studio Brain Control Tower</div>
+        <div className={__bundleClass_0}>Studio Brain Control Tower</div>
         <h2>Control Tower is waiting on the Studio Brain bridge</h2>
         <p className="card-subtitle">
           The browser shell needs a reachable Studio Brain base URL before it can operate rooms, services, and overseer
@@ -739,7 +758,7 @@ export default function StudioBrainControlTowerModule({
               <button type="button" className="btn btn-primary" onClick={handleSaveBaseUrlOverride}>
                 Save URL
               </button>
-              <button type="button" className="btn btn-secondary" onClick={handleClearBaseUrlOverride}>
+              <button type="button" className={__bundleClass_1} onClick={handleClearBaseUrlOverride}>
                 Clear
               </button>
             </div>
@@ -747,7 +766,7 @@ export default function StudioBrainControlTowerModule({
           </div>
         ) : null}
         <div className="staff-actions-row">
-          <button type="button" className="btn btn-secondary" onClick={() => onNavigateTarget("system")}>
+          <button type="button" className={__bundleClass_1} onClick={() => onNavigateTarget("system")}>
             Open advanced admin
           </button>
         </div>
@@ -759,19 +778,15 @@ export default function StudioBrainControlTowerModule({
     <>
       <section className="control-tower-shell" data-testid="studio-brain-control-tower">
         <section className={`card staff-console-card control-tower-hero${quietMode ? " control-tower-hero-quiet" : ""}`}>
-          <img className="control-tower-workshop-art" src="/staff-admin/studio-brain.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
+          <img className="control-tower-workshop-art" src="/staff-facelift/studio-brain.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }} />
           <div className="control-tower-hero-copy">
-            <div className="control-tower-kicker">Studio Brain Control Tower v3</div>
-            <h1>{quietMode ? "Quiet control tower" : "30-second operator plane"}</h1>
-            <p>
-              {quietMode
-                ? "No active rooms, approvals, incidents, or host heartbeats are in flight. The surface stays compact until real operator work arrives."
-                : "Mission board, approvals, memory brief, and live channels are the first screen now. tmux and logs stay backstage as recovery substrate."}
-            </p>
+            <div className={__bundleClass_0}>Administration · Studio Brain</div>
+            <h1>Studio Brain</h1>
+            <p>{errorMessage ? "Status unavailable. Refresh to try again." : !state ? "Loading the latest activity." : quietMode ? "No activity needs attention right now." : "Review approvals and blocked work, then open a room or service."}</p>
           </div>
-          <AdminWorkflow label="Workflow" stages={[{ label: "Rooms", detail: `${activeRooms.length} active`, state: activeRooms.length ? "ok" : "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }, { label: "Review", detail: `${approvals.length} approvals`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} attention`, state: counts.needsAttention ? "danger" : "ok" }]} />
+          <AdminWorkflow label="Current work" stages={!state || errorMessage ? [{ label: "Activity", detail: errorMessage ? "Unavailable" : "Loading", state: "neutral" }] : [{ label: "Review", detail: `${approvals.length} approvals`, state: approvals.length ? "warn" : "neutral" }, { label: "Follow-up", detail: `${counts.needsAttention} need attention`, state: counts.needsAttention ? "danger" : "neutral" }, { label: "Rooms", detail: `${activeRooms.length} active`, state: "neutral" }, { label: "Runs", detail: `${counts.waiting} waiting`, state: counts.waiting ? "warn" : "neutral" }]} />
           <div className="control-tower-hero-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => void loadState()}>
+            <button type="button" className={__bundleClass_1} onClick={() => void loadState()}>
               {loading ? "Refreshing..." : "Refresh"}
             </button>
             <button type="button" className="btn btn-ghost" onClick={jumpToServices}>
@@ -785,45 +800,47 @@ export default function StudioBrainControlTowerModule({
             </button>
           </div>
 
-          {quietMode ? (
-            <article className="control-tower-next-card">
-              <div className="control-tower-title-row">
+          {!state || errorMessage ? (
+            <div className="staff-note">{errorMessage ? "Unable to load current activity. Refresh to retry." : "Loading current activity…"}</div>
+          ) : quietMode ? (
+            <article className={__bundleClass_2}>
+              <div className={__bundleClass_3}>
                 <h3>Quiet right now</h3>
-                <span className="pill control-tower-pill-neutral">
+                <span className={__bundleClass_4}>
                   {streamStatus === "live" ? "Live signal" : streamStatus === "fallback" ? "Fallback signal" : "Connecting"}
                 </span>
               </div>
               <p>
                 The tower will expand when the first live room, run, incident, approval, or host heartbeat arrives. Until then, this stays as a short readiness summary instead of a wall of empty panels.
               </p>
-              <div className="control-tower-next-footer">
+              <div className={__bundleClass_5}>
                 <span>{state?.ops.summary || "Waiting on the first control-plane signal."}</span>
                 <span>{state?.generatedAt ? `Updated ${formatTimestamp(state.generatedAt)}` : "No snapshot timestamp yet"}</span>
               </div>
             </article>
           ) : (
             <div className="control-tower-stat-grid">
-              <article className="control-tower-stat-card">
+              <article className={__bundleClass_6}>
                 <span>Needs Attention</span>
                 <strong>{counts.needsAttention}</strong>
                 <p>Human follow-up or operator review is needed now.</p>
               </article>
-              <article className="control-tower-stat-card">
+              <article className={__bundleClass_6}>
                 <span>Active Rooms</span>
                 <strong>{activeRooms.length}</strong>
                 <p>Rooms that are moving, blocked, or escalated.</p>
               </article>
-              <article className="control-tower-stat-card">
+              <article className={__bundleClass_6}>
                 <span>Waiting</span>
                 <strong>{counts.waiting}</strong>
                 <p>Rooms that are quiet enough to need a nudge.</p>
               </article>
-              <article className="control-tower-stat-card">
+              <article className={__bundleClass_6}>
                 <span>Escalated</span>
                 <strong>{counts.escalated}</strong>
                 <p>Pinned blockers that stay visible until they are cleared.</p>
               </article>
-              <article className="control-tower-stat-card">
+              <article className={__bundleClass_6}>
                 <span>Approvals</span>
                 <strong>{approvals.length}</strong>
                 <p>Pending or in-flight operator approvals from the control plane.</p>
@@ -831,7 +848,7 @@ export default function StudioBrainControlTowerModule({
             </div>
           )}
 
-          <div className="control-tower-status-row">
+          {state && !errorMessage ? <div className="control-tower-status-row">
             <span className={`pill control-tower-pill-${toneClass(state?.ops.overallStatus ?? "neutral")}`}>
               {`Ops ${state?.ops.overallStatus ?? "neutral"}`}
             </span>
@@ -848,19 +865,19 @@ export default function StudioBrainControlTowerModule({
             </span>
             {!quietMode ? <span>{state?.ops.summary || "Loading Control Tower status..."}</span> : null}
             {!quietMode && state?.generatedAt ? <span>{`Updated ${formatTimestamp(state.generatedAt)}`}</span> : null}
-          </div>
+          </div> : null}
 
           {hosts.length ? (
             <div className="control-tower-host-strip">
               {hosts.map((host) => (
                 <article key={host.hostId} className={`control-tower-host-card control-tower-tone-${host.health === "healthy" ? toneClass("healthy") : host.health === "maintenance" ? "neutral" : host.health === "offline" ? "error" : "warning"}`}>
-                  <div className="control-tower-card-top">
+                  <div className={__bundleClass_7}>
                     <div>
-                      <span className="control-tower-room-name">{host.label}</span>
-                      <span className="control-tower-room-project">{host.role}</span>
+                      <span className={__bundleClass_8}>{host.label}</span>
+                      <span className={__bundleClass_9}>{host.role}</span>
                     </div>
                     <div className="control-tower-host-badges">
-                      <span className="pill control-tower-pill-neutral">{host.environment}</span>
+                      <span className={__bundleClass_4}>{host.environment}</span>
                       <span className={`pill control-tower-pill-${host.connectivity === "online" ? "ok" : host.connectivity === "stale" ? "warn" : "danger"}`}>
                         {host.connectivity}
                       </span>
@@ -873,10 +890,10 @@ export default function StudioBrainControlTowerModule({
                     <span>load {formatHostMetric(host.metrics.load1, "", 1)}</span>
                     <span>{host.agentCount} agent{host.agentCount === 1 ? "" : "s"}</span>
                   </div>
-                  <div className="control-tower-next-footer">
+                  <div className={__bundleClass_5}>
                     <span>{formatRelativeAge(host.ageMinutes)}</span>
                     {host.currentRunId ? (
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void openRun(host.currentRunId as string)}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void openRun(host.currentRunId as string)}>
                         Open run
                       </button>
                     ) : null}
@@ -892,18 +909,18 @@ export default function StudioBrainControlTowerModule({
 
         {quietMode ? (
           <div className="control-tower-chiplet-grid">
-            <section className="card staff-console-card control-tower-section-card">
-              <div className="control-tower-section-header">
+            <section className={__bundleClass_11}>
+              <div className={__bundleClass_12}>
                 <div>
-                  <div className="control-tower-kicker">Situation</div>
+                  <div className={__bundleClass_0}>Situation</div>
                   <h2>Tower is standing by</h2>
                   <p>The board stays collapsed until there is real work to supervise.</p>
                 </div>
               </div>
-              <article className="control-tower-next-card">
+              <article className={__bundleClass_2}>
                 <h3>No live dispatch yet</h3>
                 <p>No rooms, runs, approvals, incidents, or host heartbeats are active right now.</p>
-                <div className="control-tower-memory-list">
+                <div className={__bundleClass_13}>
                   <span>needs attention: {counts.needsAttention}</span>
                   <span>active rooms: {activeRooms.length}</span>
                   <span>approvals: {approvals.length}</span>
@@ -912,52 +929,52 @@ export default function StudioBrainControlTowerModule({
               </article>
             </section>
 
-            <section className="card staff-console-card control-tower-section-card">
-              <div className="control-tower-section-header">
+            <section className={__bundleClass_11}>
+              <div className={__bundleClass_12}>
                 <div>
-                  <div className="control-tower-kicker">Memory</div>
+                  <div className={__bundleClass_0}>Memory</div>
                   <h2>Continuity summary</h2>
                   <p>Quiet continuity stays condensed until drift or a real memory action appears.</p>
                 </div>
               </div>
-              <article className="control-tower-memory-card">
-                <div className="control-tower-title-row">
+              <article className={__bundleClass_14}>
+                <div className={__bundleClass_3}>
                   <h3>{state?.memoryBrief?.goal || "Continuity quiet"}</h3>
                   <span className={`pill control-tower-pill-${continuityTone(state?.memoryBrief?.continuityState ?? "missing")}`}>
                     {state?.memoryBrief?.continuityState ?? "missing"}
                   </span>
                 </div>
                 <p>{state?.memoryBrief?.summary || "Continuity will appear here when the startup brief is ready."}</p>
-                <div className="control-tower-next-footer">
+                <div className={__bundleClass_5}>
                   <span>{state?.memoryBrief?.sourcePath || "live state fallback"}</span>
                   <span>{formatTimestamp(state?.memoryBrief?.generatedAt ?? null)}</span>
                 </div>
               </article>
             </section>
 
-            <section ref={partnerRef} className="card staff-console-card control-tower-section-card">
-              <div className="control-tower-section-header">
+            <section ref={partnerRef} className={__bundleClass_11}>
+              <div className={__bundleClass_12}>
                 <div>
-                  <div className="control-tower-kicker">Partner</div>
+                  <div className={__bundleClass_0}>Partner</div>
                   <h2>Chief of staff</h2>
                   <p>Owner-facing partner state stays compact until there is a real interruption or decision.</p>
                 </div>
               </div>
-              <article className="control-tower-memory-card">
-                <div className="control-tower-title-row">
+              <article className={__bundleClass_14}>
+                <div className={__bundleClass_3}>
                   <h3>{partner?.recommendedFocus || "No partner brief yet."}</h3>
                   <span className={`pill control-tower-pill-${partnerInitiativeTone(partner?.initiativeState ?? "quiet")}`}>
                     {partner?.initiativeState || "quiet"}
                   </span>
                 </div>
                 <p>{partner?.contactReason || partner?.summary || "No owner-facing interruption is active right now."}</p>
-                <div className="control-tower-next-footer">
+                <div className={__bundleClass_5}>
                   <span>{partner?.persona.displayName || "Chief-of-staff partner"}</span>
-                  <div className="control-tower-partner-loop-actions">
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
+                  <div className={__bundleClass_15}>
+                    <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
                       Why this
                     </button>
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
+                    <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
                       Continue
                     </button>
                   </div>
@@ -968,10 +985,10 @@ export default function StudioBrainControlTowerModule({
         ) : (
           <>
         {showBoardSurface ? (
-        <section className="card staff-console-card control-tower-section-card">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_11}>
+          <div className={__bundleClass_12}>
             <div>
-              <div className="control-tower-kicker">Board</div>
+              <div className={__bundleClass_0}>Board</div>
               <h2>30-second operator board</h2>
               <p>Fixed schema across surfaces: owner, task, state, blocker, next, and last update.</p>
             </div>
@@ -979,48 +996,48 @@ export default function StudioBrainControlTowerModule({
           <div className="control-tower-board-list">
             {boardRows.map((row) => (
               <article key={row.id} className="control-tower-board-card">
-                <div className="control-tower-card-top">
+                <div className={__bundleClass_7}>
                   <div>
-                    <span className="control-tower-room-name">{row.owner}</span>
-                    <span className="control-tower-room-project">{row.state}</span>
+                    <span className={__bundleClass_8}>{row.owner}</span>
+                    <span className={__bundleClass_9}>{row.state}</span>
                   </div>
                   <span>{formatTimestamp(row.last_update)}</span>
                 </div>
                 <div className="control-tower-board-grid">
                   <div>
-                    <span className="control-tower-board-label">Task</span>
+                    <span className={__bundleClass_16}>Task</span>
                     <strong>{row.task}</strong>
                   </div>
                   <div>
-                    <span className="control-tower-board-label">Blocker</span>
+                    <span className={__bundleClass_16}>Blocker</span>
                     <strong>{row.blocker || "None"}</strong>
                   </div>
                   <div>
-                    <span className="control-tower-board-label">Next</span>
+                    <span className={__bundleClass_16}>Next</span>
                     <strong>{row.next}</strong>
                   </div>
                 </div>
                 {row.contactReason || row.decisionNeeded ? (
-                  <div className="control-tower-memory-list">
+                  <div className={__bundleClass_13}>
                     {row.contactReason ? <span>why contacted: {row.contactReason}</span> : null}
                     {row.decisionNeeded ? <span>decision: {row.decisionNeeded}</span> : null}
                   </div>
                 ) : null}
                 {row.roomId ? (
-                  <div className="control-tower-next-footer">
+                  <div className={__bundleClass_5}>
                     <span>{row.sessionName || row.roomId}</span>
                     <button
                       type="button"
-                      className="btn btn-ghost btn-small"
+                      className={__bundleClass_10}
                       onClick={() => handleActionTarget({ type: "room", roomId: row.roomId as string })}
                     >
                       Open lane
                     </button>
                   </div>
                 ) : row.runId ? (
-                  <div className="control-tower-next-footer">
+                  <div className={__bundleClass_5}>
                     <span>{row.runId}</span>
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void openRun(row.runId as string)}>
+                    <button type="button" className={__bundleClass_10} onClick={() => void openRun(row.runId as string)}>
                       Open run
                     </button>
                   </div>
@@ -1037,41 +1054,41 @@ export default function StudioBrainControlTowerModule({
         <div className="control-tower-grid">
           <div className="control-tower-main">
             {showExecutionSurface ? (
-              <section className="card staff-console-card control-tower-section-card">
-                <div className="control-tower-section-header">
+              <section className={__bundleClass_11}>
+                <div className={__bundleClass_12}>
                   <div>
-                    <div className="control-tower-kicker">Execution</div>
+                    <div className={__bundleClass_0}>Execution</div>
                     <h2>Live run</h2>
                     <p>Intent, execution, and machine truth stay visible together instead of getting buried in logs.</p>
                   </div>
                 </div>
                 {runtimeSummary ? (
                   <article className={`control-tower-next-card control-tower-tone-${runtimeTone(runtimeSummary.status)}`}>
-                    <div className="control-tower-title-row">
+                    <div className={__bundleClass_3}>
                       <h3>{runtimeSummary.title}</h3>
                       <div className="control-tower-host-badges">
                         <span className={`pill control-tower-pill-${runtimeTone(runtimeSummary.status)}`}>{runtimeSummary.status}</span>
-                        <span className="pill control-tower-pill-neutral">{runtimeSummary.environment || "server"}</span>
+                        <span className={__bundleClass_4}>{runtimeSummary.environment || "server"}</span>
                       </div>
                     </div>
                     <p>{runtimeSummary.goal}</p>
                     <div className="control-tower-board-grid">
                       <div>
-                        <span className="control-tower-board-label">Blocker</span>
+                        <span className={__bundleClass_16}>Blocker</span>
                         <strong>{runtimeSummary.activeBlockers[0] || "None"}</strong>
                       </div>
                       <div>
-                        <span className="control-tower-board-label">Next</span>
+                        <span className={__bundleClass_16}>Next</span>
                         <strong>{runtimeSummary.boardRow?.next || "No next move"}</strong>
                       </div>
                       <div>
-                        <span className="control-tower-board-label">Host</span>
+                        <span className={__bundleClass_16}>Host</span>
                         <strong>{runtimeSummary.hostId || "unassigned"}</strong>
                       </div>
                     </div>
-                    <div className="control-tower-next-footer">
+                    <div className={__bundleClass_5}>
                       <span>{formatTimestamp(runtimeSummary.updatedAt)}</span>
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void openRun(runtimeSummary.runId)}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void openRun(runtimeSummary.runId)}>
                         Open run inspector
                       </button>
                     </div>
@@ -1083,10 +1100,10 @@ export default function StudioBrainControlTowerModule({
             ) : null}
 
             {showNeedsAttentionSurface ? (
-            <section className="card staff-console-card control-tower-section-card">
-              <div className="control-tower-section-header">
+            <section className={__bundleClass_11}>
+              <div className={__bundleClass_12}>
                 <div>
-                  <div className="control-tower-kicker">Home</div>
+                  <div className={__bundleClass_0}>Home</div>
                   <h2>Needs Attention</h2>
                   <p>Each item tells you what it is, why it matters, and the next clean move.</p>
                 </div>
@@ -1094,13 +1111,13 @@ export default function StudioBrainControlTowerModule({
               <div className="control-tower-attention-grid">
                 {needsAttentionItems.map((item) => (
                   <article key={item.id} className={`control-tower-attention-card control-tower-tone-${toneClass(item.severity)}`}>
-                    <div className="control-tower-card-top">
+                    <div className={__bundleClass_7}>
                       <span className="pill">{item.severity}</span>
                       <span>{formatRelativeAge(item.ageMinutes)}</span>
                     </div>
                     <h3>{item.title}</h3>
                     <p>{item.why}</p>
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => handleActionTarget(item.target)}>
+                    <button type="button" className={__bundleClass_10} onClick={() => handleActionTarget(item.target)}>
                       {item.actionLabel}
                     </button>
                   </article>
@@ -1110,10 +1127,10 @@ export default function StudioBrainControlTowerModule({
             ) : null}
 
             {showRoomsSurface ? (
-            <section className="card staff-console-card control-tower-section-card">
-              <div className="control-tower-section-header">
+            <section className={__bundleClass_11}>
+              <div className={__bundleClass_12}>
                 <div>
-                  <div className="control-tower-kicker">Rooms</div>
+                  <div className={__bundleClass_0}>Rooms</div>
                   <h2>Active Rooms</h2>
                   <p>Rooms group related work lanes so you can inspect, act, and move on.</p>
                 </div>
@@ -1133,10 +1150,10 @@ export default function StudioBrainControlTowerModule({
                       }
                     }}
                   >
-                    <div className="control-tower-card-top">
+                    <div className={__bundleClass_7}>
                       <div>
-                        <span className="control-tower-room-name">{room.name}</span>
-                        <span className="control-tower-room-project">{room.project}</span>
+                        <span className={__bundleClass_8}>{room.name}</span>
+                        <span className={__bundleClass_9}>{room.project}</span>
                       </div>
                       <span className={`pill control-tower-pill-${toneClass(room.status === "blocked" ? "critical" : room.isEscalated ? "warning" : "neutral")}`}>
                         {room.isEscalated ? "Escalated" : room.status}
@@ -1158,25 +1175,25 @@ export default function StudioBrainControlTowerModule({
 
           <aside className="control-tower-rail">
             {showIncidentsSurface ? (
-            <section ref={incidentsRef} className="card staff-console-card control-tower-section-card">
-              <div className="control-tower-section-header">
+            <section ref={incidentsRef} className={__bundleClass_11}>
+              <div className={__bundleClass_12}>
                 <div>
-                  <div className="control-tower-kicker">Incidents</div>
+                  <div className={__bundleClass_0}>Incidents</div>
                   <h2>Incident queue</h2>
                   <p>Critical and warning events stay separated from the full timeline so operators can acknowledge them fast.</p>
                 </div>
               </div>
-              <div className="control-tower-pinned-list">
+              <div className={__bundleClass_17}>
                 {incidentEvents.map((event) => (
                   <article key={event.id} className={`control-tower-pinned-card control-tower-tone-${toneClass(event.severity)}`}>
                     <h3>{event.title}</h3>
                     <p>{event.summary}</p>
                     <span>{event.type || event.kind}</span>
-                    <div className="control-tower-partner-loop-actions">
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => handleActionTarget(event.roomId ? { type: "room", roomId: event.roomId } : event.serviceId ? { type: "service", serviceId: event.serviceId } : event.runId ? { type: "ops", action: "agent-runtime" } : { type: "ops", action: "events" })}>
+                    <div className={__bundleClass_15}>
+                      <button type="button" className={__bundleClass_10} onClick={() => handleActionTarget(event.roomId ? { type: "room", roomId: event.roomId } : event.serviceId ? { type: "service", serviceId: event.serviceId } : event.runId ? { type: "ops", action: "agent-runtime" } : { type: "ops", action: "events" })}>
                         Inspect
                       </button>
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void handleAckIncident(event.runId)}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void handleAckIncident(event.runId)}>
                         Acknowledge
                       </button>
                     </div>
@@ -1187,25 +1204,25 @@ export default function StudioBrainControlTowerModule({
             ) : null}
 
             {memoryVerbose ? (
-              <section className="card staff-console-card control-tower-section-card">
-                <div className="control-tower-section-header">
+              <section className={__bundleClass_11}>
+                <div className={__bundleClass_12}>
                   <div>
-                    <div className="control-tower-kicker">Memory</div>
+                    <div className={__bundleClass_0}>Memory</div>
                     <h2>Continuity brief</h2>
                     <p>Four active layers stay explicit, and an offline dream cycle handles cleanup, linking, and promotion during quiet windows.</p>
                   </div>
                 </div>
                 <div className="control-tower-memory-stack">
-                  <article className="control-tower-next-card">
+                  <article className={__bundleClass_2}>
                     <h3>{state?.memoryBrief?.goal || "No continuity goal yet."}</h3>
                     <p>{state?.memoryBrief?.summary || "Continuity will appear here when the startup brief is ready."}</p>
-                    <div className="control-tower-next-footer">
+                    <div className={__bundleClass_5}>
                       <span>{state?.memoryBrief?.sourcePath || "live state fallback"}</span>
                       <span>{formatTimestamp(state?.memoryBrief?.generatedAt ?? null)}</span>
                     </div>
                   </article>
-                  <article className="control-tower-memory-card">
-                    <div className="control-tower-title-row">
+                  <article className={__bundleClass_14}>
+                    <div className={__bundleClass_3}>
                       <h3>Next memory actions</h3>
                       <span
                         className={`pill control-tower-pill-${actionabilityTone(state?.memoryBrief?.consolidation.actionabilityStatus ?? null)}`}
@@ -1218,21 +1235,21 @@ export default function StudioBrainControlTowerModule({
                         ? "Startup continuity is inside the current thresholds, so memory action guidance stays quiet."
                         : "These actions are only surfaced when continuity, startup quality, or memory actionability falls below target."}
                     </p>
-                    <div className="control-tower-memory-list">
+                    <div className={__bundleClass_13}>
                       {memoryActionRows.map((row) => (
                         <span key={row}>{row}</span>
                       ))}
                       {memoryActionsQuiet ? <span>No extra memory action is needed right now.</span> : null}
                     </div>
-                    <div className="control-tower-next-footer">
+                    <div className={__bundleClass_5}>
                       <span>actionable insights: {state?.memoryBrief?.consolidation.actionableInsightCount ?? 0}</span>
                       <span>top actions: {(state?.memoryBrief?.consolidation.topActions ?? []).length}</span>
                     </div>
                   </article>
                   {memoryLayerRows.map(({ label, rows }) => (
-                    <article key={label} className="control-tower-memory-card">
+                    <article key={label} className={__bundleClass_14}>
                       <h3>{label}</h3>
-                      <div className="control-tower-memory-list">
+                      <div className={__bundleClass_13}>
                         {rows.slice(0, 3).map((row) => (
                           <span key={row}>{row}</span>
                         ))}
@@ -1240,8 +1257,8 @@ export default function StudioBrainControlTowerModule({
                       </div>
                     </article>
                   ))}
-                  <article className="control-tower-memory-card">
-                    <div className="control-tower-title-row">
+                  <article className={__bundleClass_14}>
+                    <div className={__bundleClass_3}>
                       <h3>Offline consolidation</h3>
                       <span
                         className={`pill control-tower-pill-${consolidationTone(state?.memoryBrief?.consolidation.mode ?? "unavailable")}`}
@@ -1253,17 +1270,17 @@ export default function StudioBrainControlTowerModule({
                       {state?.memoryBrief?.consolidation.summary ||
                         "Dream-cycle maintenance will appear here when the memory brief is ready."}
                     </p>
-                    <div className="control-tower-memory-list">
+                    <div className={__bundleClass_13}>
                       {(state?.memoryBrief?.consolidation.focusAreas ?? []).slice(0, 3).map((row) => (
                         <span key={row}>{row}</span>
                       ))}
                       {!(state?.memoryBrief?.consolidation.focusAreas ?? []).length ? <span>No focus areas yet.</span> : null}
                     </div>
-                    <div className="control-tower-next-footer">
+                    <div className={__bundleClass_5}>
                       <span>{formatTimestamp(state?.memoryBrief?.consolidation.lastRunAt ?? null)}</span>
                       <span>{formatTimestamp(state?.memoryBrief?.consolidation.nextRunAt ?? null)}</span>
                     </div>
-                    <div className="control-tower-memory-list">
+                    <div className={__bundleClass_13}>
                       <span>status: {state?.memoryBrief?.consolidation.status || "unknown"}</span>
                       <span>promotions: {state?.memoryBrief?.consolidation.counts?.promotions ?? 0}</span>
                       <span>archives: {state?.memoryBrief?.consolidation.counts?.archives ?? 0}</span>
@@ -1280,8 +1297,8 @@ export default function StudioBrainControlTowerModule({
                       {state?.memoryBrief?.consolidation.lastError ? <span>last error: {state.memoryBrief.consolidation.lastError}</span> : null}
                     </div>
                   </article>
-                  <article className="control-tower-memory-card">
-                    <div className="control-tower-title-row">
+                  <article className={__bundleClass_14}>
+                    <div className={__bundleClass_3}>
                       <h3>Startup quality</h3>
                       <span className={`pill control-tower-pill-${startupScoreTone(startupScorecard)}`}>
                         {startupScorecard
@@ -1294,7 +1311,7 @@ export default function StudioBrainControlTowerModule({
                         ? `Latest startup is ${startupScorecard.latest.sample.status} with ${startupScorecard.latest.sample.reasonCode || "unknown"} and continuity ${startupScorecard.latest.sample.continuityState}.`
                         : "The startup scorecard artifact has not been written yet."}
                     </p>
-                    <div className="control-tower-memory-list">
+                    <div className={__bundleClass_13}>
                       <span>ready rate: {formatPercent(startupScorecard?.metrics.readyRate)}</span>
                       <span>grounding-ready rate: {formatPercent(startupScorecard?.metrics.groundingReadyRate)}</span>
                       <span>blocked continuity: {formatPercent(startupScorecard?.metrics.blockedContinuityRate)}</span>
@@ -1302,7 +1319,7 @@ export default function StudioBrainControlTowerModule({
                       <span>telemetry coverage: {formatPercent(startupScorecard?.supportingSignals.toolcalls.telemetryCoverageRate)}</span>
                       <span>avg pre-start repo reads: {startupScorecard?.supportingSignals.toolcalls.averagePreStartupRepoReads ?? "n/a"}</span>
                     </div>
-                    <div className="control-tower-memory-list">
+                    <div className={__bundleClass_13}>
                       {(startupScorecard?.coverage.gaps ?? []).slice(0, 3).map((gap) => (
                         <span key={gap}>gap: {gap}</span>
                       ))}
@@ -1312,23 +1329,23 @@ export default function StudioBrainControlTowerModule({
                 </div>
               </section>
             ) : (
-              <section className="card staff-console-card control-tower-section-card">
-                <div className="control-tower-section-header">
+              <section className={__bundleClass_11}>
+                <div className={__bundleClass_12}>
                   <div>
-                    <div className="control-tower-kicker">Memory</div>
+                    <div className={__bundleClass_0}>Memory</div>
                     <h2>Continuity brief</h2>
                     <p>Quiet continuity stays compact until there is a real action or drift signal.</p>
                   </div>
                 </div>
-                <article className="control-tower-memory-card">
-                  <div className="control-tower-title-row">
+                <article className={__bundleClass_14}>
+                  <div className={__bundleClass_3}>
                     <h3>{state?.memoryBrief?.goal || "Continuity quiet"}</h3>
                     <span className={`pill control-tower-pill-${continuityTone(state?.memoryBrief?.continuityState ?? "missing")}`}>
                       {state?.memoryBrief?.continuityState ?? "missing"}
                     </span>
                   </div>
                   <p>{state?.memoryBrief?.summary || "Continuity will appear here when the startup brief is ready."}</p>
-                  <div className="control-tower-next-footer">
+                  <div className={__bundleClass_5}>
                     <span>{state?.memoryBrief?.sourcePath || "live state fallback"}</span>
                     <span>{formatTimestamp(state?.memoryBrief?.generatedAt ?? null)}</span>
                   </div>
@@ -1337,29 +1354,29 @@ export default function StudioBrainControlTowerModule({
             )}
 
             {!partnerHasActionableState ? (
-              <section ref={partnerRef} className="card staff-console-card control-tower-section-card">
-                <div className="control-tower-section-header">
+              <section ref={partnerRef} className={__bundleClass_11}>
+                <div className={__bundleClass_12}>
                   <div>
-                    <div className="control-tower-kicker">Partner</div>
+                    <div className={__bundleClass_0}>Partner</div>
                     <h2>Chief of staff</h2>
                     <p>Quiet partner state stays condensed until there is a real owner-facing interruption.</p>
                   </div>
                 </div>
-                <article className="control-tower-memory-card">
-                  <div className="control-tower-title-row">
+                <article className={__bundleClass_14}>
+                  <div className={__bundleClass_3}>
                     <h3>{partner?.recommendedFocus || "No partner brief yet."}</h3>
                     <span className={`pill control-tower-pill-${partnerInitiativeTone(partner?.initiativeState ?? "quiet")}`}>
                       {partner?.initiativeState || "quiet"}
                     </span>
                   </div>
                   <p>{partner?.contactReason || partner?.summary || "No owner-facing interruption is active right now."}</p>
-                  <div className="control-tower-next-footer">
+                  <div className={__bundleClass_5}>
                     <span>{partner?.persona.displayName || "Chief-of-staff partner"}</span>
-                    <div className="control-tower-partner-loop-actions">
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
+                    <div className={__bundleClass_15}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
                         Why this
                       </button>
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
                         Continue
                       </button>
                     </div>
@@ -1373,37 +1390,37 @@ export default function StudioBrainControlTowerModule({
 
           {partnerHasActionableState ? (
           <section ref={partnerRef} className="card staff-console-card control-tower-section-card control-tower-partner-panel">
-            <div className="control-tower-section-header">
+            <div className={__bundleClass_12}>
               <div>
-                <div className="control-tower-kicker">Partner</div>
+                <div className={__bundleClass_0}>Partner</div>
                 <h2>Chief of staff</h2>
                 <p>Codex is the relationship shell; Control Tower stays the source of truth for what was verified, why you were interrupted, and the one decision needed next.</p>
               </div>
             </div>
             <div className="control-tower-memory-stack control-tower-partner-panel-grid">
               <article className="control-tower-next-card control-tower-partner-hero-card">
-                <div className="control-tower-title-row">
+                <div className={__bundleClass_3}>
                   <h3>{partner?.recommendedFocus || "No partner brief yet."}</h3>
                   <span className={`pill control-tower-pill-${partnerInitiativeTone(partner?.initiativeState ?? "quiet")}`}>
                     {partner?.initiativeState || "quiet"}
                   </span>
                 </div>
                 <p>{partner?.summary || "Studio Brain will keep this quiet until there is a meaningful brief to deliver."}</p>
-                <div className="control-tower-next-footer">
+                <div className={__bundleClass_5}>
                   <span>{partner?.persona.displayName || "Chief-of-staff partner"}</span>
                   <span>{formatTimestamp(partner?.nextCheckInAt ?? null)}</span>
                 </div>
               </article>
 
-              <article className="control-tower-memory-card">
-                <div className="control-tower-title-row">
+              <article className={__bundleClass_14}>
+                <div className={__bundleClass_3}>
                   <h3>Why this contact</h3>
                   <span className={`pill control-tower-pill-${partner?.needsOwnerDecision ? "warn" : "neutral"}`}>
                     {partner?.needsOwnerDecision ? "decision waiting" : "bounded cadence"}
                   </span>
                 </div>
                 <p>{partner?.contactReason || "No partner interruption is active right now."}</p>
-                <div className="control-tower-memory-list">
+                <div className={__bundleClass_13}>
                   <span>single decision: {partner?.singleDecisionNeeded || "None right now."}</span>
                   <span>last meaningful contact: {formatTimestamp(partner?.lastMeaningfulContactAt ?? null)}</span>
                   <span>next check-in: {formatTimestamp(partner?.nextCheckInAt ?? null)}</span>
@@ -1411,22 +1428,22 @@ export default function StudioBrainControlTowerModule({
                 </div>
               </article>
 
-              <article className="control-tower-memory-card">
-                <div className="control-tower-title-row">
+              <article className={__bundleClass_14}>
+                <div className={__bundleClass_3}>
                   <h3>Owner commands</h3>
-                  <span className="pill control-tower-pill-neutral">Codex thread controls</span>
+                  <span className={__bundleClass_4}>Codex thread controls</span>
                 </div>
                 <p>These commands update the chief-of-staff loop immediately without changing the underlying Control Tower evidence.</p>
                 <div className="control-tower-partner-command-row">
-                  <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("ack", { successMessage: "Chief-of-staff nudge acknowledged." })}>
+                  <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("ack", { successMessage: "Chief-of-staff nudge acknowledged." })}>
                     Acknowledge
                   </button>
-                  <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("pause", { successMessage: "Chief-of-staff cadence paused for the current window." })}>
+                  <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("pause", { successMessage: "Chief-of-staff cadence paused for the current window." })}>
                     Pause
                   </button>
                   <button
                     type="button"
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_10}
                     onClick={() =>
                       primaryPartnerLoop
                         ? void handlePartnerOpenLoop(primaryPartnerLoop.id, "delegated", {
@@ -1441,21 +1458,21 @@ export default function StudioBrainControlTowerModule({
                   >
                     Redirect
                   </button>
-                  <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
+                  <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("why_this", { successMessage: "Chief-of-staff rationale refreshed." })}>
                     Why this
                   </button>
-                  <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
+                  <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("continue", { successMessage: "Chief-of-staff cadence resumed." })}>
                     Continue
                   </button>
-                  <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerCommand("snooze", { snoozeMinutes: 120, successMessage: "Chief-of-staff nudges snoozed for 2 hours." })}>
+                  <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerCommand("snooze", { snoozeMinutes: 120, successMessage: "Chief-of-staff nudges snoozed for 2 hours." })}>
                     Snooze 2h
                   </button>
                 </div>
               </article>
 
-              <article className="control-tower-memory-card">
+              <article className={__bundleClass_14}>
                 <h3>Verified context</h3>
-                <div className="control-tower-memory-list">
+                <div className={__bundleClass_13}>
                   {(partner?.verifiedContext ?? []).slice(0, 4).map((row) => (
                     <span key={row}>{row}</span>
                   ))}
@@ -1464,34 +1481,34 @@ export default function StudioBrainControlTowerModule({
               </article>
 
               <article className="control-tower-memory-card control-tower-partner-open-loops-card">
-                <div className="control-tower-title-row">
+                <div className={__bundleClass_3}>
                   <h3>Open loops</h3>
-                  <span className="pill control-tower-pill-neutral">{partner?.openLoops.length ?? 0} tracked</span>
+                  <span className={__bundleClass_4}>{partner?.openLoops.length ?? 0} tracked</span>
                 </div>
                 <div className="control-tower-partner-loop-list">
                   {(partner?.openLoops ?? []).slice(0, 4).map((loop) => (
                     <article key={loop.id} className="control-tower-partner-loop-card">
-                      <div className="control-tower-card-top">
+                      <div className={__bundleClass_7}>
                         <div>
-                          <span className="control-tower-room-name">{loop.title}</span>
-                          <span className="control-tower-room-project">{loop.source}</span>
+                          <span className={__bundleClass_8}>{loop.title}</span>
+                          <span className={__bundleClass_9}>{loop.source}</span>
                         </div>
                         <span className={`pill control-tower-pill-${openLoopTone(loop.status)}`}>{loop.status}</span>
                       </div>
                       <p>{loop.summary}</p>
-                      <div className="control-tower-memory-list">
+                      <div className={__bundleClass_13}>
                         <span>next: {loop.next}</span>
                         <span>decision: {loop.decisionNeeded || "None"}</span>
                         <span>updated: {formatTimestamp(loop.updatedAt)}</span>
                       </div>
-                      <div className="control-tower-partner-loop-actions">
-                        <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerOpenLoop(loop.id, "delegated", { note: "Redirected from Control Tower.", successMessage: `${loop.title} redirected.` })}>
+                      <div className={__bundleClass_15}>
+                        <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerOpenLoop(loop.id, "delegated", { note: "Redirected from Control Tower.", successMessage: `${loop.title} redirected.` })}>
                           Redirect
                         </button>
-                        <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerOpenLoop(loop.id, "paused", { note: "Paused from Control Tower.", successMessage: `${loop.title} paused.` })}>
+                        <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerOpenLoop(loop.id, "paused", { note: "Paused from Control Tower.", successMessage: `${loop.title} paused.` })}>
                           Pause loop
                         </button>
-                        <button type="button" className="btn btn-ghost btn-small" onClick={() => void handlePartnerOpenLoop(loop.id, "resolved", { note: "Resolved from Control Tower.", successMessage: `${loop.title} resolved.` })}>
+                        <button type="button" className={__bundleClass_10} onClick={() => void handlePartnerOpenLoop(loop.id, "resolved", { note: "Resolved from Control Tower.", successMessage: `${loop.title} resolved.` })}>
                           Resolve
                         </button>
                       </div>
@@ -1501,12 +1518,12 @@ export default function StudioBrainControlTowerModule({
                 </div>
               </article>
 
-              <article className="control-tower-memory-card">
-                <div className="control-tower-title-row">
+              <article className={__bundleClass_14}>
+                <div className={__bundleClass_3}>
                   <h3>Partner programs</h3>
-                  <span className="pill control-tower-pill-neutral">{partner?.programs.length ?? 0} programs</span>
+                  <span className={__bundleClass_4}>{partner?.programs.length ?? 0} programs</span>
                 </div>
-                <div className="control-tower-memory-list">
+                <div className={__bundleClass_13}>
                   {(partner?.programs ?? []).slice(0, 5).map((program) => (
                     <span key={program.id}>
                       <strong>{program.label}:</strong> {program.trigger}
@@ -1522,22 +1539,22 @@ export default function StudioBrainControlTowerModule({
           {showChipletGrid ? (
           <div className="control-tower-chiplet-grid">
             {approvals.length ? (
-            <section ref={approvalsRef} className="card staff-console-card control-tower-section-card">
-            <div className="control-tower-section-header">
+            <section ref={approvalsRef} className={__bundleClass_11}>
+            <div className={__bundleClass_12}>
               <div>
-                <div className="control-tower-kicker">Approvals</div>
+                <div className={__bundleClass_0}>Approvals</div>
                 <h2>Approval queue</h2>
                 <p>Pending capability reviews stay visible here instead of hiding inside raw audit trails.</p>
               </div>
             </div>
-            <div className="control-tower-pinned-list">
+            <div className={__bundleClass_17}>
               {approvals.map((approval) => (
                 <article key={approval.id} className="control-tower-pinned-card">
                   <h3>{approval.capabilityId}</h3>
                   <p>{approval.summary}</p>
                   <span>{approval.owner} · {approval.status} · {approval.risk}</span>
                   {(approval.expectedEffects ?? []).length ? (
-                    <div className="control-tower-memory-list">
+                    <div className={__bundleClass_13}>
                       {approval.expectedEffects?.slice(0, 3).map((effect) => (
                         <span key={effect}>{effect}</span>
                       ))}
@@ -1549,11 +1566,11 @@ export default function StudioBrainControlTowerModule({
                       <pre>{JSON.stringify(approval.previewInput, null, 2)}</pre>
                     </details>
                   ) : null}
-                  <div className="control-tower-partner-loop-actions">
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handleApproveProposal(approval)}>
+                  <div className={__bundleClass_15}>
+                    <button type="button" className={__bundleClass_10} onClick={() => void handleApproveProposal(approval)}>
                       Approve
                     </button>
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => void handleRejectProposal(approval)}>
+                    <button type="button" className={__bundleClass_10} onClick={() => void handleRejectProposal(approval)}>
                       Reject
                     </button>
                   </div>
@@ -1564,21 +1581,21 @@ export default function StudioBrainControlTowerModule({
             ) : null}
 
           {goodNextMoves.length ? (
-          <section className="card staff-console-card control-tower-section-card">
-            <div className="control-tower-section-header">
+          <section className={__bundleClass_11}>
+            <div className={__bundleClass_12}>
               <div>
-                <div className="control-tower-kicker">Next</div>
+                <div className={__bundleClass_0}>Next</div>
                 <h2>Good Next Moves</h2>
               </div>
             </div>
             <div className="control-tower-next-list">
               {goodNextMoves.map((action) => (
-                <article key={action.id} className="control-tower-next-card">
+                <article key={action.id} className={__bundleClass_2}>
                   <h3>{action.title}</h3>
                   <p>{action.why}</p>
-                  <div className="control-tower-next-footer">
+                  <div className={__bundleClass_5}>
                     <span>{formatRelativeAge(action.ageMinutes)}</span>
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => handleActionTarget(action.target)}>
+                    <button type="button" className={__bundleClass_10} onClick={() => handleActionTarget(action.target)}>
                       {action.actionLabel || actionButtonLabel(action.target)}
                     </button>
                   </div>
@@ -1589,14 +1606,14 @@ export default function StudioBrainControlTowerModule({
           ) : null}
 
           {pinnedItems.length ? (
-          <section className="card staff-console-card control-tower-section-card">
-            <div className="control-tower-section-header">
+          <section className={__bundleClass_11}>
+            <div className={__bundleClass_12}>
               <div>
-                <div className="control-tower-kicker">Escalated</div>
+                <div className={__bundleClass_0}>Escalated</div>
                 <h2>Pinned blockers</h2>
               </div>
             </div>
-            <div className="control-tower-pinned-list">
+            <div className={__bundleClass_17}>
               {pinnedItems.map((item) => (
                 <article key={item.id} className="control-tower-pinned-card">
                   <h3>{item.title}</h3>
@@ -1609,10 +1626,10 @@ export default function StudioBrainControlTowerModule({
           ) : null}
 
           {recentChanges.length ? (
-          <section className="card staff-console-card control-tower-section-card">
-            <div className="control-tower-section-header">
+          <section className={__bundleClass_11}>
+            <div className={__bundleClass_12}>
               <div>
-                <div className="control-tower-kicker">Changes</div>
+                <div className={__bundleClass_0}>Changes</div>
                 <h2>Recent changes</h2>
                 <p>Structured event envelopes replace log-first scanning.</p>
               </div>
@@ -1630,7 +1647,7 @@ export default function StudioBrainControlTowerModule({
                     {event.actionLabel ? (
                       <button
                         type="button"
-                        className="btn btn-ghost btn-small"
+                        className={__bundleClass_10}
                         onClick={() =>
                           handleActionTarget(
                             event.roomId
@@ -1654,10 +1671,10 @@ export default function StudioBrainControlTowerModule({
           ) : null}
 
         {showChannelsSurface ? (
-        <section className="card staff-console-card control-tower-section-card">
-          <div className="control-tower-section-header">
+        <section className={__bundleClass_11}>
+          <div className={__bundleClass_12}>
             <div>
-              <div className="control-tower-kicker">Channels</div>
+              <div className={__bundleClass_0}>Channels</div>
               <h2>Active Codex, Discord, and planning lanes</h2>
               <p>Channel summaries stay compact so the operator can understand live ownership without opening every room.</p>
             </div>
@@ -1665,10 +1682,10 @@ export default function StudioBrainControlTowerModule({
           <div className="control-tower-channel-grid">
             {channels.map((channel) => (
               <article key={channel.id} className="control-tower-channel-card">
-                <div className="control-tower-card-top">
+                <div className={__bundleClass_7}>
                   <div>
-                    <span className="control-tower-room-name">{channel.label}</span>
-                    <span className="control-tower-room-project">{channel.channel}</span>
+                    <span className={__bundleClass_8}>{channel.label}</span>
+                    <span className={__bundleClass_9}>{channel.channel}</span>
                   </div>
                   <span className={`pill control-tower-pill-${toneClass(channel.state === "error" ? "error" : channel.state === "waiting" ? "warning" : "neutral")}`}>
                     {channel.state}
@@ -1676,10 +1693,10 @@ export default function StudioBrainControlTowerModule({
                 </div>
                 <h3>{channel.objective}</h3>
                 <p>{channel.blocker || channel.next}</p>
-                <div className="control-tower-next-footer">
+                <div className={__bundleClass_5}>
                   <span>{channel.owner}</span>
                   {channel.roomId ? (
-                    <button type="button" className="btn btn-ghost btn-small" onClick={() => handleActionTarget({ type: "room", roomId: channel.roomId as string })}>
+                    <button type="button" className={__bundleClass_10} onClick={() => handleActionTarget({ type: "room", roomId: channel.roomId as string })}>
                       Open lane
                     </button>
                   ) : null}
@@ -1691,10 +1708,10 @@ export default function StudioBrainControlTowerModule({
         ) : null}
 
         {showServicesSurface ? (
-        <section ref={servicesRef} id="control-tower-services" className="card staff-console-card control-tower-section-card">
-          <div className="control-tower-section-header">
+        <section ref={servicesRef} id="control-tower-services" className={__bundleClass_11}>
+          <div className={__bundleClass_12}>
             <div>
-              <div className="control-tower-kicker">Services</div>
+              <div className={__bundleClass_0}>Services</div>
               <h2>Service oversight</h2>
               <p>Healthy, readable cards with bounded actions and confirmation where needed.</p>
             </div>
@@ -1702,7 +1719,7 @@ export default function StudioBrainControlTowerModule({
           <div className="control-tower-service-grid">
             {services.map((service) => (
               <article key={service.id} className={`control-tower-service-card control-tower-tone-${toneClass(service.health)}`}>
-                <div className="control-tower-card-top">
+                <div className={__bundleClass_7}>
                   <div>
                     <span className="control-tower-service-name">{service.label}</span>
                     <span className="control-tower-service-impact">{service.impact}</span>
@@ -1731,10 +1748,10 @@ export default function StudioBrainControlTowerModule({
         ) : null}
 
         {showEventsSurface ? (
-        <section ref={eventsRef} id="control-tower-events" className="card staff-console-card control-tower-section-card">
-          <div className="control-tower-section-header">
+        <section ref={eventsRef} id="control-tower-events" className={__bundleClass_11}>
+          <div className={__bundleClass_12}>
             <div>
-              <div className="control-tower-kicker">Events</div>
+              <div className={__bundleClass_0}>Events</div>
               <h2>Recent events and incidents</h2>
               <p>Curated operator timeline, not raw logs first.</p>
             </div>
@@ -1752,7 +1769,7 @@ export default function StudioBrainControlTowerModule({
                   {event.actionLabel ? (
                     <button
                       type="button"
-                      className="btn btn-ghost btn-small"
+                      className={__bundleClass_10}
                       onClick={() => handleActionTarget(
                         event.roomId
                           ? { type: "room", roomId: event.roomId }

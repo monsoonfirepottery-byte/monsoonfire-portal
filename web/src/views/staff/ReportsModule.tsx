@@ -4,6 +4,14 @@ import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../firebase";
 import { resolveStudioBrainBaseUrlResolution } from "../../utils/studioBrain";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "staff-note";
+const __bundleClass_2 = "staff-kpi";
+const __bundleClass_3 = "staff-actions-row";
+const __bundleClass_4 = "staff-member-role-filter";
+const __bundleClass_5 = "staff-template-list";
+const __bundleClass_6 = "staff-subtitle";
+
 
 type ReportStatus = "open" | "triaged" | "actioned" | "resolved" | "dismissed";
 type ReportSeverity = "low" | "medium" | "high";
@@ -821,7 +829,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
       <div className="card-title-row">
         <div className="card-title">Reports</div>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || disabled}
           onClick={() => void run("refreshReports", loadReports)}
         >
@@ -830,7 +838,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
       </div>
 
       {disabled ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           Reports module requires function auth. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or point Functions to production.
         </div>
       ) : null}
@@ -840,62 +848,62 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
         </div>
       ) : null}
       {activePolicy ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           Active policy: <strong>{activePolicy.version}</strong> {activePolicy.title ? `· ${activePolicy.title}` : ""}
         </div>
       ) : null}
 
       <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Total</span><strong>{statusCounts.total}</strong></div>
-        <div className="staff-kpi"><span>Open</span><strong>{statusCounts.open}</strong></div>
-        <div className="staff-kpi"><span>Triaged</span><strong>{statusCounts.triaged}</strong></div>
-        <div className="staff-kpi"><span>Actioned</span><strong>{statusCounts.actioned}</strong></div>
-        <div className="staff-kpi"><span>Resolved</span><strong>{statusCounts.resolved}</strong></div>
-        <div className="staff-kpi"><span>Suggestion accepts</span><strong>{triageStats?.accepted ?? 0}</strong></div>
-        <div className="staff-kpi"><span>Suggestion rejects</span><strong>{triageStats?.rejected ?? 0}</strong></div>
-        <div className="staff-kpi"><span>Mismatch rate</span><strong>{triageStats ? `${triageStats.mismatchRatePct}%` : "-"}</strong></div>
+        <div className={__bundleClass_2}><span>Total</span><strong>{statusCounts.total}</strong></div>
+        <div className={__bundleClass_2}><span>Open</span><strong>{statusCounts.open}</strong></div>
+        <div className={__bundleClass_2}><span>Triaged</span><strong>{statusCounts.triaged}</strong></div>
+        <div className={__bundleClass_2}><span>Actioned</span><strong>{statusCounts.actioned}</strong></div>
+        <div className={__bundleClass_2}><span>Resolved</span><strong>{statusCounts.resolved}</strong></div>
+        <div className={__bundleClass_2}><span>Suggestion accepts</span><strong>{triageStats?.accepted ?? 0}</strong></div>
+        <div className={__bundleClass_2}><span>Suggestion rejects</span><strong>{triageStats?.rejected ?? 0}</strong></div>
+        <div className={__bundleClass_2}><span>Mismatch rate</span><strong>{triageStats ? `${triageStats.mismatchRatePct}%` : "-"}</strong></div>
       </div>
 
-      <div className="staff-note">
+      <div className={__bundleClass_1}>
         Decision consistency: {consistency.coveragePct}% of reviewed reports include policy + rule + reason linkage.
       </div>
       <div className={`staff-note ${slaCounts.totalBreached > 0 ? "staff-note-error" : ""}`}>
         SLA watch: {slaCounts.highOver24h} high-severity open &gt;24h, {slaCounts.openOver48h} open &gt;48h.
       </div>
       {showSlaOnly ? (
-        <div className="staff-note">SLA-only mode is on. Showing overdue moderation items only.</div>
+        <div className={__bundleClass_1}>SLA-only mode is on. Showing overdue moderation items only.</div>
       ) : null}
 
       <div className="staff-kpi-grid">
-        <div className="staff-kpi">
+        <div className={__bundleClass_2}>
           <span>Policy-linked reviews</span>
           <strong>{consistency.policyLinkedCount}/{consistency.reviewedCount}</strong>
         </div>
-        <div className="staff-kpi">
+        <div className={__bundleClass_2}>
           <span>Top reason code</span>
           <strong>{consistency.topReason}</strong>
           <small className="staff-kpi-subtle">{consistency.topReasonCount} uses</small>
         </div>
-        <div className="staff-kpi">
+        <div className={__bundleClass_2}>
           <span>Unique reason codes</span>
           <strong>{consistency.uniqueReasonCount}</strong>
         </div>
-        <div className="staff-kpi">
+        <div className={__bundleClass_2}>
           <span>Median resolution</span>
           <strong>{consistency.medianResolutionHours ? `${consistency.medianResolutionHours.toFixed(1)}h` : "-"}</strong>
         </div>
-        <div className="staff-kpi">
+        <div className={__bundleClass_2}>
           <span>Open over 48h</span>
           <strong>{consistency.openOver48h}</strong>
         </div>
-        <div className="staff-kpi">
+        <div className={__bundleClass_2}>
           <span>High severity over 24h</span>
           <strong>{consistency.highSeverityOver24h}</strong>
         </div>
       </div>
 
-      <div className="staff-actions-row">
-        <select className="staff-member-role-filter" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value as "all" | ReportStatus)}>
+      <div className={__bundleClass_3}>
+        <select className={__bundleClass_4} value={filterStatus} onChange={(event) => setFilterStatus(event.target.value as "all" | ReportStatus)}>
           <option value="all">All statuses</option>
           <option value="open">Open</option>
           <option value="triaged">Triaged</option>
@@ -903,13 +911,13 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
           <option value="resolved">Resolved</option>
           <option value="dismissed">Dismissed</option>
         </select>
-        <select className="staff-member-role-filter" value={filterSeverity} onChange={(event) => setFilterSeverity(event.target.value as "all" | ReportSeverity)}>
+        <select className={__bundleClass_4} value={filterSeverity} onChange={(event) => setFilterSeverity(event.target.value as "all" | ReportSeverity)}>
           <option value="all">All severities</option>
           <option value="low">Low</option>
           <option value="medium">Medium</option>
           <option value="high">High</option>
         </select>
-        <select className="staff-member-role-filter" value={filterCategory} onChange={(event) => setFilterCategory(event.target.value as "all" | ReportCategory)}>
+        <select className={__bundleClass_4} value={filterCategory} onChange={(event) => setFilterCategory(event.target.value as "all" | ReportCategory)}>
           <option value="all">All categories</option>
           <option value="broken_link">Broken link</option>
           <option value="incorrect_info">Incorrect info</option>
@@ -919,14 +927,14 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
           <option value="copyright">Copyright</option>
           <option value="other">Other</option>
         </select>
-        <select className="staff-member-role-filter" value={filterType} onChange={(event) => setFilterType(event.target.value as "all" | ReportTargetType)}>
+        <select className={__bundleClass_4} value={filterType} onChange={(event) => setFilterType(event.target.value as "all" | ReportTargetType)}>
           <option value="all">All target types</option>
           <option value="youtube_video">YouTube video</option>
           <option value="blog_post">Blog post</option>
           <option value="studio_update">Studio update</option>
           <option value="event">Event</option>
         </select>
-        <select className="staff-member-role-filter" value={filterDateRange} onChange={(event) => setFilterDateRange(event.target.value as ReportDateRange)}>
+        <select className={__bundleClass_4} value={filterDateRange} onChange={(event) => setFilterDateRange(event.target.value as ReportDateRange)}>
           <option value="24h">Last 24 hours</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -934,21 +942,21 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
           <option value="all">All time</option>
         </select>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy)}
           onClick={() => setShowSlaOnly((prev) => !prev)}
         >
           {showSlaOnly ? "Show all reports" : "Show SLA only"}
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() => void run("exportReportsJson", exportReportsJson)}
         >
           Copy JSON
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() => void run("exportReportsCsv", exportReportsCsv)}
         >
@@ -956,16 +964,16 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
         </button>
       </div>
 
-      <div className="staff-actions-row">
+      <div className={__bundleClass_3}>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() => setSelectedReportIds(visibleReports.map((report) => report.id))}
         >
           Select all
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() =>
             setSelectedReportIds(
@@ -978,7 +986,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
           Select SLA breaches
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || selectedCount === 0}
           onClick={() => setSelectedReportIds([])}
         >
@@ -1018,11 +1026,11 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
         </button>
       </div>
       {bulkSelectedRule ? (
-        <div className="staff-note">
+        <div className={__bundleClass_1}>
           Bulk policy guidance: <strong>{bulkSelectedRule.id}</strong> · {bulkSelectedRule.title}
         </div>
       ) : null}
-      <div className="staff-template-list">
+      <div className={__bundleClass_5}>
         {bulkReasonTemplates.map((template) => (
           <button
             key={`bulk-reason-${template}`}
@@ -1093,10 +1101,10 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
         </div>
 
         <div className="staff-column">
-          <div className="staff-subtitle">Report details</div>
+          <div className={__bundleClass_6}>Report details</div>
           {selected ? (
             <>
-              <div className="staff-note">
+              <div className={__bundleClass_1}>
                 <strong>{selected.targetSnapshot.title || selected.targetRef.id || selected.id}</strong><br />
                 <span>{selected.targetType} · status {selected.status}</span><br />
                 <span>Reporter: <code>{selected.reporterUid}</code></span><br />
@@ -1125,15 +1133,15 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
               </div>
 
               {selectedRule ? (
-                <div className="staff-note">
+                <div className={__bundleClass_1}>
                   Policy guidance: <strong>{selectedRule.id}</strong> · {selectedRule.title}
                   {selectedRule.description ? <><br />{selectedRule.description}</> : null}
                 </div>
               ) : null}
-              <div className="staff-subtitle">Assistive triage</div>
-              <div className="staff-actions-row">
+              <div className={__bundleClass_6}>Assistive triage</div>
+              <div className={__bundleClass_3}>
                 <button
-                  className="btn btn-secondary"
+                  className={__bundleClass_0}
                   disabled={Boolean(busy) || !studioBrainAdminToken.trim()}
                   onClick={() =>
                     void run("generateTriageSuggestion", async () => {
@@ -1157,7 +1165,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                 {!studioBrainAdminToken.trim() ? <span className="staff-mini">Set Studio Brain admin token in System module.</span> : null}
               </div>
               {triageSuggestion ? (
-                <div className="staff-note">
+                <div className={__bundleClass_1}>
                   Suggestion: <strong>{triageSuggestion.severity}</strong> / <strong>{triageSuggestion.category}</strong> / <code>{triageSuggestion.reasonCode}</code><br />
                   Confidence: {Math.round(triageSuggestion.confidence * 100)}% · model {triageSuggestion.model.provider}:{triageSuggestion.model.version}<br />
                   Provenance: {triageSuggestion.provenance.join(", ")}<br />
@@ -1165,9 +1173,9 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                 </div>
               ) : null}
               {triageSuggestion ? (
-                <div className="staff-actions-row">
+                <div className={__bundleClass_3}>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={Boolean(busy)}
                     onClick={() => {
                       setReasonCode(triageSuggestion.reasonCode);
@@ -1237,7 +1245,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
 
               <label className="staff-field">
                 Set status
-                <div className="staff-actions-row">
+                <div className={__bundleClass_3}>
                   <select value={nextStatus} onChange={(event) => setNextStatus(event.target.value as ReportStatus)}>
                     <option value="open">Open</option>
                     <option value="triaged">Triaged</option>
@@ -1284,7 +1292,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                     Save status
                   </button>
                 </div>
-                <div className="staff-template-list">
+                <div className={__bundleClass_5}>
                   {reasonTemplates.map((template) => (
                     <button
                       key={`status-reason-${template}`}
@@ -1297,7 +1305,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                   ))}
                 </div>
                 {(nextStatus === "resolved" || nextStatus === "dismissed") ? (
-                  <div className="staff-template-list">
+                  <div className={__bundleClass_5}>
                     {RESOLUTION_TEMPLATES.map((template) => (
                       <button
                         key={`resolution-${template}`}
@@ -1321,7 +1329,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                   placeholder="Internal triage note"
                 />
                 <button
-                  className="btn btn-secondary"
+                  className={__bundleClass_0}
                   disabled={Boolean(busy) || disabled || !newInternalNote.trim()}
                   onClick={() =>
                     void run("addInternalNote", async () => {
@@ -1341,7 +1349,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
 
               <label className="staff-field">
                 Content action
-                <div className="staff-actions-row">
+                <div className={__bundleClass_3}>
                   <select value={contentActionType} onChange={(event) => setContentActionType(event.target.value as ContentActionType)}>
                     {selected.targetType === "youtube_video" ? (
                       <>
@@ -1380,7 +1388,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                     onChange={(event) => setReasonCode(event.target.value)}
                   />
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_0}
                     disabled={Boolean(busy) || disabled || !activePolicy?.version || !selectedRuleId.trim() || !reasonCode.trim()}
                     onClick={() =>
                       void run("takeContentAction", async () => {
@@ -1402,7 +1410,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                     Apply action
                   </button>
                 </div>
-                <div className="staff-template-list">
+                <div className={__bundleClass_5}>
                   {reasonTemplates.map((template) => (
                     <button
                       key={`action-reason-${template}`}
@@ -1416,10 +1424,10 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                 </div>
               </label>
 
-              <div className="staff-subtitle">Internal notes</div>
+              <div className={__bundleClass_6}>Internal notes</div>
               <div className="staff-log-list">
                 {internalNotes.length === 0 ? (
-                  <div className="staff-note">No internal notes yet.</div>
+                  <div className={__bundleClass_1}>No internal notes yet.</div>
                 ) : (
                   internalNotes.map((note) => (
                     <div key={note.id} className="staff-log-entry">
@@ -1433,10 +1441,10 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                 )}
               </div>
 
-              <div className="staff-subtitle">Report timeline</div>
+              <div className={__bundleClass_6}>Report timeline</div>
               <div className="staff-log-list">
                 {reportAuditEntries.length === 0 ? (
-                  <div className="staff-note">No audit timeline entries yet.</div>
+                  <div className={__bundleClass_1}>No audit timeline entries yet.</div>
                 ) : (
                   reportAuditEntries.map((entry) => (
                     <div key={entry.id} className="staff-log-entry">
@@ -1470,9 +1478,9 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                 )}
               </div>
 
-              <div className="staff-subtitle">Appeals</div>
+              <div className={__bundleClass_6}>Appeals</div>
               {selectedAppeals.length === 0 ? (
-                <div className="staff-note">No appeals for this report.</div>
+                <div className={__bundleClass_1}>No appeals for this report.</div>
               ) : (
                 <div className="staff-log-list">
                   {selectedAppeals.map((appeal) => (
@@ -1496,7 +1504,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
               {selectedActiveAppeal ? (
                 <label className="staff-field">
                   Review active appeal
-                  <div className="staff-actions-row">
+                  <div className={__bundleClass_3}>
                     <select value={nextAppealStatus} onChange={(event) => setNextAppealStatus(event.target.value as AppealStatus)}>
                       <option value="open">Open</option>
                       <option value="in_review">In review</option>
@@ -1515,7 +1523,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                       onChange={(event) => setAppealDecisionNote(event.target.value)}
                     />
                     <button
-                      className="btn btn-secondary"
+                      className={__bundleClass_0}
                       disabled={Boolean(busy) || disabled || !selectedActiveAppeal.id}
                       onClick={() =>
                         void run("updateReportAppeal", async () => {
@@ -1533,7 +1541,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
                       Save appeal decision
                     </button>
                   </div>
-                  <div className="staff-template-list">
+                  <div className={__bundleClass_5}>
                     {APPEAL_REASON_TEMPLATES.map((template) => (
                       <button
                         key={`appeal-reason-${template}`}
@@ -1549,13 +1557,13 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
               ) : null}
             </>
           ) : (
-            <div className="staff-note">Select a report to inspect details and apply actions.</div>
+            <div className={__bundleClass_1}>Select a report to inspect details and apply actions.</div>
           )}
         </div>
       </div>
 
       {status ? (
-        <div className="staff-note" role="status" aria-live="polite">
+        <div className={__bundleClass_1} role="status" aria-live="polite">
           {status}
         </div>
       ) : null}

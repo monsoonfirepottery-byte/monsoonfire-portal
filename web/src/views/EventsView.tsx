@@ -50,6 +50,25 @@ import { formatCents, formatDateTime } from "../utils/format";
 import { checkoutErrorMessage, requestErrorMessage } from "../utils/userFacingErrors";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./EventsView.css";
+const __bundleClass_0 = "card-title";
+const __bundleClass_1 = "events-copy";
+const __bundleClass_2 = "summary-label";
+const __bundleClass_3 = "summary-value";
+const __bundleClass_4 = "btn btn-ghost";
+const __bundleClass_5 = "alert inline-alert";
+const __bundleClass_6 = "event-tag accent";
+const __bundleClass_7 = "btn btn-ghost btn-small";
+const __bundleClass_8 = "events-empty";
+const __bundleClass_9 = "event-tag";
+const __bundleClass_10 = "workshop-request-field";
+const __bundleClass_11 = "workshop-request-grid";
+const __bundleClass_12 = "workshop-request-actions";
+const __bundleClass_13 = "btn btn-secondary";
+const __bundleClass_14 = "btn btn-primary";
+const __bundleClass_15 = "workshop-request-status";
+const __bundleClass_16 = "section-title";
+const __bundleClass_17 = "demand-cluster-metrics";
+
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
@@ -3504,24 +3523,24 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
       <section className="card card-3d events-hero">
         <div>
-          <div className="card-title">Low-stress, attendance-only billing</div>
-          <p className="events-copy">
+          <div className={__bundleClass_0}>Low-stress, attendance-only billing</div>
+          <p className={__bundleClass_1}>
             You won&apos;t be charged unless you attend. If plans change, no worries - cancel anytime up to
             3 hours before the event.
           </p>
         </div>
         <div className="events-hero-meta">
           <div>
-            <span className="summary-label">Check-in</span>
-            <span className="summary-value">Required to pay</span>
+            <span className={__bundleClass_2}>Check-in</span>
+            <span className={__bundleClass_3}>Required to pay</span>
           </div>
           <div>
-            <span className="summary-label">Waitlist</span>
-            <span className="summary-value">Auto-promote, 12-hour claim</span>
+            <span className={__bundleClass_2}>Waitlist</span>
+            <span className={__bundleClass_3}>Auto-promote, 12-hour claim</span>
           </div>
           <div>
-            <span className="summary-label">Status</span>
-            <span className="summary-value">{status || "Ready for the next event"}</span>
+            <span className={__bundleClass_2}>Status</span>
+            <span className={__bundleClass_3}>{status || "Ready for the next event"}</span>
           </div>
         </div>
       </section>
@@ -3538,7 +3557,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           />
         </div>
         <div className="events-actions">
-          <button className="btn btn-ghost" onClick={toVoidHandler(refreshAll)}>
+          <button className={__bundleClass_4} onClick={toVoidHandler(refreshAll)}>
             Refresh events
           </button>
         </div>
@@ -3566,8 +3585,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
       <section className="card card-3d industry-events-card">
         <div className="industry-events-head">
-          <div className="card-title">Industry events (local + remote)</div>
-          <p className="events-copy">
+          <div className={__bundleClass_0}>Industry events (local + remote)</div>
+          <p className={__bundleClass_1}>
             Track major ceramics gatherings, conventions, and regional opportunities without leaving the studio portal.
           </p>
         </div>
@@ -3614,9 +3633,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         </div>
 
         {industryEventsLoading ? <div className="events-loading">Loading industry events...</div> : null}
-        {industryEventsError ? <div className="alert inline-alert">{industryEventsError}</div> : null}
+        {industryEventsError ? <div className={__bundleClass_5}>{industryEventsError}</div> : null}
         {!industryEventsLoading ? (
-          <div className="events-copy">Saved events: {Object.keys(savedIndustryEventIds).length}</div>
+          <div className={__bundleClass_1}>Saved events: {Object.keys(savedIndustryEventIds).length}</div>
         ) : null}
 
         {!industryEventsLoading && !industryEventsError && featuredIndustryEvents.length > 0 ? (
@@ -3629,19 +3648,19 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 <article key={`featured-${event.id}`} className="industry-featured-card">
                   <div className="industry-event-title-row">
                     <strong>{event.title}</strong>
-                    <span className="event-tag accent">Featured</span>
+                    <span className={__bundleClass_6}>Featured</span>
                   </div>
-                  <div className="events-copy">{event.summary}</div>
+                  <div className={__bundleClass_1}>{event.summary}</div>
                   <div className="industry-event-meta">
                     <span>{formatDateTime(event.startAt)}</span>
                     <span>{industryEventModeLabel(event.mode)}</span>
                     <span>{industryEventLocationLabel(event)}</span>
                   </div>
-                  <div className="events-copy">{industryEventReminderCopy(event)}</div>
+                  <div className={__bundleClass_1}>{industryEventReminderCopy(event)}</div>
                   <div className="industry-event-actions">
                     {primaryLink ? (
                       <a
-                        className="btn btn-ghost btn-small"
+                        className={__bundleClass_7}
                         href={primaryLink}
                         target="_blank"
                         rel="noreferrer"
@@ -3652,7 +3671,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     ) : null}
                     {googleCalendarUrl ? (
                       <a
-                        className="btn btn-ghost btn-small"
+                        className={__bundleClass_7}
                         href={googleCalendarUrl}
                         target="_blank"
                         rel="noreferrer"
@@ -3668,10 +3687,10 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                         Google calendar
                       </a>
                     ) : null}
-                    <button className="btn btn-ghost btn-small" onClick={() => handleIndustryCalendarDownload(event)}>
+                    <button className={__bundleClass_7} onClick={() => handleIndustryCalendarDownload(event)}>
                       Download .ics
                     </button>
-                    <button className="btn btn-ghost btn-small" onClick={() => handleToggleIndustrySave(event)}>
+                    <button className={__bundleClass_7} onClick={() => handleToggleIndustrySave(event)}>
                       {saved ? "Saved" : "Save"}
                     </button>
                   </div>
@@ -3682,7 +3701,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         ) : null}
 
         {!industryEventsLoading && filteredIndustryEvents.length === 0 ? (
-          <div className="events-empty">
+          <div className={__bundleClass_8}>
             No matching industry events right now. Try widening filters or check back after the next curation pass.
           </div>
         ) : null}
@@ -3699,27 +3718,27 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   <h3>{event.title}</h3>
                   <span className={`event-tag mode-${event.mode}`}>{industryEventModeLabel(event.mode)}</span>
                 </div>
-                <p className="events-copy">{event.summary}</p>
+                <p className={__bundleClass_1}>{event.summary}</p>
                 <div className="industry-event-meta">
                   <span>{formatDateTime(event.startAt)}</span>
                   <span>{industryEventLocationLabel(event)}</span>
                   <span>{event.sourceName || "Curated source"}</span>
                 </div>
                 <div className="event-tags">
-                  {event.featured ? <span className="event-tag accent">Featured</span> : null}
-                  {saved ? <span className="event-tag accent">Saved</span> : null}
+                  {event.featured ? <span className={__bundleClass_6}>Featured</span> : null}
+                  {saved ? <span className={__bundleClass_6}>Saved</span> : null}
                   <span className={`event-tag status-${event.status}`}>{event.status}</span>
-                  {hasAdmin && event.needsReview ? <span className="event-tag">Needs review</span> : null}
+                  {hasAdmin && event.needsReview ? <span className={__bundleClass_9}>Needs review</span> : null}
                   {event.tags?.slice(0, 3).map((tag) => (
-                    <span key={`${event.id}-${tag}`} className="event-tag">
+                    <span key={`${event.id}-${tag}`} className={__bundleClass_9}>
                       {tag}
                     </span>
                   ))}
                   {event.verifiedAt ? (
-                    <span className="event-tag">Verified {new Date(event.verifiedAt).toLocaleDateString()}</span>
+                    <span className={__bundleClass_9}>Verified {new Date(event.verifiedAt).toLocaleDateString()}</span>
                   ) : null}
                 </div>
-                <div className="events-copy">{industryEventReminderCopy(event)}</div>
+                <div className={__bundleClass_1}>{industryEventReminderCopy(event)}</div>
                 <div className="industry-event-actions">
                   {primaryLink ? (
                     <a
@@ -3732,11 +3751,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       Open event
                     </a>
                   ) : (
-                    <span className="events-copy">Link pending</span>
+                    <span className={__bundleClass_1}>Link pending</span>
                   )}
                   {sourceLink ? (
                     <a
-                      className="btn btn-ghost btn-small"
+                      className={__bundleClass_7}
                       href={sourceLink}
                       target="_blank"
                       rel="noreferrer"
@@ -3747,7 +3766,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   ) : null}
                   {googleCalendarUrl ? (
                     <a
-                      className="btn btn-ghost btn-small"
+                      className={__bundleClass_7}
                       href={googleCalendarUrl}
                       target="_blank"
                       rel="noreferrer"
@@ -3763,10 +3782,10 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       Google calendar
                     </a>
                   ) : null}
-                  <button className="btn btn-ghost btn-small" onClick={() => handleIndustryCalendarDownload(event)}>
+                  <button className={__bundleClass_7} onClick={() => handleIndustryCalendarDownload(event)}>
                     Download .ics
                   </button>
-                  <button className="btn btn-ghost btn-small" onClick={() => handleToggleIndustrySave(event)}>
+                  <button className={__bundleClass_7} onClick={() => handleToggleIndustrySave(event)}>
                     {saved ? "Saved" : "Save"}
                   </button>
                 </div>
@@ -3777,13 +3796,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       </section>
 
       <section className="card card-3d workshop-rails-card">
-        <div className="card-title">Discovery rails</div>
-        <p className="events-copy">
+        <div className={__bundleClass_0}>Discovery rails</div>
+        <p className={__bundleClass_1}>
           Recommendations are tuned from your current context and staff-curated tracks.
         </p>
 
         <div className="workshop-context-grid">
-          <label className="workshop-request-field">
+          <label className={__bundleClass_10}>
             My level focus
             <select
               value={memberLevelFocus}
@@ -3796,7 +3815,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               ))}
             </select>
           </label>
-          <label className="workshop-request-field">
+          <label className={__bundleClass_10}>
             My schedule window
             <select
               value={memberScheduleFocus}
@@ -3832,11 +3851,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         {hasAdmin ? (
           <div className="workshop-curation-admin">
             <div className="workshop-curation-title">Staff curation controls</div>
-            <p className="events-copy">
+            <p className={__bundleClass_1}>
               Tune curated rails without code edits. Use comma-separated IDs from the technique chips above.
             </p>
-            <div className="workshop-request-grid">
-              <label className="workshop-request-field">
+            <div className={__bundleClass_11}>
+              <label className={__bundleClass_10}>
                 Beginner rail techniques
                 <input
                   type="text"
@@ -3847,7 +3866,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   placeholder="handbuilding, wheel-throwing"
                 />
               </label>
-              <label className="workshop-request-field">
+              <label className={__bundleClass_10}>
                 Intensive rail techniques
                 <input
                   type="text"
@@ -3858,7 +3877,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   placeholder="surface-decoration, glazing-firing, wheel-throwing"
                 />
               </label>
-              <label className="workshop-request-field">
+              <label className={__bundleClass_10}>
                 Seasonal schedule buckets
                 <input
                   type="text"
@@ -3870,11 +3889,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 />
               </label>
             </div>
-            <div className="workshop-request-actions">
-              <button className="btn btn-secondary" onClick={handleApplyStaffCuration}>
+            <div className={__bundleClass_12}>
+              <button className={__bundleClass_13} onClick={handleApplyStaffCuration}>
                 Apply curation changes
               </button>
-              <button className="btn btn-ghost" onClick={handleResetStaffCuration}>
+              <button className={__bundleClass_4} onClick={handleResetStaffCuration}>
                 Reset defaults
               </button>
             </div>
@@ -3887,14 +3906,14 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               <strong>No upcoming match yet for {focusedTechniqueLabel}.</strong> Send a request and we&apos;ll
               route the demand cluster to staff programming.
             </div>
-            <button className="btn btn-secondary" onClick={routeNoMatchToRequestFlow}>
+            <button className={__bundleClass_13} onClick={routeNoMatchToRequestFlow}>
               Open request flow
             </button>
           </div>
         ) : null}
 
         {recommendationRails.length === 0 ? (
-          <div className="events-empty">
+          <div className={__bundleClass_8}>
             No recommendation rails available yet. Refresh after staff publishes more workshops.
           </div>
         ) : (
@@ -3936,22 +3955,22 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                         </div>
                         <div className="rail-event-tags">
                           {railWithdrawnCount > 0 ? (
-                            <span className="event-tag">
+                            <span className={__bundleClass_9}>
                               {railWithdrawnCount} withdrawal signal{railWithdrawnCount === 1 ? "" : "s"}
                             </span>
                           ) : null}
                           {railDemandSignalCount > 0 ? (
-                            <span className="event-tag accent">
+                            <span className={__bundleClass_6}>
                               {railDemandSignalCount} community demand signal{railDemandSignalCount === 1 ? "" : "s"}
                             </span>
                           ) : null}
                           {railInterestCount > 0 ? (
-                            <span className="event-tag">
+                            <span className={__bundleClass_9}>
                               {railInterestCount} {railInterestCount === 1 ? "community signal" : "community signals"}
                             </span>
                           ) : null}
                           {railRequestDemandCount > 0 ? (
-                            <span className="event-tag accent">
+                            <span className={__bundleClass_6}>
                               {railRequestDemandCount}{" "}
                               request {railRequestDemandCount === 1
                                 ? "signal"
@@ -3959,11 +3978,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                             </span>
                           ) : null}
                           {tags.map((label) => (
-                            <span key={`${row.event.id}-${label}`} className="event-tag">
+                            <span key={`${row.event.id}-${label}`} className={__bundleClass_9}>
                               {label}
                             </span>
                           ))}
-                          <span className="event-tag">{levelLabelFor(row.inferredLevel)}</span>
+                          <span className={__bundleClass_9}>{levelLabelFor(row.inferredLevel)}</span>
                         </div>
                       </button>
                     );
@@ -3976,12 +3995,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       </section>
 
       <section ref={requestCardRef} className="card card-3d workshop-request-card">
-        <div className="card-title">Request a workshop</div>
-        <p className="events-copy">
+        <div className={__bundleClass_0}>Request a workshop</div>
+        <p className={__bundleClass_1}>
           Looking for a technique we are not offering yet? Submit one request and staff will cluster demand for future programming.
         </p>
-        <div className="workshop-request-grid">
-          <label className="workshop-request-field">
+        <div className={__bundleClass_11}>
+          <label className={__bundleClass_10}>
             Technique or topic
             <input
               type="text"
@@ -3990,7 +4009,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               placeholder="Surface carving, crystalline glaze, large platter trimming..."
             />
           </label>
-          <label className="workshop-request-field">
+          <label className={__bundleClass_10}>
             Skill level
             <select
               value={requestLevel}
@@ -4003,7 +4022,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               ))}
             </select>
           </label>
-          <label className="workshop-request-field">
+          <label className={__bundleClass_10}>
             Preferred schedule
             <select
               value={requestSchedule}
@@ -4017,7 +4036,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
             </select>
           </label>
         </div>
-        <label className="workshop-request-field">
+        <label className={__bundleClass_10}>
           Notes (optional)
           <textarea
             rows={3}
@@ -4026,35 +4045,35 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
             placeholder="What would make this workshop useful for your current studio practice?"
           />
         </label>
-        <div className="workshop-request-actions">
+        <div className={__bundleClass_12}>
           <button
-            className="btn btn-primary"
+            className={__bundleClass_14}
             onClick={toVoidHandler(submitWorkshopRequest)}
             disabled={requestBusy || !requestTechnique.trim().length}
           >
             {requestBusy ? "Sending request..." : "Submit workshop request"}
           </button>
           {requestStatus ? (
-            <div className="workshop-request-status" role="status" aria-live="polite">
+            <div className={__bundleClass_15} role="status" aria-live="polite">
               {requestStatus}
             </div>
           ) : null}
         </div>
         <div className="workshop-request-source">
-          <span className="event-tag">
+          <span className={__bundleClass_9}>
             {requestSource === "cluster-routing" ? "Routing mode: Cluster brief" : "Routing mode: New request"}
           </span>
-          <span className="events-copy">Lifecycle: new to reviewing to planned to scheduled or declined.</span>
+          <span className={__bundleClass_1}>Lifecycle: new to reviewing to planned to scheduled or declined.</span>
         </div>
         {memberWorkshopRequests.length > 0 ? (
           <div className="workshop-request-tracker">
-            <div className="section-title">Your latest requests</div>
+            <div className={__bundleClass_16}>Your latest requests</div>
             <div className="workshop-request-tracker-list">
               {memberWorkshopRequests.map((entry) => (
                 <article key={entry.id} className="workshop-request-tracker-item">
                   <div>
                     <strong>{entry.techniqueLabel}</strong>
-                    <div className="events-copy">
+                    <div className={__bundleClass_1}>
                       {levelLabelFor(entry.level)} • {scheduleLabelFor(entry.schedule)}
                     </div>
                   </div>
@@ -4062,8 +4081,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     <span className={`event-tag ${requestStatusTone(entry.status) === "accent" ? "accent" : ""}`}>
                       {requestStatusLabel(entry.status)}
                     </span>
-                    <span className="events-copy">Ticket {entry.ticketId.slice(0, 8)}</span>
-                    <span className="event-tag">
+                    <span className={__bundleClass_1}>Ticket {entry.ticketId.slice(0, 8)}</span>
+                    <span className={__bundleClass_9}>
                       {entry.source === "cluster-routing" ? "Routing brief" : "Request form"}
                     </span>
                   </div>
@@ -4076,12 +4095,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
       <div className="events-layout">
         <section className="card card-3d events-list">
-          <div className="card-title">Upcoming events</div>
+          <div className={__bundleClass_0}>Upcoming events</div>
           {eventsLoading ? <div className="events-loading">Loading events...</div> : null}
-          {eventsError ? <div className="alert inline-alert">{eventsError}</div> : null}
+          {eventsError ? <div className={__bundleClass_5}>{eventsError}</div> : null}
 
           {!eventsLoading && filteredEvents.length === 0 ? (
-            <div className="events-empty">
+            <div className={__bundleClass_8}>
               No events found yet. Check back soon for the next studio drop.
             </div>
           ) : null}
@@ -4121,18 +4140,18 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       {event.includesFiring ? "Firing included" : "Studio event"}
                     </span>
                     {techniqueBadges.map((label) => (
-                      <span key={`${event.id}-${label}`} className="event-tag">
+                      <span key={`${event.id}-${label}`} className={__bundleClass_9}>
                         {label}
                       </span>
                     ))}
-                    {waitlistMeta ? <span className="event-tag">{waitlistMeta}</span> : null}
-                    {isInterested ? <span className="event-tag accent">Interested</span> : null}
+                    {waitlistMeta ? <span className={__bundleClass_9}>{waitlistMeta}</span> : null}
+                    {isInterested ? <span className={__bundleClass_6}>Interested</span> : null}
                     {eventInterestCount > 0 ? (
-                      <span className="event-tag">
+                      <span className={__bundleClass_9}>
                         {eventInterestCount} community signal{eventInterestCount === 1 ? "" : "s"}
                       </span>
                     ) : null}
-                    <span className="event-tag">{remainingLabel}</span>
+                    <span className={__bundleClass_9}>{remainingLabel}</span>
                     <span className={`event-tag status-${event.status}`}>{event.status}</span>
                   </div>
                 </button>
@@ -4142,9 +4161,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         </section>
 
         <section className="card card-3d events-detail">
-          <div className="card-title">Event details</div>
+          <div className={__bundleClass_0}>Event details</div>
           {detailLoading ? <div className="events-loading">Loading details...</div> : null}
-          {detailError ? <div className="alert inline-alert">{detailError}</div> : null}
+          {detailError ? <div className={__bundleClass_5}>{detailError}</div> : null}
 
           {!detailLoading && detail ? (
             <div className="events-detail-body">
@@ -4158,59 +4177,59 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
               <div className="detail-grid">
                 <div>
-                  <span className="summary-label">When</span>
-                  <span className="summary-value">{formatDateTime(detail.startAt)}</span>
+                  <span className={__bundleClass_2}>When</span>
+                  <span className={__bundleClass_3}>{formatDateTime(detail.startAt)}</span>
                 </div>
                 <div>
-                  <span className="summary-label">Ends</span>
-                  <span className="summary-value">{formatDateTime(detail.endAt)}</span>
+                  <span className={__bundleClass_2}>Ends</span>
+                  <span className={__bundleClass_3}>{formatDateTime(detail.endAt)}</span>
                 </div>
                 <div>
-                  <span className="summary-label">Location</span>
-                  <span className="summary-value">{detail.location || "Studio"}</span>
+                  <span className={__bundleClass_2}>Location</span>
+                  <span className={__bundleClass_3}>{detail.location || "Studio"}</span>
                 </div>
                 <div>
-                  <span className="summary-label">Time zone</span>
-                  <span className="summary-value">{detail.timezone || "Local"}</span>
+                  <span className={__bundleClass_2}>Time zone</span>
+                  <span className={__bundleClass_3}>{detail.timezone || "Local"}</span>
                 </div>
                 <div>
-                  <span className="summary-label">Capacity</span>
-                  <span className="summary-value">
+                  <span className={__bundleClass_2}>Capacity</span>
+                  <span className={__bundleClass_3}>
                     {detail.capacity} total{detailRemainingLabel}
                   </span>
                 </div>
                 <div>
-                  <span className="summary-label">Firing</span>
-                  <span className="summary-value">
+                  <span className={__bundleClass_2}>Firing</span>
+                  <span className={__bundleClass_3}>
                     {detail.includesFiring ? detail.firingDetails || "Included" : "Not included"}
                   </span>
                 </div>
               </div>
 
-              <p className="events-copy">{detail.description}</p>
+              <p className={__bundleClass_1}>{detail.description}</p>
 
               <div className="detail-policy">
                 <div className="policy-title">Low-stress policy</div>
-                <p className="events-copy">{detail.policyCopy}</p>
+                <p className={__bundleClass_1}>{detail.policyCopy}</p>
               </div>
 
               <div className="community-signals-panel">
-                <div className="section-title">Community signals</div>
-                <p className="events-copy">
+                <div className={__bundleClass_16}>Community signals</div>
+                <p className={__bundleClass_1}>
                   Opt in to interest and presence cues so staff can gauge momentum before sessions fill.
                 </p>
                 <div className="community-kpi-grid">
                   <div>
-                    <span className="summary-label">Momentum</span>
-                    <span className="summary-value">{momentumLabel}</span>
+                    <span className={__bundleClass_2}>Momentum</span>
+                    <span className={__bundleClass_3}>{momentumLabel}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Demand signals</span>
-                    <span className="summary-value">{selectedCommunityDemandSignals}</span>
+                    <span className={__bundleClass_2}>Demand signals</span>
+                    <span className={__bundleClass_3}>{selectedCommunityDemandSignals}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Waitlist pressure</span>
-                    <span className="summary-value">{selectedWaitlistPressure}</span>
+                    <span className={__bundleClass_2}>Waitlist pressure</span>
+                    <span className={__bundleClass_3}>{selectedWaitlistPressure}</span>
                   </div>
                 </div>
                 <div
@@ -4246,7 +4265,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   </div>
                 </div>
                 {buddyMode === "circle" ? (
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Circle cue
                     <input
                       type="text"
@@ -4257,41 +4276,41 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   </label>
                 ) : null}
                 {buddyMode === "circle" && !buddyCircleName.trim() ? (
-                  <div className="events-copy" role="note">
+                  <div className={__bundleClass_1} role="note">
                     Add a circle cue to connect with peers when signaling interest.
                   </div>
                 ) : null}
                 <div className="events-copy community-presence-copy">{activeBuddyMode.copy}</div>
                 <div className="community-loop-strip">
-                  <span className="event-tag">{selectedCommunityInterestSignals} interest signals</span>
+                  <span className={__bundleClass_9}>{selectedCommunityInterestSignals} interest signals</span>
                   {selectedCommunityRequestSignals > 0 ? (
-                    <span className="event-tag">
+                    <span className={__bundleClass_9}>
                       {selectedCommunityRequestSignals} request signals
                     </span>
                   ) : null}
                   {selectedCommunityShowcaseSignals > 0 ? (
-                  <span className="event-tag">
+                  <span className={__bundleClass_9}>
                     {selectedCommunityShowcaseSignals} showcase signals
                   </span>
                   ) : null}
                   {selectedCommunityWithdrawnSignals > 0 ? (
-                    <span className="event-tag">
+                    <span className={__bundleClass_9}>
                       {selectedCommunityWithdrawnSignals} withdrawal signals
                     </span>
                   ) : null}
-                  <span className="event-tag">{buddyIntentCount} buddy opt-ins</span>
-                  <span className="event-tag">{circleIntentCount} circle signals</span>
-                  <span className="event-tag">Post-workshop showcase prompt enabled</span>
+                  <span className={__bundleClass_9}>{buddyIntentCount} buddy opt-ins</span>
+                  <span className={__bundleClass_9}>{circleIntentCount} circle signals</span>
+                  <span className={__bundleClass_9}>Post-workshop showcase prompt enabled</span>
                 </div>
                 {selectedSummary ? (
                   selectedEventShowcaseSignals.length > 0 ? (
                     <div className="workshop-showcase-summary">
-                      <div className="summary-label">Recent showcase outcomes</div>
+                      <div className={__bundleClass_2}>Recent showcase outcomes</div>
                       <div className="workshop-showcase-list">
                         {selectedEventShowcaseSignals.map((signal) => (
                           <article key={signal.id} className="workshop-showcase-item">
                             <div className="workshop-showcase-item-head">
-                              <span className="event-tag">{signal.sourceLabel || "Showcase follow-up"}</span>
+                              <span className={__bundleClass_9}>{signal.sourceLabel || "Showcase follow-up"}</span>
                               <span className="workshop-showcase-time">{formatDateTime(signal.createdAt)}</span>
                             </div>
                             {signal.signalNote ? <p className="workshop-showcase-note">{signal.signalNote}</p> : null}
@@ -4300,11 +4319,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       </div>
                     </div>
                   ) : (
-                    <div className="events-copy">No showcase outcomes yet for this session.</div>
+                    <div className={__bundleClass_1}>No showcase outcomes yet for this session.</div>
                   )
                 ) : null}
                 <div className="workshop-showcase-flow">
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Post-workshop outcome note
                     <textarea
                       rows={2}
@@ -4314,7 +4333,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     />
                   </label>
                   <button
-                    className="btn btn-ghost"
+                    className={__bundleClass_4}
                     onClick={toVoidHandler(handleSubmitShowcaseFollowup)}
                     disabled={showcaseBusy || !selectedSummary}
                   >
@@ -4322,24 +4341,24 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   </button>
                 </div>
                 {interestStatus ? (
-                  <div className="workshop-request-status" role="status" aria-live="polite">
+                  <div className={__bundleClass_15} role="status" aria-live="polite">
                     {interestStatus}
                   </div>
                 ) : null}
                 {showcaseStatus ? (
-                  <div className="workshop-request-status" role="status" aria-live="polite">
+                  <div className={__bundleClass_15} role="status" aria-live="polite">
                     {showcaseStatus}
                   </div>
                 ) : null}
               </div>
 
               <div className="learning-pathway-panel">
-                <div className="section-title">Technique learning pathway</div>
-                <p className="events-copy">
+                <div className={__bundleClass_16}>Technique learning pathway</div>
+                <p className={__bundleClass_1}>
                   Bridge this workshop into Lending resources for pre-work and post-work practice loops.
                 </p>
                 {selectedTechniqueResources.length === 0 ? (
-                  <div className="events-empty">
+                  <div className={__bundleClass_8}>
                     Select a workshop to unlock its technique pathway and Lending bridge.
                   </div>
                 ) : (
@@ -4370,7 +4389,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       No published workshop currently matches {focusedTechniqueLabel}. We can route this directly
                       to request intake.
                     </div>
-                    <button className="btn btn-secondary" onClick={routeNoMatchToRequestFlow}>
+                    <button className={__bundleClass_13} onClick={routeNoMatchToRequestFlow}>
                       Request this pathway
                     </button>
                   </div>
@@ -4397,7 +4416,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 <div className="ticket-actions">
                   {canSignup ? (
                     <button
-                      className="btn btn-primary"
+                      className={__bundleClass_14}
                       onClick={toVoidHandler(handleSignup)}
                       disabled={actionBusy || isSoldOut}
                     >
@@ -4405,17 +4424,17 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     </button>
                   ) : null}
                   {canClaim ? (
-                    <button className="btn btn-primary" onClick={toVoidHandler(handleClaimOffer)} disabled={actionBusy}>
+                    <button className={__bundleClass_14} onClick={toVoidHandler(handleClaimOffer)} disabled={actionBusy}>
                       {actionBusy ? "Claiming..." : "Claim offer"}
                     </button>
                   ) : null}
                   {canCheckIn ? (
-                    <button className="btn btn-primary" onClick={toVoidHandler(handleSelfCheckIn)} disabled={actionBusy}>
+                    <button className={__bundleClass_14} onClick={toVoidHandler(handleSelfCheckIn)} disabled={actionBusy}>
                       {actionBusy ? "Checking in..." : "Self check-in"}
                     </button>
                   ) : null}
                   {canCancel ? (
-                    <button className="btn btn-ghost" onClick={toVoidHandler(handleCancel)} disabled={actionBusy}>
+                    <button className={__bundleClass_4} onClick={toVoidHandler(handleCancel)} disabled={actionBusy}>
                       {actionBusy ? "Canceling..." : "Cancel signup"}
                     </button>
                   ) : null}
@@ -4426,7 +4445,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 <div className="add-ons">
                   <div className="add-ons-title">Add-ons (select at check-in)</div>
                   {activeAddOns.length === 0 ? (
-                    <div className="events-empty">No add-ons offered for this event.</div>
+                    <div className={__bundleClass_8}>No add-ons offered for this event.</div>
                   ) : (
                     <div className="add-ons-list">
                       {activeAddOns.map((addOn) => (
@@ -4445,11 +4464,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
                   <div className="add-ons-footer">
                     <div>
-                      <span className="summary-label">Add-on total</span>
-                      <span className="summary-value">{formatCents(addOnTotalCents)}</span>
+                      <span className={__bundleClass_2}>Add-on total</span>
+                      <span className={__bundleClass_3}>{formatCents(addOnTotalCents)}</span>
                     </div>
                     <button
-                      className="btn btn-primary"
+                      className={__bundleClass_14}
                       onClick={toVoidHandler(
                         handleCheckout,
                         handleCheckoutHandlerError,
@@ -4466,14 +4485,14 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           ) : null}
 
           {!detailLoading && !detail ? (
-            <div className="events-empty">Select an event to see details.</div>
+            <div className={__bundleClass_8}>Select an event to see details.</div>
           ) : null}
         </section>
 
         <aside className="card card-3d events-staff">
-          <div className="card-title">Staff check-in</div>
+          <div className={__bundleClass_0}>Staff check-in</div>
           {!hasAdmin ? (
-            <div className="events-empty">
+            <div className={__bundleClass_8}>
               Paste the admin token to unlock the roster and staff check-in.
             </div>
           ) : null}
@@ -4481,21 +4500,21 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           {hasAdmin ? (
             <>
               <section className="staff-intel-panel">
-                <div className="section-title">Industry events curation</div>
-                <p className="events-copy">
+                <div className={__bundleClass_16}>Industry events curation</div>
+                <p className={__bundleClass_1}>
                   Create and update curated industry events that appear in the member local/remote feed.
                 </p>
                 <div className="staff-summary">
                   <div>
-                    <span className="summary-label">Needs review</span>
-                    <span className="summary-value">{industryNeedsReviewCount}</span>
+                    <span className={__bundleClass_2}>Needs review</span>
+                    <span className={__bundleClass_3}>{industryNeedsReviewCount}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Total tracked</span>
-                    <span className="summary-value">{industryEvents.length}</span>
+                    <span className={__bundleClass_2}>Total tracked</span>
+                    <span className={__bundleClass_3}>{industryEvents.length}</span>
                   </div>
                 </div>
-                <label className="workshop-request-field">
+                <label className={__bundleClass_10}>
                   Editing target
                   <select
                     value={industryEditorId}
@@ -4511,8 +4530,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   ))}
                 </select>
               </label>
-                <div className="workshop-request-grid">
-                  <label className="workshop-request-field">
+                <div className={__bundleClass_11}>
+                  <label className={__bundleClass_10}>
                     Title
                     <input
                       type="text"
@@ -4521,7 +4540,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="NCECA Annual Conference"
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Summary
                     <input
                       type="text"
@@ -4530,7 +4549,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="National ceramics gathering"
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Mode
                     <select
                       value={industryDraft.mode}
@@ -4545,7 +4564,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       ))}
                     </select>
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Status
                     <select
                       value={industryDraft.status}
@@ -4560,7 +4579,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       ))}
                     </select>
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Starts (local)
                     <input
                       type="datetime-local"
@@ -4568,7 +4587,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       onChange={(event) => handleIndustryDraftField("startAtLocal", event.target.value)}
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Ends (local)
                     <input
                       type="datetime-local"
@@ -4576,7 +4595,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       onChange={(event) => handleIndustryDraftField("endAtLocal", event.target.value)}
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Timezone
                     <input
                       type="text"
@@ -4585,7 +4604,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="America/Phoenix"
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Location
                     <input
                       type="text"
@@ -4594,7 +4613,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="Convention center / city / region"
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     City
                     <input
                       type="text"
@@ -4602,7 +4621,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       onChange={(event) => handleIndustryDraftField("city", event.target.value)}
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Region / state
                     <input
                       type="text"
@@ -4610,7 +4629,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       onChange={(event) => handleIndustryDraftField("region", event.target.value)}
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Country
                     <input
                       type="text"
@@ -4618,7 +4637,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       onChange={(event) => handleIndustryDraftField("country", event.target.value)}
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Tags (CSV)
                     <input
                       type="text"
@@ -4628,7 +4647,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     />
                   </label>
                 </div>
-                <label className="workshop-request-field">
+                <label className={__bundleClass_10}>
                   Description
                   <textarea
                     rows={3}
@@ -4637,8 +4656,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     placeholder="Why this event matters to Monsoon Fire members."
                   />
                 </label>
-                <div className="workshop-request-grid">
-                  <label className="workshop-request-field">
+                <div className={__bundleClass_11}>
+                  <label className={__bundleClass_10}>
                     Registration URL
                     <input
                       type="url"
@@ -4647,7 +4666,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="https://..."
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Remote URL
                     <input
                       type="url"
@@ -4656,7 +4675,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="https://..."
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Source name
                     <input
                       type="text"
@@ -4665,7 +4684,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="NCECA"
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Source URL
                     <input
                       type="url"
@@ -4674,7 +4693,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       placeholder="https://..."
                     />
                   </label>
-                  <label className="workshop-request-field">
+                  <label className={__bundleClass_10}>
                     Verified at (local)
                     <input
                       type="datetime-local"
@@ -4691,44 +4710,44 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     />
                   </label>
                 </div>
-                <div className="workshop-request-actions">
+                <div className={__bundleClass_12}>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_13}
                     onClick={toVoidHandler(handleSaveIndustryEvent)}
                     disabled={industryEditorBusy}
                   >
                     {industryEditorBusy ? "Saving..." : "Save industry event"}
                   </button>
                   <button
-                    className="btn btn-ghost"
+                    className={__bundleClass_4}
                     onClick={() => handleIndustryEditorPick("new")}
                     disabled={industryEditorBusy}
                   >
                     New blank draft
                   </button>
                   {industryEditorStatus ? (
-                    <span className="workshop-request-status" role="status" aria-live="polite">
+                    <span className={__bundleClass_15} role="status" aria-live="polite">
                       {industryEditorStatus}
                     </span>
                   ) : null}
                 </div>
-                <div className="workshop-request-actions">
+                <div className={__bundleClass_12}>
                   <button
-                    className="btn btn-ghost"
+                    className={__bundleClass_4}
                     onClick={toVoidHandler(() => handleRunIndustryFreshnessSweep(true))}
                     disabled={industrySweepBusy}
                   >
                     {industrySweepBusy ? "Running..." : "Dry run freshness sweep"}
                   </button>
                   <button
-                    className="btn btn-secondary"
+                    className={__bundleClass_13}
                     onClick={toVoidHandler(() => handleRunIndustryFreshnessSweep(false))}
                     disabled={industrySweepBusy}
                   >
                     {industrySweepBusy ? "Running..." : "Run freshness sweep now"}
                   </button>
                   {industrySweepStatus ? (
-                    <span className="workshop-request-status" role="status" aria-live="polite">
+                    <span className={__bundleClass_15} role="status" aria-live="polite">
                       {industrySweepStatus}
                     </span>
                   ) : null}
@@ -4737,37 +4756,37 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
               <div className="staff-summary">
                 <div>
-                  <span className="summary-label">Roster</span>
-                  <span className="summary-value">{rosterCounts.total} total</span>
+                  <span className={__bundleClass_2}>Roster</span>
+                  <span className={__bundleClass_3}>{rosterCounts.total} total</span>
                 </div>
                 <div>
-                  <span className="summary-label">Unpaid</span>
-                  <span className="summary-value">{rosterCounts.unpaid}</span>
+                  <span className={__bundleClass_2}>Unpaid</span>
+                  <span className={__bundleClass_3}>{rosterCounts.unpaid}</span>
                 </div>
               </div>
 
               <section className="staff-intel-panel">
-                <div className="section-title">Demand intelligence</div>
+                <div className={__bundleClass_16}>Demand intelligence</div>
                 <div className="staff-intel-kpis">
                   <div>
-                    <span className="summary-label">Signals tracked</span>
-                    <span className="summary-value">{staffDemandKpis.trackedSignals}</span>
+                    <span className={__bundleClass_2}>Signals tracked</span>
+                    <span className={__bundleClass_3}>{staffDemandKpis.trackedSignals}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Active interests</span>
-                    <span className="summary-value">{staffDemandKpis.activeInterests}</span>
+                    <span className={__bundleClass_2}>Active interests</span>
+                    <span className={__bundleClass_3}>{staffDemandKpis.activeInterests}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Constrained sessions</span>
-                    <span className="summary-value">{staffDemandKpis.constrainedSessions}</span>
+                    <span className={__bundleClass_2}>Constrained sessions</span>
+                    <span className={__bundleClass_3}>{staffDemandKpis.constrainedSessions}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Top demand gap</span>
-                    <span className="summary-value">{staffDemandKpis.highestDemandGap}</span>
+                    <span className={__bundleClass_2}>Top demand gap</span>
+                    <span className={__bundleClass_3}>{staffDemandKpis.highestDemandGap}</span>
                   </div>
                 </div>
                 {demandClusters.length === 0 ? (
-                  <div className="events-empty">
+                  <div className={__bundleClass_8}>
                     Clusters will appear after requests/interests are recorded.
                   </div>
                 ) : (
@@ -4776,21 +4795,21 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       <article key={cluster.techniqueId} className="demand-cluster-card">
                         <div className="demand-cluster-header">
                           <strong>{cluster.label}</strong>
-                          <span className="event-tag">Gap {cluster.gapScore}</span>
+                          <span className={__bundleClass_9}>Gap {cluster.gapScore}</span>
                         </div>
-                        <div className="demand-cluster-metrics">
+                        <div className={__bundleClass_17}>
                           <span>Demand score {cluster.demandScore}</span>
                           <span>Supply {cluster.supplyCount}</span>
                           <span>Requests {cluster.requestCount}</span>
                           <span>Interest {formatCommunitySignalCount(cluster.interestCount)}</span>
                         </div>
-                        <div className="demand-cluster-metrics">
+                        <div className={__bundleClass_17}>
                           <span>Waitlist pressure {cluster.waitlistSignals}</span>
                           <span>Suggested level {levelLabelFor(cluster.recommendedLevel)}</span>
                           <span>Suggested schedule {scheduleLabelFor(cluster.recommendedSchedule)}</span>
                         </div>
                         <button
-                          className="btn btn-ghost"
+                          className={__bundleClass_4}
                           onClick={() => handleClusterPrefill(cluster)}
                         >
                           Route cluster to request brief
@@ -4802,17 +4821,17 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               </section>
 
               <section className="staff-intel-panel">
-                <div className="section-title">Request triage queue</div>
-                <p className="events-copy">
+                <div className={__bundleClass_16}>Request triage queue</div>
+                <p className={__bundleClass_1}>
                   Grouped by technique/topic with lifecycle states so staff can move demand from intake to scheduled.
                 </p>
-                <div className="workshop-request-actions">
-                  <button className="btn btn-ghost" onClick={handleExportDemandBrief}>
+                <div className={__bundleClass_12}>
+                  <button className={__bundleClass_4} onClick={handleExportDemandBrief}>
                     Export demand brief
                   </button>
                 </div>
                 {requestTriageClusters.length === 0 ? (
-                  <div className="events-empty">
+                  <div className={__bundleClass_8}>
                     Triage clusters appear after workshop requests are submitted.
                   </div>
                 ) : (
@@ -4821,35 +4840,35 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       <article key={cluster.clusterKey} className="request-triage-card">
                         <div className="request-triage-head">
                           <strong>{cluster.techniqueLabel}</strong>
-                          <span className="event-tag">Priority {cluster.priorityScore}</span>
+                          <span className={__bundleClass_9}>Priority {cluster.priorityScore}</span>
                         </div>
-                        <div className="demand-cluster-metrics">
+                        <div className={__bundleClass_17}>
                           <span>{cluster.requestCount} requests</span>
                           <span>New {cluster.statuses.new}</span>
                           <span>Reviewing {cluster.statuses.reviewing}</span>
                           <span>Planned {cluster.statuses.planned}</span>
                           <span>Scheduled {cluster.statuses.scheduled}</span>
                         </div>
-                        <div className="demand-cluster-metrics">
+                        <div className={__bundleClass_17}>
                           <span>Level {levelLabelFor(cluster.recommendedLevel)}</span>
                           <span>Schedule {scheduleLabelFor(cluster.recommendedSchedule)}</span>
                           <span>Latest {new Date(cluster.latestCreatedAt).toLocaleDateString()}</span>
                         </div>
-                        <div className="workshop-request-actions">
+                        <div className={__bundleClass_12}>
                           <button
-                            className="btn btn-ghost"
+                            className={__bundleClass_4}
                             onClick={() => handleClusterLifecycleChange(cluster.clusterKey, "reviewing")}
                           >
                             Mark reviewing
                           </button>
                           <button
-                            className="btn btn-ghost"
+                            className={__bundleClass_4}
                             onClick={() => handleClusterLifecycleChange(cluster.clusterKey, "planned")}
                           >
                             Mark planned
                           </button>
                           <button
-                            className="btn btn-ghost"
+                            className={__bundleClass_4}
                             onClick={() => handleClusterLifecycleChange(cluster.clusterKey, "scheduled")}
                           >
                             Mark scheduled
@@ -4866,7 +4885,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       <article key={entry.id} className="request-triage-row">
                         <div>
                           <strong>{entry.techniqueLabel}</strong>
-                          <div className="events-copy">
+                          <div className={__bundleClass_1}>
                             {levelLabelFor(entry.level)} • {scheduleLabelFor(entry.schedule)}
                           </div>
                         </div>
@@ -4942,7 +4961,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               </div>
 
               {rosterLoading ? <div className="events-loading">Loading roster...</div> : null}
-              {rosterError ? <div className="alert inline-alert">{rosterError}</div> : null}
+              {rosterError ? <div className={__bundleClass_5}>{rosterError}</div> : null}
 
               <div className="roster-list">
                 {filteredRoster.map((row) => {
@@ -4957,10 +4976,10 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                         <div className="roster-status">{labelForStatus(row.status)}</div>
                       </div>
                       <div className="roster-actions">
-                        {unpaid ? <span className="event-tag">UNPAID</span> : null}
+                        {unpaid ? <span className={__bundleClass_9}>UNPAID</span> : null}
                         {row.status === "ticketed" ? (
                           <button
-                            className="btn btn-primary"
+                            className={__bundleClass_14}
                             onClick={toVoidHandler(() => handleStaffCheckIn(row.id))}
                             disabled={!!rosterBusyIds[row.id]}
                           >
@@ -4973,7 +4992,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 })}
 
                 {!rosterLoading && filteredRoster.length === 0 ? (
-                  <div className="events-empty">No roster entries for this filter.</div>
+                  <div className={__bundleClass_8}>No roster entries for this filter.</div>
                 ) : null}
               </div>
             </>

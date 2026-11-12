@@ -66,6 +66,18 @@ import type {
 import { formatMaybeTimestamp, formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./LendingLibraryView.css";
+const __bundleClass_0 = "library-meta";
+const __bundleClass_1 = "btn btn-primary";
+const __bundleClass_2 = "notice inline-alert";
+const __bundleClass_3 = "alert inline-alert";
+const __bundleClass_4 = "card-title";
+const __bundleClass_5 = "btn btn-ghost btn-small";
+const __bundleClass_6 = "library-filter-inline";
+const __bundleClass_7 = "summary-label";
+const __bundleClass_8 = "lending-detail-panel";
+const __bundleClass_9 = "empty-state";
+const __bundleClass_10 = "list-meta";
+
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
@@ -267,7 +279,7 @@ function renderMemberLibraryCover(item: LibraryItem) {
   return (
     <div className="library-cover placeholder" role="img" aria-label={coverDisplay.ariaLabel}>
       <span>{coverDisplay.label}</span>
-      <span className="library-meta">{coverDisplay.accent}</span>
+      <span className={__bundleClass_0}>{coverDisplay.accent}</span>
     </div>
   );
 }
@@ -3499,7 +3511,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             <div className="pill">{`Interactions paused (${libraryRolloutPhaseLabel(libraryRolloutPhase)})`}</div>
           ) : activeLoan ? (
             <button
-              className="btn btn-primary"
+              className={__bundleClass_1}
               onClick={toVoidHandler(() => handleRequest(item, "return"))}
               disabled={actionBusy}
             >
@@ -3515,7 +3527,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             </div>
           ) : (
             <button
-              className="btn btn-primary"
+              className={__bundleClass_1}
               onClick={toVoidHandler(() => handleRequest(item, primaryType))}
               disabled={actionBusy || !canRequest}
             >
@@ -3554,8 +3566,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 ? `${availableCopies} cop${availableCopies === 1 ? "y" : "ies"} available right now.`
                 : "No copies available right now. Join the waitlist to hold your place."}
         </div>
-        {recommendationStatus ? <div className="notice inline-alert">{recommendationStatus}</div> : null}
-        {recommendationsError ? <div className="alert inline-alert">{recommendationsError}</div> : null}
+        {recommendationStatus ? <div className={__bundleClass_2}>{recommendationStatus}</div> : null}
+        {recommendationsError ? <div className={__bundleClass_3}>{recommendationsError}</div> : null}
       </div>
     );
   };
@@ -3570,9 +3582,9 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
       {memberInteractionsPaused ? (
         <section className="card card-3d">
-          <div className="notice inline-alert">{memberInteractionsPauseNotice}</div>
+          <div className={__bundleClass_2}>{memberInteractionsPauseNotice}</div>
           {memberInteractionsPauseNote ? (
-            <div className="library-meta">{`Staff note: ${memberInteractionsPauseNote}`}</div>
+            <div className={__bundleClass_0}>{`Staff note: ${memberInteractionsPauseNote}`}</div>
           ) : null}
         </section>
       ) : null}
@@ -3580,17 +3592,17 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       <section className="card card-3d lending-search lending-shelf-experience">
         <div className="lending-search-header">
           <div>
-            <div className="card-title">Browse the library</div>
+            <div className={__bundleClass_4}>Browse the library</div>
           </div>
           <div className="catalog-state-row">
-            <span className="library-meta">
+            <span className={__bundleClass_0}>
               {activeFilterCount > 0
                 ? `${activeFilterCount} active search/filter control${activeFilterCount === 1 ? "" : "s"}`
                 : "Filters are collapsed by default"}
             </span>
             {activeFilterCount > 0 ? (
               <button
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_5}
                 onClick={resetCatalogSearchAndFilters}
               >
                 Reset search and filters
@@ -3608,7 +3620,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               <div className="library-shelf-nav" aria-label="Shelf navigation">
                 <button
                   type="button"
-                  className="btn btn-ghost btn-small"
+                  className={__bundleClass_5}
                   onClick={() => scrollShelf("back")}
                   disabled={!shelfCanScrollBack}
                 >
@@ -3616,7 +3628,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 </button>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-small"
+                  className={__bundleClass_5}
                   onClick={() => scrollShelf("forward")}
                   disabled={!shelfCanScrollForward}
                 >
@@ -3675,7 +3687,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <label className="library-filter-inline">
+          <label className={__bundleClass_6}>
             Sort
             <select
               value={catalogFilters.sort}
@@ -3711,7 +3723,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           className={`library-filter-panel ${filtersPanelOpen ? "is-open" : ""}`}
         >
           <div className="library-filter-panel-header">
-            <span className="summary-label">Filter catalog</span>
+            <span className={__bundleClass_7}>Filter catalog</span>
             <button
               className="btn btn-ghost btn-small library-filter-panel-close"
               onClick={() => setFiltersPanelOpen(false)}
@@ -3721,7 +3733,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           </div>
 
           <div className="library-filter-group">
-            <span className="summary-label">Media type</span>
+            <span className={__bundleClass_7}>Media type</span>
             <div className="library-filter-chip-grid">
               {MEDIA_TYPE_OPTIONS.map((option) => {
                 const active = catalogFilters.mediaTypes.includes(option.value);
@@ -3747,7 +3759,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           </div>
 
           <div className="library-filter-grid">
-            <label className="library-filter-inline">
+            <label className={__bundleClass_6}>
               Genre
               <input
                 type="text"
@@ -3761,7 +3773,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 placeholder="ex: ceramics"
               />
             </label>
-            <label className="library-filter-inline">
+            <label className={__bundleClass_6}>
               Studio category
               <input
                 type="text"
@@ -3775,7 +3787,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 placeholder="comma-separated"
               />
             </label>
-            <label className="library-filter-inline">
+            <label className={__bundleClass_6}>
               Availability
               <select
                 value={catalogFilters.availability}
@@ -3796,7 +3808,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               </select>
             </label>
             <div className="library-filter-range">
-              <label className="library-filter-inline">
+              <label className={__bundleClass_6}>
                 Min rating
                 <select
                   value={catalogFilters.ratingMin ?? ""}
@@ -3813,7 +3825,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   <option value={5}>5</option>
                 </select>
               </label>
-              <label className="library-filter-inline">
+              <label className={__bundleClass_6}>
                 Max rating
                 <select
                   value={catalogFilters.ratingMax ?? ""}
@@ -3834,7 +3846,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           </div>
 
           <div className="library-filter-actions">
-            <button className="btn btn-ghost btn-small" onClick={clearCatalogFilters}>
+            <button className={__bundleClass_5} onClick={clearCatalogFilters}>
               Clear all
             </button>
             <button className="btn btn-secondary btn-small" onClick={() => setFiltersPanelOpen(false)}>
@@ -3842,23 +3854,23 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             </button>
           </div>
         </div>
-        <div className="library-meta">
+        <div className={__bundleClass_0}>
           {itemsLoading
             ? "Refreshing catalog..."
             : `${filteredItems.length} shown${itemsSource === "api_v1" && itemsTotal > 0 ? ` of ${itemsTotal}` : ""} • ${
                 itemsSource === "api_v1" ? "Server-ranked" : "Local fallback"
               }`}
         </div>
-        {itemsError ? <div className="alert inline-alert">{itemsError}</div> : null}
-        {itemsLoading ? <div className="notice inline-alert">Loading library items...</div> : null}
-        {reviewsLoading ? <div className="notice inline-alert">Loading review signals...</div> : null}
-        {reviewsError ? <div className="notice inline-alert">{reviewsError}</div> : null}
+        {itemsError ? <div className={__bundleClass_3}>{itemsError}</div> : null}
+        {itemsLoading ? <div className={__bundleClass_2}>Loading library items...</div> : null}
+        {reviewsLoading ? <div className={__bundleClass_2}>Loading review signals...</div> : null}
+        {reviewsError ? <div className={__bundleClass_2}>{reviewsError}</div> : null}
 
         {shouldShowExternalFallbackPanel ? (
           <aside className="external-fallback-panel" aria-live="polite">
             <div className="external-fallback-header">
               <div>
-                <div className="summary-label">Need broader discovery?</div>
+                <div className={__bundleClass_7}>Need broader discovery?</div>
                 <div className="external-fallback-title">
                   {localSearchResultState === "empty"
                     ? `No local matches for "${searchTerm}".`
@@ -3882,8 +3894,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 </a>
               </div>
             </div>
-            {externalLookupStatus ? <div className="notice inline-alert">{externalLookupStatus}</div> : null}
-            {externalLookupDiagnostics ? <div className="library-meta">{externalLookupDiagnostics}</div> : null}
+            {externalLookupStatus ? <div className={__bundleClass_2}>{externalLookupStatus}</div> : null}
+            {externalLookupDiagnostics ? <div className={__bundleClass_0}>{externalLookupDiagnostics}</div> : null}
             {hasExternalResultsForSearch ? (
               <div className="external-result-grid">
                 {externalLookupResults.map((result) => (
@@ -3896,13 +3908,13 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                       )}
                         <div>
                           <div className="library-title">{result.title}</div>
-                          <div className="library-meta">{result.author}</div>
+                          <div className={__bundleClass_0}>{result.author}</div>
                           {result.publishedDate ? (
-                            <div className="library-meta">Published {result.publishedDate}</div>
+                            <div className={__bundleClass_0}>Published {result.publishedDate}</div>
                           ) : null}
                         </div>
                       </div>
-                    <div className="library-meta">
+                    <div className={__bundleClass_0}>
                       Source:{" "}
                       {result.sourceUrl ? (
                         <a href={result.sourceUrl} target="_blank" rel="noreferrer">
@@ -3915,7 +3927,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     {result.summary ? <p className="library-description">{result.summary}</p> : null}
                     <div className="external-result-actions">
                       <a
-                        className="btn btn-ghost btn-small"
+                        className={__bundleClass_5}
                         href={resolvePublicLibraryUrl(result)}
                         target="_blank"
                         rel="noreferrer"
@@ -3941,11 +3953,11 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         <section className="card card-3d lending-detail" aria-live="polite">
           <div className="lending-detail-header">
             <div>
-              <div className="card-title">{selectedItem.title}</div>
-              <div className="library-meta">
+              <div className={__bundleClass_4}>{selectedItem.title}</div>
+              <div className={__bundleClass_0}>
                 {(selectedItem.authors ?? []).join(", ") || "Unknown author"}
               </div>
-              <div className="library-meta">{formatAvailability(selectedItem)}</div>
+              <div className={__bundleClass_0}>{formatAvailability(selectedItem)}</div>
               {renderPendingBadges(selectedItem, "detail")}
             </div>
             <div className="lending-detail-badges">
@@ -3954,15 +3966,15 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               ) : null}
             </div>
           </div>
-          <div className="summary-label">What can I do next</div>
+          <div className={__bundleClass_7}>What can I do next</div>
           {renderDetailPrimaryActions(selectedItem)}
-          {selectedItemDetailLoading ? <div className="notice inline-alert">Refreshing detail...</div> : null}
-          {selectedItemDetailError ? <div className="notice inline-alert">{selectedItemDetailError}</div> : null}
-          {recommendationsLoading ? <div className="notice inline-alert">Loading recommendations...</div> : null}
+          {selectedItemDetailLoading ? <div className={__bundleClass_2}>Refreshing detail...</div> : null}
+          {selectedItemDetailError ? <div className={__bundleClass_2}>{selectedItemDetailError}</div> : null}
+          {recommendationsLoading ? <div className={__bundleClass_2}>Loading recommendations...</div> : null}
 
           <div className="lending-detail-grid">
             <article className="lending-detail-panel lending-detail-about">
-              <div className="summary-label">Why this title matters</div>
+              <div className={__bundleClass_7}>Why this title matters</div>
               {normalizeSynopsisText(selectedItem.curation?.staffRationale) &&
               normalizeSynopsisText(selectedItem.curation?.staffRationale) !== normalizeSynopsisText(selectedItemSummary) ? (
                 <p className="detail-rationale">{selectedItem.curation?.staffRationale}</p>
@@ -3985,17 +3997,17 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   ))}
                 </div>
               ) : (
-                <div className="library-meta">Tags will appear here when metadata is added.</div>
+                <div className={__bundleClass_0}>Tags will appear here when metadata is added.</div>
               )}
             </article>
 
-            <article className="lending-detail-panel">
-              <div className="summary-label">Is this for me?</div>
+            <article className={__bundleClass_8}>
+              <div className={__bundleClass_7}>Is this for me?</div>
               {selectedItem.reviewSummary ? (
                 <>
                   <div className="detail-fit-grid">
                     <div className="detail-fit-card">
-                      <span className="summary-label">Practicality</span>
+                      <span className={__bundleClass_7}>Practicality</span>
                       <span className="detail-fit-value">
                         {typeof selectedItem.reviewSummary.averagePracticality === "number" &&
                         Number.isFinite(selectedItem.reviewSummary.averagePracticality)
@@ -4004,19 +4016,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                       </span>
                     </div>
                     <div className="detail-fit-card">
-                      <span className="summary-label">Difficulty</span>
+                      <span className={__bundleClass_7}>Difficulty</span>
                       <span className="detail-fit-value">
                         {formatLibraryDifficultyLabel(selectedItem.reviewSummary.topDifficulty)}
                       </span>
                     </div>
                     <div className="detail-fit-card">
-                      <span className="summary-label">Best for</span>
+                      <span className={__bundleClass_7}>Best for</span>
                       <span className="detail-fit-value">
                         {selectedItem.reviewSummary.topBestFor || "Broad studio use"}
                       </span>
                     </div>
                   </div>
-                  <div className="library-meta">
+                  <div className={__bundleClass_0}>
                     {selectedItem.reviewSummary.reviewCount > 0
                       ? `${selectedItem.reviewSummary.reviewCount} member review${selectedItem.reviewSummary.reviewCount === 1 ? "" : "s"} inform this snapshot.`
                       : "Member feedback is still starting to build for this title."}
@@ -4028,49 +4040,49 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   ) : null}
                 </>
               ) : (
-                <div className="library-meta">
+                <div className={__bundleClass_0}>
                   Member reflections have not filled in the practical-fit snapshot yet.
                 </div>
               )}
             </article>
 
-            <article className="lending-detail-panel">
-              <div className="summary-label">Can I get it now?</div>
+            <article className={__bundleClass_8}>
+              <div className={__bundleClass_7}>Can I get it now?</div>
               <div className="detail-availability-list">
                 <div className="detail-availability-line">{formatAvailability(selectedItem)}</div>
                 {selectedItem.lifecycle?.queueMessage ? (
-                  <div className="library-meta">{selectedItem.lifecycle.queueMessage}</div>
+                  <div className={__bundleClass_0}>{selectedItem.lifecycle.queueMessage}</div>
                 ) : (
-                  <div className="library-meta">
+                  <div className={__bundleClass_0}>
                     {selectedItem.availableCopies > 0
                       ? "A copy is available to reserve now."
                       : "This title is currently circulating through the queue."}
                   </div>
                 )}
                 {typeof selectedItem.lifecycle?.waitlistCount === "number" && selectedItem.lifecycle.waitlistCount > 0 ? (
-                  <div className="library-meta">
+                  <div className={__bundleClass_0}>
                     Waitlist: {selectedItem.lifecycle.waitlistCount} member{selectedItem.lifecycle.waitlistCount === 1 ? "" : "s"}
                   </div>
                 ) : null}
                 {selectedItem.lifecycle?.nextAvailableIso ? (
-                  <div className="library-meta">
+                  <div className={__bundleClass_0}>
                     Next expected availability: {formatDateTime(selectedItem.lifecycle.nextAvailableIso)}
                   </div>
                 ) : null}
                 {selectedItem.lifecycle?.renewable === true ? (
-                  <div className="library-meta">Renewals are allowed when another member is not waiting.</div>
+                  <div className={__bundleClass_0}>Renewals are allowed when another member is not waiting.</div>
                 ) : null}
                 {selectedItem.lifecycle?.renewalPolicyNote ? (
-                  <div className="library-meta">{selectedItem.lifecycle.renewalPolicyNote}</div>
+                  <div className={__bundleClass_0}>{selectedItem.lifecycle.renewalPolicyNote}</div>
                 ) : null}
                 {selectedItem.lifecycle?.notifyEnabledByDefault === true ? (
-                  <div className="library-meta">Waitlist notifications are enabled by default for this title.</div>
+                  <div className={__bundleClass_0}>Waitlist notifications are enabled by default for this title.</div>
                 ) : null}
               </div>
             </article>
 
-            <article className="lending-detail-panel">
-              <div className="summary-label">Reading status</div>
+            <article className={__bundleClass_8}>
+              <div className={__bundleClass_7}>Reading status</div>
               <div className="reading-status-group" role="group" aria-label="Reading status">
                 {READING_STATUS_OPTIONS.map((option) => {
                   const isActive = readingStatusByItem[selectedItem.id] === option.value;
@@ -4088,7 +4100,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   );
                 })}
               </div>
-              <div className="library-meta">
+              <div className={__bundleClass_0}>
                 {memberInteractionsPaused
                   ? `Reading status updates are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`
                   : readingStatusBusyByItem[selectedItem.id]
@@ -4097,7 +4109,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     ? `Current status: ${formatReadingStatusLabel(readingStatusByItem[selectedItem.id])}`
                     : "No reading status set yet."}
               </div>
-              {readingStatusMessage ? <div className="notice inline-alert">{readingStatusMessage}</div> : null}
+              {readingStatusMessage ? <div className={__bundleClass_2}>{readingStatusMessage}</div> : null}
               <label>
                 Suggest a tag (moderated)
                 <div className="tag-suggestion-row">
@@ -4115,7 +4127,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     disabled={memberInteractionsPaused}
                   />
                   <button
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_5}
                     onClick={toVoidHandler(() => submitTagSuggestion(selectedItem))}
                     disabled={Boolean(tagSubmissionBusyByItem[selectedItem.id]) || memberInteractionsPaused}
                   >
@@ -4123,50 +4135,50 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   </button>
                 </div>
               </label>
-              <div className="library-meta">
+              <div className={__bundleClass_0}>
                 {memberInteractionsPaused
                   ? `Tag suggestions are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`
                   : "Tag suggestions are reviewed by staff."}
               </div>
-              {tagSubmissionStatus ? <div className="notice inline-alert">{tagSubmissionStatus}</div> : null}
+              {tagSubmissionStatus ? <div className={__bundleClass_2}>{tagSubmissionStatus}</div> : null}
               <details className="detail-advanced-metadata">
                 <summary>Advanced metadata</summary>
                 <div className="detail-advanced-grid">
                   <div>
-                    <span className="summary-label">Publisher</span>
-                    <span className="library-meta">{selectedItem.publisher || "Unknown"}</span>
+                    <span className={__bundleClass_7}>Publisher</span>
+                    <span className={__bundleClass_0}>{selectedItem.publisher || "Unknown"}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Published</span>
-                    <span className="library-meta">{selectedItem.publishedDate || "Unknown"}</span>
+                    <span className={__bundleClass_7}>Published</span>
+                    <span className={__bundleClass_0}>{selectedItem.publishedDate || "Unknown"}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Page count</span>
-                    <span className="library-meta">
+                    <span className={__bundleClass_7}>Page count</span>
+                    <span className={__bundleClass_0}>
                       {typeof selectedItem.pageCount === "number" ? selectedItem.pageCount : "Unknown"}
                     </span>
                   </div>
                   <div>
-                    <span className="summary-label">Media type</span>
-                    <span className="library-meta">{selectedItem.mediaType || "book"}</span>
+                    <span className={__bundleClass_7}>Media type</span>
+                    <span className={__bundleClass_0}>{selectedItem.mediaType || "book"}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Genre</span>
-                    <span className="library-meta">{selectedItem.genre || selectedItem.primaryGenre || "Unspecified"}</span>
+                    <span className={__bundleClass_7}>Genre</span>
+                    <span className={__bundleClass_0}>{selectedItem.genre || selectedItem.primaryGenre || "Unspecified"}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Studio category</span>
-                    <span className="library-meta">{selectedItem.studioCategory || "Unspecified"}</span>
+                    <span className={__bundleClass_7}>Studio category</span>
+                    <span className={__bundleClass_0}>{selectedItem.studioCategory || "Unspecified"}</span>
                   </div>
                   <div>
-                    <span className="summary-label">ISBN-10</span>
-                    <span className="library-meta">
+                    <span className={__bundleClass_7}>ISBN-10</span>
+                    <span className={__bundleClass_0}>
                       {selectedItem.identifiers?.isbn10 || "Not listed"}
                     </span>
                   </div>
                   <div>
-                    <span className="summary-label">ISBN-13</span>
-                    <span className="library-meta">
+                    <span className={__bundleClass_7}>ISBN-13</span>
+                    <span className={__bundleClass_0}>
                       {selectedItem.identifiers?.isbn13 || "Not listed"}
                     </span>
                   </div>
@@ -4175,8 +4187,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             </article>
 
             {selectedItemSupportsCeramicsLearningPath ? (
-              <article className="lending-detail-panel">
-                <div className="summary-label">Technique to workshop pathway</div>
+              <article className={__bundleClass_8}>
+                <div className={__bundleClass_7}>Technique to workshop pathway</div>
                 <div className="detail-techniques">
                   {(selectedItem.techniques ?? []).length > 0 ? (
                     selectedItem.techniques?.map((technique) => (
@@ -4197,7 +4209,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                       </button>
                     ))
                   ) : (
-                    <div className="empty-state">No technique tags yet. Staff can add them for pathway matching.</div>
+                    <div className={__bundleClass_9}>No technique tags yet. Staff can add them for pathway matching.</div>
                   )}
                 </div>
 
@@ -4235,7 +4247,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                             }}
                           >
                             <span>{workshopTitle}</span>
-                            <span className="library-meta">{workshopMeta}</span>
+                            <span className={__bundleClass_0}>{workshopMeta}</span>
                           </button>
                         );
                       }
@@ -4258,7 +4270,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                             }}
                           >
                             <span>{workshopTitle}</span>
-                            <span className="library-meta">{workshopMeta}</span>
+                            <span className={__bundleClass_0}>{workshopMeta}</span>
                           </a>
                         );
                       }
@@ -4266,12 +4278,12 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                       return (
                         <div className="related-workshop-link related-workshop-link--disabled" key={workshopLinkKey}>
                           <span>{workshopTitle}</span>
-                          <span className="library-meta">{workshopMeta}</span>
+                          <span className={__bundleClass_0}>{workshopMeta}</span>
                         </div>
                       );
                     })
                   ) : (
-                    <div className="empty-state">No linked workshop yet for these techniques.</div>
+                    <div className={__bundleClass_9}>No linked workshop yet for these techniques.</div>
                   )}
                 </div>
 
@@ -4322,18 +4334,18 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     />
                   </label>
                   <button
-                    className="btn btn-primary"
+                    className={__bundleClass_1}
                     onClick={toVoidHandler(() => submitWorkshopRequest(selectedItem))}
                     disabled={workshopBusy || !workshopTechnique.trim()}
                   >
                     {workshopBusy ? "Sending..." : "Request workshop for this technique"}
                   </button>
-                  {workshopStatus ? <div className="notice inline-alert">{workshopStatus}</div> : null}
+                  {workshopStatus ? <div className={__bundleClass_2}>{workshopStatus}</div> : null}
                 </div>
               </article>
             ) : null}
 
-            <article className="lending-detail-panel">
+            <article className={__bundleClass_8}>
               {selectedItemSupportsCeramicsLearningPath ? (
                 <>
                   {selectedItemReflections.length > 0 ? (
@@ -4346,11 +4358,11 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                       ))}
                     </div>
                   ) : (
-                    <div className="empty-state">No inspired-by reflections yet.</div>
+                    <div className={__bundleClass_9}>No inspired-by reflections yet.</div>
                   )}
 
                   {memberInteractionsPaused ? (
-                    <div className="library-meta">
+                    <div className={__bundleClass_0}>
                       {`Practical review submissions are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`}
                     </div>
                   ) : reviewItemId === selectedItem.id ? (
@@ -4360,7 +4372,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                         await submitReview(selectedItem);
                       })}
                     >
-                      <div className="summary-label">
+                      <div className={__bundleClass_7}>
                         {selectedItemMyReview ? "Update your practical review" : "45-second practical review"}
                       </div>
                       <label>
@@ -4374,7 +4386,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                           onChange={(event) => setReviewPracticality(normalizePracticality(event.target.value))}
                         />
                       </label>
-                      <div className="library-meta">Selected: {reviewPracticality}</div>
+                      <div className={__bundleClass_0}>Selected: {reviewPracticality}</div>
                       <label>
                         Difficulty
                         <select
@@ -4408,7 +4420,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                         />
                       </label>
                       <div className="quick-review-actions">
-                        <button className="btn btn-primary" type="submit" disabled={reviewBusy}>
+                        <button className={__bundleClass_1} type="submit" disabled={reviewBusy}>
                           {reviewBusy ? "Saving..." : selectedItemMyReview ? "Update review" : "Save review"}
                         </button>
                         <button
@@ -4450,7 +4462,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   )}
                 </>
               ) : (
-                <div className="library-meta">
+                <div className={__bundleClass_0}>
                   Practical reviews are shown only for ceramics non-fiction titles.
                 </div>
               )}
@@ -4469,13 +4481,13 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   </div>
                 </details>
               ) : null}
-              {reviewStatus ? <div className="notice inline-alert">{reviewStatus}</div> : null}
+              {reviewStatus ? <div className={__bundleClass_2}>{reviewStatus}</div> : null}
             </article>
           </div>
         </section>
       ) : (
         <section className="card card-3d lending-detail lending-detail-empty">
-          <div className="card-title">Select a title from the shelf</div>
+          <div className={__bundleClass_4}>Select a title from the shelf</div>
           <p className="lending-copy">
             Details, checkout, reviews, and recommendations stay hidden until you open a title.
           </p>
@@ -4485,14 +4497,14 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       <section className="card card-3d lending-discovery-flyout">
         <div className="lending-discovery-flyout-header">
           <div>
-            <div className="card-title">Recommendations</div>
-            <div className="library-meta">
+            <div className={__bundleClass_4}>Recommendations</div>
+            <div className={__bundleClass_0}>
               Quick rails are tucked away so browsing stays focused.
             </div>
           </div>
           <button
             type="button"
-            className="btn btn-ghost btn-small"
+            className={__bundleClass_5}
             aria-expanded={recommendationsFlyoutOpen}
             aria-controls="recommendations-flyout-panel"
             onClick={() => {
@@ -4514,19 +4526,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           id="recommendations-flyout-panel"
           className={`lending-discovery lending-discovery-secondary recommendations-flyout-panel ${recommendationsFlyoutOpen ? "is-open" : ""}`}
         >
-          {discoveryLoading ? <div className="notice inline-alert">Loading discovery rails...</div> : null}
-          {discoveryError ? <div className="notice inline-alert">{discoveryError}</div> : null}
+          {discoveryLoading ? <div className={__bundleClass_2}>Loading discovery rails...</div> : null}
+          {discoveryError ? <div className={__bundleClass_2}>{discoveryError}</div> : null}
           <article className="discovery-workshop-row">
             <div className="discovery-rail-header">
-              <div className="summary-label">
+              <div className={__bundleClass_7}>
                 {discoveryWorkshopsAreSignal ? "Community-signal workshops" : "Upcoming workshops"}
               </div>
-              <div className="library-meta">
+              <div className={__bundleClass_0}>
                 {discoveryWorkshopSectionMeta}
               </div>
             </div>
             {discoveryWorkshops.length === 0 ? (
-              <div className="empty-state">
+              <div className={__bundleClass_9}>
                 {discoveryWorkshopsAreSignal
                   ? "No community-signal workshops are available yet."
                   : "No upcoming workshops are available right now."}
@@ -4610,11 +4622,11 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             return (
               <article className="discovery-rail-row" key={rail.key}>
                 <div className="discovery-rail-header">
-                  <div className="summary-label">{rail.title}</div>
-                  <div className="library-meta">{railItems.length} titles</div>
+                  <div className={__bundleClass_7}>{rail.title}</div>
+                  <div className={__bundleClass_0}>{railItems.length} titles</div>
                 </div>
                 {railItems.length === 0 ? (
-                  <div className="empty-state">No titles in this lane yet.</div>
+                  <div className={__bundleClass_9}>No titles in this lane yet.</div>
                 ) : (
                   <div className="discovery-rail-track">
                     {railItems.map((item) => (
@@ -4645,23 +4657,23 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         </div>
       </section>
 
-      {actionStatus ? <div className="notice inline-alert">{actionStatus}</div> : null}
-      {requestsError ? <div className="alert inline-alert">{requestsError}</div> : null}
-      {requestsLoading ? <div className="notice inline-alert">Loading your requests...</div> : null}
+      {actionStatus ? <div className={__bundleClass_2}>{actionStatus}</div> : null}
+      {requestsError ? <div className={__bundleClass_3}>{requestsError}</div> : null}
+      {requestsLoading ? <div className={__bundleClass_2}>Loading your requests...</div> : null}
 
       <section className="lending-row">
         <div className="card card-3d lending-panel">
-          <div className="card-title">Your requests</div>
+          <div className={__bundleClass_4}>Your requests</div>
           {requests.length === 0 ? (
-            <div className="empty-state">No requests yet.</div>
+            <div className={__bundleClass_9}>No requests yet.</div>
           ) : (
             <div className="list">
               {requests.map((request) => (
                 <div className="list-row" key={request.id}>
                   <div>
                     <div className="list-title">{request.itemTitle}</div>
-                    <div className="list-meta">{request.type} - {request.status}</div>
-                    <div className="list-meta">{summarizeQueueContext(itemMap.get(request.itemId) ?? {
+                    <div className={__bundleClass_10}>{request.type} - {request.status}</div>
+                    <div className={__bundleClass_10}>{summarizeQueueContext(itemMap.get(request.itemId) ?? {
                       id: request.itemId,
                       title: request.itemTitle,
                       authors: [],
@@ -4673,10 +4685,10 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     }, request)}</div>
                   </div>
                   <div className="list-right">
-                    <div className="list-meta">
+                    <div className={__bundleClass_10}>
                       {formatMaybeTimestamp(request.requestedAt)}
                     </div>
-                    <div className="list-meta">{summarizeEtaContext(itemMap.get(request.itemId) ?? {
+                    <div className={__bundleClass_10}>{summarizeEtaContext(itemMap.get(request.itemId) ?? {
                       id: request.itemId,
                       title: request.itemTitle,
                       authors: [],
@@ -4694,11 +4706,11 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         </div>
 
         <div className="card card-3d lending-panel">
-          <div className="card-title">Your loans</div>
-          {loansError ? <div className="alert inline-alert">{loansError}</div> : null}
-          {loansLoading ? <div className="notice inline-alert">Loading your loans...</div> : null}
+          <div className={__bundleClass_4}>Your loans</div>
+          {loansError ? <div className={__bundleClass_3}>{loansError}</div> : null}
+          {loansLoading ? <div className={__bundleClass_2}>Loading your loans...</div> : null}
           {!loansLoading && loans.length === 0 ? (
-            <div className="empty-state">No active loans.</div>
+            <div className={__bundleClass_9}>No active loans.</div>
           ) : (
             <div className="list">
               {loans.map((loan) => {
@@ -4714,25 +4726,25 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   <div className="list-row" key={loan.id}>
                     <div>
                       <div className="list-title">{loan.itemTitle}</div>
-                      <div className="list-meta">{loan.status}</div>
-                      <div className="list-meta">{renewalMeta}</div>
-                      {loan.renewalPolicyNote ? <div className="list-meta">{loan.renewalPolicyNote}</div> : null}
+                      <div className={__bundleClass_10}>{loan.status}</div>
+                      <div className={__bundleClass_10}>{renewalMeta}</div>
+                      {loan.renewalPolicyNote ? <div className={__bundleClass_10}>{loan.renewalPolicyNote}</div> : null}
                     </div>
                     <div className="list-right">
-                      <div className="list-meta">
+                      <div className={__bundleClass_10}>
                         Due {formatMaybeTimestamp(loan.dueAt)}
                         {typeof dueIn === "number" ? ` (${dueIn >= 0 ? `${dueIn}d` : `${Math.abs(dueIn)}d overdue`})` : ""}
                       </div>
                       {canRenew ? (
                         <button
-                          className="btn btn-ghost btn-small"
+                          className={__bundleClass_5}
                           onClick={toVoidHandler(() => requestRenewal(loan))}
                           disabled={actionBusy}
                         >
                           Request renewal
                         </button>
                       ) : (
-                        <div className="list-meta">
+                        <div className={__bundleClass_10}>
                           {memberInteractionsPaused
                             ? `Renewal requests are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`
                             : "Renewal unavailable for this loan state."}
@@ -4748,7 +4760,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       </section>
 
       <section className="card card-3d lending-donate" id={ACQUISITION_REQUEST_SECTION_ID}>
-        <div className="card-title">Request a new title</div>
+        <div className={__bundleClass_4}>Request a new title</div>
         <div className="donation-grid">
           <label>
             ISBN
@@ -4796,14 +4808,14 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             />
           </label>
         </div>
-        {donationStatus ? <div className="notice inline-alert">{donationStatus}</div> : null}
-        <button className="btn btn-primary" onClick={toVoidHandler(handleDonation)} disabled={donationBusy}>
+        {donationStatus ? <div className={__bundleClass_2}>{donationStatus}</div> : null}
+        <button className={__bundleClass_1} onClick={toVoidHandler(handleDonation)} disabled={donationBusy}>
           {donationBusy ? "Sending..." : "Send to staff queue"}
         </button>
       </section>
 
       <section className="card card-3d lending-policy-note">
-        <div className="card-title">Borrowing policy</div>
+        <div className={__bundleClass_4}>Borrowing policy</div>
         <p className="lending-copy">
           Loan length is {LOAN_LENGTH_LABEL}. Active loans: {activeLoanCount} / {MAX_LOANS}. Reservations and waitlists
           are approved by staff.

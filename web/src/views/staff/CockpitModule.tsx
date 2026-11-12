@@ -1,4 +1,16 @@
 import { type ChangeEvent, type ReactNode } from "react";
+const __bundleClass_0 = "card-subtitle";
+const __bundleClass_1 = "btn btn-primary staff-quick-action-btn";
+const __bundleClass_2 = "card staff-console-card staff-today-card";
+const __bundleClass_3 = "btn btn-secondary btn-small";
+const __bundleClass_4 = "staff-skeleton-list";
+const __bundleClass_5 = "staff-skeleton-row";
+const __bundleClass_6 = "staff-note staff-note-error";
+const __bundleClass_7 = "staff-actions-row";
+const __bundleClass_8 = "btn btn-ghost btn-small";
+const __bundleClass_9 = "staff-note";
+const __bundleClass_10 = "staff-field staff-column";
+
 
 type TodayReservationRow = {
   id: string;
@@ -168,58 +180,58 @@ export default function CockpitModule({
       {showTodayOverview ? <>
       <section className="card staff-console-card">
         <div className="card-title">Quick actions</div>
-        <p className="card-subtitle">Action queue style quick actions for the most common daily staff priorities.</p>
+        <p className={__bundleClass_0}>Action queue style quick actions for the most common daily staff priorities.</p>
         <div className="staff-quick-actions">
-          <button className="btn btn-primary staff-quick-action-btn" onClick={() => void openReservationsToday()}>
+          <button className={__bundleClass_1} onClick={() => void openReservationsToday()}>
             View reservations (today)
           </button>
-          <button className="btn btn-primary staff-quick-action-btn" onClick={() => void openMessagesInbox()}>
+          <button className={__bundleClass_1} onClick={() => void openMessagesInbox()}>
             Open messages
           </button>
-          <button className="btn btn-primary staff-quick-action-btn" onClick={() => void startFiringFlow()}>
+          <button className={__bundleClass_1} onClick={() => void startFiringFlow()}>
             Start firing
           </button>
         </div>
       </section>
 
       <section className="staff-module-grid staff-today-overview-grid">
-        <section className="card staff-console-card staff-today-card">
+        <section className={__bundleClass_2}>
           <div className="card-title-row">
             <div className="card-title">Reservations today</div>
             <button
-              className="btn btn-secondary btn-small"
+              className={__bundleClass_3}
               disabled={Boolean(busy) || todayReservationsLoading}
               onClick={() => void refreshTodayReservations()}
             >
               {todayReservationsLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
-          <p className="card-subtitle">
+          <p className={__bundleClass_0}>
             Fast scan for who is due today, when they are expected, and what needs prep.
           </p>
           {todayReservationsLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
+            <div className={__bundleClass_4} aria-hidden="true">
               {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`today-reservation-skeleton-${index}`} className="staff-skeleton-row" />
+                <div key={`today-reservation-skeleton-${index}`} className={__bundleClass_5} />
               ))}
             </div>
           ) : todayReservationsError ? (
             <>
-              <div className="staff-note staff-note-error">Reservations are temporarily unavailable: {todayReservationsError}</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void retryTodayReservations()}>
+              <div className={__bundleClass_6}>Reservations are temporarily unavailable: {todayReservationsError}</div>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_3} onClick={() => void retryTodayReservations()}>
                   Retry
                 </button>
-                <button className="btn btn-ghost btn-small" onClick={() => void openReservationsToday()}>
+                <button className={__bundleClass_8} onClick={() => void openReservationsToday()}>
                   Open reservations
                 </button>
               </div>
             </>
           ) : todayReservations.length === 0 ? (
             <>
-              <div className="staff-note">No reservations due today.</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void openReservationsToday()}>
+              <div className={__bundleClass_9}>No reservations due today.</div>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_3} onClick={() => void openReservationsToday()}>
                   Open full calendar
                 </button>
               </div>
@@ -244,8 +256,8 @@ export default function CockpitModule({
                   </li>
                 ))}
               </ul>
-              <div className="staff-actions-row">
-                <button className="btn btn-ghost btn-small" onClick={() => void openReservationsToday()}>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_8} onClick={() => void openReservationsToday()}>
                   View all reservations
                 </button>
               </div>
@@ -253,14 +265,14 @@ export default function CockpitModule({
           )}
         </section>
 
-        <section className="card staff-console-card staff-today-card">
+        <section className={__bundleClass_2}>
           <div className="card-title-row">
             <div className="card-title">Messages</div>
-            <button className="btn btn-secondary btn-small" onClick={() => void openMessagesInbox()}>
+            <button className={__bundleClass_3} onClick={() => void openMessagesInbox()}>
               Open inbox
             </button>
           </div>
-          <p className="card-subtitle">
+          <p className={__bundleClass_0}>
             Unread conversations, support requests, and operational communication in one quick list.
           </p>
           <div className="staff-meta-inline">
@@ -268,9 +280,9 @@ export default function CockpitModule({
             <span className="pill">Unread announcements {unreadAnnouncements}</span>
             <span className="pill">Announcements {announcementsCount}</span>
           </div>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_7}>
             <button
-              className="btn btn-secondary btn-small"
+              className={__bundleClass_3}
               type="button"
               data-testid="staff-create-announcement-toggle"
               onClick={() => toggleAnnouncementComposer()}
@@ -280,11 +292,11 @@ export default function CockpitModule({
           </div>
           {announcementComposerOpen ? (
             <div className="staff-announcement-composer" data-testid="staff-announcement-composer">
-              <div className="staff-note">
+              <div className={__bundleClass_9}>
                 Publish a studio announcement for signed-in members. New announcements appear in Dashboard and Messages.
               </div>
               <div className="staff-module-grid">
-                <label className="staff-field staff-column">
+                <label className={__bundleClass_10}>
                   <span>Title</span>
                   <input
                     type="text"
@@ -293,7 +305,7 @@ export default function CockpitModule({
                     onChange={(event) => updateAnnouncementDraft("title", event.target.value)}
                   />
                 </label>
-                <label className="staff-field staff-column">
+                <label className={__bundleClass_10}>
                   <span>Summary</span>
                   <input
                     type="text"
@@ -303,7 +315,7 @@ export default function CockpitModule({
                   />
                 </label>
               </div>
-              <label className="staff-field staff-column">
+              <label className={__bundleClass_10}>
                 <span>Body</span>
                 <textarea
                   value={announcementDraft.body}
@@ -315,7 +327,7 @@ export default function CockpitModule({
                 </span>
               </label>
               <div className="staff-module-grid">
-                <label className="staff-field staff-column">
+                <label className={__bundleClass_10}>
                   <span>Publish at</span>
                   <input
                     type="datetime-local"
@@ -323,7 +335,7 @@ export default function CockpitModule({
                     onChange={(event) => updateAnnouncementDraft("publishAt", event.target.value)}
                   />
                 </label>
-                <label className="staff-field staff-column">
+                <label className={__bundleClass_10}>
                   <span>Expires at</span>
                   <input
                     type="datetime-local"
@@ -333,7 +345,7 @@ export default function CockpitModule({
                 </label>
               </div>
               <div className="staff-module-grid">
-                <label className="staff-field staff-column">
+                <label className={__bundleClass_10}>
                   <span>Call to action label</span>
                   <input
                     type="text"
@@ -342,7 +354,7 @@ export default function CockpitModule({
                     onChange={(event) => updateAnnouncementDraft("ctaLabel", event.target.value)}
                   />
                 </label>
-                <label className="staff-field staff-column">
+                <label className={__bundleClass_10}>
                   <span>Call to action URL</span>
                   <input
                     type="url"
@@ -361,8 +373,8 @@ export default function CockpitModule({
                 <span>Pin this announcement near the top of the member feed.</span>
               </label>
               {announcementPublishStatus ? <div className="staff-note staff-note-ok">{announcementPublishStatus}</div> : null}
-              {announcementPublishError ? <div className="staff-note staff-note-error">{announcementPublishError}</div> : null}
-              <div className="staff-actions-row">
+              {announcementPublishError ? <div className={__bundleClass_6}>{announcementPublishError}</div> : null}
+              <div className={__bundleClass_7}>
                 <button
                   className="btn btn-primary btn-small"
                   type="button"
@@ -371,16 +383,16 @@ export default function CockpitModule({
                 >
                   {announcementPublishBusy ? "Publishing..." : "Publish announcement"}
                 </button>
-                <button className="btn btn-ghost btn-small" type="button" onClick={() => toggleAnnouncementComposer()}>
+                <button className={__bundleClass_8} type="button" onClick={() => toggleAnnouncementComposer()}>
                   Close
                 </button>
               </div>
             </div>
           ) : null}
           {messageThreadsLoading || announcementsLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
+            <div className={__bundleClass_4} aria-hidden="true">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={`today-message-skeleton-${index}`} className="staff-skeleton-row" />
+                <div key={`today-message-skeleton-${index}`} className={__bundleClass_5} />
               ))}
             </div>
           ) : messageThreadsError || announcementsError || messagesDegraded ? (
@@ -390,17 +402,17 @@ export default function CockpitModule({
                 {messageThreadsError ? ` Threads: ${messageThreadsError}.` : ""}
                 {announcementsError ? ` Announcements: ${announcementsError}.` : ""}
               </div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void openMessagesInbox()}>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_3} onClick={() => void openMessagesInbox()}>
                   View all messages
                 </button>
               </div>
             </>
           ) : todayMessageRows.length === 0 ? (
             <>
-              <div className="staff-note">No active conversations right now.</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void openMessagesInbox()}>
+              <div className={__bundleClass_9}>No active conversations right now.</div>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_3} onClick={() => void openMessagesInbox()}>
                   Send message
                 </button>
               </div>
@@ -424,11 +436,11 @@ export default function CockpitModule({
                   </li>
                 ))}
               </ul>
-              <div className="staff-actions-row">
-                <button className="btn btn-ghost btn-small" onClick={() => void openMessagesInbox()}>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_8} onClick={() => void openMessagesInbox()}>
                   View all messages
                 </button>
-                <button className="btn btn-ghost btn-small" onClick={() => void openMessagesInbox()}>
+                <button className={__bundleClass_8} onClick={() => void openMessagesInbox()}>
                   Send message
                 </button>
               </div>
@@ -436,51 +448,51 @@ export default function CockpitModule({
           )}
         </section>
 
-        <section className="card staff-console-card staff-today-card">
+        <section className={__bundleClass_2}>
           <div className="card-title-row">
             <div className="card-title">Firings</div>
             <button
-              className="btn btn-secondary btn-small"
+              className={__bundleClass_3}
               disabled={Boolean(busy) || firingsLoading}
               onClick={() => void refreshTodayFirings()}
             >
               {firingsLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
-          <p className="card-subtitle">
+          <p className={__bundleClass_0}>
             Single active firing model with quick launch and iPad photo capture for kiln evidence.
           </p>
           {firingsLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
+            <div className={__bundleClass_4} aria-hidden="true">
               {Array.from({ length: 3 }).map((_, index) => (
-                <div key={`today-firing-skeleton-${index}`} className="staff-skeleton-row" />
+                <div key={`today-firing-skeleton-${index}`} className={__bundleClass_5} />
               ))}
             </div>
           ) : firingsError ? (
             <>
-              <div className="staff-note staff-note-error">Firings are unavailable: {firingsError}</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void retryTodayFirings()}>
+              <div className={__bundleClass_6}>Firings are unavailable: {firingsError}</div>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_3} onClick={() => void retryTodayFirings()}>
                   Retry
                 </button>
               </div>
             </>
           ) : activeFiring ? (
             <>
-              <div className="staff-note">
+              <div className={__bundleClass_9}>
                 <strong>{activeFiring.label}</strong>
                 <div className="staff-mini">Started {activeFiring.startedLabel} · last update {activeFiring.updatedLabel}</div>
               </div>
-              <div className="staff-actions-row">
-                <button className="btn btn-ghost btn-small" onClick={() => void startFiringFlow()}>
+              <div className={__bundleClass_7}>
+                <button className={__bundleClass_8} onClick={() => void startFiringFlow()}>
                   Start new firing
                 </button>
               </div>
             </>
           ) : (
             <>
-              <div className="staff-note">No active firing. Start a new run from the queue workflow.</div>
-              <div className="staff-actions-row">
+              <div className={__bundleClass_9}>No active firing. Start a new run from the queue workflow.</div>
+              <div className={__bundleClass_7}>
                 <button className="btn btn-primary btn-small" onClick={() => void startFiringFlow()}>
                   Start New Firing
                 </button>
@@ -501,21 +513,21 @@ export default function CockpitModule({
             Photos now upload to portal storage. Existing Kilnfire storage remains intact during migration.
           </div>
           {firingPhotoStatus ? <div className="staff-note staff-note-ok">{firingPhotoStatus}</div> : null}
-          {firingPhotoError ? <div className="staff-note staff-note-error">{firingPhotoError}</div> : null}
+          {firingPhotoError ? <div className={__bundleClass_6}>{firingPhotoError}</div> : null}
         </section>
 
-        <section className="card staff-console-card staff-today-card">
+        <section className={__bundleClass_2}>
           <div className="card-title-row">
             <div className="card-title">Payment alerts (P0/P1)</div>
             <button
-              className="btn btn-secondary btn-small"
+              className={__bundleClass_3}
               disabled={Boolean(busy) || commerceLoading}
               onClick={() => void refreshTodayPayments()}
             >
               {commerceLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
-          <p className="card-subtitle">
+          <p className={__bundleClass_0}>
             Critical payment and smoke/canary risk signals only. Use details links for full transaction workflows.
           </p>
           {paymentDegraded ? (
@@ -525,14 +537,14 @@ export default function CockpitModule({
             </div>
           ) : null}
           {commerceLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
+            <div className={__bundleClass_4} aria-hidden="true">
               {Array.from({ length: 3 }).map((_, index) => (
-                <div key={`today-payment-skeleton-${index}`} className="staff-skeleton-row" />
+                <div key={`today-payment-skeleton-${index}`} className={__bundleClass_5} />
               ))}
             </div>
           ) : paymentAlerts.length === 0 ? (
             <>
-              <div className="staff-note">No P0/P1 payment alerts right now.</div>
+              <div className={__bundleClass_9}>No P0/P1 payment alerts right now.</div>
             </>
           ) : (
             <>
@@ -558,8 +570,8 @@ export default function CockpitModule({
 
       <section className="card staff-console-card">
         <div className="card-title">System status summary</div>
-        <p className="card-subtitle">Operational health at a glance with cockpit-native section access.</p>
-        <div className="staff-note">
+        <p className={__bundleClass_0}>Operational health at a glance with cockpit-native section access.</p>
+        <div className={__bundleClass_9}>
           <strong>{systemSummaryToneLabel}</strong> · {systemSummaryMessage}
         </div>
         <div className="staff-note staff-note-muted">

@@ -40,6 +40,15 @@ import {
   type CommunityBlogTonePreset,
 } from "./communityBlogTypes";
 import "./CommunityBlogs.css";
+const __bundleClass_0 = "staff-mini";
+const __bundleClass_1 = "staff-field";
+const __bundleClass_2 = "staff-field community-blog-field-wide";
+const __bundleClass_3 = "btn btn-ghost btn-small";
+const __bundleClass_4 = "community-blog-ai-head";
+const __bundleClass_5 = "community-blog-tag-list";
+const __bundleClass_6 = "btn btn-secondary";
+const __bundleClass_7 = "btn btn-ghost";
+
 
 type Props = {
   client: FunctionsClient;
@@ -937,7 +946,7 @@ export default function CommunityBlogStudio({
         <div className="community-blog-collapsible-head">
           <div>
             <strong>{options.title}</strong>
-            <div className="staff-mini">{options.description}</div>
+            <div className={__bundleClass_0}>{options.description}</div>
           </div>
           <button
             type="button"
@@ -955,7 +964,7 @@ export default function CommunityBlogStudio({
 
   const detailFields = (
     <>
-      <label className="staff-field">
+      <label className={__bundleClass_1}>
         Slug
         <input
           value={draft.slug}
@@ -963,7 +972,7 @@ export default function CommunityBlogStudio({
           placeholder="optional-custom-slug"
         />
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_1}>
         Tone
         <select
           value={draft.tonePreset}
@@ -975,11 +984,11 @@ export default function CommunityBlogStudio({
             </option>
           ))}
         </select>
-        <div className="staff-mini">
+        <div className={__bundleClass_0}>
           {COMMUNITY_BLOG_TONE_OPTIONS.find((option) => option.value === draft.tonePreset)?.help}
         </div>
       </label>
-      <label className="staff-field">
+      <label className={__bundleClass_1}>
         Marketing focus
         <select
           value={draft.marketingFocus}
@@ -991,18 +1000,18 @@ export default function CommunityBlogStudio({
             </option>
           ))}
         </select>
-        <div className="staff-mini">
+        <div className={__bundleClass_0}>
           {COMMUNITY_BLOG_MARKETING_OPTIONS.find((option) => option.value === draft.marketingFocus)?.help}
         </div>
       </label>
-      <label className="staff-field community-blog-field-wide">
+      <label className={__bundleClass_2}>
         Tags
         <input
           value={draft.tagsInput}
           onChange={(event) => updateDraft({ tagsInput: event.target.value })}
           placeholder="kiln, glaze, production"
         />
-        <div className="staff-mini">Comma-separated. Up to 8 tags.</div>
+        <div className={__bundleClass_0}>Comma-separated. Up to 8 tags.</div>
       </label>
     </>
   );
@@ -1012,7 +1021,7 @@ export default function CommunityBlogStudio({
       <section className="community-blog-media-card">
         <div className="community-blog-media-head">
           <strong>Featured image</strong>
-          <button type="button" className="btn btn-ghost btn-small" onClick={() => featuredInputRef.current?.click()}>
+          <button type="button" className={__bundleClass_3} onClick={() => featuredInputRef.current?.click()}>
             Upload
           </button>
           <input
@@ -1031,7 +1040,7 @@ export default function CommunityBlogStudio({
         {draft.featuredImage ? (
           <div className="community-blog-image-editor">
             <img src={draft.featuredImage.url} alt={draft.featuredImage.alt} />
-            <label className="staff-field">
+            <label className={__bundleClass_1}>
               Alt text
               <input
                 value={draft.featuredImage.alt}
@@ -1045,7 +1054,7 @@ export default function CommunityBlogStudio({
                 }
               />
             </label>
-            <label className="staff-field">
+            <label className={__bundleClass_1}>
               Caption
               <input
                 value={draft.featuredImage.caption ?? ""}
@@ -1068,7 +1077,7 @@ export default function CommunityBlogStudio({
       <section className="community-blog-media-card">
         <div className="community-blog-media-head">
           <strong>Inline images</strong>
-          <button type="button" className="btn btn-ghost btn-small" onClick={() => inlineInputRef.current?.click()}>
+          <button type="button" className={__bundleClass_3} onClick={() => inlineInputRef.current?.click()}>
             Upload
           </button>
           <input
@@ -1091,7 +1100,7 @@ export default function CommunityBlogStudio({
             draft.inlineImages.map((image) => (
               <div className="community-blog-inline-item" key={image.id}>
                 <img src={image.url} alt={image.alt} />
-                <label className="staff-field">
+                <label className={__bundleClass_1}>
                   Alt text
                   <input
                     value={image.alt}
@@ -1108,7 +1117,7 @@ export default function CommunityBlogStudio({
                 <div className="community-blog-inline-actions">
                   <button
                     type="button"
-                    className="btn btn-ghost btn-small"
+                    className={__bundleClass_3}
                     onClick={() =>
                       updateDraft({
                         inlineImages: draft.inlineImages.filter((entry) => entry.id !== image.id),
@@ -1129,16 +1138,16 @@ export default function CommunityBlogStudio({
 
   const distributionSection = (
     <section className="community-blog-ai community-blog-distribution">
-      <div className="community-blog-ai-head">
+      <div className={__bundleClass_4}>
         <div>
           <strong>Distribution</strong>
-          <div className="staff-mini">Push published posts to connected channels without leaving the studio.</div>
+          <div className={__bundleClass_0}>Push published posts to connected channels without leaving the studio.</div>
         </div>
-        <div className="community-blog-tag-list">
+        <div className={__bundleClass_5}>
           <span className="community-blog-tag">{communityBlogMarketingFocusLabel(draft.marketingFocus)}</span>
         </div>
       </div>
-      <label className="staff-field community-blog-field-wide">
+      <label className={__bundleClass_2}>
         Social caption override
         <textarea
           value={distributionCaption}
@@ -1164,11 +1173,11 @@ export default function CommunityBlogStudio({
                   {currentStatus?.status ?? "idle"}
                 </span>
               </div>
-              <div className="staff-mini">
+              <div className={__bundleClass_0}>
                 {currentStatus?.message || availability?.reason || "Ready when the post is published."}
               </div>
               {currentStatus?.publishedAtMs ? (
-                <div className="staff-mini">Last sent {formatCommunityBlogDate(currentStatus.publishedAtMs)}</div>
+                <div className={__bundleClass_0}>Last sent {formatCommunityBlogDate(currentStatus.publishedAtMs)}</div>
               ) : null}
               <div className="community-blog-channel-actions">
                 <button
@@ -1180,7 +1189,7 @@ export default function CommunityBlogStudio({
                   {busyKey === `distribution:${channel}` ? "Sending..." : "Send now"}
                 </button>
                 {currentStatus?.permalinkUrl ? (
-                  <a className="btn btn-ghost btn-small" href={currentStatus.permalinkUrl} target="_blank" rel="noreferrer">
+                  <a className={__bundleClass_3} href={currentStatus.permalinkUrl} target="_blank" rel="noreferrer">
                     Open post
                   </a>
                 ) : null}
@@ -1194,14 +1203,14 @@ export default function CommunityBlogStudio({
 
   const sourcesSection = (
     <section className="community-blog-ai community-blog-source-manager">
-      <div className="community-blog-ai-head">
+      <div className={__bundleClass_4}>
         <div>
           <strong>Outside feeds</strong>
-          <div className="staff-mini">Add studio-adjacent blogs or RSS feeds and surface the strongest reads.</div>
+          <div className={__bundleClass_0}>Add studio-adjacent blogs or RSS feeds and surface the strongest reads.</div>
         </div>
         <button
           type="button"
-          className="btn btn-ghost btn-small"
+          className={__bundleClass_3}
           onClick={() => void refreshSources()}
           disabled={busyKey === "refresh-sources"}
         >
@@ -1210,36 +1219,36 @@ export default function CommunityBlogStudio({
       </div>
 
       <div className="community-blog-form-grid">
-        <label className="staff-field">
+        <label className={__bundleClass_1}>
           Source title
           <input value={sourceDraft.title} onChange={(event) => updateSourceDraft({ title: event.target.value })} placeholder="Ceramic Arts Daily" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_1}>
           Status
           <select value={sourceDraft.status} onChange={(event) => updateSourceDraft({ status: event.target.value as SourceDraft["status"] })}>
             <option value="enabled">Enabled</option>
             <option value="disabled">Disabled</option>
           </select>
         </label>
-        <label className="staff-field community-blog-field-wide">
+        <label className={__bundleClass_2}>
           Feed URL
           <input value={sourceDraft.feedUrl} onChange={(event) => updateSourceDraft({ feedUrl: event.target.value })} placeholder="https://example.com/feed.xml" />
         </label>
-        <label className="staff-field">
+        <label className={__bundleClass_1}>
           Site URL
           <input value={sourceDraft.siteUrl} onChange={(event) => updateSourceDraft({ siteUrl: event.target.value })} placeholder="https://example.com" />
         </label>
-        <label className="staff-field community-blog-field-wide">
+        <label className={__bundleClass_2}>
           Summary
           <input value={sourceDraft.summary} onChange={(event) => updateSourceDraft({ summary: event.target.value })} placeholder="Why this source matters to Monsoon Fire." />
         </label>
       </div>
 
       <div className="community-blog-ai-controls">
-        <button type="button" className="btn btn-secondary" onClick={() => void saveSource()} disabled={busyKey === "save-source"}>
+        <button type="button" className={__bundleClass_6} onClick={() => void saveSource()} disabled={busyKey === "save-source"}>
           {busyKey === "save-source" ? "Saving..." : sourceDraft.sourceId ? "Save source" : "Add source"}
         </button>
-        <button type="button" className="btn btn-ghost" onClick={() => setSourceDraft({ ...EMPTY_SOURCE_DRAFT })}>
+        <button type="button" className={__bundleClass_7} onClick={() => setSourceDraft({ ...EMPTY_SOURCE_DRAFT })}>
           New source
         </button>
       </div>
@@ -1265,10 +1274,10 @@ export default function CommunityBlogStudio({
         {externalItems.slice(0, 12).map((item) => (
           <article className="community-blog-ai-card" key={item.id}>
             <strong>{item.title}</strong>
-            <div className="staff-mini">{item.sourceTitle}</div>
+            <div className={__bundleClass_0}>{item.sourceTitle}</div>
             <p>{item.excerpt}</p>
-            {item.studioNote ? <div className="staff-mini">{item.studioNote}</div> : null}
-            <div className="community-blog-tag-list">
+            {item.studioNote ? <div className={__bundleClass_0}>{item.studioNote}</div> : null}
+            <div className={__bundleClass_5}>
               {item.tags.slice(0, 3).map((tag) => (
                 <span className="community-blog-tag" key={tag}>
                   {tag}
@@ -1278,7 +1287,7 @@ export default function CommunityBlogStudio({
             <div className="community-blog-channel-actions">
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_3}
                 onClick={() => void setExternalItemStatus(item, item.status === "featured" ? "available" : "featured")}
                 disabled={busyKey === `external:${item.id}`}
               >
@@ -1286,13 +1295,13 @@ export default function CommunityBlogStudio({
               </button>
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_3}
                 onClick={() => void setExternalItemStatus(item, item.status === "hidden" ? "available" : "hidden")}
                 disabled={busyKey === `external:${item.id}`}
               >
                 {item.status === "hidden" ? "Unhide" : "Hide"}
               </button>
-              <a className="btn btn-ghost btn-small" href={item.canonicalUrl} target="_blank" rel="noreferrer">
+              <a className={__bundleClass_3} href={item.canonicalUrl} target="_blank" rel="noreferrer">
                 Open
               </a>
             </div>
@@ -1304,10 +1313,10 @@ export default function CommunityBlogStudio({
 
   const aiSection = (
     <section className="community-blog-ai">
-      <div className="community-blog-ai-head">
+      <div className={__bundleClass_4}>
         <div>
           <strong>AI assist</strong>
-          <div className="staff-mini">Manual suggestions only. Nothing auto-applies or auto-publishes.</div>
+          <div className={__bundleClass_0}>Manual suggestions only. Nothing auto-applies or auto-publishes.</div>
         </div>
         <div className="community-blog-ai-controls">
           <select value={aiMode} onChange={(event) => setAiMode(event.target.value as CommunityBlogAiMode)}>
@@ -1317,18 +1326,18 @@ export default function CommunityBlogStudio({
               </option>
             ))}
           </select>
-          <button type="button" className="btn btn-secondary" onClick={() => void runAiAssist()} disabled={busyKey === "ai"}>
+          <button type="button" className={__bundleClass_6} onClick={() => void runAiAssist()} disabled={busyKey === "ai"}>
             {busyKey === "ai" ? "Thinking..." : "Ask AI"}
           </button>
         </div>
       </div>
-      <div className="staff-mini">
+      <div className={__bundleClass_0}>
         {COMMUNITY_BLOG_AI_MODES.find((option) => option.value === aiMode)?.help}
       </div>
       {aiMessage ? (
         <div className={`staff-note ${aiAvailable === false ? "staff-note-error" : ""}`}>
           {aiMessage}
-          {aiModelLabel ? <div className="staff-mini">{aiModelLabel}</div> : null}
+          {aiModelLabel ? <div className={__bundleClass_0}>{aiModelLabel}</div> : null}
         </div>
       ) : null}
       <div className="community-blog-ai-results">
@@ -1336,9 +1345,9 @@ export default function CommunityBlogStudio({
           <article className="community-blog-ai-card" key={suggestion.id}>
             <strong>{suggestion.title}</strong>
             {suggestion.excerpt ? <p>{suggestion.excerpt}</p> : null}
-            {suggestion.note ? <div className="staff-mini">{suggestion.note}</div> : null}
+            {suggestion.note ? <div className={__bundleClass_0}>{suggestion.note}</div> : null}
             {suggestion.bodyMarkdown ? <pre className="community-blog-ai-body">{suggestion.bodyMarkdown}</pre> : null}
-            <button type="button" className="btn btn-ghost btn-small" onClick={() => applyAiSuggestion(suggestion)}>
+            <button type="button" className={__bundleClass_3} onClick={() => applyAiSuggestion(suggestion)}>
               Apply suggestion
             </button>
           </article>
@@ -1352,7 +1361,7 @@ export default function CommunityBlogStudio({
       <div className="community-blog-preview-head">
         <strong>Preview</strong>
         {!isCommunityVariant ? (
-          <button type="button" className="btn btn-ghost btn-small" onClick={() => setPreviewOpen((prev) => !prev)}>
+          <button type="button" className={__bundleClass_3} onClick={() => setPreviewOpen((prev) => !prev)}>
             {previewOpen ? "Hide preview" : "Show preview"}
           </button>
         ) : null}
@@ -1371,7 +1380,7 @@ export default function CommunityBlogStudio({
             <span>{draft.title || "Untitled studio note"}</span>
           </div>
           <p className="community-copy">{draft.excerpt || "Excerpt will appear here once added."}</p>
-          <div className="community-blog-tag-list">
+          <div className={__bundleClass_5}>
             {parseCommunityBlogTagsInput(draft.tagsInput).map((tag) => (
               <span key={tag} className="community-blog-tag">
                 {tag}
@@ -1402,12 +1411,12 @@ export default function CommunityBlogStudio({
           </p>
         </div>
         <div className="community-blog-studio-actions">
-          <button type="button" className="btn btn-secondary" onClick={openNewDraft}>
+          <button type="button" className={__bundleClass_6} onClick={openNewDraft}>
             Write blog
           </button>
           <button
             type="button"
-            className="btn btn-ghost"
+            className={__bundleClass_7}
             onClick={() => {
               setSelectedPostId(selectedPostId);
               setDraft(draftFromPost(selectedSavedPost));
@@ -1418,7 +1427,7 @@ export default function CommunityBlogStudio({
             Revert edits
           </button>
           {onRequestClose ? (
-            <button type="button" className="btn btn-ghost" onClick={requestClose}>
+            <button type="button" className={__bundleClass_7} onClick={requestClose}>
               {isCommunityVariant ? "Close editor" : "Close"}
             </button>
           ) : null}
@@ -1504,7 +1513,7 @@ export default function CommunityBlogStudio({
               <strong>Library</strong>
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_3}
                 onClick={() => {
                   setStatus("");
                   setError("");
@@ -1568,12 +1577,12 @@ export default function CommunityBlogStudio({
               </div>
             </div>
             <div className="community-blog-editor-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => void saveDraft()} disabled={busyKey === "save"}>
+              <button type="button" className={__bundleClass_6} onClick={() => void saveDraft()} disabled={busyKey === "save"}>
                 {busyKey === "save" ? "Saving..." : "Save draft"}
               </button>
               <button
                 type="button"
-                className="btn btn-ghost"
+                className={__bundleClass_7}
                 onClick={() => void saveAndChangeStatus("staged")}
                 disabled={!canStageOrPublish || Boolean(busyKey)}
               >
@@ -1589,7 +1598,7 @@ export default function CommunityBlogStudio({
               </button>
               <button
                 type="button"
-                className="btn btn-ghost"
+                className={__bundleClass_7}
                 onClick={() => void saveAndChangeStatus("archived")}
                 disabled={!draft.postId || Boolean(busyKey)}
               >
@@ -1597,7 +1606,7 @@ export default function CommunityBlogStudio({
               </button>
               <button
                 type="button"
-                className="btn btn-ghost"
+                className={__bundleClass_7}
                 onClick={() => void saveAndChangeStatus("draft")}
                 disabled={Boolean(busyKey)}
               >
@@ -1605,7 +1614,7 @@ export default function CommunityBlogStudio({
               </button>
               <button
                 type="button"
-                className="btn btn-ghost"
+                className={__bundleClass_7}
                 onClick={() => void deletePost()}
                 disabled={!draft.postId || Boolean(busyKey)}
               >
@@ -1615,7 +1624,7 @@ export default function CommunityBlogStudio({
           </div>
 
           <div className={`community-blog-form-grid ${isCommunityVariant ? "community-blog-form-grid-primary" : ""}`}>
-            <label className="staff-field community-blog-field-wide">
+            <label className={__bundleClass_2}>
               Title
               <input
                 value={draft.title}
@@ -1624,7 +1633,7 @@ export default function CommunityBlogStudio({
               />
             </label>
             {!isCommunityVariant ? detailFields : null}
-            <label className="staff-field community-blog-field-wide">
+            <label className={__bundleClass_2}>
               Excerpt
               <textarea
                 value={draft.excerpt}
@@ -1646,31 +1655,31 @@ export default function CommunityBlogStudio({
             : null}
 
           <div className="community-blog-toolbar">
-            <button type="button" className="btn btn-ghost btn-small" onClick={() => insertMarkup("# ", "", "Heading")}>
+            <button type="button" className={__bundleClass_3} onClick={() => insertMarkup("# ", "", "Heading")}>
               Heading
             </button>
-            <button type="button" className="btn btn-ghost btn-small" onClick={() => insertMarkup("**", "**", "bold text")}>
+            <button type="button" className={__bundleClass_3} onClick={() => insertMarkup("**", "**", "bold text")}>
               Bold
             </button>
-            <button type="button" className="btn btn-ghost btn-small" onClick={() => insertMarkup("*", "*", "italic text")}>
+            <button type="button" className={__bundleClass_3} onClick={() => insertMarkup("*", "*", "italic text")}>
               Italic
             </button>
-            <button type="button" className="btn btn-ghost btn-small" onClick={() => insertMarkup("- ", "", "list item")}>
+            <button type="button" className={__bundleClass_3} onClick={() => insertMarkup("- ", "", "list item")}>
               Bullet
             </button>
-            <button type="button" className="btn btn-ghost btn-small" onClick={() => insertMarkup("> ", "", "quoted note")}>
+            <button type="button" className={__bundleClass_3} onClick={() => insertMarkup("> ", "", "quoted note")}>
               Quote
             </button>
             <button
               type="button"
-              className="btn btn-ghost btn-small"
+              className={__bundleClass_3}
               onClick={() => insertMarkup("[", "](https://example.com)", "link text")}
             >
               Link
             </button>
           </div>
 
-          <label className="staff-field community-blog-field-wide">
+          <label className={__bundleClass_2}>
             Body
             <textarea
               ref={bodyInputRef}
@@ -1679,7 +1688,7 @@ export default function CommunityBlogStudio({
               onChange={(event) => updateDraft({ bodyMarkdown: event.target.value })}
               placeholder="Write in a lightweight markdown style. Use the toolbar above for quick formatting."
             />
-            <div className="staff-mini">
+            <div className={__bundleClass_0}>
               Supports headings, bold, italic, bullets, blockquotes, links, and inline images.
             </div>
           </label>

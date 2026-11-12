@@ -7,6 +7,9 @@ import {
 } from "../api/functionsClient";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./IntegrationsView.css";
+const __bundleClass_0 = "card card-3d integrations-card";
+const __bundleClass_1 = "integration-field";
+
 
 type IntegrationTokenRecord = {
   tokenId: string;
@@ -303,13 +306,13 @@ export default function IntegrationsView({
         </div>
       </div>
 
-      <section className="card card-3d integrations-card">
+      <section className={__bundleClass_0}>
         <div className="card-title">Create integration token</div>
         <p className="integration-copy">
           Tokens are shown once. Store it safely. If you lose it, revoke and create a new one.
         </p>
 
-        <label className="integration-field">
+        <label className={__bundleClass_1}>
           Label (optional)
           <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ex: My assistant, Zapier, etc." />
         </label>
@@ -372,7 +375,7 @@ export default function IntegrationsView({
         ) : null}
       </section>
 
-      <section className="card card-3d integrations-card">
+      <section className={__bundleClass_0}>
         <div className="card-title">Your tokens</div>
         {loading ? (
           <div className="status-line" role="status" aria-live="polite">
@@ -431,7 +434,7 @@ export default function IntegrationsView({
         )}
       </section>
 
-      <section className="card card-3d integrations-card">
+      <section className={__bundleClass_0}>
         <div className="card-title">Agent examples (curl)</div>
         <p className="integration-copy">
           Use the integration token value as the bearer token (it starts with <code>mf_pat_v1.</code>).
@@ -447,12 +450,12 @@ export default function IntegrationsView({
         </div>
       </section>
 
-      <section className="card card-3d integrations-card">
+      <section className={__bundleClass_0}>
         <div className="card-title">Events feed smoke test</div>
         <p className="integration-copy">
           Paste a PAT with <code>events:read</code> and fetch recent feed rows. Token is only held in memory.
         </p>
-        <label className="integration-field">
+        <label className={__bundleClass_1}>
           PAT token (mf_pat_v1...)
           <input
             value={eventsFeedToken}
@@ -463,11 +466,11 @@ export default function IntegrationsView({
           />
         </label>
         <div className="integration-actions">
-          <label className="integration-field">
+          <label className={__bundleClass_1}>
             Cursor
             <input value={eventsFeedCursor} onChange={(e) => setEventsFeedCursor(e.target.value)} />
           </label>
-          <label className="integration-field">
+          <label className={__bundleClass_1}>
             Limit (1-100)
             <input value={eventsFeedLimit} onChange={(e) => setEventsFeedLimit(e.target.value)} />
           </label>
@@ -511,7 +514,7 @@ export default function IntegrationsView({
       </section>
 
       {lastRequest ? (
-        <section className="card card-3d integrations-card">
+        <section className={__bundleClass_0}>
           <div className="card-title">Troubleshooting (last request)</div>
           <div className="token-subtle">
             {lastRequest.fn} · {lastRequest.status ?? "—"} · {lastRequest.ok ? "ok" : "error"} · requestId{" "}

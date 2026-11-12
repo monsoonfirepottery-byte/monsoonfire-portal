@@ -84,13 +84,13 @@ describe("OperationsCockpitModule", () => {
         eventsContent={<div>Events full workspace sentinel</div>}
         lendingContent={<div>Lending full workspace sentinel</div>}
         lendingIntakeContent={<div>Lending intake sentinel</div>}
-        activeOperationsModule="members"
+        activeOperationsModule="pieces"
         openModuleFromCockpit={openModuleFromCockpit}
       />
     );
 
-    expect(screen.getByTestId("operations-focus-members")).toBeTruthy();
-    expect(screen.getByText("Members full workspace sentinel")).toBeTruthy();
+    expect(screen.getByTestId("operations-focus-pieces")).toBeTruthy();
+    expect(screen.getByText("Pieces full workspace sentinel")).toBeTruthy();
     expect(screen.queryByText("Needs attention now")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /back to operations overview/i }));

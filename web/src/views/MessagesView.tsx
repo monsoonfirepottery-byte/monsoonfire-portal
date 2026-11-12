@@ -22,6 +22,9 @@ const DEFAULT_MESSAGE_FETCH_LIMIT = 50;
 const MAX_MESSAGE_FETCH_LIMIT = 200;
 
 import "./staff/staffDeskGuide.css";
+const __bundleClass_0 = "card card-3d alert";
+const __bundleClass_1 = "empty-state";
+
 
 type MessagesTab = "inbox" | "studio";
 type ReadFilter = "inbox" | "all";
@@ -32,6 +35,9 @@ type Props = {
   supportEmail: string;
   initialThreadId?: string | null;
   onInitialThreadIdConsumed?: () => void;
+  initialRecipientId?: string | null;
+  onInitialRecipientIdConsumed?: () => void;
+  verifyStaffRecipient?: (uid: string) => Promise<boolean>;
   threads: DirectMessageThread[];
   threadsLoading: boolean;
   threadsError: string;
@@ -189,6 +195,9 @@ export default function MessagesView({
   supportEmail,
   initialThreadId = null,
   onInitialThreadIdConsumed,
+  initialRecipientId = null,
+  onInitialRecipientIdConsumed,
+  verifyStaffRecipient,
   threads,
   threadsLoading,
   threadsError,
@@ -220,6 +229,22 @@ export default function MessagesView({
   const [sendStatus, setSendStatus] = useState("");
   const [messageFetchLimit, setMessageFetchLimit] = useState(DEFAULT_MESSAGE_FETCH_LIMIT);
   const newThreadFormRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!initialRecipientId || liveUsersLoading) return;
+    const recipient = liveUsers.find((candidate) => candidate.id === initialRecipientId && candidate.isActive !== false);
+    setMessagesTab("inbox");
+    if (recipient) {
+      setNewToUid(recipient.id);
+      setNewThreadOpen(true);
+      setSendError("");
+      setSendStatus("");
+    } else {
+      setNewToUid("");
+      setNewThreadOpen(false);
+      setSendError("This person is not available for portal messages. Try email instead.");
+    }
+    onInitialRecipientIdConsumed?.();
+  }, [initialRecipientId, liveUsers, liveUsersLoading, onInitialRecipientIdConsumed]);
   const optimisticReadThreadSet = useMemo(
     () => new Set(optimisticReadThreadIds),
     [optimisticReadThreadIds]
@@ -475,6 +500,10 @@ export default function MessagesView({
 
   async function handleCreateThread() {
     if (composerBusy) return;
+    if (newToUid && !liveUsers.some((candidate) => candidate.id === newToUid && candidate.isActive !== false)) {
+      setSendError("This person is no longer available for portal messages. Try email instead.");
+      return;
+    }
     if (!newBody.trim()) {
       setSendError("Message body is required.");
       setSendStatus("Message body is required.");
@@ -488,6 +517,26 @@ export default function MessagesView({
     try {
       const subject = newSubject.trim() || "(no subject)";
       const toUid = newToUid.trim();
+      if (staffDesk && toUid) {
+        if (!verifyStaffRecipient) {
+          setSendError("Portal account verification is unavailable. Your draft is preserved.");
+          setSendStatus("");
+          return;
+        }
+        let active: boolean;
+        try {
+          active = await verifyStaffRecipient(toUid);
+        } catch {
+          setSendError("Portal account verification is unavailable. Your draft is preserved.");
+          setSendStatus("");
+          return;
+        }
+        if (!active) {
+          setSendError("This portal account is unavailable. Your draft is preserved; try email instead.");
+          setSendStatus("");
+          return;
+        }
+      }
       const messageId = createMessageId();
       const fromEmail = user.email || null;
 
@@ -675,10 +724,10 @@ export default function MessagesView({
         </div>
       </div>
 
-      {sendError ? <div className="card card-3d alert">{sendError}</div> : null}
-      {threadsError ? <div className="card card-3d alert">{threadsError}</div> : null}
-      {liveUsersError ? <div className="card card-3d alert">{liveUsersError}</div> : null}
-      {announcementsError ? <div className="card card-3d alert">{announcementsError}</div> : null}
+      {sendError ? <div className={__bundleClass_0}>{sendError}</div> : null}
+      {threadsError ? <div className={__bundleClass_0}>{threadsError}</div> : null}
+      {liveUsersError ? <div className={__bundleClass_0}>{liveUsersError}</div> : null}
+      {announcementsError ? <div className={__bundleClass_0}>{announcementsError}</div> : null}
 
       <div className="messages-layout">
         <RevealCard className="card card-3d thread-pane" index={0} enabled={motionEnabled}>
@@ -723,9 +772,9 @@ export default function MessagesView({
                   onChange={(event) => setNewBody(event.target.value)}
                 />
               </label>
-              {liveUsersLoading ? <div className="empty-state">Loading live users...</div> : null}
+              {liveUsersLoading ? <div className={__bundleClass_1}>Loading live users...</div> : null}
               {liveUsers.length === 0 && !liveUsersLoading ? (
-                <div className="empty-state">No live users are available yet.</div>
+                <div className={__bundleClass_1}>No live users are available yet.</div>
               ) : null}
               <button className="btn btn-primary" onClick={toVoidHandler(handleCreateThread)} disabled={composerBusy}>
                 {composerBusy ? "Starting..." : "Send new message"}
@@ -734,11 +783,11 @@ export default function MessagesView({
           ) : null}
 
           {threadsLoading ? (
-            <div className="empty-state">Loading direct messages...</div>
+            <div className={__bundleClass_1}>Loading direct messages...</div>
           ) : threads.length === 0 ? (
-            <div className="empty-state">No direct messages yet. Start a new thread with Studio Support for any questions.</div>
+            <div className={__bundleClass_1}>No direct messages yet. Start a new thread with Studio Support for any questions.</div>
           ) : visibleThreads.length === 0 ? (
-            <div className="empty-state">
+            <div className={__bundleClass_1}>
               {readFilter === "inbox"
                 ? selectedThread
                   ? "Inbox cleared. You're still viewing the last conversation you opened."
@@ -787,13 +836,13 @@ export default function MessagesView({
                 ) : null}
               </div>
               {loading ? (
-                <div className="empty-state">Loading messages...</div>
+                <div className={__bundleClass_1}>Loading messages...</div>
               ) : error && !isPermissionError(error) ? (
                 <div className="alert inline-alert">{error}</div>
               ) : error ? (
-                <div className="empty-state">Messages are unavailable right now.</div>
+                <div className={__bundleClass_1}>Messages are unavailable right now.</div>
               ) : messages.length === 0 ? (
-                <div className="empty-state">No messages yet. Send your first note below and we'll follow up.</div>
+                <div className={__bundleClass_1}>No messages yet. Send your first note below and we'll follow up.</div>
               ) : (
                 <>
                   <div className="piece-meta">
@@ -843,7 +892,7 @@ export default function MessagesView({
               </div>
             </div>
           ) : (
-            <div className="empty-state">Choose a direct message to read and reply.</div>
+            <div className={__bundleClass_1}>Choose a direct message to read and reply.</div>
           )}
         </RevealCard>
       </div>
@@ -872,14 +921,14 @@ export default function MessagesView({
             eyebrow="Studio announcements"
             title="Loading studio announcements"
             body="We are pulling the latest studio-wide notices for this inbox."
-            className="empty-state"
+            className={__bundleClass_1}
           />
         ) : announcements.length === 0 ? (
           <GuidedStateCard
             eyebrow="Studio announcements"
             title="No studio announcements yet"
             body="Keep using direct messages for one-to-one questions. Studio-wide notices will appear here when they are published."
-            className="empty-state"
+            className={__bundleClass_1}
           />
         ) : visibleAnnouncements.length === 0 ? (
           <GuidedStateCard
@@ -903,7 +952,7 @@ export default function MessagesView({
                 ? [{ label: "Open all announcements", onClick: () => setReadFilter("all"), variant: "ghost" }]
                 : []
             }
-            className="empty-state"
+            className={__bundleClass_1}
           />
         ) : (
           <div className="announcements-list">

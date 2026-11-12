@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,6 +31,7 @@ vi.mock("firebase/firestore", () => ({
   orderBy: vi.fn((field: string, direction?: string) => ({ kind: "orderBy", field, direction })),
   query: vi.fn((...parts: unknown[]) => ({ kind: "query", parts })),
   serverTimestamp: vi.fn(() => ({ ".sv": "timestamp" })),
+  startAfter: vi.fn((value: unknown) => ({ kind: "startAfter", value })),
   setDoc: vi.fn(async () => undefined),
   updateDoc: vi.fn(async () => undefined),
   where: vi.fn((field: string, op: string, value: unknown) => ({ kind: "where", field, op, value })),
@@ -46,13 +47,19 @@ vi.mock("firebase/storage", () => ({
 
 let pickupTickets: Array<{ ticketId: string; displayName: string; status: string; billingStatus: string }> = [];
 let pickupQueueUnavailable = false;
-const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string }) => {
+const postJsonMock = vi.fn(async (fn: string, body?: { ticketId?: string; startingAfter?: string }) => {
   switch (fn) {
     case "staffListFiringPickupReviews":
       if (pickupQueueUnavailable) throw new Error("Temporary ticket queue failure");
       return { data: { tickets: pickupTickets, runtime: {
         stripeMode: "test", invoicesEnabled: true, firingBillingEnabled: true, liveWritesEnabled: false,
       } } };
+    case "staffSearchStripeGuests":
+      return { ok: true, data: { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], hasMore: false, nextPage: null } };
+    case "staffSearchStripeGuestsByName":
+      return { ok: true, data: body?.startingAfter
+        ? { contacts: [{ id: "cs_guest_2", displayName: "Guest No Email", email: "" }], scanned: 22, hasMore: false, nextPage: null, mode: "test" }
+        : { contacts: [{ id: "cs_guest", displayName: "Guest Example", email: "guest@example.com" }], scanned: 100, hasMore: true, nextPage: "cs_test_next", mode: "test" } };
     case "staffFinalizeFiringPickup":
       pickupTickets = pickupTickets.map((ticket) => ticket.ticketId === body?.ticketId
         ? { ...ticket, status: "ready_for_pickup", billingStatus: "invoice_open" }
@@ -113,12 +120,14 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
     operationsContent,
     reservationNotificationPolicyContent,
     firingPickupBillingContent,
+    accessRoleContent,
     cockpitTab,
   }: {
     cockpitTab: string;
     operationsContent: ReactNode;
     reservationNotificationPolicyContent?: ReactNode;
     firingPickupBillingContent?: ReactNode;
+    accessRoleContent?: ReactNode;
   }) => (
     <div data-testid="cockpit-ops-panel">
       <div data-testid="cockpit-current-tab">{cockpitTab}</div>
@@ -127,6 +136,7 @@ vi.mock("./staff/CockpitOpsPanel", () => ({
       ) : null}
       {operationsContent}
       {cockpitTab === "finance" ? firingPickupBillingContent : null}
+      {cockpitTab === "policyAgentOps" ? accessRoleContent : null}
     </div>
   ),
 }));
@@ -152,6 +162,7 @@ vi.mock("./staff/useStaffEventSignupAutoLoad", () => ({
 }));
 
 import StaffView from "./StaffView";
+import { getDocs } from "firebase/firestore";
 
 function buildUser(): User {
   return {
@@ -165,6 +176,185 @@ function buildUser(): User {
 }
 
 describe("StaffView cockpit routing", () => {
+  it("offers a retry if Stripe customer search stalls", async () => {
+    const previousFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith("/staffSearchStripeContacts")
+      ? new Promise<Response>(() => undefined)
+      : previousFetch(input, init)));
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    const search = await screen.findByLabelText("Search contacts by name or email");
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(search, { target: { value: "Alex" } });
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_500); });
+      expect(screen.getByText(/Stripe customer search is unavailable/)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("loads contacts on direct entry to access and roles", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ segments?: string[] }> }).parts;
+      return (parts?.[0]?.segments?.at(-1) === "users" ? { docs: [{ id: "policy-person", data: () => ({ displayName: "Policy Person", email: "policy@example.com" }) }] } : empty) as never;
+    });
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/policy-agent-ops");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText(/Policy Person/)).length).toBeGreaterThan(0);
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+    }
+  });
+  it("searches guest names only on request and labels an incomplete scan", async () => {
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "Guest" } });
+    expect(postJsonMock).not.toHaveBeenCalledWith("staffSearchStripeGuestsByName", expect.anything(), expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: "Search guest checkouts by name" }));
+    expect(await screen.findByText("Guest Example")).toBeTruthy();
+    expect(screen.getByText("Checked 100 checkouts. More remain to search.")).toBeTruthy();
+    expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuestsByName", { search: "Guest" }, { suppressTelemetry: true });
+    fireEvent.click(screen.getByRole("button", { name: "Search more guest checkouts" }));
+    expect(await screen.findByText("Guest No Email")).toBeTruthy();
+    expect(screen.getByText("Checked 122 checkouts. Search complete.")).toBeTruthy();
+    expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuestsByName", { search: "Guest", startingAfter: "cs_test_next" }, { suppressTelemetry: true });
+  });
+  it("searches guest checkouts by exact email without request telemetry", async () => {
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+    fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "guest@example.com" } });
+    expect(await screen.findByText("Guest Example")).toBeTruthy();
+    expect(postJsonMock).toHaveBeenCalledWith("staffSearchStripeGuests", { email: "guest@example.com" }, { suppressTelemetry: true });
+    expect(postJsonMock).toHaveBeenCalledWith("staffListFiringPickupReviews", {}, { suppressTelemetry: true });
+  });
+  it("shows the first user page while profiles and a later user page are stalled", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    const docs = Array.from({ length: 240 }, (_, i) => ({ id: `user-${i}`, data: () => ({ displayName: `Page Contact ${i}` }) }));
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ kind?: string; segments?: string[] }> }).parts;
+      const name = parts?.[0]?.segments?.at(-1);
+      if (name === "profiles" || (name === "users" && parts.some((part) => part.kind === "startAfter"))) return new Promise(() => undefined);
+      return (name === "users" ? { docs } : empty) as never;
+    });
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText("Page Contact 0")).length).toBeGreaterThan(0);
+      expect(screen.getByText("Loading contacts; search results may be incomplete.")).toBeTruthy();
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+    }
+  });
+  it("searches Stripe separately, loads another page, and keeps search out of request telemetry", async () => {
+    const priorFetch = globalThis.fetch;
+    const stripeRequests: Array<{ url: string; body: string; adminToken: string | null }> = [];
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.endsWith("/staffSearchStripeContacts")) return priorFetch(input, init);
+      stripeRequests.push({ url, body: String(init?.body), adminToken: new Headers(init?.headers).get("x-admin-token") });
+      const body = JSON.parse(String(init?.body)) as { page?: string };
+      return new Response(JSON.stringify({ ok: true, data: body.page
+        ? { contacts: [{ id: "cus_2", displayName: "Second Stripe", email: "second@example.com" }, { id: "cus_3", displayName: "No Email Stripe", email: "" }], hasMore: false, nextPage: null }
+        : { contacts: [{ id: "cus_1", displayName: "First Stripe", email: "first@example.com" }], hasMore: true, nextPage: "cursor-1" } }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    window.history.replaceState({}, "", "/staff/cockpit/members");
+    render(<StaffView user={buildUser()} isStaff devAdminToken="dev-test-token" onDevAdminTokenChange={() => undefined} devAdminEnabled showEmulatorTools={false} forceCockpitWorkspace />);
+    fireEvent.change(await screen.findByLabelText("Search contacts by name or email"), { target: { value: "stripe" } });
+    expect(await screen.findByText("First Stripe")).toBeTruthy();
+    const stripeRow = screen.getByText("First Stripe").closest(".staff-ticket-contact");
+    expect(stripeRow).toBeTruthy();
+    fireEvent.click(within(stripeRow as HTMLElement).getByRole("button", { name: "Copy email" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("first@example.com"));
+    fireEvent.click(screen.getByRole("button", { name: "Load more Stripe customers" }));
+    expect(await screen.findByText("Second Stripe")).toBeTruthy();
+    expect(screen.getByText("No Email Stripe")).toBeTruthy();
+    expect(screen.getByText("No usable email on file")).toBeTruthy();
+    expect(stripeRequests.map((entry) => JSON.parse(entry.body) as { search: string; page?: string })).toEqual([{ search: "stripe" }, { search: "stripe", page: "cursor-1" }]);
+    expect(stripeRequests.every((entry) => entry.adminToken === "dev-test-token")).toBe(true);
+    expect(postJsonMock.mock.calls.some(([fn]) => fn === "staffSearchStripeContacts")).toBe(false);
+  });
+  it("shows directory contacts even while the ticket source is slow", async () => {
+    const original = postJsonMock.getMockImplementation();
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ segments?: string[] }> }).parts;
+      return (parts?.[0]?.segments?.at(-1) === "users" ? { docs: [{ id: "quick", data: () => ({ displayName: "Quick Contact", email: "quick@example.com" }) }] } : empty) as never;
+    });
+    postJsonMock.mockImplementation(async (fn, body) => fn === "staffListFiringPickupReviews" ? new Promise(() => undefined) : original!(fn, body));
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText("Quick Contact")).length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "Open contact Quick Contact" })).toBeTruthy();
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+      postJsonMock.mockImplementation(original!);
+    }
+  });
+  it("shows directory results while firing ticket contacts are still loading", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ segments?: string[] }> }).parts;
+      return (parts?.[0]?.segments?.at(-1) === "users" ? { docs: [{ id: "known", data: () => ({ displayName: "Known Person", email: "known@example.com" }) }] } : empty) as never;
+    });
+    const originalPost = postJsonMock.getMockImplementation()!;
+    postJsonMock.mockImplementation((fn, body) => fn === "staffListFiringPickupReviews" ? new Promise(() => {}) : originalPost(fn, body));
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect((await screen.findAllByText("Known Person")).length).toBeGreaterThan(0);
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+      postJsonMock.mockImplementation(originalPost);
+    }
+  });
+  it("shows a partial-results warning when a later directory page fails", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    const docs = Array.from({ length: 240 }, (_, i) => ({ id: `partial-${i}`, data: () => ({ displayName: `Person ${i}` }) }));
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ kind?: string; segments?: string[] }> }).parts;
+      if (parts?.[0]?.segments?.at(-1) === "users") {
+        if (parts.some((part) => part.kind === "startAfter")) throw new Error("Page unavailable");
+        return { docs } as never;
+      }
+      return empty as never;
+    });
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      expect(await screen.findByText("Some contacts may be missing. Refresh contacts to retry.")).toBeTruthy();
+      expect(screen.getAllByText("Person 0").length).toBeGreaterThan(0);
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+    }
+  });
+
+  it("loads later directory pages and makes the next contact searchable", async () => {
+    const empty = { docs: [], empty: true, forEach: () => undefined };
+    const docs = Array.from({ length: 240 }, (_, i) => ({ id: `user-${i}`, data: () => ({ displayName: `Person ${i}` }) }));
+    const last = { id: "user-final", data: () => ({ displayName: "Later Contact", email: "later@example.com" }) };
+    vi.mocked(getDocs).mockImplementation(async (value) => {
+      const parts = (value as unknown as { parts: Array<{ kind?: string; segments?: string[] }> }).parts;
+      const name = parts?.[0]?.segments?.at(-1);
+      const cursor = parts?.some((part) => part.kind === "startAfter");
+      return (name === "users" ? { docs: cursor ? [last] : docs } : empty) as never;
+    });
+    try {
+      window.history.replaceState({}, "", "/staff/cockpit/members");
+      render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} forceCockpitWorkspace />);
+      const search = await screen.findByLabelText("Search contacts by name or email");
+      fireEvent.change(search, { target: { value: "Later Contact" } });
+      expect(await screen.findByText("Later Contact")).toBeTruthy();
+      expect(screen.queryByText("Some contacts may be missing. Refresh contacts to retry.")).toBeNull();
+    } finally {
+      vi.mocked(getDocs).mockImplementation(async () => empty as never);
+    }
+  });
   beforeEach(() => {
     postJsonMock.mockClear();
     pickupTickets = [];
@@ -288,7 +478,8 @@ describe("StaffView cockpit routing", () => {
     render(<StaffView user={buildUser()} isStaff devAdminToken="" onDevAdminTokenChange={() => undefined} devAdminEnabled={false} showEmulatorTools={false} onOpenMessages={onOpenMessages} />);
     const overview = await screen.findByRole("region", { name: "Studio overview" });
     fireEvent.click(overview.querySelector(".staff-studio-marker-desk")!);
-    expect(onOpenMessages).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(window.location.pathname).toBe("/staff/cockpit/messages"));
+    expect(onOpenMessages).not.toHaveBeenCalled();
   });
   it("opens the announcement composer from the studio overview", async () => {
     window.history.replaceState({}, "", "/staff");
@@ -479,7 +670,7 @@ describe("StaffView cockpit routing", () => {
     expect(screen.queryByTestId("operations-overview")).toBeNull();
   });
 
-  it("shows in-app role management controls for admins in the members module", async () => {
+  it("shows role management controls for admins in policies", async () => {
     window.history.replaceState({}, "", "/staff/members");
     render(
       <StaffView
@@ -493,8 +684,9 @@ describe("StaffView cockpit routing", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh clients" }));
-    expect(await screen.findByText("Access role")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh contacts" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Policies & integrations" }));
+    expect(await screen.findByRole("heading", { name: "Access & roles" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Save role change" })).toBeTruthy();
     const roleSelect = screen.getByLabelText("Role") as HTMLSelectElement;
     expect(Array.from(roleSelect.options).map((option) => option.value)).toEqual(["member", "staff", "admin"]);
@@ -513,8 +705,9 @@ describe("StaffView cockpit routing", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh clients" }));
-    expect(await screen.findByText("Access role")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh contacts" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Policies & integrations" }));
+    expect(await screen.findByRole("heading", { name: "Access & roles" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Save role change" })).toBeNull();
     expect(screen.getByText(/Admin claim required to change roles\./)).toBeTruthy();
   });

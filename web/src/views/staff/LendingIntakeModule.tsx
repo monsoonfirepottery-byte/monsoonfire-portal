@@ -8,6 +8,13 @@ import {
   createLendingScanAudioController,
   type LendingScanAudioCue,
 } from "./lendingScanAudio";
+const __bundleClass_0 = "staff-column";
+const __bundleClass_1 = "card staff-console-card";
+const __bundleClass_2 = "card-title-row";
+const __bundleClass_3 = "staff-actions-row";
+const __bundleClass_4 = "staff-note";
+const __bundleClass_5 = "staff-subtitle";
+
 
 type RunAction = (key: string, fn: () => Promise<void>) => Promise<void>;
 type ScanPhase = "ready" | "importing" | "matching" | "pass" | "fail" | "timeout";
@@ -462,16 +469,16 @@ export default function LendingIntakeModule({
   }
 
   return (
-    <section className="staff-column" data-testid="lending-intake-page">
-      <section className="card staff-console-card">
-        <div className="card-title-row">
-          <div className="staff-column">
+    <section className={__bundleClass_0} data-testid="lending-intake-page">
+      <section className={__bundleClass_1}>
+        <div className={__bundleClass_2}>
+          <div className={__bundleClass_0}>
             <div className="card-title">Lending intake</div>
             <p className="card-subtitle">
               Dedicated ISBN intake for scanner loops, batch import, and cleanup follow-through.
             </p>
           </div>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_3}>
             <button
               type="button"
               className="btn btn-ghost"
@@ -486,22 +493,22 @@ export default function LendingIntakeModule({
           </div>
         </div>
         {hasFunctionsAuthMismatch ? (
-          <div className="staff-note">
+          <div className={__bundleClass_4}>
             Local functions detected at <code>{fBaseUrl}</code> while Auth emulator is off. Intake requests are paused to prevent false auth failures.
           </div>
         ) : null}
-        <div className="staff-note">
+        <div className={__bundleClass_4}>
           Scanner status stays visible here so the operator always knows whether the system is ready, importing, matching, or waiting on cleanup.
         </div>
       </section>
 
-      <section className="card staff-console-card">
-        <div className="card-title-row">
-          <div className="staff-column">
-            <div className="staff-subtitle">Manual pass queue</div>
+      <section className={__bundleClass_1}>
+        <div className={__bundleClass_2}>
+          <div className={__bundleClass_0}>
+            <div className={__bundleClass_5}>Manual pass queue</div>
             <div className="card-title">{manualPassItems.length === 0 ? "Queue clear" : "Pull-and-finish queue"}</div>
           </div>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_3}>
             <button
               type="button"
               className="btn btn-primary"
@@ -527,23 +534,23 @@ export default function LendingIntakeModule({
             ) : null}
           </div>
         </div>
-        <div className="staff-note" data-testid="lending-manual-pass-summary">
+        <div className={__bundleClass_4} data-testid="lending-manual-pass-summary">
           {manualPassItems.length === 0
             ? "No titles are waiting on a manual pass. The rack scan loop is clear."
             : "Manual-pass alert means pull that book aside, keep scanning the rack, and finish it from this queue when you are ready."}
         </div>
         {latestManualPassEntry ? (
-          <div className="staff-note">
+          <div className={__bundleClass_4}>
             Latest manual pass queued: <strong>{latestManualPassEntry.title}</strong>
           </div>
         ) : null}
       </section>
 
       {manualPassEditorOpen && manualPassEditorItem ? (
-        <section className="card staff-console-card">
-          <div className="card-title-row">
-            <div className="staff-column">
-              <div className="staff-subtitle">Manual pass editor</div>
+        <section className={__bundleClass_1}>
+          <div className={__bundleClass_2}>
+            <div className={__bundleClass_0}>
+              <div className={__bundleClass_5}>Manual pass editor</div>
               <div className="card-title">{manualPassEditorItem.title || manualPassEditorItem.id}</div>
             </div>
             <span className="pill">Editing</span>
@@ -572,24 +579,24 @@ export default function LendingIntakeModule({
 
       <div className="staff-module-grid">
         <section className="card staff-console-card staff-column">
-          <div className="card-title-row">
-            <div className="staff-column">
-              <div className="staff-subtitle">Single-book scan</div>
+          <div className={__bundleClass_2}>
+            <div className={__bundleClass_0}>
+              <div className={__bundleClass_5}>Single-book scan</div>
               <div className="card-title">{phaseLabel(scanPhase)}</div>
             </div>
             <span className="pill" data-testid="lending-scan-status-phase">
               {phaseLabel(scanPhase)}
             </span>
           </div>
-          <div className="staff-note" data-testid="lending-scan-status-message">{scanMessage}</div>
+          <div className={__bundleClass_4} data-testid="lending-scan-status-message">{scanMessage}</div>
           {scanSupportCode ? (
-            <div className="staff-note">
+            <div className={__bundleClass_4}>
               Support code: <code>{scanSupportCode}</code>
             </div>
           ) : null}
-          {isbnScanStatus && isbnScanStatus !== scanMessage ? <div className="staff-note">{isbnScanStatus}</div> : null}
+          {isbnScanStatus && isbnScanStatus !== scanMessage ? <div className={__bundleClass_4}>{isbnScanStatus}</div> : null}
           {manualPassEditorOpen ? (
-            <div className="staff-note">Scanner is paused while the manual-pass editor is open.</div>
+            <div className={__bundleClass_4}>Scanner is paused while the manual-pass editor is open.</div>
           ) : null}
           <div className="staff-field">
             <span>Operator feedback</span>
@@ -631,7 +638,7 @@ export default function LendingIntakeModule({
             />
             <span className="helper">ISBN-10 and ISBN-13 both work. Manual-pass results queue the book for later cleanup, then return to ready.</span>
           </label>
-          <div className="staff-actions-row">
+          <div className={__bundleClass_3}>
             <button
               type="button"
               className="btn btn-primary"
@@ -649,7 +656,7 @@ export default function LendingIntakeModule({
               {scanPhase === "importing" || scanPhase === "matching" || isbnScanBusy ? "Scanning..." : "Scan book"}
             </button>
           </div>
-          <div className="staff-subtitle">This scan session</div>
+          <div className={__bundleClass_5}>This scan session</div>
           <div className="staff-table-wrap">
             <table className="staff-table" data-testid="lending-scan-session-list">
               <thead>
@@ -716,7 +723,7 @@ export default function LendingIntakeModule({
         </section>
 
         <section className="card staff-console-card staff-column">
-          <div className="staff-subtitle">Bulk import</div>
+          <div className={__bundleClass_5}>Bulk import</div>
           <label className="staff-field">
             Paste ISBNs
             <textarea
@@ -739,8 +746,8 @@ export default function LendingIntakeModule({
           </label>
           {isbnImportError ? <div className="staff-note staff-note-error">{isbnImportError}</div> : null}
           {isbnImportStatus ? <div className="staff-note staff-note-ok">{isbnImportStatus}</div> : null}
-          {bulkRefreshNote ? <div className="staff-note">{bulkRefreshNote}</div> : null}
-          <div className="staff-actions-row">
+          {bulkRefreshNote ? <div className={__bundleClass_4}>{bulkRefreshNote}</div> : null}
+          <div className={__bundleClass_3}>
             <button
               type="button"
               className="btn btn-primary"
@@ -753,15 +760,15 @@ export default function LendingIntakeModule({
         </section>
       </div>
 
-      <section className="card staff-console-card">
-        <div className="card-title-row">
-          <div className="staff-column">
-            <div className="staff-subtitle">Manual pass queue</div>
+      <section className={__bundleClass_1}>
+        <div className={__bundleClass_2}>
+          <div className={__bundleClass_0}>
+            <div className={__bundleClass_5}>Manual pass queue</div>
             <div className="card-title">Pull-and-finish items</div>
           </div>
           <span className="pill">{manualPassItems.length}</span>
         </div>
-        <div className="staff-note">
+        <div className={__bundleClass_4}>
           Placeholder records and thin metadata imports land here so staff can pull the book, open the editor, and finish the record without leaving intake.
         </div>
         <div className="staff-table-wrap">

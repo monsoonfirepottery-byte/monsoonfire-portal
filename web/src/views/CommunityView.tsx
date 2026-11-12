@@ -14,6 +14,19 @@ import {
 } from "./community/communityBlogTypes";
 import "./CommunityView.css";
 import "./community/CommunityBlogs.css";
+const __bundleClass_0 = "card-title";
+const __bundleClass_1 = "community-copy";
+const __bundleClass_2 = "staff-note";
+const __bundleClass_3 = "community-blog-card-head";
+const __bundleClass_4 = "community-blog-card-meta";
+const __bundleClass_5 = "community-blog-card-body";
+const __bundleClass_6 = "community-blog-card-cover";
+const __bundleClass_7 = "community-blog-card-title";
+const __bundleClass_8 = "community-blog-tag-list";
+const __bundleClass_9 = "community-blog-actions";
+const __bundleClass_10 = "btn btn-ghost btn-small";
+const __bundleClass_11 = "community-card-head";
+
 
 type ValueChip = {
   title: string;
@@ -680,8 +693,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
       <div className="community-layout">
         <div className="community-column">
           <section className="card card-3d community-hero">
-            <h2 className="card-title">Why this community works</h2>
-            <p className="community-copy">
+            <h2 className={__bundleClass_0}>Why this community works</h2>
+            <p className={__bundleClass_1}>
               You can absolutely make solo. Community just makes the hard parts easier: decisions,
               momentum, and the quiet "is this normal?" questions that can stall a whole session.
             </p>
@@ -701,8 +714,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
           </section>
 
           <section className="card card-3d community-friction">
-            <h2 className="card-title">Ways to plug in and keep making</h2>
-            <p className="community-copy">
+            <h2 className={__bundleClass_0}>Ways to plug in and keep making</h2>
+            <p className={__bundleClass_1}>
               This is a working community for ceramic artists who want consistent output, better
               margins, and more confidence in what they ship.
             </p>
@@ -737,8 +750,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
           <section className="card card-3d community-studio-notes">
             <div className="community-studio-notes-head">
               <div>
-                <h2 className="card-title">Studio notes</h2>
-                <p className="community-copy">
+                <h2 className={__bundleClass_0}>Studio notes</h2>
+                <p className={__bundleClass_1}>
                   Short updates from the studio floor, plus a few outside reads worth keeping in the studio orbit.
                 </p>
               </div>
@@ -761,17 +774,17 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
               </div>
             </div>
 
-            {blogActionStatus ? <div className="staff-note">{blogActionStatus}</div> : null}
-            {blogsError ? <div className="staff-note">{blogsError}</div> : null}
-            {blogsLoading ? <div className="staff-note">Loading studio notes...</div> : null}
+            {blogActionStatus ? <div className={__bundleClass_2}>{blogActionStatus}</div> : null}
+            {blogsError ? <div className={__bundleClass_2}>{blogsError}</div> : null}
+            {blogsLoading ? <div className={__bundleClass_2}>Loading studio notes...</div> : null}
             {!blogsLoading && !blogsError && blogPosts.length === 0 ? (
-              <div className="staff-note">No published studio notes yet.</div>
+              <div className={__bundleClass_2}>No published studio notes yet.</div>
             ) : null}
             {!blogsLoading && latestBlog ? (
               <div className="community-blog-stack">
                 <article className="community-blog-card community-blog-feature">
-                  <div className="community-blog-card-head">
-                    <div className="community-blog-card-meta">
+                  <div className={__bundleClass_3}>
+                    <div className={__bundleClass_4}>
                       <span>Latest studio note</span>
                       <span>{formatCommunityBlogDate(latestBlog.publishedAtMs)}</span>
                       <span>{latestBlog.readingMinutes} min read</span>
@@ -792,24 +805,24 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                       },
                     })}
                   </div>
-                  <div className="community-blog-card-body">
+                  <div className={__bundleClass_5}>
                     {latestBlog.featuredImage ? (
                       <img
-                        className="community-blog-card-cover"
+                        className={__bundleClass_6}
                         src={latestBlog.featuredImage.url}
                         alt={latestBlog.featuredImage.alt}
                       />
                     ) : null}
-                    <h3 className="community-blog-card-title">{latestBlog.title}</h3>
-                    <p className="community-copy">{latestBlog.excerpt}</p>
-                    <div className="community-blog-tag-list">
+                    <h3 className={__bundleClass_7}>{latestBlog.title}</h3>
+                    <p className={__bundleClass_1}>{latestBlog.excerpt}</p>
+                    <div className={__bundleClass_8}>
                       {latestBlog.tags.map((tag) => (
                         <span className="community-blog-tag" key={tag}>
                           {tag}
                         </span>
                       ))}
                     </div>
-                    <div className="community-blog-actions">
+                    <div className={__bundleClass_9}>
                       <button
                         type="button"
                         className="btn btn-ghost btn-small community-blog-toggle"
@@ -821,10 +834,10 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                       <a className="btn btn-primary btn-small" href={latestBlog.canonicalUrl} target="_blank" rel="noreferrer">
                         Open full note
                       </a>
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyBlogLink(latestBlog.canonicalUrl)}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void copyBlogLink(latestBlog.canonicalUrl)}>
                         Copy link
                       </button>
-                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void shareBlogLink(latestBlog)}>
+                      <button type="button" className={__bundleClass_10} onClick={() => void shareBlogLink(latestBlog)}>
                         Share
                       </button>
                     </div>
@@ -838,8 +851,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                   <div className="community-blog-list">
                     {recentBlogs.map((post) => (
                       <article className="community-blog-card" key={post.id}>
-                        <div className="community-blog-card-head">
-                          <div className="community-blog-card-meta">
+                        <div className={__bundleClass_3}>
+                          <div className={__bundleClass_4}>
                             <span>{formatCommunityBlogDate(post.publishedAtMs)}</span>
                             <span>{post.readingMinutes} min read</span>
                             <span>{communityBlogMarketingFocusLabel(post.marketingFocus)}</span>
@@ -859,20 +872,20 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                             },
                           })}
                         </div>
-                        <div className="community-blog-card-body">
+                        <div className={__bundleClass_5}>
                           {post.featuredImage ? (
-                            <img className="community-blog-card-cover" src={post.featuredImage.url} alt={post.featuredImage.alt} />
+                            <img className={__bundleClass_6} src={post.featuredImage.url} alt={post.featuredImage.alt} />
                           ) : null}
-                          <h3 className="community-blog-card-title">{post.title}</h3>
-                          <p className="community-copy">{post.excerpt}</p>
-                          <div className="community-blog-tag-list">
+                          <h3 className={__bundleClass_7}>{post.title}</h3>
+                          <p className={__bundleClass_1}>{post.excerpt}</p>
+                          <div className={__bundleClass_8}>
                             {post.tags.map((tag) => (
                               <span className="community-blog-tag" key={tag}>
                                 {tag}
                               </span>
                             ))}
                           </div>
-                          <div className="community-blog-actions">
+                          <div className={__bundleClass_9}>
                             <button
                               type="button"
                               className="btn btn-ghost btn-small community-blog-toggle"
@@ -884,7 +897,7 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                             <a className="btn btn-secondary btn-small" href={post.canonicalUrl} target="_blank" rel="noreferrer">
                               Open full note
                             </a>
-                            <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyBlogLink(post.canonicalUrl)}>
+                            <button type="button" className={__bundleClass_10} onClick={() => void copyBlogLink(post.canonicalUrl)}>
                               Copy link
                             </button>
                           </div>
@@ -901,15 +914,15 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                   <div className="community-blog-external-rail">
                     <div className="community-blog-rail-head">
                       <h3 className="community-blog-rail-title">Around the studio</h3>
-                      <p className="community-copy">
+                      <p className={__bundleClass_1}>
                         A few outside posts and feeds worth keeping in the mix.
                       </p>
                     </div>
                     <div className="community-blog-external-list">
                       {externalHighlights.map((item) => (
                         <article className="community-blog-card community-blog-card-external" key={item.id}>
-                          <div className="community-blog-card-head">
-                            <div className="community-blog-card-meta">
+                          <div className={__bundleClass_3}>
+                            <div className={__bundleClass_4}>
                               <span>{item.sourceTitle}</span>
                               <span>{formatCommunityBlogDate(item.publishedAtMs)}</span>
                               {item.authorName ? <span>{item.authorName}</span> : null}
@@ -929,25 +942,25 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                               },
                             })}
                           </div>
-                          <div className="community-blog-card-body">
+                          <div className={__bundleClass_5}>
                             {item.imageUrl ? (
-                              <img className="community-blog-card-cover" src={item.imageUrl} alt={item.imageAlt ?? item.title} />
+                              <img className={__bundleClass_6} src={item.imageUrl} alt={item.imageAlt ?? item.title} />
                             ) : null}
-                            <h3 className="community-blog-card-title">{item.title}</h3>
-                            <p className="community-copy">{item.excerpt}</p>
+                            <h3 className={__bundleClass_7}>{item.title}</h3>
+                            <p className={__bundleClass_1}>{item.excerpt}</p>
                             {item.studioNote ? <div className="community-blog-external-note">{item.studioNote}</div> : null}
-                            <div className="community-blog-tag-list">
+                            <div className={__bundleClass_8}>
                               {item.tags.map((tag) => (
                                 <span className="community-blog-tag" key={tag}>
                                   {tag}
                                 </span>
                               ))}
                             </div>
-                            <div className="community-blog-actions">
+                            <div className={__bundleClass_9}>
                               <a className="btn btn-secondary btn-small" href={item.canonicalUrl} target="_blank" rel="noreferrer">
                                 Open source
                               </a>
-                              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyBlogLink(item.canonicalUrl)}>
+                              <button type="button" className={__bundleClass_10} onClick={() => void copyBlogLink(item.canonicalUrl)}>
                                 Copy link
                               </button>
                             </div>
@@ -962,8 +975,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
           </section>
 
           <section className="card card-3d community-main">
-            <h2 className="card-title">Community events & gatherings</h2>
-            <p className="community-copy">
+            <h2 className={__bundleClass_0}>Community events & gatherings</h2>
+            <p className={__bundleClass_1}>
               Low-pressure meetups with practical payoff. Come to learn, finish work, and keep your
               momentum going between firings.
             </p>
@@ -982,7 +995,7 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                 if (isHidden(cardKey)) return null;
                 return (
                 <article className="community-event" key={event.title}>
-                  <div className="community-card-head">
+                  <div className={__bundleClass_11}>
                   <h3 className="community-event-title">{event.title}</h3>
                     {reportMenu(cardKey, {
                       targetType: "event",
@@ -998,8 +1011,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
           </section>
 
           <section className="card card-3d community-library">
-            <h2 className="card-title">Lending library</h2>
-            <p className="community-copy">
+            <h2 className={__bundleClass_0}>Lending library</h2>
+            <p className={__bundleClass_1}>
               Borrow books, films, and studio references to support what you're making right now.
               Staff approvals keep checkout fast and predictable.
             </p>
@@ -1011,11 +1024,11 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
 
         <aside className="community-sidebar" data-community-sidebar="true">
           <section className="card card-3d community-report-history" data-community-report-history="true">
-            <div className="community-card-head">
-              <h2 className="card-title">Your reports</h2>
+            <div className={__bundleClass_11}>
+              <h2 className={__bundleClass_0}>Your reports</h2>
               <button
                 type="button"
-                className="btn btn-ghost btn-small"
+                className={__bundleClass_10}
                 onClick={() => {
                   void loadReportHistory();
                   void loadAppeals();
@@ -1025,12 +1038,12 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                 {reportHistoryBusy ? "Refreshing..." : "Refresh"}
               </button>
             </div>
-            <p className="community-copy">
+            <p className={__bundleClass_1}>
               See what you flagged, what changed, and what still needs follow-up.
             </p>
-            {reportHistoryError ? <div className="staff-note">{reportHistoryError}</div> : null}
+            {reportHistoryError ? <div className={__bundleClass_2}>{reportHistoryError}</div> : null}
             {!reportHistoryError && reportHistory.length === 0 ? (
-              <div className="staff-note">No reports yet. Use “Report” on any card when something looks off.</div>
+              <div className={__bundleClass_2}>No reports yet. Use “Report” on any card when something looks off.</div>
             ) : null}
             {reportHistory.length > 0 ? (
               <div className="community-report-list">
@@ -1055,7 +1068,7 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
                     ) : null}
                     {(item.status === "resolved" || item.status === "dismissed") && !appealsByReport[item.id] ? (
                       <div className="community-report-actions">
-                        <button type="button" className="btn btn-ghost btn-small" onClick={() => openAppeal(item)}>
+                        <button type="button" className={__bundleClass_10} onClick={() => openAppeal(item)}>
                           Request review
                         </button>
                       </div>
@@ -1070,8 +1083,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
           </section>
 
           <section className="card card-3d community-quote" key={activeQuote.quote}>
-            <div className="community-card-head">
-            <h2 className="card-title">Member note</h2>
+            <div className={__bundleClass_11}>
+            <h2 className={__bundleClass_0}>Member note</h2>
               {reportMenu("studio-update:member-note", {
                 targetType: "studio_update",
                 targetRef: { id: "member-note-rotation" },
@@ -1083,8 +1096,8 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
           </section>
 
           <section className="card card-3d community-videos">
-            <h2 className="card-title">Suggested videos</h2>
-            <p className="community-copy">
+            <h2 className={__bundleClass_0}>Suggested videos</h2>
+            <p className={__bundleClass_1}>
               Curated for what people are practicing this month. Rotate links anytime.
             </p>
             <div className="video-list">
@@ -1146,13 +1159,13 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
       {reportTarget ? (
         <div className="community-report-modal-backdrop" role="dialog" aria-modal="true" aria-label="Report content">
           <div className="community-report-modal card card-3d">
-            <div className="community-card-head">
-              <h2 className="card-title">Report this content</h2>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => setReportTarget(null)}>
+            <div className={__bundleClass_11}>
+              <h2 className={__bundleClass_0}>Report this content</h2>
+              <button type="button" className={__bundleClass_10} onClick={() => setReportTarget(null)}>
                 Close
               </button>
             </div>
-            <div className="community-copy">
+            <div className={__bundleClass_1}>
               {reportTarget.targetSnapshot.title} · {reportTarget.targetType}
             </div>
             <div className="community-report-policy">
@@ -1212,7 +1225,7 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
               </button>
             </div>
             {reportStatus ? (
-              <div className="staff-note" role={reportStatusIsError ? "alert" : "status"} aria-live={reportStatusIsError ? "assertive" : "polite"}>
+              <div className={__bundleClass_2} role={reportStatusIsError ? "alert" : "status"} aria-live={reportStatusIsError ? "assertive" : "polite"}>
                 {reportStatus}
               </div>
             ) : null}
@@ -1223,13 +1236,13 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
       {appealTarget ? (
         <div className="community-report-modal-backdrop" role="dialog" aria-modal="true" aria-label="Request moderation review">
           <div className="community-report-modal card card-3d">
-            <div className="community-card-head">
-              <h2 className="card-title">Request moderation review</h2>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => setAppealTarget(null)} disabled={appealBusy}>
+            <div className={__bundleClass_11}>
+              <h2 className={__bundleClass_0}>Request moderation review</h2>
+              <button type="button" className={__bundleClass_10} onClick={() => setAppealTarget(null)} disabled={appealBusy}>
                 Close
               </button>
             </div>
-            <div className="community-copy">
+            <div className={__bundleClass_1}>
               {appealTarget.title} · Ref <code>{appealTarget.id}</code>
             </div>
             <label className="staff-field" htmlFor="community-appeal-note">
@@ -1258,7 +1271,7 @@ export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onO
               </button>
             </div>
             {appealStatus ? (
-              <div className="staff-note" role={appealStatusIsError ? "alert" : "status"} aria-live={appealStatusIsError ? "assertive" : "polite"}>
+              <div className={__bundleClass_2} role={appealStatusIsError ? "alert" : "status"} aria-live={appealStatusIsError ? "assertive" : "polite"}>
                 {appealStatus}
               </div>
             ) : null}

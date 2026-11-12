@@ -23,6 +23,11 @@
 .staff-workspace-nav nav button[aria-current="page"] { background: var(--surface-2, #edf2f5); color: var(--text); font-weight: 700; box-shadow: inset 3px 0 var(--accent, #297387); }
 .staff-extra-tools { margin-top: 14px; padding: 4px 0 4px 12px; }
 .staff-workspace-nav-label { margin: 18px 0 6px; padding: 0 12px; color: var(--muted); font-size: 11px; font-weight: 800; }
+.staff-administration-tools { margin: 18px 0 6px; }
+.staff-administration-tools summary { padding: 8px 12px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.staff-administration-tools nav { padding-left: 8px; }
+.staff-administration-tools nav button { display: flex; align-items: center; gap: 8px; }
+.staff-administration-tools nav button span { color: var(--accent, #297387); font-size: 16px; }
 .staff-archived-tools { margin: 1rem 0; padding: 0 12px; color: var(--muted); font-size: 0.85rem; }
 .staff-archived-tools summary { padding: 0.5rem 0; cursor: pointer; font-weight: 700; }
 .staff-workspace-nav .staff-more-tools { display: none; }
@@ -38,7 +43,7 @@
 .staff-human-workspace .staff-console-content { min-width: 0; }
 .staff-workspace-panel > .staff-console-card { padding: 0; border: 0; background: transparent; box-shadow: none; }
 .staff-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
-.staff-page-heading h1, .staff-task-home-hero h1 { margin: 0; font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; letter-spacing: -.025em; }
+.staff-page-heading h1 { margin: 0; font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; letter-spacing: -.025em; }
 .staff-page-heading p { margin: 9px 0 0; color: var(--muted); font-size: 15px; }
 .staff-section-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--desk-line); margin-bottom: 20px; }
 .staff-stripe { grid-template-columns: minmax(0, 1fr); overflow-wrap: anywhere; }
@@ -110,10 +115,6 @@
 .staff-human-workspace .firing-billing-recovery { padding: 14px 0; border-bottom: 1px solid var(--desk-line); }
 .staff-human-workspace .staff-note { font-size: 14px; line-height: 1.5; }
 .staff-human-workspace .btn { min-height: 40px; }
-.staff-human-workspace .staff-task-home-hero { border: 0; background: none; padding: 0 0 12px; box-shadow: none; }
-.staff-human-workspace .staff-task-home-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.staff-human-workspace .staff-task-home-card { padding: 20px; box-shadow: none; }
-.staff-human-workspace .staff-task-home-card .staff-actions-row { margin-top: 12px; }
 .staff-daily-secondary { display: flex; flex-wrap: wrap; gap: 8px; }
 .staff-human-workspace .staff-identity-statusline-footer { font-size: 11px; overflow-wrap: anywhere; margin-top: 30px; color: var(--muted); }
 .staff-human-workspace button:focus-visible, .staff-human-workspace input:focus-visible { outline: 3px solid var(--accent, #297387); outline-offset: 3px; }
@@ -134,7 +135,6 @@
   .staff-workspace-nav nav button { padding: 9px 10px; }
   .staff-new-ticket { width: auto; margin-bottom: 12px; }
   .staff-section-tabs { flex-wrap: wrap; gap: 0 12px; }
-  .staff-human-workspace .staff-task-home-lane-grid { grid-template-columns: 1fr; }
   .staff-human-workspace .firing-billing-module { padding: 12px; }
 }
 

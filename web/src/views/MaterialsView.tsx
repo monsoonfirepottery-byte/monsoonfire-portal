@@ -18,6 +18,10 @@ import {
   serviceOfflineMessage,
 } from "../utils/userFacingErrors";
 import "./MaterialsView.css";
+const __bundleClass_0 = "materials-copy";
+const __bundleClass_1 = "btn btn-ghost";
+const __bundleClass_2 = "materials-skeleton-card";
+
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
@@ -548,7 +552,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       <section className="card card-3d materials-banner">
         <div>
           <div className="card-title">Pickup-only checkout</div>
-          <p className="materials-copy">
+          <p className={__bundleClass_0}>
             Stripe handles payment and taxes. We will prep your supplies for pickup at the studio — no
             shipping, no pressure.
           </p>
@@ -593,7 +597,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
           ))}
         </div>
         <div className="materials-actions">
-          <button className="btn btn-ghost" onClick={() => window.location.reload()}>
+          <button className={__bundleClass_1} onClick={() => window.location.reload()}>
             Refresh catalog
           </button>
           {products.length === 0 && canSeed ? (
@@ -609,9 +613,9 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
         <section className="materials-list">
           {loading ? (
             <div className="materials-skeleton-grid" aria-hidden="true">
-              <div className="materials-skeleton-card" />
-              <div className="materials-skeleton-card" />
-              <div className="materials-skeleton-card" />
+              <div className={__bundleClass_2} />
+              <div className={__bundleClass_2} />
+              <div className={__bundleClass_2} />
             </div>
           ) : null}
           {error ? <div className="alert inline-alert">{error}</div> : null}
@@ -619,7 +623,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
           {!loading && filteredGroups.length === 0 ? (
             <div className="card card-3d materials-empty">
               <div className="card-title">Catalog is empty</div>
-              <p className="materials-copy">
+              <p className={__bundleClass_0}>
                 We are still loading supplies. If you are on staff, seed the sample catalog to get
                 started.
               </p>
@@ -657,7 +661,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                     </div>
                   </div>
                   {group.description ? (
-                    <p className="materials-copy">{group.description}</p>
+                    <p className={__bundleClass_0}>{group.description}</p>
                   ) : null}
                   {group.variants.length > 1 ? (
                     <div className="product-variants">
@@ -697,7 +701,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                   ) : null}
                   <div className="product-actions">
                     <button
-                      className="btn btn-ghost"
+                      className={__bundleClass_1}
                       onClick={() => updateCart(selectedProduct.id, -1, available)}
                       disabled={inCart <= 0}
                     >
@@ -705,7 +709,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                     </button>
                     <span className="product-qty">{inCart}</span>
                     <button
-                      className="btn btn-ghost"
+                      className={__bundleClass_1}
                       onClick={() => updateCart(selectedProduct.id, 1, available)}
                       disabled={disabled}
                     >
@@ -728,7 +732,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
         <aside className="card card-3d materials-cart">
           <div className="card-title">Your cart</div>
           {cartLines.length === 0 ? (
-            <p className="materials-copy">No items yet. Add what you need to get started.</p>
+            <p className={__bundleClass_0}>No items yet. Add what you need to get started.</p>
           ) : (
             <div className="cart-lines">
               {cartLines.map((line) => (
@@ -741,13 +745,13 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                   </div>
                   <div className="cart-controls">
                     <button
-                      className="btn btn-ghost"
+                      className={__bundleClass_1}
                       onClick={() => updateCart(line.product.id, -1, line.product.inventoryAvailable ?? null)}
                     >
                       −
                     </button>
                     <button
-                      className="btn btn-ghost"
+                      className={__bundleClass_1}
                       onClick={() => updateCart(line.product.id, 1, line.product.inventoryAvailable ?? null)}
                     >
                       +
@@ -788,7 +792,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
             {checkoutBusy ? "Starting checkout..." : "Checkout (Stripe)"}
           </button>
 
-          <button className="btn btn-ghost" onClick={() => setCart({})} disabled={cartLines.length === 0}>
+          <button className={__bundleClass_1} onClick={() => setCart({})} disabled={cartLines.length === 0}>
             Clear cart items
           </button>
         </aside>
@@ -796,7 +800,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
 
       <section className="card card-3d materials-help">
         <div className="card-title">Need something special?</div>
-        <p className="materials-copy">
+        <p className={__bundleClass_0}>
           If you cannot find the clay body or tool you need, send a note to the studio. We will try to
           source it for you.
         </p>

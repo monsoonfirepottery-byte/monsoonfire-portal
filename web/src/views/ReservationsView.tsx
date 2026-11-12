@@ -37,6 +37,26 @@ import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { safeStorageReadJson, safeStorageRemoveItem, safeStorageSetItem } from "../lib/safeStorage";
 import "./ReservationsView.css";
+const __bundleClass_0 = "form-helper";
+const __bundleClass_1 = "notice inline-alert";
+const __bundleClass_2 = "checkin-step-title";
+const __bundleClass_3 = "checkin-step checkin-optional-step";
+const __bundleClass_4 = "estimator-label";
+const __bundleClass_5 = "estimate-chip";
+const __bundleClass_6 = "estimate-line";
+const __bundleClass_7 = "addon-toggle";
+const __bundleClass_8 = "addon-text";
+const __bundleClass_9 = "addon-title";
+const __bundleClass_10 = "addon-copy";
+const __bundleClass_11 = "addon-tag";
+const __bundleClass_12 = "btn btn-ghost";
+const __bundleClass_13 = "reservation-row";
+const __bundleClass_14 = "reservation-note-history";
+const __bundleClass_15 = "reservation-action primary";
+const __bundleClass_16 = "reservation-action ghost";
+const __bundleClass_17 = "reservation-addon-pill";
+const __bundleClass_18 = "debug-label";
+
 
 type StaffUserOption = {
   id: string;
@@ -3297,7 +3317,7 @@ export default function ReservationsView({
           enabled={motionEnabled}
         >
           <div className="card-title">Staff check-in tool</div>
-          <p className="form-helper">
+          <p className={__bundleClass_0}>
             Use this when a client is not on the portal. Select a client, then complete the same
             check-in flow on their behalf.
           </p>
@@ -3337,7 +3357,7 @@ export default function ReservationsView({
             </div>
           ) : null}
           {mode === "staff" && !hasStaffClaim ? (
-            <div className="notice inline-alert">
+            <div className={__bundleClass_1}>
               Staff client lists require a staff auth claim. Dev admin tokens only apply to
               Cloud Functions.
             </div>
@@ -3355,7 +3375,7 @@ export default function ReservationsView({
           <div className="checkin-journey-head">
             <div>
               <div className="card-title">What happens next</div>
-              <p className="form-helper">
+              <p className={__bundleClass_0}>
                 Intake is the form you fill out now. Booking, queue, progress, cooldown, and pickup
                 stay visible after that so you always know what comes next.
               </p>
@@ -3385,7 +3405,7 @@ export default function ReservationsView({
           enabled={motionEnabled}
         >
           <div className="card-title">Recently bisqued? Send it to glaze</div>
-          <p className="form-helper">
+          <p className={__bundleClass_0}>
             We found a recent bisque check-in. Reuse it as a glaze submission with one tap.
           </p>
           <div className="recent-checkin-actions">
@@ -3412,21 +3432,21 @@ export default function ReservationsView({
         <div className="card-title">
           {mode === "staff" ? "Staff intake workflow" : "Member intake workflow"}
         </div>
-        <p className="form-helper">
+        <p className={__bundleClass_0}>
           {mode === "staff"
             ? "Capture the essentials so the studio can book, queue, and track the work on the member’s behalf."
             : "Tell us what you’re dropping off, snap a quick photo, and choose the booking lane that fits the work."}
         </p>
 
         {mode === "staff" && !staffTargetUid ? (
-          <div className="notice inline-alert">Select a client above to unlock the form.</div>
+          <div className={__bundleClass_1}>Select a client above to unlock the form.</div>
         ) : (
           <form
             onSubmit={toVoidHandler(handleSubmit, handleFormHandlerError, "reservations.submit")}
             className="checkin-form"
           >
             <div className="checkin-step">
-              <div className="checkin-step-title">1. Choose the clay body</div>
+              <div className={__bundleClass_2}>1. Choose the clay body</div>
               <div className="option-grid">
                 {WARE_TYPES.map((option) => (
                   <button
@@ -3443,8 +3463,8 @@ export default function ReservationsView({
               </div>
             </div>
 
-            <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">2. Snap a photo of the work (optional)</summary>
+            <details className={__bundleClass_3}>
+              <summary className={__bundleClass_2}>2. Snap a photo of the work (optional)</summary>
               <div className="photo-upload">
                 <label className="photo-frame">
                   <input
@@ -3467,7 +3487,7 @@ export default function ReservationsView({
             </details>
 
             <div className="checkin-step">
-              <div className="checkin-step-title">3. Pick the kiln + firing</div>
+              <div className={__bundleClass_2}>3. Pick the kiln + firing</div>
               <div className="option-grid">
                 {kilnOptions.map((option) => (
                   <button
@@ -3508,22 +3528,22 @@ export default function ReservationsView({
                 ))}
               </div>
               {selectedKiln?.id === "reduction-raku" ? (
-                <div className="notice inline-alert">
+                <div className={__bundleClass_1}>
                   Raku is always glaze pricing. We&apos;ll confirm space together.
                 </div>
               ) : null}
             </div>
 
             <div className="checkin-step estimator-step">
-              <div className="checkin-step-title">4. Size + firing option</div>
-              <p className="form-helper">
+              <div className={__bundleClass_2}>4. Size + firing option</div>
+              <p className={__bundleClass_0}>
                 Start with the size of the drop-off, then choose the firing option that best matches how flexible or
                 time-sensitive this load is.
               </p>
               <div className="estimator-grid">
                 <div className="estimator-controls">
                   <div className="estimator-block">
-                    <div className="estimator-label">How much shelf space does this need?</div>
+                    <div className={__bundleClass_4}>How much shelf space does this need?</div>
                     <div
                       className={`segmented-grid footprint-grid ${
                         fitsOnOneLayer === "no" ? "needs-attention" : ""
@@ -3567,7 +3587,7 @@ export default function ReservationsView({
                           ))
                         : null}
                     </div>
-                    <p className="form-helper">
+                    <p className={__bundleClass_0}>
                       {intakeMode === "COMMUNITY_SHELF"
                         ? "Flexible tiny drop-off only works when the load stays under one half shelf."
                         : "Think of one half shelf as about a carry-on suitcase laid flat."}
@@ -3576,7 +3596,7 @@ export default function ReservationsView({
 
                   {showFitPrompt ? (
                     <div className="estimator-block">
-                      <div className="estimator-label">
+                      <div className={__bundleClass_4}>
                         Do these pieces still fit side-by-side on one layer?
                       </div>
                       <div className="segmented-grid yesno-grid">
@@ -3598,14 +3618,14 @@ export default function ReservationsView({
                         </button>
                       </div>
                       {fitsOnOneLayer === "no" ? (
-                        <div className="notice inline-alert">
+                        <div className={__bundleClass_1}>
                           If things feel tight, bump up the footprint. We&apos;ll adjust together.
                         </div>
                       ) : null}
                     </div>
                   ) : null}
                   <div className="estimator-block estimate-height">
-                    <div className="estimator-label">Anything taller than 10 inches?</div>
+                    <div className={__bundleClass_4}>Anything taller than 10 inches?</div>
                     <div className="segmented-grid yesno-grid">
                       <button
                         type="button"
@@ -3625,19 +3645,19 @@ export default function ReservationsView({
                       </button>
                     </div>
                     {hasTallPieces ? (
-                      <div className="form-helper">Tall pieces usually count as 2–3 half-shelves.</div>
+                      <div className={__bundleClass_0}>Tall pieces usually count as 2–3 half-shelves.</div>
                     ) : null}
                     {intakeMode === "COMMUNITY_SHELF" ? (
-                      <div className="form-helper">
+                      <div className={__bundleClass_0}>
                         Tall work is not eligible for flexible tiny drop-off. Switch to Standard shelf purchase for
                         taller pieces.
                       </div>
                     ) : null}
-                    <div className="form-helper">Not sure? Choose standard height. We&apos;ll measure it with you.</div>
+                    <div className={__bundleClass_0}>Not sure? Choose standard height. We&apos;ll measure it with you.</div>
                   </div>
 
                   <div className="estimator-block firing-option-block">
-                    <div className="estimator-label">Choose your firing option</div>
+                    <div className={__bundleClass_4}>Choose your firing option</div>
                     <div className="option-grid firing-option-grid">
                       {INTAKE_MODE_OPTIONS.map((option) => {
                         const isSelected = intakeMode === option.id;
@@ -3692,12 +3712,12 @@ export default function ReservationsView({
                       Charges are based on shelf space or whole kiln rather than kiln volume.
                     </p>
                     {intakeMode === "COMMUNITY_SHELF" ? (
-                      <div className="notice inline-alert">
+                      <div className={__bundleClass_1}>
                         Flexible tiny drop-off stays free, lowest priority, and never triggers firings on its own.
                       </div>
                     ) : null}
                     {intakeMode === "COMMUNITY_SHELF" && (communityShelfSizeExceeded || hasTallPieces) ? (
-                      <div className="notice inline-alert">
+                      <div className={__bundleClass_1}>
                         This load is currently too large for flexible tiny drop-off. Switch to Standard shelf purchase
                         or shrink the size back under one half shelf.
                       </div>
@@ -3710,21 +3730,21 @@ export default function ReservationsView({
                     <div className="estimate-label">Estimate summary</div>
                     <span className="estimate-chip soft">Reviewed with you in person</span>
                     {intakeMode === "WHOLE_KILN" ? (
-                      <span className="estimate-chip">
+                      <span className={__bundleClass_5}>
                         Whole kiln space: {computedCost == null ? "quote required" : formatUsd(computedCost)}
                       </span>
                     ) : null}
                     {intakeMode === "COMMUNITY_SHELF" ? (
-                      <span className="estimate-chip">Community shelf: {formatUsd(0)}</span>
+                      <span className={__bundleClass_5}>Community shelf: {formatUsd(0)}</span>
                     ) : null}
                     {intakeMode === "SHELF_PURCHASE" && priceBreakApplied ? (
-                      <span className="estimate-chip">Base price cap applied</span>
+                      <span className={__bundleClass_5}>Base price cap applied</span>
                     ) : null}
                     {intakeMode === "SHELF_PURCHASE" && effectiveCommunityShelfFillInAllowed ? (
-                      <span className="estimate-chip">Community shelf fill-in enabled</span>
+                      <span className={__bundleClass_5}>Community shelf fill-in enabled</span>
                     ) : null}
                     {selectedKiln?.id === "reduction-raku" ? (
-                      <span className="estimate-chip">Raku is always glaze pricing</span>
+                      <span className={__bundleClass_5}>Raku is always glaze pricing</span>
                     ) : null}
                   </div>
                   <div className="estimate-primary">
@@ -3758,37 +3778,37 @@ export default function ReservationsView({
                     placementPreferenceRequested ||
                     prepaidStorageRequested) ? (
                     <div className="estimate-breakdown">
-                      <div className="estimate-line">
+                      <div className={__bundleClass_6}>
                         <span>Firing estimate</span>
                         <span>{formatUsd(estimatedCostWithDelivery)}</span>
                       </div>
                       {useStudioGlazes && glazeAccessCost != null ? (
-                        <div className="estimate-line">
+                        <div className={__bundleClass_6}>
                           <span>Studio glaze access</span>
                           <span>{formatUsd(glazeAccessCost)}</span>
                         </div>
                       ) : null}
                       {rushRequested ? (
-                        <div className="estimate-line">
+                        <div className={__bundleClass_6}>
                           <span>Fire tonight (only if fulfilled)</span>
                           <span>{formatUsd(RUSH_REQUEST_PRICE)}</span>
                         </div>
                       ) : null}
-                      {privateRequested ? <div className="estimate-line"><span>Private firing</span><span>{formatUsd(PRIVATE_FIRING_PRICE)}</span></div> : null}
+                      {privateRequested ? <div className={__bundleClass_6}><span>Private firing</span><span>{formatUsd(PRIVATE_FIRING_PRICE)}</span></div> : null}
                       {staffGlazePrepRequested ? (
-                        <div className="estimate-line">
+                        <div className={__bundleClass_6}>
                           <span>Staff glaze prep ({formatHalfShelfCount(estimatedHalfShelvesRounded)})</span>
                           <span>{formatUsd(staffGlazePrepCost)}</span>
                         </div>
                       ) : null}
                       {selfLoadedKilnRequested ? (
-                        <div className="estimate-line">
+                        <div className={__bundleClass_6}>
                           <span>Self-loaded kiln</span>
                           <span>{formatUsd(selfLoadedKilnCost)}</span>
                         </div>
                       ) : null}
                       {placementPreferenceRequested ? (
-                        <div className="estimate-line">
+                        <div className={__bundleClass_6}>
                           <span>
                             Placement preference ({placementPreferenceZone.slice(0, 1).toUpperCase()}
                             {placementPreferenceZone.slice(1)})
@@ -3797,7 +3817,7 @@ export default function ReservationsView({
                         </div>
                       ) : null}
                       {prepaidStorageRequested ? (
-                        <div className="estimate-line">
+                        <div className={__bundleClass_6}>
                           <span>Covered storage (up to {prepaidStorageWeeksClamped} weeks)</span>
                           <span>{formatUsd(prepaidStorageCost)}</span>
                         </div>
@@ -3837,7 +3857,7 @@ export default function ReservationsView({
                 </aside>
                 {intakeMode === "SHELF_PURCHASE" ? (
                   <div className="community-overflow-optin community-overflow-optin-below-estimate">
-                    <label className="addon-toggle">
+                    <label className={__bundleClass_7}>
                       <input
                         type="checkbox"
                         checked={effectiveCommunityShelfFillInAllowed}
@@ -3845,9 +3865,9 @@ export default function ReservationsView({
                           setCommunityShelfFillInAllowed(event.target.checked);
                         }}
                       />
-                      <span className="addon-text">
-                        <span className="addon-title">Allow leftover space to help community-shelf work</span>
-                        <span className="addon-copy">
+                      <span className={__bundleClass_8}>
+                        <span className={__bundleClass_9}>Allow leftover space to help community-shelf work</span>
+                        <span className={__bundleClass_10}>
                           If your shelf has open space after your pieces are loaded, staff may use only that extra
                           area for community shelf work.
                         </span>
@@ -3858,10 +3878,10 @@ export default function ReservationsView({
               </div>
             </div>
 
-            <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">5. Helpful extras (optional)</summary>
+            <details className={__bundleClass_3}>
+              <summary className={__bundleClass_2}>5. Helpful extras (optional)</summary>
               {intakeMode === "COMMUNITY_SHELF" ? (
-                <div className="notice inline-alert">
+                <div className={__bundleClass_1}>
                   Community shelf stays free. Paid add-ons are unavailable for this intake mode.
                 </div>
               ) : null}
@@ -3869,16 +3889,16 @@ export default function ReservationsView({
               <div className="addon-section">
                 <div className="addon-subtitle">Studio glaze access</div>
                 <div className="addon-grid">
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={useStudioGlazes}
                       onChange={(event) => setUseStudioGlazes(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Use Studio Glazes + Kitchen Access</span>
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Use Studio Glazes + Kitchen Access</span>
                     </span>
-                    <span className="addon-tag">
+                    <span className={__bundleClass_11}>
                       {formatUsd(STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE)} per half-shelf
                     </span>
                   </label>
@@ -3897,103 +3917,103 @@ export default function ReservationsView({
               <div className="addon-section">
                 <div className="addon-subtitle">Firing boosts + handling</div>
                 <div className="addon-grid">
-                  <label className="addon-toggle"><input type="checkbox" checked={privateRequested} onChange={(event) => setPrivateRequested(event.target.checked)} /><span className="addon-text"><span className="addon-title">Private firing</span><span className="addon-copy">Request a firing without other clients' work.</span></span><span className="addon-tag">{formatUsd(PRIVATE_FIRING_PRICE)}</span></label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}><input type="checkbox" checked={privateRequested} onChange={(event) => setPrivateRequested(event.target.checked)} /><span className={__bundleClass_8}><span className={__bundleClass_9}>Private firing</span><span className={__bundleClass_10}>Request a firing without other clients' work.</span></span><span className={__bundleClass_11}>{formatUsd(PRIVATE_FIRING_PRICE)}</span></label>
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={rushRequested}
                       onChange={(event) => setRushRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Fire tonight</span>
-                      <span className="addon-copy">
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Fire tonight</span>
+                      <span className={__bundleClass_10}>
                         Request a same-night firing. The fee is charged only if we can fulfill it.
                       </span>
                     </span>
-                    <span className="addon-tag">{formatUsd(RUSH_REQUEST_PRICE)}</span>
+                    <span className={__bundleClass_11}>{formatUsd(RUSH_REQUEST_PRICE)}</span>
                   </label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={staffGlazePrepRequested}
                       onChange={(event) => setStaffGlazePrepRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Staff glaze prep (wax + glaze directions)</span>
-                      <span className="addon-copy">
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Staff glaze prep (wax + glaze directions)</span>
+                      <span className={__bundleClass_10}>
                         Staff follows your prep instructions before loading so you can skip wax/glaze prep at drop-off.
                       </span>
                     </span>
-                    <span className="addon-tag">
+                    <span className={__bundleClass_11}>
                       {formatUsd(STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE)} per half-shelf
                     </span>
                   </label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={selfLoadedKilnRequested}
                       onChange={(event) => setSelfLoadedKilnRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Self-loaded kiln</span>
-                      <span className="addon-copy">
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Self-loaded kiln</span>
+                      <span className={__bundleClass_10}>
                         You load the kiln entirely yourself. Artists usually choose this for fragile work, but
                         you can request it for any reason.
                       </span>
                     </span>
-                    <span className="addon-tag">{formatUsd(SELF_LOADED_KILN_FLAT_PRICE)} flat</span>
+                    <span className={__bundleClass_11}>{formatUsd(SELF_LOADED_KILN_FLAT_PRICE)} flat</span>
                   </label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={placementPreferenceRequested}
                       onChange={(event) => setPlacementPreferenceRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Placement preference (best effort)</span>
-                      <span className="addon-copy">
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Placement preference (best effort)</span>
+                      <span className={__bundleClass_10}>
                         Request top, middle, or bottom placement. We&apos;ll honor when safe and possible.
                       </span>
                     </span>
-                    <span className="addon-tag">{formatUsd(PLACEMENT_PREFERENCE_PRICE)} flat</span>
+                    <span className={__bundleClass_11}>{formatUsd(PLACEMENT_PREFERENCE_PRICE)} flat</span>
                   </label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={prepaidStorageRequested}
                       onChange={(event) => setPrepaidStorageRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Need extra pickup time?</span>
-                      <span className="addon-copy">
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Need extra pickup time?</span>
+                      <span className={__bundleClass_10}>
                         Flat {formatUsd(PREPAID_STORAGE_FLAT_PRICE)} covers {prepaidStorageWeeksClamped} weeks after
                         pickup-ready. Then it's {formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per
                         half-shelf per day for up to 4 more weeks before reclamation.
                       </span>
                     </span>
-                    <span className="addon-tag">{formatUsd(PREPAID_STORAGE_FLAT_PRICE)} flat</span>
+                    <span className={__bundleClass_11}>{formatUsd(PREPAID_STORAGE_FLAT_PRICE)} flat</span>
                   </label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={pickupDeliveryRequested}
                       onChange={(event) => setPickupDeliveryRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Pickup run: we collect your drop-off for firing</span>
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Pickup run: we collect your drop-off for firing</span>
                     </span>
-                    <span className="addon-tag">{formatUsd(DELIVERY_PRICE_PER_TRIP)}</span>
+                    <span className={__bundleClass_11}>{formatUsd(DELIVERY_PRICE_PER_TRIP)}</span>
                   </label>
-                  <label className="addon-toggle">
+                  <label className={__bundleClass_7}>
                     <input
                       type="checkbox"
                       checked={returnDeliveryRequested}
                       onChange={(event) => setReturnDeliveryRequested(event.target.checked)}
                     />
-                    <span className="addon-text">
-                      <span className="addon-title">Return run: we bring finished work back to you</span>
+                    <span className={__bundleClass_8}>
+                      <span className={__bundleClass_9}>Return run: we bring finished work back to you</span>
                     </span>
-                    <span className="addon-tag">{formatUsd(DELIVERY_PRICE_PER_TRIP)}</span>
+                    <span className={__bundleClass_11}>{formatUsd(DELIVERY_PRICE_PER_TRIP)}</span>
                   </label>
                 </div>
                 {placementPreferenceRequested || pickupDeliveryRequested || returnDeliveryRequested ? (
@@ -4054,8 +4074,8 @@ export default function ReservationsView({
               </fieldset>
             </details>
 
-            <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">6. Notes (optional)</summary>
+            <details className={__bundleClass_3}>
+              <summary className={__bundleClass_2}>6. Notes (optional)</summary>
               <div className="notes-grid">
                 <label>
                   General notes
@@ -4090,7 +4110,7 @@ export default function ReservationsView({
                     </button>
                   ))}
                 </div>
-                <div className="form-helper">Pick any tags that apply. We&apos;ll confirm at drop-off.</div>
+                <div className={__bundleClass_0}>Pick any tags that apply. We&apos;ll confirm at drop-off.</div>
                 <div className="piece-linker-title">Link one of your recent pieces (optional)</div>
                 {primaryRecentPieceChoices.length ? (
                   <div className="notes-tags">
@@ -4107,7 +4127,7 @@ export default function ReservationsView({
                     ))}
                   </div>
                 ) : (
-                  <div className="form-helper">
+                  <div className={__bundleClass_0}>
                     No recent pieces found yet. You can skip this for now and we&apos;ll still process your check-in.
                   </div>
                 )}
@@ -4145,19 +4165,19 @@ export default function ReservationsView({
                 <div className="piece-linker-actions">
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className={__bundleClass_12}
                     onClick={() => setLinkedBatchId("")}
                     disabled={!linkedBatchId}
                   >
                     Clear linked piece
                   </button>
                 </div>
-                <div className="form-helper">
+                <div className={__bundleClass_0}>
                   Need more options? Open <strong>My Pieces</strong> from the sidebar.
                 </div>
               </div>
-              {prefillNote ? <div className="notice inline-alert">{prefillNote}</div> : null}
-              <p className="form-helper">
+              {prefillNote ? <div className={__bundleClass_1}>{prefillNote}</div> : null}
+              <p className={__bundleClass_0}>
                 Add anything that helps the studio load and fire safely.
               </p>
             </details>
@@ -4212,7 +4232,7 @@ export default function ReservationsView({
                     </span>
                     </label>
                     <div className="intake-modal-actions">
-                      <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
+                      <button type="button" className={__bundleClass_12} onClick={cancelCommunityShelfFlow}>
                         Keep standard shelf purchase
                       </button>
                       <button
@@ -4288,7 +4308,7 @@ export default function ReservationsView({
           </div>
           <button
             type="button"
-            className="btn btn-ghost"
+            className={__bundleClass_12}
             onClick={toVoidHandler(exportContinuityBundle)}
             disabled={continuityExportBusy || !targetOwnerUid}
           >
@@ -4368,7 +4388,7 @@ export default function ReservationsView({
               <div className="offline-sync-actions">
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className={__bundleClass_12}
                   onClick={retryOfflineQueueNow}
                   disabled={!isOnline || offlineSyncBusy || offlinePendingCount === 0}
                 >
@@ -4376,7 +4396,7 @@ export default function ReservationsView({
                 </button>
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className={__bundleClass_12}
                   onClick={clearFailedOfflineActions}
                   disabled={offlineFailedCount === 0}
                 >
@@ -4395,7 +4415,7 @@ export default function ReservationsView({
                 />
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className={__bundleClass_12}
                   onClick={toVoidHandler(lookupArrivalTokenForStaff)}
                   disabled={arrivalLookupBusy || (isStaff && !hasStaffClaim)}
                 >
@@ -4447,7 +4467,7 @@ export default function ReservationsView({
             </span>
             <button
               type="button"
-              className="btn btn-ghost"
+              className={__bundleClass_12}
               onClick={toVoidHandler(undoLastStatusAction)}
               disabled={staffActionBusyId !== null}
             >
@@ -4644,11 +4664,11 @@ export default function ReservationsView({
                       {storageRisk ? <span className="status-pill status-storage-risk">Risk</span> : null}
                     </div>
                   </header>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>Clay: {reservation.wareType || "—"}</span>
                     <span>Kiln: {reservation.kilnLabel || "—"}</span>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>
                       Space:{" "}
                       {reservation.estimatedHalfShelves != null
@@ -4657,7 +4677,7 @@ export default function ReservationsView({
                     </span>
                     <span>Created: {formatDateTime(reservation.createdAt)}</span>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>
                       {`Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
                     </span>
@@ -4665,11 +4685,11 @@ export default function ReservationsView({
                       reservation.estimatedCost != null ? ` · Estimate ${formatUsd(reservation.estimatedCost)}` : ""
                     }`}</span>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>Queue position: {queuePosition ?? "—"}</span>
                     <span>{readinessBand}</span>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>
                       Fairness penalty: {queueEffectivePenaltyPoints}
                       {queuePenaltyPoints > 0 || queueOverrideBoostApplied > 0
@@ -4683,20 +4703,20 @@ export default function ReservationsView({
                     </span>
                   </div>
                   {queueReasonCodes.length > 0 ? (
-                    <div className="reservation-note-history">
+                    <div className={__bundleClass_14}>
                       Fairness flags:{" "}
                       <strong>{queueReasonCodes.map((code) => formatQueueFairnessReasonCode(code)).join(", ")}</strong>
                     </div>
                   ) : null}
                   {queueOverrideBoost > 0 ? (
-                    <div className="reservation-note-history">
+                    <div className={__bundleClass_14}>
                       Override boost {queueOverrideBoost}
                       {queueFairness?.overrideReason ? ` · ${queueFairness.overrideReason}` : ""}
                       {queueOverrideUntil ? ` · until ${formatDateTime(queueOverrideUntil)}` : ""}
                     </div>
                   ) : null}
                   {reservationPieces.length > 0 ? (
-                    <div className="reservation-row">
+                    <div className={__bundleClass_13}>
                       <span>
                         Pieces: {reservationPieces.length} row{reservationPieces.length === 1 ? "" : "s"} ·{" "}
                         {reservationPieceTotal} total
@@ -4704,7 +4724,7 @@ export default function ReservationsView({
                       <span>{pieceCodePreview ? `Codes: ${pieceCodePreview}` : "Codes pending"}</span>
                     </div>
                   ) : null}
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>
                       Station: {stationId ?? "unassigned"}
                       {queueLane ? ` · lane ${queueLane}` : ""}
@@ -4713,14 +4733,14 @@ export default function ReservationsView({
                       {stationPressure.label} ({stationLoad}/{KILN_CAPACITY_HALF_SHELVES})
                     </span>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>Window: {formatPreferredWindow(reservation)}</span>
                     <span>
                       Status updated: {formatDateTime(statusChangedAt)}
                       {reservation.linkedBatchId ? ` · Ref ${reservation.linkedBatchId}` : ""}
                     </span>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>
                       Pickup window:{" "}
                       {pickupWindowStart && pickupWindowEnd
@@ -4740,7 +4760,7 @@ export default function ReservationsView({
                       {memberCanConfirmPickupWindow ? (
                         <button
                           type="button"
-                          className="reservation-action primary"
+                          className={__bundleClass_15}
                           onClick={toVoidHandler(() => confirmPickupWindowForReservation(reservation))}
                           disabled={pickupWindowBusy}
                         >
@@ -4771,7 +4791,7 @@ export default function ReservationsView({
                           </label>
                           <button
                             type="button"
-                            className="reservation-action ghost"
+                            className={__bundleClass_16}
                             onClick={toVoidHandler(() => requestPickupRescheduleForReservation(reservation))}
                             disabled={pickupWindowBusy}
                           >
@@ -4781,7 +4801,7 @@ export default function ReservationsView({
                       ) : null}
                     </div>
                   ) : null}
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>
                       Storage: {storageStatusLabel} · reminders {pickupReminderCount}
                       {pickupReminderFailureCount > 0
@@ -4798,7 +4818,7 @@ export default function ReservationsView({
                     </span>
                   </div>
                   {storageBillingSummary ? (
-                    <div className="reservation-note-history">
+                    <div className={__bundleClass_14}>
                       Storage billing: <strong>{storageBillingSummary}</strong>
                     </div>
                   ) : null}
@@ -4825,7 +4845,7 @@ export default function ReservationsView({
                       <strong>Suggested next update window:</strong> {suggestedNextUpdateCopy}
                     </div>
                   </div>
-                  <div className="reservation-row">
+                  <div className={__bundleClass_13}>
                     <span>Arrival: {formatArrivalStatusLabel(reservation)}</span>
                     <span>
                       {reservation.arrivalToken ? `Code ${reservation.arrivalToken}` : "Code pending confirmation"}
@@ -4846,7 +4866,7 @@ export default function ReservationsView({
                       </label>
                       <button
                         type="button"
-                        className="reservation-action primary"
+                        className={__bundleClass_15}
                         onClick={toVoidHandler(() => checkInArrivalForReservation(reservation))}
                         disabled={arrivalBusyId !== null || arrivalStatus === "arrived"}
                       >
@@ -4859,7 +4879,7 @@ export default function ReservationsView({
                     </div>
                   ) : null}
                   {latestNote ? (
-                    <div className="reservation-note-history">
+                    <div className={__bundleClass_14}>
                       Latest status note: <strong>{latestNote}</strong>
                     </div>
                   ) : null}
@@ -4900,24 +4920,24 @@ export default function ReservationsView({
                   reservation.addOns?.placementPreferenceRequested ||
                   reservation.addOns?.prepaidStorageRequested ? (
                     <div className="reservation-addons-inline">
-                      {reservation.addOns?.privateRequested ? <span className="reservation-addon-pill">Private firing requested</span> : null}
-                      {reservation.addOns?.rushRequested ? <span className="reservation-addon-pill">Fire tonight requested</span> : null}
+                      {reservation.addOns?.privateRequested ? <span className={__bundleClass_17}>Private firing requested</span> : null}
+                      {reservation.addOns?.rushRequested ? <span className={__bundleClass_17}>Fire tonight requested</span> : null}
                       {reservation.addOns?.pickupDeliveryRequested ? (
-                        <span className="reservation-addon-pill">Pickup delivery</span>
+                        <span className={__bundleClass_17}>Pickup delivery</span>
                       ) : null}
                       {reservation.addOns?.returnDeliveryRequested ? (
-                        <span className="reservation-addon-pill">Return delivery</span>
+                        <span className={__bundleClass_17}>Return delivery</span>
                       ) : null}
                       {reservation.addOns?.communityShelfFillInAllowed ? (
-                        <span className="reservation-addon-pill">Community shelf fill-in allowed</span>
+                        <span className={__bundleClass_17}>Community shelf fill-in allowed</span>
                       ) : null}
-                      {reservation.addOns?.useStudioGlazes ? <span className="reservation-addon-pill">Studio glaze access</span> : null}
-                      {reservation.addOns?.staffGlazePrepRequested ? <span className="reservation-addon-pill">Staff glaze prep</span> : null}
+                      {reservation.addOns?.useStudioGlazes ? <span className={__bundleClass_17}>Studio glaze access</span> : null}
+                      {reservation.addOns?.staffGlazePrepRequested ? <span className={__bundleClass_17}>Staff glaze prep</span> : null}
                       {reservation.addOns?.selfLoadedKilnRequested ? (
-                        <span className="reservation-addon-pill">Self-loaded kiln</span>
+                        <span className={__bundleClass_17}>Self-loaded kiln</span>
                       ) : null}
                       {reservation.addOns?.placementPreferenceRequested ? (
-                        <span className="reservation-addon-pill">
+                        <span className={__bundleClass_17}>
                           Placement: {String(reservation.addOns?.placementPreferenceZone ?? "middle")
                             .slice(0, 1)
                             .toUpperCase()}
@@ -4925,7 +4945,7 @@ export default function ReservationsView({
                         </span>
                       ) : null}
                       {reservation.addOns?.prepaidStorageRequested ? (
-                        <span className="reservation-addon-pill">
+                        <span className={__bundleClass_17}>
                           Storage: prepaid {prepaidStorageWeeksLabel} week
                           {prepaidStorageWeeksLabel === 1 ? "" : "s"}
                         </span>
@@ -4968,7 +4988,7 @@ export default function ReservationsView({
                         </label>
                         <button
                           type="button"
-                          className="reservation-action ghost"
+                          className={__bundleClass_16}
                           onClick={toVoidHandler(() => openPickupWindowForReservation(reservation))}
                           disabled={pickupWindowBusy || (isStaff && !hasStaffClaim)}
                         >
@@ -4976,7 +4996,7 @@ export default function ReservationsView({
                         </button>
                         <button
                           type="button"
-                          className="reservation-action ghost"
+                          className={__bundleClass_16}
                           onClick={toVoidHandler(() => markPickupWindowMissedForReservation(reservation))}
                           disabled={pickupWindowBusy || (isStaff && !hasStaffClaim)}
                         >
@@ -4984,7 +5004,7 @@ export default function ReservationsView({
                         </button>
                         <button
                           type="button"
-                          className="reservation-action primary"
+                          className={__bundleClass_15}
                           onClick={toVoidHandler(() => markPickupWindowCompletedForReservation(reservation))}
                           disabled={pickupWindowBusy || (isStaff && !hasStaffClaim)}
                         >
@@ -5006,7 +5026,7 @@ export default function ReservationsView({
                         <div className="reservation-fairness-actions">
                           <button
                             type="button"
-                            className="reservation-action ghost"
+                            className={__bundleClass_16}
                             onClick={toVoidHandler(() => recordNoShowForReservation(reservation))}
                             disabled={queueFairnessBusy || (isStaff && !hasStaffClaim)}
                           >
@@ -5014,7 +5034,7 @@ export default function ReservationsView({
                           </button>
                           <button
                             type="button"
-                            className="reservation-action ghost"
+                            className={__bundleClass_16}
                             onClick={toVoidHandler(() => recordLateArrivalForReservation(reservation))}
                             disabled={queueFairnessBusy || (isStaff && !hasStaffClaim)}
                           >
@@ -5046,7 +5066,7 @@ export default function ReservationsView({
                           </label>
                           <button
                             type="button"
-                            className="reservation-action ghost"
+                            className={__bundleClass_16}
                             onClick={toVoidHandler(() => setQueueFairnessOverrideForReservation(reservation))}
                             disabled={queueFairnessBusy || (isStaff && !hasStaffClaim)}
                           >
@@ -5061,7 +5081,7 @@ export default function ReservationsView({
                             {queueFairnessBusy ? "Saving..." : "Clear override"}
                           </button>
                         </div>
-                        <div className="form-helper">
+                        <div className={__bundleClass_0}>
                           Every fairness action writes audit evidence to <code>reservationQueueFairnessAudit</code>.
                         </div>
                       </div>
@@ -5096,7 +5116,7 @@ export default function ReservationsView({
                         </label>
                         <button
                           type="button"
-                          className="reservation-action ghost"
+                          className={__bundleClass_16}
                           onClick={toVoidHandler(() => assignStationForReservation(reservation))}
                           disabled={staffActionBusyId !== null || (isStaff && !hasStaffClaim)}
                         >
@@ -5106,7 +5126,7 @@ export default function ReservationsView({
                       <div className="reservation-staff-actions">
                         <button
                           type="button"
-                          className="reservation-action ghost"
+                          className={__bundleClass_16}
                           onClick={toVoidHandler(() => rotateArrivalTokenForReservation(reservation))}
                           disabled={staffActionBusyId !== null || (isStaff && !hasStaffClaim)}
                         >
@@ -5142,7 +5162,7 @@ export default function ReservationsView({
                             </button>
                             <button
                               type="button"
-                              className="btn btn-ghost"
+                              className={__bundleClass_12}
                               onClick={() => setPendingStatusAction(null)}
                               disabled={staffActionBusyId !== null}
                             >
@@ -5170,24 +5190,24 @@ export default function ReservationsView({
         <details className="card card-3d debug-panel">
           <summary className="debug-summary">Check-in debug (dev only)</summary>
           <div className="debug-grid">
-            <div className="debug-label">Auth uid</div>
+            <div className={__bundleClass_18}>Auth uid</div>
             <div>{authDebug?.uid || user.uid}</div>
 
-            <div className="debug-label">Role</div>
+            <div className={__bundleClass_18}>Role</div>
             <div>{authDebug?.isStaff ? "staff" : "client"}</div>
 
-            <div className="debug-label">Target path</div>
+            <div className={__bundleClass_18}>Target path</div>
             <div>{debugPacket?.firestorePaths?.createReservation}</div>
 
-            <div className="debug-label">Rules map</div>
+            <div className={__bundleClass_18}>Rules map</div>
             <div>{debugPacket?.rulesMapping}</div>
 
-            <div className="debug-label">Payload</div>
+            <div className={__bundleClass_18}>Payload</div>
             <pre className="debug-pre">
               {JSON.stringify(debugPacket?.lastRequest?.payload ?? {}, null, 2)}
             </pre>
 
-            <div className="debug-label">Error</div>
+            <div className={__bundleClass_18}>Error</div>
             <div>
               {devError
                 ? `${devError.context} · ${devError.code || "unknown"} · ${devError.message || ""}`
@@ -5198,12 +5218,12 @@ export default function ReservationsView({
           <div className="debug-actions">
             <button
               type="button"
-              className="btn btn-ghost"
+              className={__bundleClass_12}
               onClick={toVoidHandler(handleCopyDebug, handleCopyDebugError, "reservations.copyDebug")}
             >
               Copy debug snapshot
             </button>
-            {devCopyStatus ? <span className="form-helper">{devCopyStatus}</span> : null}
+            {devCopyStatus ? <span className={__bundleClass_0}>{devCopyStatus}</span> : null}
           </div>
         </details>
       ) : null}

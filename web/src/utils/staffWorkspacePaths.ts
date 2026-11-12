@@ -34,6 +34,7 @@ const STAFF_HOST_URL_RE =
 const STAFF_HOST_STAFF_PATH_RE = /(?:^|\/)staff(?:$|(\/|\?|#))/i;
 
 const STAFF_COCKPIT_MODULE_SEGMENTS = new Set([
+  "messages",
   "control-tower",
   "reports",
   "studio-reservations",
@@ -208,6 +209,7 @@ function resolveStaffWorkspaceRootCockpitSegment(pathname: string): string | nul
   if (isStaffCockpitPath(normalized)) {
     return null;
   }
+  if (isNonWorkspaceStaffShortcut(normalized)) return null;
 
   const modulePath = normalized.slice(STAFF_PATH.length + 1);
   if (!modulePath) return null;

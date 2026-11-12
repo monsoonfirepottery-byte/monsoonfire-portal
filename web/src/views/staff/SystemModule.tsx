@@ -1,4 +1,8 @@
 import { safeJsonStringify, type LastRequest } from "../../api/functionsClient";
+const __bundleClass_0 = "btn btn-secondary";
+const __bundleClass_1 = "staff-subtitle";
+const __bundleClass_2 = "btn btn-ghost";
+
 
 type SystemCheckRecord = {
   key: string;
@@ -126,41 +130,41 @@ export default function SystemModule({
       </div>
       <div className="staff-actions-row">
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || hasFunctionsAuthMismatch}
           onClick={() => void run("systemPing", runSystemPing)}
         >
           Ping functions
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || hasFunctionsAuthMismatch}
           onClick={() => void run("calendarProbe", runCalendarProbe)}
         >
           Probe calendar
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || hasFunctionsAuthMismatch}
           onClick={() => void run("notificationMetricsProbe", runNotificationMetricsProbe)}
         >
           Refresh notif metrics
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || hasFunctionsAuthMismatch}
           onClick={() => void run("notificationDrill", runNotificationFailureDrillNow)}
         >
           Run push failure drill
         </button>
         <button
-          className="btn btn-secondary"
+          className={__bundleClass_0}
           disabled={Boolean(busy) || hasFunctionsAuthMismatch}
           onClick={() => void run("refreshSystemStats", loadSystemStats)}
         >
           Refresh token stats
         </button>
-        <button className="btn btn-secondary" disabled>
+        <button className={__bundleClass_0} disabled>
           Studio Brain checks retired
         </button>
       </div>
@@ -175,19 +179,19 @@ export default function SystemModule({
       ) : (
         <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
       )}
-      {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={onOpenEmulatorUi}>Open Emulator UI</button> : null}
+      {showEmulatorTools ? <button type="button" className={__bundleClass_0} onClick={onOpenEmulatorUi}>Open Emulator UI</button> : null}
       <div className="card-title-row">
-        <div className="staff-subtitle">Handler errors</div>
+        <div className={__bundleClass_1}>Handler errors</div>
         <div className="staff-log-actions">
-          <button type="button" className="btn btn-ghost" onClick={onRefreshHandlerLog}>Refresh</button>
-          <button type="button" className="btn btn-ghost" onClick={onClearHandlerLog}>Clear</button>
+          <button type="button" className={__bundleClass_2} onClick={onRefreshHandlerLog}>Refresh</button>
+          <button type="button" className={__bundleClass_2} onClick={onClearHandlerLog}>Clear</button>
         </div>
       </div>
       <div className="staff-log-list">
         {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
       </div>
       <div className="card-title-row">
-        <div className="staff-subtitle">System checks</div>
+        <div className={__bundleClass_1}>System checks</div>
       </div>
       <div className="staff-table-wrap">
         <table className="staff-table">
@@ -212,25 +216,25 @@ export default function SystemModule({
         <summary>Troubleshooting drawer</summary>
         <div className="staff-module-grid">
           <div className="staff-column">
-            <div className="staff-subtitle">Last Firestore write</div>
+            <div className={__bundleClass_1}>Last Firestore write</div>
             <pre>{safeJsonStringify(lastWrite)}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+            <button className={__bundleClass_2} onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
           </div>
           <div className="staff-column">
-            <div className="staff-subtitle">Last query params</div>
+            <div className={__bundleClass_1}>Last query params</div>
             <pre>{safeJsonStringify(lastQuery)}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
+            <button className={__bundleClass_2} onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
           </div>
           <div className="staff-column">
-            <div className="staff-subtitle">Last GitHub/Functions call</div>
+            <div className={__bundleClass_1}>Last GitHub/Functions call</div>
             <pre>{safeJsonStringify(safeLastReq)}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(safeLastReq))}>Copy call JSON</button>
+            <button className={__bundleClass_2} onClick={() => void copy(safeJsonStringify(safeLastReq))}>Copy call JSON</button>
             <div className="staff-mini">curl hint</div>
             <pre>{safeLastReq?.curlExample ?? "(none)"}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeLastReq?.curlExample ?? "")} disabled={!safeLastReq?.curlExample}>Copy curl hint</button>
+            <button className={__bundleClass_2} onClick={() => void copy(safeLastReq?.curlExample ?? "")} disabled={!safeLastReq?.curlExample}>Copy curl hint</button>
           </div>
           <div className="staff-column">
-            <div className="staff-subtitle">Last error stack/message</div>
+            <div className={__bundleClass_1}>Last error stack/message</div>
             <pre>{safeJsonStringify(lastErr)}</pre>
           </div>
         </div>

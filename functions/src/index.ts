@@ -34,6 +34,10 @@ import {
 import { normalizeIntakeMode } from "./intakeMode";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
+import { verifyMessageRecipient } from "./messageRecipientVerification";
+import { scanStripeGuestNames, stripeContactQuery, stripeContactRows, stripeGuestEmail, stripeGuestNameQuery, stripeGuestRows } from "./stripeContactSearch";
+import { getStripeClient, loadStripeConfig } from "./stripeRuntime";
+import { STRIPE_SECRET_PARAMS } from "./stripeSecrets";
 import {
   staffGetCommunitySafetyConfig,
   staffScanCommunityDraft,
@@ -655,6 +659,121 @@ export const githubLookup = onRequest(
       const message = error instanceof Error ? error.message : String(error);
       logger.error("githubLookup failed", { message });
       res.status(500).json({ ok: false, message: "GitHub lookup failed" });
+    }
+  }
+);
+
+export const staffSearchStripeContacts = onRequest(
+  { region: REGION, timeoutSeconds: 30, secrets: [...STRIPE_SECRET_PARAMS] },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") { res.status(405).json({ ok: false, message: "Use POST" }); return; }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) { res.status(401).json({ ok: false, message: auth.message }); return; }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) { res.status(403).json({ ok: false, message: "Forbidden" }); return; }
+    const parsed = parseBody(z.object({ search: z.string().trim().min(3).max(100), page: z.string().min(1).max(2048).optional() }).strict(), req.body);
+    if (!parsed.ok) { res.status(400).json({ ok: false, message: parsed.message }); return; }
+    let query: string;
+    try { query = stripeContactQuery(parsed.data.search); } catch {
+      res.status(400).json({ ok: false, message: "Invalid contact search" }); return;
+    }
+    try {
+      const config = await loadStripeConfig();
+      const result = await getStripeClient(config.mode).customers.search({ query, limit: 25, ...(parsed.data.page ? { page: parsed.data.page } : {}) });
+      res.status(200).json({ ok: true, data: { contacts: stripeContactRows(result.data), mode: config.mode, hasMore: result.has_more, nextPage: result.next_page ?? null } });
+    } catch {
+      logger.error("staffSearchStripeContacts failed");
+      res.status(503).json({ ok: false, message: "Stripe contacts unavailable" });
+    }
+  }
+);
+
+export const staffSearchStripeGuests = onRequest(
+  { region: REGION, timeoutSeconds: 30, secrets: [...STRIPE_SECRET_PARAMS] },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") { res.status(405).json({ ok: false, message: "Use POST" }); return; }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) { res.status(401).json({ ok: false, message: auth.message }); return; }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) { res.status(403).json({ ok: false, message: "Forbidden" }); return; }
+    const parsed = parseBody(z.object({ email: z.string().max(254), startingAfter: z.string().regex(/^cs_(?:test|live)_[A-Za-z0-9]+$/u).max(255).optional() }).strict(), req.body);
+    if (!parsed.ok) { res.status(400).json({ ok: false, message: "Invalid guest search" }); return; }
+    const email = stripeGuestEmail(parsed.data.email);
+    if (!email) { res.status(400).json({ ok: false, message: "Enter one valid email address" }); return; }
+    try {
+      const config = await loadStripeConfig();
+      const result = await getStripeClient(config.mode).checkout.sessions.list({
+        customer_details: { email }, status: "complete", limit: 25,
+        ...(parsed.data.startingAfter ? { starting_after: parsed.data.startingAfter } : {}),
+      });
+      const nextPage = result.has_more ? result.data[result.data.length - 1]?.id ?? null : null;
+      res.status(200).json({ ok: true, data: { contacts: stripeGuestRows(result.data, email), mode: config.mode, hasMore: result.has_more, nextPage } });
+    } catch {
+      logger.error("staffSearchStripeGuests failed");
+      res.status(503).json({ ok: false, message: "Stripe guest contacts unavailable" });
+    }
+  }
+);
+
+export const staffSearchStripeGuestsByName = onRequest(
+  { region: REGION, timeoutSeconds: 30, secrets: [...STRIPE_SECRET_PARAMS] },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") { res.status(405).json({ ok: false, message: "Use POST" }); return; }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) { res.status(401).json({ ok: false, message: auth.message }); return; }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) { res.status(403).json({ ok: false, message: "Forbidden" }); return; }
+    const parsed = parseBody(z.object({ search: z.string().trim().min(3).max(100), startingAfter: z.string().regex(/^cs_(?:test|live)_[A-Za-z0-9]+$/u).max(255).optional() }).strict(), req.body);
+    if (!parsed.ok || !stripeGuestNameQuery(parsed.data.search)) { res.status(400).json({ ok: false, message: "Invalid guest name search" }); return; }
+    try {
+      const config = await loadStripeConfig();
+      const stripe = getStripeClient(config.mode);
+      const result = await scanStripeGuestNames((startingAfter) => stripe.checkout.sessions.list({
+        status: "complete", limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }), parsed.data.search, parsed.data.startingAfter);
+      res.status(200).json({ ok: true, data: { ...result, mode: config.mode } });
+    } catch {
+      res.status(503).json({ ok: false, message: "Stripe guest name search unavailable" });
+    }
+  }
+);
+
+export const staffVerifyMessageRecipient = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const staff = await requireAdmin(req);
+    if (!staff.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+    const parsed = parseBody(z.object({ uid: z.string().trim().min(1).max(128) }).strict(), req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+    try {
+      const status = await verifyMessageRecipient(parsed.data.uid, (uid) => adminAuth.getUser(uid));
+      res.set("Cache-Control", "no-store");
+      res.status(200).json({ ok: true, data: { uid: parsed.data.uid, status } });
+    } catch {
+      logger.error("staffVerifyMessageRecipient failed");
+      res.status(503).json({ ok: false, message: "Recipient verification unavailable" });
     }
   }
 );

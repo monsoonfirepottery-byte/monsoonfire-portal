@@ -17,6 +17,12 @@ import { shortId, track } from "../lib/analytics";
 import type { AnalyticsProps } from "../lib/analytics";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./KilnLaunchView.css";
+const __bundleClass_0 = "kiln-panel-header";
+const __bundleClass_1 = "kiln-panel-meta";
+const __bundleClass_2 = "kiln-live-label";
+const __bundleClass_3 = "kiln-tag";
+const __bundleClass_4 = "kiln-queue-tags";
+
 
 type LoadStatus = "queued" | "loading" | "loaded";
 
@@ -693,10 +699,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
       {actionStatus ? <div className="kiln-launch-status">{actionStatus}</div> : null}
 
       <section className="kiln-launch-panel kiln-live-panel">
-        <div className="kiln-panel-header">
+        <div className={__bundleClass_0}>
           <div>
             <h2>What&apos;s happening now</h2>
-            <p className="kiln-panel-meta">
+            <p className={__bundleClass_1}>
               {hasLoadActivity
                 ? `${loadStatusSummary} The calendar below shows the next seven days for each kiln.`
                 : "Read-only seven-day kiln calendar with live states, confirmed firings, and queued-load forecasts."}
@@ -705,21 +711,21 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
         </div>
         <div className="kiln-live-chips">
           <div className="kiln-live-chip">
-            <span className="kiln-live-label">Studio kiln</span>
+            <span className={__bundleClass_2}>Studio kiln</span>
             <strong>{loadStateLabel}</strong>
           </div>
           <div className="kiln-live-chip">
-            <span className="kiln-live-label">Planned shelves</span>
+            <span className={__bundleClass_2}>Planned shelves</span>
             <strong>
               {plannedHalfShelves}/{KILN_CAPACITY_HALF_SHELVES}
             </strong>
           </div>
           <div className="kiln-live-chip">
-            <span className="kiln-live-label">Queue density</span>
+            <span className={__bundleClass_2}>Queue density</span>
             <strong>{queueDensityPercent}%</strong>
           </div>
           <div className="kiln-live-chip">
-            <span className="kiln-live-label">Queue lanes</span>
+            <span className={__bundleClass_2}>Queue lanes</span>
             <strong>
               {queuedEntries.length} queued · {communityShelfEntries.length} community
             </strong>
@@ -729,7 +735,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           <div className="kiln-timeline-header">
             <div>
               <h3>Seven-day kiln calendar</h3>
-              <p className="kiln-panel-meta">
+              <p className={__bundleClass_1}>
                 Confirmed firings are shown alongside live kiln states. Queued shelf work appears as a forecast only when it has room in the next open slot.
               </p>
             </div>
@@ -834,7 +840,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                     <div className="kiln-timeline-detail-header">
                       <div>
                         <h3>{selectedTimelineSegment.label}</h3>
-                        <p className="kiln-panel-meta">
+                        <p className={__bundleClass_1}>
                           {selectedTimelineSegment.kilnName} · {formatTimelineRange(
                             selectedTimelineSegment.startDate,
                             selectedTimelineSegment.endDate
@@ -848,13 +854,13 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                       </span>
                     </div>
                     <div className="kiln-timeline-detail-meta">
-                      <span className="kiln-tag">
+                      <span className={__bundleClass_3}>
                         {getTimelineSourceLabel(selectedTimelineSegment.source)}
                       </span>
-                      <span className="kiln-tag">
+                      <span className={__bundleClass_3}>
                         {getTimelineConfidenceLabel(selectedTimelineSegment.confidence)}
                       </span>
-                      <span className="kiln-tag">
+                      <span className={__bundleClass_3}>
                         Current kiln state: {selectedTimelineSegment.kilnCurrentLabel}
                       </span>
                     </div>
@@ -879,10 +885,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
 
       <div className="kiln-launch-grid">
         <section className="kiln-launch-panel">
-          <div className="kiln-panel-header">
+          <div className={__bundleClass_0}>
             <div>
               <h2>Bisque queue</h2>
-              <p className="kiln-panel-meta">{formatHalfShelfLabel(bisqueHalfShelves)} waiting</p>
+              <p className={__bundleClass_1}>{formatHalfShelfLabel(bisqueHalfShelves)} waiting</p>
             </div>
             <span className="kiln-panel-count">{bisqueQueue.length} check-ins</span>
           </div>
@@ -902,15 +908,15 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                     <span>{getQueueMeta(item)}</span>
                   </div>
                   {item.dropOffProfile?.specialHandling ? (
-                    <div className="kiln-queue-tags">
-                      <span className="kiln-tag">Special handling</span>
+                    <div className={__bundleClass_4}>
+                      <span className={__bundleClass_3}>Special handling</span>
                     </div>
                   ) : null}
                   {item.addOns?.rushRequested || item.addOns?.wholeKilnRequested ? (
-                    <div className="kiln-queue-tags">
-                      {item.addOns?.rushRequested ? <span className="kiln-tag">Rush</span> : null}
+                    <div className={__bundleClass_4}>
+                      {item.addOns?.rushRequested ? <span className={__bundleClass_3}>Rush</span> : null}
                       {item.addOns?.wholeKilnRequested ? (
-                        <span className="kiln-tag">Whole kiln</span>
+                        <span className={__bundleClass_3}>Whole kiln</span>
                       ) : null}
                     </div>
                   ) : null}
@@ -937,10 +943,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
             )}
           </div>
           <div className="kiln-community-chiplet">
-            <div className="kiln-panel-header">
+            <div className={__bundleClass_0}>
               <div>
                 <h3>Community shelf lane</h3>
-                <p className="kiln-panel-meta">
+                <p className={__bundleClass_1}>
                   {communityShelfEntries.length} check-ins · {formatHalfShelfLabel(communityHalfShelves)}
                 </p>
               </div>
@@ -958,7 +964,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                 ))}
               </div>
             )}
-            <p className="kiln-panel-meta">
+            <p className={__bundleClass_1}>
               Community shelf work stays lowest-priority and only moves into a firing when donated shelf space opens.
             </p>
           </div>
@@ -966,10 +972,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
 
         <section className="kiln-launch-center">
           <div className="kiln-launch-panel kiln-flow-panel">
-            <div className="kiln-panel-header">
+            <div className={__bundleClass_0}>
               <div>
                 <h2>Your place in the flow</h2>
-                <p className="kiln-panel-meta">
+                <p className={__bundleClass_1}>
                   {userEntries.length === 0
                     ? "No check-ins yet"
                     : `${userEntries.length} check-in${userEntries.length === 1 ? "" : "s"} in motion`}
@@ -980,10 +986,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           </div>
 
           <div className="kiln-launch-panel kiln-meter-panel">
-            <div className="kiln-panel-header">
+            <div className={__bundleClass_0}>
               <div>
                 <h2>Studio kiln load</h2>
-                <p className="kiln-panel-meta">
+                <p className={__bundleClass_1}>
                   {formatHalfShelfLabel(plannedHalfShelves)} in the plan
                 </p>
               </div>
@@ -1051,10 +1057,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           </div>
 
           <div className="kiln-launch-panel">
-            <div className="kiln-panel-header">
+            <div className={__bundleClass_0}>
               <div>
                 <h2>Load activity</h2>
-                <p className="kiln-panel-meta">
+                <p className={__bundleClass_1}>
                   {hasLoadActivity
                     ? loadStatusSummary
                     : "Live loading updates will appear here when staff start placing shelves."}
@@ -1105,10 +1111,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
         </section>
 
         <section className="kiln-launch-panel">
-          <div className="kiln-panel-header">
+          <div className={__bundleClass_0}>
             <div>
               <h2>Glaze queue</h2>
-              <p className="kiln-panel-meta">{formatHalfShelfLabel(glazeHalfShelves)} waiting</p>
+              <p className={__bundleClass_1}>{formatHalfShelfLabel(glazeHalfShelves)} waiting</p>
             </div>
             <span className="kiln-panel-count">{glazeQueue.length} check-ins</span>
           </div>
@@ -1128,15 +1134,15 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                     <span>{getQueueMeta(item)}</span>
                   </div>
                   {item.dropOffProfile?.specialHandling ? (
-                    <div className="kiln-queue-tags">
-                      <span className="kiln-tag">Special handling</span>
+                    <div className={__bundleClass_4}>
+                      <span className={__bundleClass_3}>Special handling</span>
                     </div>
                   ) : null}
                   {item.addOns?.rushRequested || item.addOns?.wholeKilnRequested ? (
-                    <div className="kiln-queue-tags">
-                      {item.addOns?.rushRequested ? <span className="kiln-tag">Rush</span> : null}
+                    <div className={__bundleClass_4}>
+                      {item.addOns?.rushRequested ? <span className={__bundleClass_3}>Rush</span> : null}
                       {item.addOns?.wholeKilnRequested ? (
-                        <span className="kiln-tag">Whole kiln</span>
+                        <span className={__bundleClass_3}>Whole kiln</span>
                       ) : null}
                     </div>
                   ) : null}

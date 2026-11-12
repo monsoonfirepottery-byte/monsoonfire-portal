@@ -21,6 +21,15 @@ import {
 import { buildStudioReservationsPath, parseStudioReservationsSearch } from "../utils/reservationsPaths";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./StudioReservationsView.css";
+const __bundleClass_0 = "btn btn-ghost";
+const __bundleClass_1 = "studio-inline-actions";
+const __bundleClass_2 = "btn btn-primary studio-action-button";
+const __bundleClass_3 = "studio-booker-empty";
+const __bundleClass_4 = "studio-booker-empty-title";
+const __bundleClass_5 = "studio-day-empty";
+const __bundleClass_6 = "studio-reservations-eyebrow";
+const __bundleClass_7 = "studio-space-rail-copy";
+
 
 type Props = {
   user: User;
@@ -775,7 +784,7 @@ export default function StudioReservationsView({
             <div className="studio-inline-panel-title">Choose your wheel</div>
             <div className="studio-inline-panel-copy">{entryAvailabilityCopy(entry)}</div>
           </div>
-          <button className="btn btn-ghost" type="button" onClick={resetExpandedEntry}>
+          <button className={__bundleClass_0} type="button" onClick={resetExpandedEntry}>
             Close
           </button>
         </div>
@@ -802,9 +811,9 @@ export default function StudioReservationsView({
             })}
           </div>
         </div>
-        <div className="studio-inline-actions">
+        <div className={__bundleClass_1}>
           <button
-            className="btn btn-primary studio-action-button"
+            className={__bundleClass_2}
             type="button"
             onClick={toVoidHandler(handleReserveExpandedEntry)}
             disabled={primaryBusy || selectedResourceIds.length === 0}
@@ -879,7 +888,7 @@ export default function StudioReservationsView({
             </button>
           ) : isResourceBooking ? (
             <button
-              className="btn btn-primary studio-action-button"
+              className={__bundleClass_2}
               type="button"
               onClick={() => openEntryPanel(entry)}
               disabled={isBooked}
@@ -889,7 +898,7 @@ export default function StudioReservationsView({
             </button>
           ) : (
             <button
-              className="btn btn-primary studio-action-button"
+              className={__bundleClass_2}
               type="button"
               onClick={toVoidHandler(() => handleQuickReserve(entry))}
               disabled={reserveBusy || isBooked}
@@ -915,24 +924,24 @@ export default function StudioReservationsView({
   const renderEmptyState = () => {
     if (!selectedSpace) {
       return (
-        <div className="studio-booker-empty">
-          <div className="studio-booker-empty-title">Loading openings...</div>
+        <div className={__bundleClass_3}>
+          <div className={__bundleClass_4}>Loading openings...</div>
         </div>
       );
     }
 
     if (waitlistOnlyDays.length > 0) {
       return (
-        <div className="studio-booker-empty">
-          <div className="studio-booker-empty-title">The next 14 days are full for {selectedSpace.name}</div>
-          <div className="studio-day-empty">
+        <div className={__bundleClass_3}>
+          <div className={__bundleClass_4}>The next 14 days are full for {selectedSpace.name}</div>
+          <div className={__bundleClass_5}>
             You can still browse waitlist days below or skip ahead to later openings.
           </div>
-          <div className="studio-inline-actions">
+          <div className={__bundleClass_1}>
             <button className="btn btn-primary" type="button" onClick={() => setShowBrowse(true)}>
               Join a waitlist
             </button>
-            <button className="btn btn-ghost" type="button" onClick={handleShowLaterOpenings}>
+            <button className={__bundleClass_0} type="button" onClick={handleShowLaterOpenings}>
               Show later openings
             </button>
           </div>
@@ -941,12 +950,12 @@ export default function StudioReservationsView({
     }
 
     return (
-      <div className="studio-booker-empty">
-        <div className="studio-booker-empty-title">No open time for {selectedSpace.name} in the next 14 days</div>
-        <div className="studio-day-empty">
+      <div className={__bundleClass_3}>
+        <div className={__bundleClass_4}>No open time for {selectedSpace.name} in the next 14 days</div>
+        <div className={__bundleClass_5}>
           Skip ahead to later openings or switch spaces if you need something sooner.
         </div>
-        <div className="studio-inline-actions">
+        <div className={__bundleClass_1}>
           <button className="btn btn-primary" type="button" onClick={handleShowLaterOpenings}>
             Show later openings
           </button>
@@ -979,7 +988,7 @@ export default function StudioReservationsView({
       </summary>
       <div className="studio-my-reservations-body">
         {upcoming.length === 0 ? (
-          <div className="studio-day-empty">{loading ? "Checking reservations…" : loadError ? "Reservation records are unavailable." : bookingPaused ? "You have no upcoming reservations." : "No studio reservations yet. Book a space above to get started."}</div>
+          <div className={__bundleClass_5}>{loading ? "Checking reservations…" : loadError ? "Reservation records are unavailable." : bookingPaused ? "You have no upcoming reservations." : "No studio reservations yet. Book a space above to get started."}</div>
         ) : (
           <div className="studio-mine-list">
             {upcoming.map((reservation) => (
@@ -1008,7 +1017,7 @@ export default function StudioReservationsView({
                 <div className="studio-calendar-card-copy">{reservationSummary(reservation)}</div>
                 <div className="studio-detail-button-row">
                   {!bookingPaused ? <button
-                    className="btn btn-ghost"
+                    className={__bundleClass_0}
                     type="button"
                     onClick={() => {
                       if (!reservation.startAtDate) return;
@@ -1069,7 +1078,7 @@ export default function StudioReservationsView({
     <div className="page studio-reservations-page">
       <section className="card card-3d studio-reservations-header">
         <div className="studio-reservations-header-copy">
-          <div className="studio-reservations-eyebrow">Reservations</div>
+          <div className={__bundleClass_6}>Reservations</div>
           <h1>Reserve studio time</h1>
           <p className="page-subtitle">
             Choose a space, then book an exact opening without working through a calendar first.
@@ -1077,7 +1086,7 @@ export default function StudioReservationsView({
         </div>
         <div className="studio-reservations-header-side">
           <div className="studio-reservations-next-card">
-            <div className="studio-reservations-eyebrow">{nextUpcoming ? "Next booking" : "Ready when you are"}</div>
+            <div className={__bundleClass_6}>{nextUpcoming ? "Next booking" : "Ready when you are"}</div>
             {nextUpcoming ? (
               <>
                 <div className="studio-reservations-next-title">{nextUpcoming.spaceName}</div>
@@ -1095,11 +1104,11 @@ export default function StudioReservationsView({
             )}
           </div>
           <div className="studio-reservations-header-actions">
-            <button className="btn btn-ghost" type="button" onClick={() => setShowManageReservations(true)}>
+            <button className={__bundleClass_0} type="button" onClick={() => setShowManageReservations(true)}>
               Manage reservations
             </button>
             {onOpenWareCheckIn ? (
-              <button className="btn btn-ghost" type="button" onClick={onOpenWareCheckIn}>
+              <button className={__bundleClass_0} type="button" onClick={onOpenWareCheckIn}>
                 Ware Check-in
               </button>
             ) : null}
@@ -1147,7 +1156,7 @@ export default function StudioReservationsView({
           <span>{formatRecentBookingMessage(recentBooking)}</span>
           {recentBooking.kind === "booked" && recentBooking.reservationId ? (
             <button
-              className="btn btn-ghost"
+              className={__bundleClass_0}
               type="button"
               onClick={toVoidHandler(() => handleCancelReservation(recentBooking.reservationId!))}
               disabled={busyAction === `cancel:${recentBooking.reservationId}`}
@@ -1161,7 +1170,7 @@ export default function StudioReservationsView({
       <section className="card card-3d studio-space-rail-card">
         <div className="studio-space-rail-head">
           <div className="card-title">Choose a space</div>
-          <span className="studio-space-rail-copy">{timezone || STUDIO_TIME_ZONE}</span>
+          <span className={__bundleClass_7}>{timezone || STUDIO_TIME_ZONE}</span>
         </div>
         <div className="studio-space-switcher-list">
           {spaceSummaries.map((summary) => (
@@ -1182,7 +1191,7 @@ export default function StudioReservationsView({
       <section className="card card-3d studio-quick-book-card">
         <div className="studio-quick-book-head">
           <div>
-            <div className="studio-reservations-eyebrow">Best next opening</div>
+            <div className={__bundleClass_6}>Best next opening</div>
             <div className="studio-quick-book-title">{selectedSpace?.name ?? "Loading spaces..."}</div>
             <div className="studio-quick-book-copy">
               {featuredEntry ? `Next available openings in ${formatHorizonLabel(anchorDayKey)}.` : `Looking at ${formatHorizonLabel(anchorDayKey)}.`}
@@ -1192,8 +1201,8 @@ export default function StudioReservationsView({
         </div>
 
         {loading && !selectedSummary ? (
-          <div className="studio-booker-empty">
-            <div className="studio-booker-empty-title">Loading openings...</div>
+          <div className={__bundleClass_3}>
+            <div className={__bundleClass_4}>Loading openings...</div>
           </div>
         ) : featuredEntry ? (
           <div className="studio-feature-layout">
@@ -1205,7 +1214,7 @@ export default function StudioReservationsView({
                   <section className="studio-more-times-card">
                     <div className="studio-more-times-head">
                       <div className="card-title">More good times</div>
-                      <span className="studio-space-rail-copy">Shared spaces book in one step.</span>
+                      <span className={__bundleClass_7}>Shared spaces book in one step.</span>
                     </div>
                     <div className="studio-time-list">
                       {alternateEntries.map((entry) => renderTimeRow(entry, "list"))}
@@ -1234,11 +1243,11 @@ export default function StudioReservationsView({
               </button>
             ) : null}
             {hasSelectableEntries ? (
-              <button className="btn btn-ghost" type="button" onClick={() => setShowBrowse(true)}>
+              <button className={__bundleClass_0} type="button" onClick={() => setShowBrowse(true)}>
                 {browseDays.length > 0 ? "Choose another day" : "See waitlist days"}
               </button>
             ) : null}
-            <button className="btn btn-ghost" type="button" onClick={handleShowLaterOpenings}>
+            <button className={__bundleClass_0} type="button" onClick={handleShowLaterOpenings}>
               Show later openings
             </button>
           </div>
@@ -1284,17 +1293,17 @@ export default function StudioReservationsView({
               </div>
             </div>
             <div className="studio-browse-head-actions">
-              <button className="btn btn-ghost" type="button" onClick={handleShowLaterOpenings}>
+              <button className={__bundleClass_0} type="button" onClick={handleShowLaterOpenings}>
                 Show later openings
               </button>
-              <button className="btn btn-ghost" type="button" onClick={() => setShowBrowse(false)}>
+              <button className={__bundleClass_0} type="button" onClick={() => setShowBrowse(false)}>
                 Hide
               </button>
             </div>
           </div>
 
           {activeBrowseDays.length === 0 ? (
-            <div className="studio-day-empty">No selectable dates in this window yet.</div>
+            <div className={__bundleClass_5}>No selectable dates in this window yet.</div>
           ) : (
             <>
               <div className="studio-date-chip-list">
@@ -1321,7 +1330,7 @@ export default function StudioReservationsView({
                         day: "numeric",
                       })}
                     </div>
-                    <div className="studio-space-rail-copy">
+                    <div className={__bundleClass_7}>
                       {selectedBrowseDay.openEntries.length > 0
                         ? `${selectedBrowseDay.openEntries.length} opening${selectedBrowseDay.openEntries.length === 1 ? "" : "s"}`
                         : `${selectedBrowseDay.fullEntries.length} waitlist option${selectedBrowseDay.fullEntries.length === 1 ? "" : "s"}`}

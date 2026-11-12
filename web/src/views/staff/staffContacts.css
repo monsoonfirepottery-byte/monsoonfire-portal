@@ -1,0 +1,19 @@
+.staff-contacts-surface { container-type: inline-size; }
+.staff-contacts-surface > .card-title-row { min-height: 96px; padding: 16px; border-radius: 12px; background: linear-gradient(90deg, rgba(25,23,21,.98), rgba(25,23,21,.28)), url("/staff-facelift/contacts.webp") right center / cover; }
+.staff-contacts-surface > .card-title-row h1 { margin: 0; }
+.staff-contacts-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.staff-contacts-grid > .staff-column { min-width: 0; overflow-wrap: anywhere; }
+.staff-contacts-grid .staff-table-wrap { overflow-x: auto; }
+.staff-contacts-grid .staff-table { width: 100%; table-layout: fixed; }
+.staff-contacts-grid .staff-table th, .staff-contacts-grid .staff-table td { width: 50%; overflow-wrap: anywhere; word-break: break-word; }
+.staff-contacts-grid details { margin-top: 1rem; }
+.staff-ticket-contact { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .7rem 0; border-bottom: 1px solid var(--border, #445052); overflow-wrap: anywhere; }
+.staff-contacts-back { display: none; }
+@container (max-width: 680px) {
+  .staff-contacts-grid { grid-template-columns: minmax(0, 1fr); }
+  .staff-contacts-grid[data-detail-open="false"] .staff-contacts-detail { display: none; }
+  .staff-contacts-grid[data-detail-open="true"] .staff-contacts-list { display: none; }
+  .staff-contacts-back { display: inline-flex; }
+}
+.staff-contact-open { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.staff-contact-open:focus-visible { outline: 2px solid #8de0bd; outline-offset: 3px; border-radius: 2px; }

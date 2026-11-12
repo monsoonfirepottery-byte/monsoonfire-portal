@@ -4,6 +4,7 @@
 
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { inspectPortalRules } from "./lib/firestore-rules-release.mjs";
 import { resolve } from "node:path";
 import {
   exchangePortalRulesRefreshToken,
@@ -223,185 +224,26 @@ async function requestRulesApi({ accessToken, path, method = "GET", body = null 
   return { ok: resp.ok, status: resp.status, json };
 }
 
-function isPermissionDeniedResponse(response) {
-  const statusCode =
-    typeof response?.status === "number"
-      ? response.status
-      : typeof response?.json?.error?.code === "number"
-        ? response.json.error.code
-        : Number.NaN;
-  const errorStatus = String(response?.json?.error?.status || "");
-  const errorMessage = String(response?.json?.error?.message || "");
-  if (statusCode !== 403) {
-    return false;
-  }
-  return /PERMISSION_DENIED/i.test(errorStatus) || /permission/i.test(errorMessage);
-}
-
-function releasePath(projectId, releaseId) {
-  return `projects/${projectId}/releases/${releaseId}`;
-}
-
-async function getRelease(projectId, releaseId, accessToken) {
-  return await requestRulesApi({
-    accessToken,
-    path: releasePath(projectId, releaseId),
-  });
-}
-
-async function patchRelease(projectId, releaseId, rulesetName, accessToken) {
-  return await requestRulesApi({
-    accessToken,
-    path: `${releasePath(projectId, releaseId)}?updateMask=ruleset_name`,
-    method: "PATCH",
-    body: {
-      release: {
-        name: releasePath(projectId, releaseId),
-        ruleset_name: rulesetName,
-      },
-    },
-  });
-}
-
-function printResult(result, asJson) {
-  if (asJson) {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return;
-  }
-
-  process.stdout.write(`project: ${result.projectId}\n`);
-  process.stdout.write(`legacy release: ${result.legacyRelease.name}\n`);
-  process.stdout.write(`legacy ruleset: ${result.legacyRelease.rulesetName}\n`);
-  process.stdout.write(`default release: ${result.defaultRelease.name}\n`);
-  process.stdout.write(`default ruleset: ${result.defaultRelease.rulesetName}\n`);
-  process.stdout.write(`status: ${result.status}\n`);
-  if (result.message) {
-    process.stdout.write(`${result.message}\n`);
-  }
-}
-
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const config = JSON.parse(await readFile(resolve(process.cwd(), "firebase.json"), "utf8"));
+  const targets = Array.isArray(config.firestore) ? config.firestore : [config.firestore];
+  const rulesPath = targets.length === 1 && typeof targets[0]?.rules === "string" ? targets[0].rules : "";
+  const rulesSource = rulesPath ? await readFile(resolve(process.cwd(), rulesPath), "utf8") : "";
   const tokenInfo = await resolveAccessToken(options);
-  const nowMs = Date.now();
-  const isLikelyExpired =
-    Number.isFinite(tokenInfo.expiresAtMs) && tokenInfo.expiresAtMs < nowMs - 15_000;
-
-  const [legacyResp, defaultResp] = await Promise.all([
-    getRelease(options.projectId, LEGACY_RELEASE_ID, tokenInfo.accessToken),
-    getRelease(options.projectId, DEFAULT_DB_RELEASE_ID, tokenInfo.accessToken),
-  ]);
-
-  if (!legacyResp.ok || !defaultResp.ok) {
-    const permissionDenied =
-      isPermissionDeniedResponse(legacyResp) || isPermissionDeniedResponse(defaultResp);
-    if (options.softFailPermissionDenied && permissionDenied) {
-      const result = {
-        projectId: options.projectId,
-        status: "permission_denied",
-        message:
-          "Firestore Rules API permission denied; skipping drift enforcement because --soft-fail-permission-denied is set.",
-        tokenSource: tokenInfo.source,
-        legacyRelease: legacyResp,
-        defaultRelease: defaultResp,
-      };
-      printResult(result, options.asJson);
-      return;
-    }
-
-    const result = {
-      projectId: options.projectId,
-      status: "error",
-      message: isLikelyExpired
-        ? "Firebase CLI access token appears expired. Run `firebase login` then retry."
-        : "Could not read one or more Firestore release bindings.",
-      tokenSource: tokenInfo.source,
-      legacyRelease: legacyResp,
-      defaultRelease: defaultResp,
-    };
-    printResult(result, options.asJson);
-    process.exit(1);
-  }
-
-  const legacyRulesetName = String(legacyResp.json?.rulesetName || "");
-  const defaultRulesetName = String(defaultResp.json?.rulesetName || "");
-  const releasesMatch = legacyRulesetName && legacyRulesetName === defaultRulesetName;
-
-  const baseResult = {
-    projectId: options.projectId,
-    status: releasesMatch ? "in_sync" : options.checkOnly ? "drift_detected" : "updating",
-    legacyRelease: {
-      name: String(legacyResp.json?.name || releasePath(options.projectId, LEGACY_RELEASE_ID)),
-      rulesetName: legacyRulesetName,
-      updateTime: legacyResp.json?.updateTime ?? null,
-    },
-    defaultRelease: {
-      name: String(defaultResp.json?.name || releasePath(options.projectId, DEFAULT_DB_RELEASE_ID)),
-      rulesetName: defaultRulesetName,
-      updateTime: defaultResp.json?.updateTime ?? null,
-    },
-    tokenSource: tokenInfo.source,
-  };
-
-  if (releasesMatch) {
-    printResult(
-      {
-        ...baseResult,
-        message: "Firestore releases are already aligned.",
-      },
-      options.asJson
-    );
-    return;
-  }
-
-  if (options.checkOnly) {
-    printResult(
-      {
-        ...baseResult,
-        message:
-          "Firestore release drift detected. Run `npm run firestore:rules:sync` to align cloud.firestore with cloud.firestore/default.",
-      },
-      options.asJson
-    );
-    process.exit(2);
-  }
-
-  const patchResp = await patchRelease(
-    options.projectId,
-    LEGACY_RELEASE_ID,
-    defaultRulesetName,
-    tokenInfo.accessToken
-  );
-  if (!patchResp.ok) {
-    printResult(
-      {
-        ...baseResult,
-        status: "error",
-        message: "Failed to patch legacy Firestore release binding.",
-        patch: patchResp,
-      },
-      options.asJson
-    );
-    process.exit(1);
-  }
-
-  printResult(
-    {
-      ...baseResult,
-      status: "updated",
-      message: "Updated cloud.firestore to the current cloud.firestore/default ruleset.",
-      patch: {
-        name: patchResp.json?.name ?? null,
-        rulesetName: patchResp.json?.rulesetName ?? null,
-        updateTime: patchResp.json?.updateTime ?? null,
-      },
-    },
-    options.asJson
-  );
+  const result = await inspectPortalRules({
+    projectId: options.projectId, config, rulesSource,
+    request: (path) => requestRulesApi({ accessToken: tokenInfo.accessToken, path }),
+  });
+  const output = { projectId: options.projectId, ...result, tokenSource: tokenInfo.source };
+  if (options.asJson) process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+  else process.stdout.write(`${output.status}: ${output.message}\n`);
+  if (result.status === "permission_denied" && options.softFailPermissionDenied) return;
+  if (result.status !== "in_sync") process.exitCode = result.status === "drift_detected" ? 2 : 1;
 }
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`sync-firestore-rules-releases failed: ${message}`);
-  process.exit(1);
+  process.exitCode = 1;
 });

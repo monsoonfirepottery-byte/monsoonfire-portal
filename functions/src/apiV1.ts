@@ -26,6 +26,7 @@ import {
 import { listIntegrationEvents } from "./integrationEvents";
 import { getAgentServiceCatalogConfig } from "./agentCatalog";
 import { getAgentOpsConfig } from "./agentCommerce";
+import { newFiringPricingVersion } from "./firingPricing";
 import {
   getStationCapacity,
   isKnownStationId,
@@ -1038,6 +1039,7 @@ const libraryItemOverrideStatusSchema = z.object({
 
 const reservationCreateSchema = z.object({
   intakeMode: z.string().optional(),
+  firingRange: z.enum(["low", "mid", "high", "custom"]).optional(),
   firingType: z
     .enum(["bisque", "glaze", "other"])
     .optional()
@@ -1122,6 +1124,7 @@ const reservationCreateSchema = z.object({
   addOns: z
     .object({
       rushRequested: z.boolean().optional().nullable(),
+      privateRequested: z.boolean().optional().nullable(),
       wholeKilnRequested: z.boolean().optional().nullable(),
       communityShelfFillInAllowed: z.boolean().optional().nullable(),
       pickupDeliveryRequested: z.boolean().optional().nullable(),
@@ -1132,6 +1135,7 @@ const reservationCreateSchema = z.object({
       selfLoadedKilnCost: z.number().optional().nullable(),
       waxResistAssistRequested: z.boolean().optional().nullable(),
       glazeSanityCheckRequested: z.boolean().optional().nullable(),
+      staffGlazePrepRequested: z.boolean().optional().nullable(),
       fragileHandlingRequested: z.boolean().optional().nullable(),
       fragileHandlingCost: z.number().optional().nullable(),
       placementPreferenceRequested: z.boolean().optional().nullable(),
@@ -1864,6 +1868,7 @@ function normalizeReservationAddOnsForRow(value: unknown): Record<string, unknow
 
   return {
     rushRequested: raw.rushRequested === true,
+    privateRequested: raw.privateRequested === true,
     wholeKilnRequested: raw.wholeKilnRequested === true,
     communityShelfFillInAllowed: raw.communityShelfFillInAllowed === true,
     pickupDeliveryRequested: raw.pickupDeliveryRequested === true,
@@ -1874,6 +1879,7 @@ function normalizeReservationAddOnsForRow(value: unknown): Record<string, unknow
     selfLoadedKilnCost,
     waxResistAssistRequested: raw.waxResistAssistRequested === true,
     glazeSanityCheckRequested: raw.glazeSanityCheckRequested === true,
+    staffGlazePrepRequested: raw.staffGlazePrepRequested === true,
     placementPreferenceRequested: raw.placementPreferenceRequested === true,
     placementPreferenceZone:
       raw.placementPreferenceZone === "top" ||
@@ -2224,6 +2230,7 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     status: safeString(row.status, "REQUESTED"),
     intakeMode: normalizeReservationIntakeMode(row),
     firingType: safeString(row.firingType, "other"),
+    firingRange: trimOrNull(row.firingRange),
     shelfEquivalent: normalizeNumber(row.shelfEquivalent, 1) as number,
     footprintHalfShelves: normalizeNumber(row.footprintHalfShelves),
     heightInches: normalizeNumber(row.heightInches),
@@ -5282,6 +5289,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       }
 
       const firingTypeRaw = trimOrNull(body.firingType) ?? "other";
+      const firingRange = body.firingRange;
       const firingType =
         firingTypeRaw === "bisque" || firingTypeRaw === "glaze" || firingTypeRaw === "other"
           ? firingTypeRaw
@@ -5457,6 +5465,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         (addOnsInput.selfLoadedKilnRequested === true || addOnsInput.fragileHandlingRequested === true);
       const addOns = {
         rushRequested: !isCommunityShelf && addOnsInput.rushRequested === true,
+        privateRequested: !isCommunityShelf && addOnsInput.privateRequested === true,
         wholeKilnRequested: intakeMode === "WHOLE_KILN",
         communityShelfFillInAllowed: intakeMode === "SHELF_PURCHASE" && addOnsInput.communityShelfFillInAllowed === true,
         pickupDeliveryRequested: !isCommunityShelf && addOnsInput.pickupDeliveryRequested === true,
@@ -5471,6 +5480,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           : null,
         waxResistAssistRequested: !isCommunityShelf && addOnsInput.waxResistAssistRequested === true,
         glazeSanityCheckRequested: !isCommunityShelf && addOnsInput.glazeSanityCheckRequested === true,
+        staffGlazePrepRequested: !isCommunityShelf && addOnsInput.staffGlazePrepRequested === true,
+        staffGlazePrepRatePerHalfShelf: !isCommunityShelf && addOnsInput.staffGlazePrepRequested === true ? 10 : null,
         selfLoadedKilnRequested,
         selfLoadedKilnCost: selfLoadedKilnRequested ? selfLoadedKilnFlatCost : null,
         placementPreferenceRequested: !isCommunityShelf && addOnsInput.placementPreferenceRequested === true,
@@ -5524,6 +5535,10 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Unknown station id.");
         return;
       }
+      if (firingRange === "high" && kilnId === "reduction-raku") {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Cone 10 electric oxidation requires the electric kiln.");
+        return;
+      }
 
       const dropOffQuantityPayload = dropOffQuantity;
 
@@ -5548,10 +5563,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       await reservationRef.set({
         ownerUid,
+        pricingVersion: newFiringPricingVersion(),
         status: "REQUESTED",
         loadStatus: "queued",
         intakeMode,
         firingType,
+        ...(firingRange ? { firingRange } : {}),
         shelfEquivalent: Number(shelfEquivalent),
         footprintHalfShelves,
         heightInches,

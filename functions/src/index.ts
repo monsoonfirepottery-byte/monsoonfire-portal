@@ -114,6 +114,17 @@ import { buildContinueJourneyContract } from "./continueJourneyContract";
 import { parseBatchDoc } from "./firestoreConverters";
 import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
 export { websiteKilnBoard } from "./websiteKilnBoard";
+export { firingPathfinderRequest } from "./firingPathfinderRequest";
+export {
+  getMyFiringInvoiceLink, listMyFiringBilling, onFiringMailDeliveryUpdated,
+  staffAdjustFiringBilling, staffCreateFiringTicket, staffGetFiringTicketCreationOptions,
+  staffGetFiringTicketClientHistory, staffDeleteFiringTicket, staffFinalizeFiringPickup,
+  staffPreviewFiringCharge, staffGetFiringPlannerSnapshot, staffLookupFiringArtistContact,
+  staffListFiringPickupReviews, staffMarkFiringPickedUp, staffPrepareFiringPickupReview,
+  staffQueueFiringWorkSlipPrint, staffQueueFiringReceiptPrint, staffResendFiringPaidReceipt,
+  staffResendFiringInvoice, requestFiringPickupDetails, staffResumeFiringBillingOperation,
+  staffResendFiringPickupNotice,
+} from "./firingBilling";
 export {
   registerDeviceToken,
   unregisterDeviceToken,

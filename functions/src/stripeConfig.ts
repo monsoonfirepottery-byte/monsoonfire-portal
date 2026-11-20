@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   FieldValue,
   Timestamp,
+  applyCors,
   asInt,
   db,
   enforceRateLimit,
@@ -28,14 +29,29 @@ import { parseMaterialProductDoc, parseMaterialsOrderDoc } from "./firestoreConv
 import {
   getStripeClient,
   getWebhookEndpointUrl,
+  evaluateStripeWebhookEndpointReadiness,
   normalizeStripeConfig,
   resolveStripeReceiptUrl,
   STRIPE_CONFIG_DOC_PATH as CONFIG_DOC_PATH,
+  STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS,
+  STRIPE_STUDIO_ACCOUNT_ID,
   stripeConfigSchema,
   type StripeConfigInput,
+  type StripeWebhookEndpointReadiness,
   validateStripeConfigForPersist as validateStripeConfigForPersistImpl,
+  validateStripeWebhookSecret,
   validateUrlField,
 } from "./stripeRuntime";
+import {
+  getFiringTicketIdFromStripeEvent,
+  projectFiringBillingStripeEvent,
+} from "./firingBilling";
+import {
+  attestStripeWebhookDelivery,
+  requireActiveStripeWebhookWriteReadiness,
+  requireCurrentStripeWebhookAttestation,
+  StripeWebhookAttestationError,
+} from "./stripeWebhookReadiness";
 
 const REGION = "us-central1";
 const AUDIT_SUBCOLLECTION = "stripe_audit";
@@ -66,6 +82,7 @@ type StripeConfigResponse = {
   priceIds: Record<string, string>;
   productIds: Record<string, string>;
   enabledFeatures: { checkout: boolean; customerPortal: boolean; invoices: boolean };
+  firingBilling: StripeConfigInput["firingBilling"];
   successUrl: string;
   cancelUrl: string;
   updatedAt: string | null;
@@ -116,6 +133,13 @@ type SupportedStripeWebhookEventType =
   | "charge.dispute.closed"
   | "charge.refunded";
 
+export {
+  evaluateStripeWebhookEndpointReadiness,
+  STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS,
+  validateStripeWebhookSecret,
+};
+export type { StripeWebhookEndpointReadiness };
+
 type StripeWebhookEventContract = {
   paymentStatus: PaymentStatus;
   orderStatus: "payment_pending" | "paid" | "payment_failed" | "disputed" | "refunded";
@@ -137,18 +161,6 @@ type StripeWebhookModeResolution =
     reasonCode: "WEBHOOK_MODE_INVALID";
     message: string;
     envModeRaw: string;
-  };
-
-type StripeWebhookSecretValidation =
-  | { ok: true; normalizedSecret: string }
-  | {
-    ok: false;
-    code: 500;
-    reasonCode:
-      | "WEBHOOK_SECRET_MISSING"
-      | "WEBHOOK_SECRET_FORMAT_INVALID"
-      | "WEBHOOK_SECRET_PLACEHOLDER";
-    message: string;
   };
 
 type StripeWebhookVerifyContext = {
@@ -200,7 +212,6 @@ type StripeWebhookContextResult =
   };
 
 const STRIPE_WEBHOOK_MODE_ENV = "STRIPE_WEBHOOK_MODE";
-const PLACEHOLDER_SECRET_MARKERS = ["placeholder", "changeme", "replace", "example", "todo"];
 const WEBHOOK_PROCESSING_LOCK_TTL_MS = 15 * 60 * 1000;
 
 const STRIPE_WEBHOOK_EVENT_CONTRACTS: Record<
@@ -282,6 +293,7 @@ function toPublicConfigResponse(raw: Record<string, unknown>): StripeConfigRespo
     priceIds: cfg.priceIds,
     productIds: cfg.productIds,
     enabledFeatures: cfg.enabledFeatures,
+    firingBilling: cfg.firingBilling,
     successUrl: cfg.successUrl,
     cancelUrl: cfg.cancelUrl,
     updatedAt: maybeIso(raw.updatedAt),
@@ -297,6 +309,7 @@ function summarizeConfigChanges(before: StripeConfigInput, after: StripeConfigIn
   if (JSON.stringify(before.priceIds) !== JSON.stringify(after.priceIds)) changed.push("priceIds");
   if (JSON.stringify(before.productIds) !== JSON.stringify(after.productIds)) changed.push("productIds");
   if (JSON.stringify(before.enabledFeatures) !== JSON.stringify(after.enabledFeatures)) changed.push("enabledFeatures");
+  if (JSON.stringify(before.firingBilling) !== JSON.stringify(after.firingBilling)) changed.push("firingBilling");
   if (before.successUrl !== after.successUrl) changed.push("successUrl");
   if (before.cancelUrl !== after.cancelUrl) changed.push("cancelUrl");
   return {
@@ -869,39 +882,6 @@ export function resolveStripeWebhookMode(params: {
   };
 }
 
-export function validateStripeWebhookSecret(params: {
-  mode: StripeMode;
-  secret: string;
-}): StripeWebhookSecretValidation {
-  const secret = safeString(params.secret).trim();
-  if (!secret) {
-    return {
-      ok: false,
-      code: 500,
-      reasonCode: "WEBHOOK_SECRET_MISSING",
-      message: `Stripe webhook secret missing for mode ${params.mode}`,
-    };
-  }
-  if (!secret.startsWith("whsec_") || secret.length < 12) {
-    return {
-      ok: false,
-      code: 500,
-      reasonCode: "WEBHOOK_SECRET_FORMAT_INVALID",
-      message: `Stripe webhook secret format invalid for mode ${params.mode}`,
-    };
-  }
-  const lowered = secret.toLowerCase();
-  if (PLACEHOLDER_SECRET_MARKERS.some((marker) => lowered.includes(marker))) {
-    return {
-      ok: false,
-      code: 500,
-      reasonCode: "WEBHOOK_SECRET_PLACEHOLDER",
-      message: `Stripe webhook secret appears to be a placeholder for mode ${params.mode}`,
-    };
-  }
-  return { ok: true, normalizedSecret: secret };
-}
-
 async function resolveStripeWebhookVerifyContext(): Promise<StripeWebhookContextResult> {
   const envModeRaw = safeString(process.env[STRIPE_WEBHOOK_MODE_ENV]).trim();
   let configModeRaw = "";
@@ -1063,12 +1043,9 @@ export function classifyStripeWebhookReplayState(
 }
 
 export const staffGetStripeConfig = onRequest(
-  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
+  { region: REGION, cors: false, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
@@ -1095,6 +1072,7 @@ export const staffGetStripeConfig = onRequest(
         "priceIds",
         "productIds",
         "enabledFeatures",
+        "firingBilling",
         "successUrl",
         "cancelUrl",
       ],
@@ -1104,17 +1082,15 @@ export const staffGetStripeConfig = onRequest(
         "STRIPE_TEST_WEBHOOK_SECRET",
         "STRIPE_LIVE_WEBHOOK_SECRET",
       ],
+      requiredWebhookEvents: STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS,
     });
   }
 );
 
 export const staffUpdateStripeConfig = onRequest(
-  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
+  { region: REGION, cors: false, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
@@ -1134,6 +1110,9 @@ export const staffUpdateStripeConfig = onRequest(
 
     try {
       const nextConfig = validateStripeConfigForPersist(parsed.data);
+      if (nextConfig.firingBilling.liveWritesEnabled) {
+        await requireActiveStripeWebhookWriteReadiness("live");
+      }
 
       const configRef = db.doc(CONFIG_DOC_PATH);
       const currentSnap = await configRef.get();
@@ -1168,18 +1147,20 @@ export const staffUpdateStripeConfig = onRequest(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("staffUpdateStripeConfig failed", { message });
-      res.status(400).json({ ok: false, message });
+      const attestationError = err instanceof StripeWebhookAttestationError ? err : null;
+      res.status(attestationError?.httpStatus ?? 400).json({
+        ok: false,
+        code: attestationError?.code,
+        message,
+      });
     }
   }
 );
 
 export const staffValidateStripeConfig = onRequest(
-  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
+  { region: REGION, cors: false, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
@@ -1198,7 +1179,52 @@ export const staffValidateStripeConfig = onRequest(
 
       const mode: StripeMode = config.mode;
       const stripe = getStripeClient(mode);
-      const account = await stripe.accounts.retrieve();
+      const webhookEndpointUrl = getWebhookEndpointUrl();
+      const webhookEndpoints = await stripe.webhookEndpoints.list({ limit: 100 });
+      const webhook = evaluateStripeWebhookEndpointReadiness({
+        endpoints: webhookEndpoints.data,
+        expectedUrl: webhookEndpointUrl,
+        mode,
+      });
+      let webhookSecret = "";
+      try {
+        webhookSecret = getStripeWebhookSecret(mode);
+      } catch {
+        // Report the missing secret as readiness state instead of failing the
+        // rest of this staff diagnostic request.
+      }
+      const webhookSecretValidation = validateStripeWebhookSecret({
+        mode,
+        secret: webhookSecret,
+      });
+      // A restricted key need not expose the account/KYC object. Possession of
+      // the one exact Monsoon Fire endpoint is the least-privilege account
+      // binding; a key for another account cannot list this endpoint.
+      const accountMatches = webhook.matchingEndpointCount === 1;
+      let webhookAttestation: { ready: boolean; code: string | null; message: string | null } = {
+        ready: false,
+        code: "STRIPE_WEBHOOK_ATTESTATION_REQUIRED",
+        message: "Send a signed Stripe test event to this destination before enabling billing writes.",
+      };
+      if (accountMatches && webhookSecretValidation.ok && webhook.ready) {
+        try {
+          await requireCurrentStripeWebhookAttestation({
+            mode,
+            secret: webhookSecretValidation.normalizedSecret,
+            stripeAccountId: STRIPE_STUDIO_ACCOUNT_ID,
+            webhook,
+            endpointUrl: webhookEndpointUrl,
+          });
+          webhookAttestation = { ready: true, code: null, message: null };
+        } catch (error) {
+          const attestationError = error instanceof StripeWebhookAttestationError ? error : null;
+          webhookAttestation = {
+            ready: false,
+            code: attestationError?.code ?? "STRIPE_WEBHOOK_ATTESTATION_FAILED",
+            message: attestationError?.message ?? "Stripe webhook proof could not be confirmed.",
+          };
+        }
+      }
 
       const firstPriceEntry = Object.entries(config.priceIds)[0] ?? null;
       let priceCheck: { key: string; id: string; active: boolean; currency: string | null } | null = null;
@@ -1217,14 +1243,50 @@ export const staffValidateStripeConfig = onRequest(
         ok: true,
         mode,
         account: {
-          id: account.id,
-          businessType: account.business_type ?? null,
-          country: account.country ?? null,
-          defaultCurrency: account.default_currency ?? null,
+          id: STRIPE_STUDIO_ACCOUNT_ID,
+          matchesStudioAccount: accountMatches,
+          businessType: null,
+          country: null,
+          defaultCurrency: null,
         },
         activePublishableKeyValid:
           mode === "live" ? config.publishableKeys.live.startsWith("pk_live_") : config.publishableKeys.test.startsWith("pk_test_"),
-        webhookSecretConfigured: Boolean(getStripeWebhookSecret(mode)),
+        webhookSecretConfigured: webhookSecretValidation.ok,
+        webhookSecretValidation: webhookSecretValidation.ok
+          ? { ok: true }
+          : {
+            ok: false,
+            reasonCode: webhookSecretValidation.reasonCode,
+            message: webhookSecretValidation.message,
+          },
+        webhookEndpointUrl,
+        webhook,
+        webhookAttestation,
+        requiredWebhookEvents: STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS,
+        firingBilling: {
+          enabled: config.firingBilling.enabled,
+          liveWritesEnabled: config.firingBilling.liveWritesEnabled,
+          invoicesEnabled: config.enabledFeatures.invoices,
+          readyForTestWrites:
+            mode === "test" &&
+            config.enabledFeatures.invoices &&
+            config.firingBilling.enabled &&
+            accountMatches &&
+            webhookSecretValidation.ok &&
+            webhookAttestation.ready &&
+            webhook.ready,
+          readyForLiveWrites:
+            mode === "live" &&
+            config.enabledFeatures.invoices &&
+            config.firingBilling.enabled &&
+            config.firingBilling.liveWritesEnabled &&
+            accountMatches &&
+            webhookSecretValidation.ok &&
+            webhookAttestation.ready &&
+            webhook.ready,
+          daysUntilDue: config.firingBilling.daysUntilDue,
+          pickupInstructionsVersion: config.firingBilling.pickupInstructionsVersion,
+        },
         priceCheck,
       });
     } catch (err) {
@@ -1236,12 +1298,9 @@ export const staffValidateStripeConfig = onRequest(
 );
 
 export const createCheckoutSession = onRequest(
-  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
+  { region: REGION, cors: false, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
@@ -1376,12 +1435,9 @@ export const createCheckoutSession = onRequest(
 );
 
 export const createAgentCheckoutSession = onRequest(
-  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
+  { region: REGION, cors: false, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
@@ -2112,6 +2168,30 @@ export const stripePortalWebhook = onRequest(
     }
 
     const { event, mode, modeSource, secretSource } = verification;
+    try {
+      await attestStripeWebhookDelivery({
+        mode,
+        secret: contextResult.context.secret,
+        event,
+      });
+    } catch (error) {
+      const attestationError = error instanceof StripeWebhookAttestationError ? error : null;
+      logger.error("stripePortalWebhook attestation failed", {
+        code: attestationError?.code ?? "STRIPE_WEBHOOK_ATTESTATION_FAILED",
+        eventId: event.id,
+        eventType: event.type,
+        mode,
+      });
+      res.status(attestationError?.httpStatus ?? 503).json({
+        received: false,
+        error: {
+          code: attestationError?.code ?? "STRIPE_WEBHOOK_ATTESTATION_FAILED",
+          message: attestationError?.message ?? "Stripe webhook proof could not be confirmed.",
+          mode,
+        },
+      });
+      return;
+    }
     const eventRef = db.collection("stripeWebhookEvents").doc(event.id);
     const replayState = await db.runTransaction(async (tx) => {
       const existing = await tx.get(eventRef);
@@ -2152,7 +2232,8 @@ export const stripePortalWebhook = onRequest(
     }
 
     const eventContract = getStripeWebhookEventContract(event.type);
-    if (!eventContract) {
+    const firingTicketId = getFiringTicketIdFromStripeEvent(event);
+    if (!eventContract && !firingTicketId) {
       await eventRef.set({
         processedAt: nowTs(),
         processingStartedAt: null,
@@ -2166,6 +2247,71 @@ export const stripePortalWebhook = onRequest(
         modeSource,
       });
       res.status(200).json({ received: true, ignored: true });
+      return;
+    }
+
+    if (firingTicketId) {
+      try {
+        const firingResult = await projectFiringBillingStripeEvent({ event, mode });
+        await eventRef.set({
+          processedAt: nowTs(),
+          processingStartedAt: null,
+          firingTicketId: firingResult.ticketId,
+          billingStatus: firingResult.billingStatus,
+          paymentDomain: "firing",
+        }, { merge: true });
+        logger.info("stripePortalWebhook processed firing billing event", {
+          eventId: event.id,
+          type: event.type,
+          firingTicketId: firingResult.ticketId,
+          billingStatus: firingResult.billingStatus,
+          mode,
+          modeSource,
+        });
+        res.status(200).json({ received: true, paymentDomain: "firing" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error("stripePortalWebhook firing projection failed", {
+          eventId: event.id,
+          type: event.type,
+          firingTicketId,
+          mode,
+          message,
+        });
+        await eventRef.set({
+          processingStartedAt: null,
+          failedAt: nowTs(),
+          failureCode: "FIRING_BILLING_PROJECTION_FAILED",
+          failureMessage: message,
+        }, { merge: true });
+        res.status(500).json({
+          received: false,
+          error: {
+            code: "FIRING_BILLING_PROJECTION_FAILED",
+            message,
+            mode,
+            modeSource,
+            secretSource,
+          },
+        });
+      }
+      return;
+    }
+
+    if (!eventContract) {
+      await eventRef.set({
+        processingStartedAt: null,
+        failedAt: nowTs(),
+        failureCode: "WEBHOOK_EVENT_CONTRACT_MISSING",
+        failureMessage: `No event contract for ${event.type}`,
+      }, { merge: true });
+      res.status(500).json({
+        received: false,
+        error: {
+          code: "WEBHOOK_EVENT_CONTRACT_MISSING",
+          message: `No event contract for ${event.type}`,
+        },
+      });
       return;
     }
 

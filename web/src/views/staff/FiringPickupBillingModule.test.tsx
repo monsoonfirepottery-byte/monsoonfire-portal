@@ -38,6 +38,7 @@ function ticket(overrides: Record<string, unknown> = {}) {
 function createClient(
   inputTicket: ReturnType<typeof ticket> | ReturnType<typeof ticket>[] = ticket(),
   options: {
+    preview?: (body: unknown) => { rateKey: string; chargeCents: number; priorCents: number; firingId: string; billedAddOns: { private: boolean; rush: boolean } };
     runtime?: {
       stripeMode: "test" | "live";
       invoicesEnabled: boolean;
@@ -50,6 +51,16 @@ function createClient(
 ) {
   const tickets = Array.isArray(inputTicket) ? inputTicket : [inputTicket];
   const postJson = vi.fn(async (fn: string, _body?: unknown, _options?: unknown) => {
+    if (fn === "staffPreviewFiringCharge" && options.preview) return { ok: true, data: options.preview(_body) };
+    if (fn === "staffGetFiringTicketCreationOptions") {
+      return { ok: true, data: {
+        people: [{ uid: "artist-1", displayName: "Saved Artist", email: "artist@example.com" }],
+        firings: [
+          { id: "run-1", title: "Cone 10 firing", startAt: "2026-07-15T19:00:00Z", unloadedAt: "2026-07-16T19:00:00Z" },
+          { id: "run-2", title: "Still loaded", startAt: "2026-07-17T19:00:00Z", unloadedAt: null },
+        ],
+      } };
+    }
     if (fn === "staffListFiringPickupReviews") {
       return {
         ok: true,
@@ -85,6 +96,33 @@ afterEach(() => {
 });
 
 describe("FiringPickupBillingModule", () => {
+  it("links a public version 3 ticket to a client and unloaded firing before quoting", async () => {
+    const { client, postJson } = createClient(ticket({ pricingVersion: 3, heatId: "high" }));
+    render(<FiringPickupBillingModule client={client} isStaff />);
+    fireEvent.click(await screen.findByRole("button", { name: "Select client and firing" }));
+    const clientSelect = await screen.findByRole("combobox", { name: "Client" });
+    expect(screen.queryByRole("option", { name: /Still loaded/ })).toBeNull();
+    expect(postJson.mock.calls.some(([fn]) => fn === "staffPreviewFiringCharge")).toBe(false);
+    fireEvent.change(clientSelect, { target: { value: "artist-1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Unloaded kiln firing" }), { target: { value: "run-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm client and firing" }));
+    await waitFor(() => expect(postJson).toHaveBeenCalledWith("staffPrepareFiringPickupReview", expect.objectContaining({
+      action: "link_firing", ownerUid: "artist-1", firingId: "run-1",
+    }), expect.anything()));
+  });
+
+  it("finalizes version 3 at the server's remaining amount after earlier tickets", async () => {
+    const { client, postJson } = createClient(ticket({ pricingVersion: 3, heatId: "high", heatLabel: "Cone 10 electric oxidation", ownerUid: "artist-1", firingId: "run-1" }), {
+      preview: () => ({ rateKey: "high_shared_v3", chargeCents: 7000, priorCents: 9000, firingId: "run-1", billedAddOns: { private: false, rush: false } }),
+    });
+    render(<FiringPickupBillingModule client={client} isStaff />);
+    await screen.findByDisplayValue("70.00");
+    expect(screen.getByText(/Already reserved: \$90.00. Due for this ticket: \$70.00/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /Mark ready & send pickup email/i })[0]);
+    await waitFor(() => expect(postJson).toHaveBeenCalledWith("staffFinalizeFiringPickup", expect.objectContaining({
+      rateKey: "high_shared_v3", finalChargeCents: 7000,
+    }), expect.anything()));
+  });
   it("keeps pickup and history outside the default work list without hiding payment failures", async () => {
     const { client } = createClient([
       ticket({ ticketId: "MF-001-NEW", displayName: "Incoming Artist", status: "expected_dropoff" }),
@@ -182,7 +220,7 @@ describe("FiringPickupBillingModule", () => {
     ]);
     render(<FiringPickupBillingModule client={client} isStaff />);
 
-    const name = await screen.findByRole("textbox", { name: /Name or nickname/i });
+    const name = await screen.findByDisplayValue("New ticket");
     fireEvent.change(name, { target: { value: "Known Artist" } });
 
     const suggestion = await screen.findByRole("button", { name: /Use Known Artist · known@example\.com/i });
@@ -202,7 +240,7 @@ describe("FiringPickupBillingModule", () => {
     ]);
     render(<FiringPickupBillingModule client={client} isStaff />);
 
-    const name = await screen.findByRole("textbox", { name: /Name or nickname/i });
+    const name = await screen.findByDisplayValue("New ticket");
     await waitFor(() => expect((name as HTMLInputElement).value).toBe("New ticket"));
     fireEvent.change(name, { target: { value: "Micha" } });
     expect(await screen.findByRole("button", { name: /Use Micha Wynne · micah@example\.com/i })).toBeTruthy();

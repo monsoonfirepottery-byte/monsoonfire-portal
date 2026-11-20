@@ -38,6 +38,7 @@ function ticket(overrides: Record<string, unknown> = {}) {
 function createClient(
   inputTicket: ReturnType<typeof ticket> | ReturnType<typeof ticket>[] = ticket(),
   options: {
+    preview?: (body: unknown) => { rateKey: string; chargeCents: number; priorCents: number; firingId: string; billedAddOns: { private: boolean; rush: boolean } };
     runtime?: {
       stripeMode: "test" | "live";
       invoicesEnabled: boolean;
@@ -50,6 +51,7 @@ function createClient(
 ) {
   const tickets = Array.isArray(inputTicket) ? inputTicket : [inputTicket];
   const postJson = vi.fn(async (fn: string, _body?: unknown, _options?: unknown) => {
+    if (fn === "staffPreviewFiringCharge" && options.preview) return { ok: true, data: options.preview(_body) };
     if (fn === "staffListFiringPickupReviews") {
       return {
         ok: true,
@@ -85,6 +87,18 @@ afterEach(() => {
 });
 
 describe("FiringPickupBillingModule", () => {
+  it("finalizes version 3 at the server's remaining amount after earlier tickets", async () => {
+    const { client, postJson } = createClient(ticket({ pricingVersion: 3, heatId: "high", heatLabel: "Cone 10 electric oxidation" }), {
+      preview: () => ({ rateKey: "high_shared_v3", chargeCents: 7000, priorCents: 9000, firingId: "run-1", billedAddOns: { private: false, rush: false } }),
+    });
+    render(<FiringPickupBillingModule client={client} isStaff />);
+    await screen.findByDisplayValue("70.00");
+    expect(screen.getByText(/Already reserved: \$90.00. Due for this ticket: \$70.00/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /Mark ready & send pickup email/i })[0]);
+    await waitFor(() => expect(postJson).toHaveBeenCalledWith("staffFinalizeFiringPickup", expect.objectContaining({
+      rateKey: "high_shared_v3", finalChargeCents: 7000,
+    }), expect.anything()));
+  });
   it("keeps pickup and history outside the default work list without hiding payment failures", async () => {
     const { client } = createClient([
       ticket({ ticketId: "MF-001-NEW", displayName: "Incoming Artist", status: "expected_dropoff" }),

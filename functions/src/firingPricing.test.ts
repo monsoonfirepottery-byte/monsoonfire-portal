@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateFiringPrice } from "./firingPricing";
+import { calculateFiringPrice, newFiringPricingVersion } from "./firingPricing";
 
 test("new shared rates cap each ticket independently and add fulfilled services outside the cap", () => {
   const price = (heatId: string, quantity: number, extra = {}) => calculateFiringPrice({ version: 2, heatId, billingUnit: "half_shelf", quantity, ...extra }).chargeCents;
@@ -31,4 +31,11 @@ test("version 3 cone 10 estimates include the base cap and fulfilled add-ons", (
   assert.equal(calculateFiringPrice({ version: 3, heatId: "high", billingUnit: "custom", quantity: 1 }).chargeCents, null);
   assert.equal(calculateFiringPrice({ version: 2, heatId: "high", billingUnit: "half_shelf", quantity: 3 }).chargeCents, null);
   assert.equal(calculateFiringPrice({ version: 1, heatId: "high", billingUnit: "half_shelf", quantity: 3 }).chargeCents, 6500);
+});
+
+
+test("version 3 is the release default and an explicit pause issues version 2", () => {
+  assert.equal(newFiringPricingVersion(""), 3);
+  assert.equal(newFiringPricingVersion("true"), 3);
+  assert.equal(newFiringPricingVersion("false"), 2);
 });

@@ -463,15 +463,15 @@ test("new drop-off records preserve optional requests and quote version in ticke
     addOnRequests: { private: true, rush: true, communitySharing: false },
   });
   const docs = buildFiringPathfinderSubmissionDocuments(submission, "MF-TEST", "support-test", "mail-test", Timestamp.fromMillis(1000), "2026-10-29T12:00:00Z");
-  assert.equal(docs.ticket.pricingVersion, 2);
+  assert.equal(docs.ticket.pricingVersion, 3);
   assert.deepEqual(docs.ticket.addOnRequests, { private: true, rush: true, communitySharing: false });
   assert.match(formatFiringPathfinderArtistEmailText(submission, "MF-TEST", "2026-10-29T12:00:00Z"), /Fire tonight request/);
   assert.notEqual(makeFiringPathfinderPayloadHash(submission), makeFiringPathfinderPayloadHash(materializeFiringPathfinderSubmission({ ...submission, addOnRequests: { private: true, rush: false, communitySharing: false } })));
   const staffTicket = queueTicketDto("MF-TEST", docs.ticket, true);
-  assert.equal(staffTicket.pricingVersion, 2);
+  assert.equal(staffTicket.pricingVersion, 3);
   assert.equal(staffTicket.addOnRequests.rush, true);
-  const finalization = staffFinalizeFiringPickupSchema.parse({ ticketId: "MF-TEST", expectedVersion: 0, clientRequestId: "11111111-1111-4111-8111-111111111111", outcome: "normal_billable", actualSpace: { billingUnit: "whole_kiln", quantity: 1 }, rateKey: "mid_shared_v2", finalChargeCents: 14000, privateFulfilled: true, rushFulfilled: false, confirmedReady: true });
-  assert.deepEqual(validateChargeForTicket(finalization, staffTicket.heatId, docs.ticket), { rateMatched: true, expectedChargeCents: 14000 });
+  const finalization = staffFinalizeFiringPickupSchema.parse({ ticketId: "MF-TEST", expectedVersion: 0, clientRequestId: "11111111-1111-4111-8111-111111111111", outcome: "normal_billable", actualSpace: { billingUnit: "whole_kiln", quantity: 1 }, rateKey: "mid_shared_v3", finalChargeCents: 14000, privateFulfilled: true, rushFulfilled: false, confirmedReady: true });
+  assert.deepEqual(validateChargeForTicket(finalization, staffTicket.heatId, docs.ticket, { rateKey: "mid_shared_v3", chargeCents: 14000 }), { rateMatched: true, expectedChargeCents: 14000 });
 });
 
 test("idempotency accepts an exact replay and rejects reused keys with changed details", () => {

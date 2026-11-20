@@ -522,16 +522,47 @@ export default function FiringPickupBillingModule({
     setSelectedTicketId(visibleTickets[nextIndex].ticketId);
   }, [selectedTicketIndex, visibleTickets]);
 
+  const previewRequired = selected?.pricingVersion === 3 && selected.heatId !== "custom" && billingUnit !== "custom";
+  const previewEnabled = previewRequired && selected?.status === "awaiting_pickup_review" &&
+    (outcome === "normal_billable" || outcome === "maker_risk_billable");
+  const previewKey = previewEnabled && selected
+    ? JSON.stringify([selected.ticketId, selected.billingVersion, billingUnit, quantity, privateFulfilled, rushFulfilled]) : "";
+  const [previewGeneration, refreshPreview] = useState(0);
+  const [preview, setPreview] = useState<{
+    key: string;
+    generation: number;
+    data?: { rateKey: string; chargeCents: number; priorCents: number; firingId: string; billedAddOns: { private: boolean; rush: boolean } };
+    error?: string;
+  } | null>(null);
+  const currentPreview = previewKey && preview?.key === previewKey && preview.generation === previewGeneration ? preview : null;
+  useEffect(() => {
+    if (!previewKey || !selected) return;
+    let current = true;
+    client.postJson<{ data: NonNullable<NonNullable<typeof preview>["data"]> }>("staffPreviewFiringCharge", {
+      ticketId: selected.ticketId, expectedVersion: selected.billingVersion,
+      actualSpace: { billingUnit, quantity: billingUnit === "half_shelf" ? quantity : 1 },
+      privateFulfilled, rushFulfilled,
+    }).then(({ data }) => {
+      if (current) setPreview({ key: previewKey, generation: previewGeneration, data });
+    }).catch((error: unknown) => {
+      if (current) setPreview({ key: previewKey, generation: previewGeneration, error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => { current = false; };
+  }, [billingUnit, client, previewGeneration, previewKey, privateFulfilled, quantity, rushFulfilled, selected]);
+
   const derivedRate = useMemo(
     () => {
       if (!selected) return { rateKey: null, cents: null };
-      if (selected.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom")) {
+      if (previewRequired) return currentPreview?.data
+        ? { rateKey: currentPreview.data.rateKey, cents: currentPreview.data.chargeCents }
+        : { rateKey: null, cents: null };
+      if ((selected.pricingVersion === 2 || selected.pricingVersion === 3) && (selected.heatId === "custom" || billingUnit === "custom")) {
         const base = dollarsToCents(customBaseCharge);
-        return base === null ? { rateKey: null, cents: null } : { rateKey: "custom_quote_v2", cents: base + (privateFulfilled ? 2000 : 0) + (rushFulfilled ? 2000 : 0) };
+        return base === null ? { rateKey: null, cents: null } : { rateKey: `custom_quote_v${selected.pricingVersion}`, cents: base + (privateFulfilled ? 2000 : 0) + (rushFulfilled ? 2000 : 0) };
       }
       return standardRate(selected, billingUnit, quantity, privateFulfilled, rushFulfilled);
     },
-    [billingUnit, quantity, selected, privateFulfilled, rushFulfilled, customBaseCharge],
+    [billingUnit, quantity, selected, privateFulfilled, rushFulfilled, customBaseCharge, currentPreview, previewRequired],
   );
 
   useEffect(() => {
@@ -548,7 +579,7 @@ export default function FiringPickupBillingModule({
     (runtime.stripeMode === "test" || runtime.liveWritesEnabled),
   );
   const billableOutcome = outcome === "normal_billable" || outcome === "maker_risk_billable";
-  const billableActionLocked = billableOutcome && !writesReady;
+  const billableActionLocked = billableOutcome && !writesReady && currentPreview?.data?.chargeCents !== 0;
 
   const prepareReview = useCallback(async () => {
     if (!selected || busy) return;
@@ -586,7 +617,11 @@ export default function FiringPickupBillingModule({
       showFieldIssue("final-charge", "Enter a valid final firing charge up to $10,000.");
       return;
     }
-    if (isBillable && !writesReady) {
+    if (isBillable && previewRequired && (!currentPreview?.data || currentPreview.data.chargeCents !== finalChargeCents)) {
+      showFieldIssue("final-charge", "Review the current firing charge before finalizing.");
+      return;
+    }
+    if (isBillable && !writesReady && !(previewRequired && finalChargeCents === 0)) {
       setError("Payments are not available right now. Check Settings before marking this work ready.");
       return;
     }
@@ -607,7 +642,7 @@ export default function FiringPickupBillingModule({
       showFieldIssue("override-reason", "Record how the other requested services were handled before billing.");
       return;
     }
-    if (isBillable && selected.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) === null) {
+    if (isBillable && (selected.pricingVersion === 2 || selected.pricingVersion === 3) && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) === null) {
       showFieldIssue("final-charge", "Enter the custom firing quote before add-ons.");
       return;
     }
@@ -630,8 +665,8 @@ export default function FiringPickupBillingModule({
         actualSpace: { billingUnit, quantity: billingUnit === "half_shelf" ? quantity : 1 },
         rateKey: derivedRate.rateKey,
         finalChargeCents,
-        ...(selected.pricingVersion === 2 ? { privateFulfilled, rushFulfilled } : {}),
-        ...(selected.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) !== null ? { customBaseChargeCents: dollarsToCents(customBaseCharge) } : {}),
+        ...(selected.pricingVersion === 2 || selected.pricingVersion === 3 ? { privateFulfilled, rushFulfilled } : {}),
+        ...((selected.pricingVersion === 2 || selected.pricingVersion === 3) && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) !== null ? { customBaseChargeCents: dollarsToCents(customBaseCharge) } : {}),
         currency: "usd",
         overrideReason: overrideReason.trim() || null,
         artistVisibleFiringNote: artistVisibleNote.trim() || null,
@@ -646,11 +681,12 @@ export default function FiringPickupBillingModule({
       await load();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : String(submitError));
+      if (previewRequired) refreshPreview((generation) => generation + 1);
     } finally {
       finalizing.current = false;
       setBusy("");
     }
-  }, [artistVisibleNote, billingUnit, busy, client, customBaseCharge, derivedRate.cents, derivedRate.rateKey, displayName, email, finalCharge, load, outcome, overrideReason, privateStaffNote, privateFulfilled, rushFulfilled, quantity, selected, showFieldIssue, writesReady]);
+  }, [artistVisibleNote, billingUnit, busy, client, currentPreview, customBaseCharge, derivedRate.cents, derivedRate.rateKey, displayName, email, finalCharge, load, outcome, overrideReason, previewRequired, privateStaffNote, privateFulfilled, rushFulfilled, quantity, selected, showFieldIssue, writesReady]);
 
   const resume = useCallback(async () => {
     if (!selected || busy) return;
@@ -868,7 +904,7 @@ export default function FiringPickupBillingModule({
     ["unbilled", "hold_for_review"].includes(selected.billingStatus) &&
     selected.status === "awaiting_pickup_review";
   const readyAction = canFinalize ? (
-    <button className="btn btn-primary" type="button" disabled={Boolean(busy) || billableActionLocked} onClick={() => void finalize()}>
+    <button className="btn btn-primary" type="button" disabled={Boolean(busy) || billableActionLocked || (previewEnabled && !currentPreview?.data)} onClick={() => void finalize()}>
       {busy === "finalize"
         ? "Saving…"
         : outcome === "hold_for_review"
@@ -1115,13 +1151,17 @@ export default function FiringPickupBillingModule({
                   <fieldset disabled={Boolean(busy) || outcome === "hold_for_review" || outcome === "studio_fault_no_charge"}>
                     <legend>Actual kiln space used</legend>
                     <div className={__bundleClass_8}>
-                      {selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") ? <label className={__bundleClass_10}>Custom firing quote before add-ons<input inputMode="decimal" value={customBaseCharge} onChange={(event) => setCustomBaseCharge(event.target.value)} /></label> : null}
+                    {previewEnabled ? <p role="status">{currentPreview?.error ?? (currentPreview?.data
+                      ? `Firing ${currentPreview.data.firingId}. Already reserved: ${formatMoney(currentPreview.data.priorCents)}. Due for this ticket: ${formatMoney(currentPreview.data.chargeCents)}.`
+                      : "Checking the remaining firing charge…")}</p> : null}
+                    {previewEnabled && currentPreview?.error ? <button type="button" className="btn btn-secondary" onClick={() => refreshPreview((generation) => generation + 1)}>Refresh firing charge</button> : null}
+                      {(selected?.pricingVersion === 2 || selected?.pricingVersion === 3) && (selected.heatId === "custom" || billingUnit === "custom") ? <label className={__bundleClass_10}>Custom firing quote before add-ons<input inputMode="decimal" value={customBaseCharge} onChange={(event) => setCustomBaseCharge(event.target.value)} /></label> : null}
                       <label className={__bundleClass_10}>Billing unit
                         <select value={billingUnit} onChange={(event) => { const next = event.target.value as BillingUnit; setBillingUnit(next); if (next !== "half_shelf") setQuantity(1); }}>
                           <option value="half_shelf">Half shelf</option><option value="whole_kiln">Whole kiln</option><option value="custom">Custom / unusual firing</option>
                         </select>
                       </label>
-                      {billingUnit === "half_shelf" ? <label className={__bundleClass_10}>Half shelves<select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>{Array.from({ length: selected?.pricingVersion === 2 ? 20 : 3 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} half {index === 0 ? "shelf" : "shelves"}</option>)}</select></label> : null}
+                      {billingUnit === "half_shelf" ? <label className={__bundleClass_10}>Half shelves<select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>{Array.from({ length: (selected?.pricingVersion === 2 || selected?.pricingVersion === 3) ? 20 : 3 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} half {index === 0 ? "shelf" : "shelves"}</option>)}</select></label> : null}
                       <label className={`staff-field ${hasFieldIssue("final-charge") ? "has-field-issue" : ""}`}>Final charge<span className="firing-billing-money-input"><span aria-hidden="true">$</span><input id="firing-field-final-charge" inputMode="decimal" value={finalCharge} onChange={(event) => { setFinalCharge(event.target.value); clearFieldIssue("final-charge"); }} aria-invalid={hasFieldIssue("final-charge")} aria-describedby={hasFieldIssue("final-charge") ? "firing-field-final-charge-hint" : undefined} /></span><span className="helper">Usual price: {formatMoney(derivedRate.cents)}. Change it when this firing needs a different price.</span>{hasFieldIssue("final-charge") ? <span id="firing-field-final-charge-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label>
                     </div>
                     {(selected?.addOnRequests?.private || selected?.addOnRequests?.rush) ? <div className="firing-billing-choice-grid">
@@ -1130,8 +1170,8 @@ export default function FiringPickupBillingModule({
                     </div> : null}
                     {selected?.addOnRequests?.communitySharing ? <p>Client permits unused space to be donated to community work.</p> : null}
                     {selected?.otherRequestedServices?.length ? <p>Review other requested services before billing: {selected.otherRequestedServices.join(", ")}{selected.reservationId ? ` (check-in ${selected.reservationId})` : ""}. Include any applicable charges in the final amount and explain how they were handled.</p> : null}
-                    {selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") ? <p>Enter the custom quote before add-ons; fulfilled services are added to the total.</p> : null}
-                    {(Boolean(selected?.otherRequestedServices?.length) || (dollarsToCents(finalCharge) !== derivedRate.cents && !(selected?.pricingVersion === 2 && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) === null))) ? <label className={`staff-field ${hasFieldIssue("override-reason") ? "has-field-issue" : ""}`}>Price adjustment note <span className="helper">Record changes to the usual price and how other requested services were handled.</span><input id="firing-field-override-reason" value={overrideReason} onChange={(event) => { setOverrideReason(event.target.value); clearFieldIssue("override-reason"); }} placeholder="Example: extra shelf space" maxLength={500} aria-invalid={hasFieldIssue("override-reason")} aria-describedby={hasFieldIssue("override-reason") ? "firing-field-override-reason-hint" : undefined} />{hasFieldIssue("override-reason") ? <span id="firing-field-override-reason-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label> : null}
+                    {(selected?.pricingVersion === 2 || selected?.pricingVersion === 3) && (selected.heatId === "custom" || billingUnit === "custom") ? <p>Enter the custom quote before add-ons; fulfilled services are added to the total.</p> : null}
+                    {(Boolean(selected?.otherRequestedServices?.length) || (dollarsToCents(finalCharge) !== derivedRate.cents && !((selected?.pricingVersion === 2 || selected?.pricingVersion === 3) && (selected.heatId === "custom" || billingUnit === "custom") && dollarsToCents(customBaseCharge) === null))) ? <label className={`staff-field ${hasFieldIssue("override-reason") ? "has-field-issue" : ""}`}>Price adjustment note <span className="helper">Record changes to the usual price and how other requested services were handled.</span><input id="firing-field-override-reason" value={overrideReason} onChange={(event) => { setOverrideReason(event.target.value); clearFieldIssue("override-reason"); }} placeholder="Example: extra shelf space" maxLength={500} aria-invalid={hasFieldIssue("override-reason")} aria-describedby={hasFieldIssue("override-reason") ? "firing-field-override-reason-hint" : undefined} />{hasFieldIssue("override-reason") ? <span id="firing-field-override-reason-hint" className={__bundleClass_9}>{fieldIssue?.message}</span> : null}</label> : null}
                   </fieldset>
 
                   <div className={__bundleClass_8}>

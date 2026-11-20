@@ -1,9 +1,9 @@
 /** Pricing attached to a ticket at creation. Missing version means legacy. */
-export const CURRENT_FIRING_PRICING_VERSION = 2;
+export const CURRENT_FIRING_PRICING_VERSION = 3;
 
 /** Pause new v3 issuance independently of billing tickets that already use it. */
 export function newFiringPricingVersion(enableV3 = process.env.FIRING_PRICING_V3_ENABLED): number {
-  return enableV3 === "true" ? 3 : CURRENT_FIRING_PRICING_VERSION;
+  return enableV3 === "false" ? 2 : CURRENT_FIRING_PRICING_VERSION;
 }
 
 export type FiringPricingInput = {

@@ -37,9 +37,9 @@ export function addFiringLedgerEntry(ledger: FiringPricingLedger | null, entry: 
   if (ledger && ledger.heatId !== entry.heatId) throw new Error("FIRING_RANGE_CONFLICT");
   const fingerprint = JSON.stringify([entry.heatId, entry.billingUnit, entry.quantity, entry.privateFulfilled, entry.rushFulfilled]);
   const existing = ledger && Object.prototype.hasOwnProperty.call(ledger.operations, entry.operationId) ? ledger.operations[entry.operationId] : undefined;
-  if (existing) {
+  if (ledger && existing) {
     if (existing.fingerprint !== fingerprint) throw new Error("LEDGER_OPERATION_CONFLICT");
-    return { ledger: ledger!, chargeCents: existing.chargeCents, duplicate: true };
+    return { ledger, chargeCents: existing.chargeCents, duplicate: true };
   }
   const quantity = (ledger?.quantity ?? 0) + entry.quantity;
   const wholeKiln = Boolean(ledger?.wholeKiln || entry.billingUnit === "whole_kiln");

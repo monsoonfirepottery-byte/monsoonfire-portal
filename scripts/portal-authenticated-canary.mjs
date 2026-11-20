@@ -2,6 +2,7 @@
 
 /* eslint-disable no-console */
 
+import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -84,12 +85,6 @@ function parseArgs(argv) {
       DEFAULT_STAFF_CREDENTIALS_PATH,
     credentialsJson: String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim(),
     firebaseApiKey: String(process.env.PORTAL_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || "").trim(),
-    browserFirebaseApiKey: String(
-      process.env.PORTAL_FIREBASE_API_KEY ||
-      process.env.VITE_FIREBASE_API_KEY ||
-      process.env.FIREBASE_WEB_API_KEY ||
-      ""
-    ).trim(),
     projectId: String(process.env.PORTAL_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID).trim() || DEFAULT_FIREBASE_PROJECT_ID,
     adminToken: String(process.env.PORTAL_CANARY_ADMIN_TOKEN || process.env.PORTAL_ADMIN_TOKEN || "").trim(),
     requireAuth: true,
@@ -712,14 +707,8 @@ function resolveBrowserAuthStrategy(options, credentialResolution) {
   };
 }
 
-async function installRefreshTokenSignInRoute(page, { apiKey, email, uid, idToken, refreshToken }) {
+async function installRefreshTokenSignInRoute(page, { email, uid, idToken, refreshToken, bootstrapPassword }) {
   const expectedEmail = String(email || "").trim().toLowerCase();
-  const expectedApiKeys = new Set([
-    apiKey,
-    process.env.PORTAL_FIREBASE_API_KEY,
-    process.env.VITE_FIREBASE_API_KEY,
-    process.env.FIREBASE_WEB_API_KEY,
-  ].map((value) => String(value || "").trim()).filter(Boolean));
   const responseBody = JSON.stringify(buildPasswordSignInResponse({ email, uid, idToken, refreshToken }));
   let handled = false;
 
@@ -728,14 +717,14 @@ async function installRefreshTokenSignInRoute(page, { apiKey, email, uid, idToke
     const parsedUrl = new URL(url);
     if (parsedUrl.origin !== "https://identitytoolkit.googleapis.com" ||
         parsedUrl.pathname !== "/v1/accounts:signInWithPassword" ||
-        request.method() !== "POST" || !expectedApiKeys.has(parsedUrl.searchParams.get("key"))) {
+        request.method() !== "POST" || !parsedUrl.searchParams.get("key")) {
       await route.continue();
       return;
     }
 
     const payload = safeJsonParse(request.postData() || "", {});
     const requestEmail = String(payload?.email || "").trim().toLowerCase();
-    if (!expectedEmail || requestEmail !== expectedEmail) {
+    if (!expectedEmail || requestEmail !== expectedEmail || !bootstrapPassword || payload?.password !== bootstrapPassword) {
       await route.continue();
       return;
     }
@@ -1388,9 +1377,8 @@ async function waitForAuthReady(page) {
   }
 }
 
-async function signInWithEmail(page, email, password, { allowPlaceholderPassword = false } = {}) {
-  const effectivePassword =
-    String(password || "").trim() || (allowPlaceholderPassword ? "refresh-token-bootstrap" : "");
+async function signInWithEmail(page, email, password) {
+  const effectivePassword = String(password || "").trim();
   if (!email || !effectivePassword) {
     throw new Error("Missing authenticated staff credentials for canary sign-in.");
   }
@@ -1399,12 +1387,15 @@ async function signInWithEmail(page, email, password, { allowPlaceholderPassword
     has: page.locator("input[type='password']"),
   }).first();
   const passwordToggle = page.getByRole("button", { name: /use a password instead/i }).first();
-  await Promise.any([
-    passwordForm.waitFor({ timeout: 10000 }),
-    passwordToggle.waitFor({ timeout: 10000 }).then(async () => {
-      if (!await passwordForm.isVisible()) await passwordToggle.click({ timeout: 10000 });
-    }),
-  ]);
+  const needsPasswordToggle = await Promise.any([
+    passwordForm.waitFor({ timeout: 10000 }).then(() => false),
+    passwordToggle.waitFor({ timeout: 10000 }).then(() => true),
+  ]).catch(() => {
+    throw new Error("The portal password sign-in form did not appear.");
+  });
+  if (needsPasswordToggle && !await passwordForm.isVisible()) {
+    await passwordToggle.click({ timeout: 10000 });
+  }
   const passwordInput = passwordForm.locator("input[type='password']").first();
   const emailInput = passwordForm.locator("input[type='email']").first();
   const submit = passwordForm.getByRole("button", { name: /^Sign in$/i }).and(
@@ -1896,17 +1887,16 @@ async function run() {
       if (browserAuthStrategy.mode === "refresh-token") {
         try {
           const minted = await mintPortalStaffIdToken(options, credentialResolution);
+          const bootstrapPassword = `canary-${randomUUID()}`;
           const route = await installRefreshTokenSignInRoute(page, {
-            apiKey: options.browserFirebaseApiKey,
+            bootstrapPassword,
             email: options.staffEmail,
             uid: options.staffUid,
             idToken: minted.token,
             refreshToken: minted.refreshToken || options.staffRefreshToken,
           });
           try {
-            await signInWithEmail(page, options.staffEmail, options.staffPassword, {
-              allowPlaceholderPassword: true,
-            });
+            await signInWithEmail(page, options.staffEmail, bootstrapPassword);
             if (!route.wasHandled()) {
               throw new Error("Refresh-token bootstrap route was not exercised during sign-in.");
             }

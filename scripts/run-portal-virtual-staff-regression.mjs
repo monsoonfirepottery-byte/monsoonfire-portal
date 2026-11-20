@@ -147,16 +147,6 @@ function truncate(value, max = 16000) {
   return `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`;
 }
 
-function isPermissionDeniedFailure(output = "") {
-  const value = String(output || "");
-  const hasPermissionSignal =
-    /permission denied/i.test(value) ||
-    /caller does not have permission/i.test(value) ||
-    /PERMISSION_DENIED/i.test(value);
-  const hasScopeSignal = /\b403\b/.test(value) || /firebaserules\.googleapis\.com/i.test(value);
-  return hasPermissionSignal && hasScopeSignal;
-}
-
 function runNodeStep(label, scriptPath, args = [], env = {}, behavior = {}) {
   const startedAt = Date.now();
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
@@ -172,10 +162,15 @@ function runNodeStep(label, scriptPath, args = [], env = {}, behavior = {}) {
   const exitCode = typeof result.status === "number" ? result.status : 1;
   const stdout = truncate(result.stdout || "");
   const stderr = truncate(result.stderr || "");
-  const allowPermissionDenied = Boolean(behavior.allowPermissionDenied);
-  const permissionDenied = isPermissionDeniedFailure(`${stdout}\n${stderr}`);
-  const status =
-    exitCode === 0 ? "passed" : allowPermissionDenied && permissionDenied ? "degraded" : "failed";
+  let permissionDenied = false;
+  if (behavior.allowPermissionDenied) {
+    try {
+      permissionDenied = JSON.parse(result.stdout).status === "permission_denied";
+    } catch {
+      // A malformed report is handled by the child process exit status.
+    }
+  }
+  const status = permissionDenied ? "degraded" : exitCode === 0 ? "passed" : "failed";
 
   return {
     label,
@@ -235,9 +230,6 @@ async function main() {
 
   try {
     const rulesCheckArgs = ["--check", "--project", options.projectId, "--json"];
-    if (options.softFailPermissionDenied) {
-      rulesCheckArgs.push("--soft-fail-permission-denied");
-    }
 
     steps.push(
       runNodeStep(

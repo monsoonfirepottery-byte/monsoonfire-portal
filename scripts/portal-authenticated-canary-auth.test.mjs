@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { installRefreshTokenSignInRoute } from "./portal-authenticated-canary.mjs";
 
-for (const [name, key, email, expected, origin = "https://identitytoolkit.googleapis.com", method = "POST"] of [
-  ["configured key and intended staff account", "test-key", "staff@example.test", "fulfilled"],
-  ["unrelated API key", "unrelated-key", "staff@example.test", "continued"],
+for (const [name, key, email, expected, origin = "https://identitytoolkit.googleapis.com", method = "POST", password = "canary-test-nonce"] of [
+  ["the configured staff account and bootstrap nonce", "test-key", "staff@example.test", "fulfilled"],
+  ["a distinct deployed browser API key", "browser-key", "staff@example.test", "fulfilled"],
+  ["a real password", "test-key", "staff@example.test", "continued", undefined, undefined, "ordinary-password"],
   ["another account", "test-key", "other@example.test", "continued"],
   ["missing account", "test-key", "", "continued"],
   ["another host", "test-key", "staff@example.test", "continued", "https://example.test"],
@@ -18,7 +19,7 @@ for (const [name, key, email, expected, origin = "https://identitytoolkit.google
       unroute: async () => {},
     };
     const installed = await installRefreshTokenSignInRoute(page, {
-      apiKey: "test-key", email: "staff@example.test", uid: "test-staff",
+      bootstrapPassword: "canary-test-nonce", email: "staff@example.test", uid: "test-staff",
       idToken: "test-token", refreshToken: "test-refresh",
     });
     await handler({
@@ -31,7 +32,7 @@ for (const [name, key, email, expected, origin = "https://identitytoolkit.google
     }, {
       url: () => `${origin}/v1/accounts:signInWithPassword?key=${key}`,
       method: () => method,
-      postData: () => JSON.stringify({ email }),
+      postData: () => JSON.stringify({ email, password }),
     });
     assert.equal(outcome, expected);
     assert.equal(installed.wasHandled(), expected === "fulfilled");

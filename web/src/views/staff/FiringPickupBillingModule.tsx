@@ -35,6 +35,11 @@ type FieldIssueTarget =
   | "adjustment-amount"
   | "adjustment-reason";
 
+type FiringLinkOptions = {
+  people: { uid: string; displayName: string; email: string | null }[];
+  firings: { id: string; title: string; startAt: string | null; unloadedAt: string | null }[];
+};
+
 type FieldIssue = { target: FieldIssueTarget; message: string };
 
 export type FiringTicket = {
@@ -56,6 +61,7 @@ export type FiringTicket = {
   otherRequestedServices?: string[];
   firingType?: string | null;
   firingId?: string | null;
+  ownerUid?: string | null;
   manualFiring?: { date?: string; kiln?: string; evidence?: string } | null;
   privateStaffNote?: string | null;
   artistNote: string | null;
@@ -329,6 +335,13 @@ export default function FiringPickupBillingModule({
   const [customBaseCharge, setCustomBaseCharge] = useState("");
   const [finalCharge, setFinalCharge] = useState("0.00");
   const [pricingTicketId, setPricingTicketId] = useState("");
+  const [firingLink, setFiringLink] = useState<{
+    ticketId: string;
+    options: FiringLinkOptions;
+    ownerUid: string;
+    firingId: string;
+  } | null>(null);
+  const linking = useRef(false);
   const [overrideReason, setOverrideReason] = useState("");
   const [artistVisibleNote, setArtistVisibleNote] = useState("");
   const [privateStaffNote, setPrivateStaffNote] = useState("");
@@ -523,7 +536,8 @@ export default function FiringPickupBillingModule({
   }, [selectedTicketIndex, visibleTickets]);
 
   const previewRequired = selected?.pricingVersion === 3 && selected.heatId !== "custom" && billingUnit !== "custom";
-  const previewEnabled = previewRequired && selected?.status === "awaiting_pickup_review" &&
+  const missingFiringLink = previewRequired && (!selected?.ownerUid || !selected.firingId);
+  const previewEnabled = previewRequired && !missingFiringLink && selected?.status === "awaiting_pickup_review" &&
     (outcome === "normal_billable" || outcome === "maker_risk_billable");
   const previewKey = previewEnabled && selected
     ? JSON.stringify([selected.ticketId, selected.billingVersion, billingUnit, quantity, privateFulfilled, rushFulfilled]) : "";
@@ -580,6 +594,54 @@ export default function FiringPickupBillingModule({
   );
   const billableOutcome = outcome === "normal_billable" || outcome === "maker_risk_billable";
   const billableActionLocked = billableOutcome && !writesReady && currentPreview?.data?.chargeCents !== 0;
+
+  const openFiringLink = async () => {
+    if (!selected || linking.current) return;
+    linking.current = true;
+    setBusy("link-firing");
+    setError("");
+    try {
+      const { data } = await client.postJson<{ data: FiringLinkOptions }>("staffGetFiringTicketCreationOptions", {});
+      setFiringLink({
+        ticketId: selected.ticketId,
+        options: data,
+        ownerUid: selected.ownerUid ?? "",
+        firingId: selected.firingId ?? "",
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      linking.current = false;
+      setBusy("");
+    }
+  };
+
+  const saveFiringLink = async () => {
+    if (!selected || firingLink?.ticketId !== selected.ticketId || !firingLink.ownerUid || !firingLink.firingId || linking.current) return;
+    linking.current = true;
+    setBusy("link-firing");
+    setError("");
+    const requestKey = `link-firing:${selected.ticketId}:v${selected.billingVersion}:${firingLink.ownerUid}:${firingLink.firingId}`;
+    const clientRequestId = requestIdFor(requestKey);
+    try {
+      await client.postJson("staffPrepareFiringPickupReview", {
+        ticketId: selected.ticketId,
+        expectedVersion: selected.billingVersion,
+        clientRequestId,
+        action: "link_firing",
+        ownerUid: firingLink.ownerUid,
+        firingId: firingLink.firingId,
+      }, { headers: { "Idempotency-Key": clientRequestId } });
+      clearRequestId(requestKey);
+      setFiringLink(null);
+      await load();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      linking.current = false;
+      setBusy("");
+    }
+  };
 
   const prepareReview = useCallback(async () => {
     if (!selected || busy) return;
@@ -904,7 +966,7 @@ export default function FiringPickupBillingModule({
     ["unbilled", "hold_for_review"].includes(selected.billingStatus) &&
     selected.status === "awaiting_pickup_review";
   const readyAction = canFinalize ? (
-    <button className="btn btn-primary" type="button" disabled={Boolean(busy) || billableActionLocked || (previewEnabled && !currentPreview?.data)} onClick={() => void finalize()}>
+    <button className="btn btn-primary" type="button" disabled={Boolean(busy) || billableActionLocked || (billableOutcome && previewRequired && !currentPreview?.data)} onClick={() => void finalize()}>
       {busy === "finalize"
         ? "Saving…"
         : outcome === "hold_for_review"
@@ -1151,6 +1213,43 @@ export default function FiringPickupBillingModule({
                   <fieldset disabled={Boolean(busy) || outcome === "hold_for_review" || outcome === "studio_fault_no_charge"}>
                     <legend>Actual kiln space used</legend>
                     <div className={__bundleClass_8}>
+                    {missingFiringLink ? (
+                      <fieldset className="staff-field">
+                        <legend>Client and kiln firing</legend>
+                        <p>Link the client and unloaded firing to calculate the remaining charge.</p>
+                        {firingLink && firingLink.ticketId === selected?.ticketId ? (
+                          <>
+                            {!selected.ownerUid ? (
+                              <label>Client
+                                <select value={firingLink.ownerUid} onChange={(event) => setFiringLink({ ...firingLink, ownerUid: event.target.value })}>
+                                  <option value="">Select the client</option>
+                                  {firingLink.options.people.map((person) => (
+                                    <option key={person.uid} value={person.uid}>{[person.displayName, person.email].filter(Boolean).join(" · ")}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+                            {!selected.firingId ? (
+                              <label>Unloaded kiln firing
+                                <select value={firingLink.firingId} onChange={(event) => setFiringLink({ ...firingLink, firingId: event.target.value })}>
+                                  <option value="">Select the firing</option>
+                                  {firingLink.options.firings.filter((firing) => firing.unloadedAt).map((firing) => (
+                                    <option key={firing.id} value={firing.id}>{firing.title || "Kiln firing"} · {firing.startAt?.slice(0, 10) ?? firing.id}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+                            <button type="button" className="btn btn-secondary" disabled={Boolean(busy) || !firingLink.ownerUid || !firingLink.firingId} onClick={() => void saveFiringLink()}>
+                              Confirm client and firing
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => void openFiringLink()}>
+                            Select client and firing
+                          </button>
+                        )}
+                      </fieldset>
+                    ) : null}
                     {previewEnabled ? <p role="status">{currentPreview?.error ?? (currentPreview?.data
                       ? `Firing ${currentPreview.data.firingId}. Already reserved: ${formatMoney(currentPreview.data.priorCents)}. Due for this ticket: ${formatMoney(currentPreview.data.chargeCents)}.`
                       : "Checking the remaining firing charge…")}</p> : null}

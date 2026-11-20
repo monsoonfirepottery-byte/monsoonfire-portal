@@ -560,6 +560,17 @@ test("staff adjustment schema requires money for credits and refunds, but not vo
   );
 });
 
+test("firing linkage requires a client and unloaded firing ID on the dedicated action", () => {
+  const request = {
+    ticketId: "MF-TEST", expectedVersion: 0, clientRequestId: "11111111-1111-4111-8111-111111111111",
+    action: "link_firing", ownerUid: "artist-1", firingId: "run-1",
+  };
+  assert.equal(staffPrepareFiringPickupReviewSchema.safeParse(request).success, true);
+  assert.equal(staffPrepareFiringPickupReviewSchema.safeParse({ ...request, ownerUid: undefined }).success, false);
+  assert.equal(staffPrepareFiringPickupReviewSchema.safeParse({ ...request, firingId: "firings/run-1" }).success, false);
+  assert.equal(staffPrepareFiringPickupReviewSchema.safeParse({ ...request, action: "confirm_unloaded", confirmedUnloaded: true }).success, false);
+});
+
 test("pickup review separates pre-unload batch linking from manual unload confirmation", () => {
   const base = {
     ticketId: "MF-7K4P",

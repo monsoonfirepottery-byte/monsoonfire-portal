@@ -145,10 +145,18 @@ export const staffPrepareFiringPickupReviewSchema = z.object({
   ticketId: z.string().trim().min(5).max(80),
   expectedVersion: z.number().int().nonnegative(),
   clientRequestId: z.string().uuid(),
-  action: z.enum(["link_batch", "confirm_unloaded"]).default("confirm_unloaded"),
+  action: z.enum(["link_batch", "link_firing", "confirm_unloaded"]).default("confirm_unloaded"),
+  firingId: z.string().trim().min(1).max(160).refine((id) => !id.includes("/")).optional(),
+  ownerUid: z.string().trim().min(1).max(128).refine((id) => !id.includes("/")).optional(),
   batchId: z.string().trim().min(1).max(160).nullable().optional().default(null),
   confirmedUnloaded: z.boolean().default(false),
 }).strict().superRefine((value, context) => {
+  if (value.action === "link_firing" && (!value.firingId || !value.ownerUid || value.batchId)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["firingId"], message: "Select a client and an unloaded kiln firing" });
+  }
+  if (value.action !== "link_firing" && (value.firingId || value.ownerUid)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["firingId"], message: "Use the link firing action to set a client and firing" });
+  }
   if (value.action === "link_batch" && !value.batchId) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -2115,7 +2123,7 @@ export async function prepareFiringPickupReview(
   actor: StaffActor,
 ): Promise<{
   ticketId: string;
-  action: "link_batch" | "confirm_unloaded";
+  action: StaffPrepareFiringPickupReviewInput["action"];
   status: string;
   billingVersion: number;
   batchId: string | null;
@@ -2123,7 +2131,7 @@ export async function prepareFiringPickupReview(
 }> {
   const ticketRef = db.collection(FIRING_TICKETS_COLLECTION).doc(input.ticketId);
   const eventId = makeIdempotencyId(
-    input.action === "link_batch" ? "firing-batch-link" : "firing-unloaded",
+    input.action === "link_firing" ? "firing-run-link" : input.action === "link_batch" ? "firing-batch-link" : "firing-unloaded",
     input.ticketId,
     input.clientRequestId,
   );
@@ -2144,6 +2152,10 @@ export async function prepareFiringPickupReview(
     const currentBatchId = cleanNullable(safeString(ticket.batchId));
     const currentStatus = safeString(ticket.status).trim() || "expected_dropoff";
     if (eventSnap.exists) {
+      if (input.action === "link_firing" &&
+          (eventSnap.data()?.ownerUid !== input.ownerUid || eventSnap.data()?.firingId !== input.firingId)) {
+        throw new FiringBillingError("IDEMPOTENCY_CONFLICT", "This request ID was used for a different client or firing.", 409);
+      }
       return {
         ticketId: input.ticketId,
         action: input.action,
@@ -2152,6 +2164,48 @@ export async function prepareFiringPickupReview(
         batchId: currentBatchId ?? input.batchId,
         duplicate: true,
       };
+    }
+    if (input.action === "link_firing") {
+      const { firingId, ownerUid } = input;
+      if (!firingId || !ownerUid) {
+        throw new FiringBillingError("FIRING_AGGREGATION_IDENTITY_REQUIRED", "Select a client and firing.");
+      }
+      if (currentVersion !== input.expectedVersion || ticket.pricingVersion !== 3 ||
+          currentStatus !== "awaiting_pickup_review" ||
+          !["unbilled", "hold_for_review"].includes(safeString(ticket.billingStatus).trim() || "unbilled")) {
+        throw new FiringBillingError("TICKET_NOT_LINKABLE", "Refresh and check that this ticket is awaiting pickup review.", 409);
+      }
+      if ((ticket.ownerUid && ticket.ownerUid !== ownerUid) || (ticket.firingId && ticket.firingId !== firingId)) {
+        throw new FiringBillingError("TICKET_LINK_MISMATCH", "The selected client or firing conflicts with the existing ticket link.", 409);
+      }
+      const [user, profile, firing] = await Promise.all([
+        transaction.get(db.collection("users").doc(ownerUid)),
+        transaction.get(db.collection("profiles").doc(ownerUid)),
+        transaction.get(db.collection("kilnFirings").doc(firingId)),
+      ]);
+      if (!user.exists && !profile.exists) {
+        throw new FiringBillingError("TICKET_OWNER_MISSING", "Select an existing portal client.", 409);
+      }
+      const ticketEmail = normalizeEmail(ticket.email);
+      if (!ticket.ownerUid && ticketEmail &&
+          ![normalizeEmail(user.data()?.email), normalizeEmail(profile.data()?.email)].includes(ticketEmail)) {
+        throw new FiringBillingError("TICKET_OWNER_MISMATCH", "The selected portal account does not match the artist email on this ticket.", 409);
+      }
+      if (!firing.data()?.unloadedAt) {
+        throw new FiringBillingError("FIRING_NOT_UNLOADED", "Select a recorded kiln firing that has been unloaded.", 409);
+      }
+      const recordedRange = safeString(firing.data()?.firingRange).trim();
+      if (recordedRange && recordedRange !== readTicketHeat(ticket).id) {
+        throw new FiringBillingError("FIRING_RANGE_CONFLICT", "The firing range differs from the ticket.", 409);
+      }
+      const billingVersion = currentVersion + 1;
+      const now = nowTs();
+      transaction.set(ticketRef, { ownerUid, firingId, billingVersion, updatedAt: now }, { merge: true });
+      transaction.create(eventRef, {
+        type: "billing_firing_linked", actorUid: actor.uid, status: currentStatus,
+        ownerUid, firingId, billingVersion, at: now,
+      });
+      return { ticketId: input.ticketId, action: input.action, status: currentStatus, billingVersion, batchId: currentBatchId, duplicate: false };
     }
     if (currentBatchId && input.batchId && currentBatchId !== input.batchId) {
       throw new FiringBillingError(
@@ -2583,6 +2637,7 @@ export function queueTicketDto(id: string, data: Record<string, unknown>, includ
     deletedAt: includeStaffFields ? toIso(data.deletedAt) : undefined,
     ...(includeStaffFields ? {
       firingId: cleanNullable(safeString(data.firingId)),
+      ownerUid: cleanNullable(safeString(data.ownerUid)),
       reservationId: cleanNullable(safeString(data.reservationId)),
       manualFiring: asRecord(data.manualFiring),
       privateStaffNote: cleanNullable(safeString(data.privateStaffNote)),

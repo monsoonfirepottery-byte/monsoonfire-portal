@@ -92,7 +92,7 @@
     "ops:next-slice:selector": "node ./scripts/ops/next_slice_selector.mjs --refresh --write --json",
     "ops:pr-conflict:packets": "node ./scripts/ops/pr_conflict_packets.mjs --refresh --write --json",
     "ops:pr-backlog:packets": "node ./scripts/ops/pr_backlog_decision_packets.mjs --refresh --write --json",
-    "test:ops:command-surface": "node --test ./scripts/ops/command_surface_guard.test.mjs ./scripts/ops/ops_command_manifest.test.mjs",
+    "test:ops:command-surface": "node --test ./scripts/ops/command_surface_guard.test.mjs ./scripts/ops/ops_command_manifest.test.mjs ./scripts/ops/next_slice_selector.test.mjs",
     "ops:dependency:cadence": "node ./scripts/ops/dependency_cadence_packet.mjs --refresh --write --json",
     "ops:dependency:security-scout": "node ./scripts/ops/dependency_security_scout.mjs --write --json",
     "ops:dependency:remediation-packet": "node ./scripts/ops/dependency_remediation_packet.mjs --write --json",

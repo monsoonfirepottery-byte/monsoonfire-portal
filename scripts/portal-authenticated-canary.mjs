@@ -1375,15 +1375,17 @@ async function waitForDashboardHeading(page) {
 
 async function waitForAuthReady(page) {
   const signOut = page.getByRole("button", { name: /^Sign out$/i }).first();
-  const signedOutCard = page.locator(".signed-out-card");
-
-  await Promise.race([
-    signOut.waitFor({ timeout: 30000 }),
-    signedOutCard.waitFor({ timeout: 30000 }),
-  ]);
-
-  const isSignedOut = await signedOutCard.count();
-  return isSignedOut > 0;
+  const signIn = page.getByRole("button", { name: /^Continue with Google$/i }).first();
+  const signedOutCard = page.locator(".signed-out-card").first();
+  try {
+    return await Promise.any([
+      signOut.waitFor({ timeout: 30000 }).then(() => false),
+      signIn.waitFor({ timeout: 30000 }).then(() => true),
+      signedOutCard.waitFor({ timeout: 30000 }).then(() => true),
+    ]);
+  } catch {
+    throw new Error("Neither the portal sign-in controls nor the authenticated sign-out control appeared within 30 seconds.");
+  }
 }
 
 async function signInWithEmail(page, email, password, { allowPlaceholderPassword = false } = {}) {
@@ -1393,19 +1395,21 @@ async function signInWithEmail(page, email, password, { allowPlaceholderPassword
     throw new Error("Missing authenticated staff credentials for canary sign-in.");
   }
 
-  const signedOutCard = page.locator(".signed-out-card");
-  await signedOutCard.waitFor({ timeout: 30000 });
-
-  let passwordInput = signedOutCard.locator("input[type='password']").first();
-  if ((await passwordInput.count()) === 0) {
-    const passwordToggle = signedOutCard.getByRole("button", { name: /use a password instead/i });
-    await passwordToggle.click({ timeout: 10000 });
-    passwordInput = signedOutCard.locator("input[type='password']").first();
-  }
-  const emailInput = signedOutCard.locator("form.signed-out-email input[type='email']").first();
-  const submitPrimary = signedOutCard.locator("button.primary").first();
-  const submitFallback = signedOutCard.getByRole("button", { name: /^Sign in$/i }).first();
-  const submit = (await submitPrimary.count()) > 0 ? submitPrimary : submitFallback;
+  const passwordForm = page.locator("form").filter({
+    has: page.locator("input[type='password']"),
+  }).first();
+  const passwordToggle = page.getByRole("button", { name: /use a password instead/i }).first();
+  await Promise.any([
+    passwordForm.waitFor({ timeout: 10000 }),
+    passwordToggle.waitFor({ timeout: 10000 }).then(async () => {
+      if (!await passwordForm.isVisible()) await passwordToggle.click({ timeout: 10000 });
+    }),
+  ]);
+  const passwordInput = passwordForm.locator("input[type='password']").first();
+  const emailInput = passwordForm.locator("input[type='email']").first();
+  const submit = passwordForm.getByRole("button", { name: /^Sign in$/i }).and(
+    passwordForm.locator("button[type='submit']"),
+  );
 
   await emailInput.waitFor({ timeout: 10000 });
   await emailInput.fill(email);
@@ -1419,7 +1423,7 @@ async function signInWithEmail(page, email, password, { allowPlaceholderPassword
     return;
   }
 
-  const signedOutError = signedOutCard.locator(".signed-out-status").first();
+  const signedOutError = page.locator(".signed-out-status").first();
   if ((await signedOutError.count()) > 0) {
     const message = (await signedOutError.textContent())?.trim() || "sign in failed";
     throw new Error(`Sign in blocked: ${message}`);

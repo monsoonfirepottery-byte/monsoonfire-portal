@@ -259,9 +259,7 @@ async function main() {
     canaryArgs.push("--skip-journey-check");
   }
 
-  const canaryStep = runStep("authenticated portal canary", "node", canaryArgs, {}, {
-    allowPermissionDenied: options.softFailPermissionDenied,
-  });
+  const canaryStep = runStep("authenticated portal canary", "node", canaryArgs);
   steps.push(canaryStep);
 
   if (options.includeJourneyCheck && canaryStep.status !== "failed") {
@@ -280,21 +278,25 @@ async function main() {
   }
 
   if (options.includeVirtualStaff) {
-    steps.push(
-      runStep("virtual staff backend regression", "node", [
-        "./scripts/run-portal-virtual-staff-regression.mjs",
-        "--project",
-        "monsoonfire-portal",
-        "--base-url",
-        options.baseUrl,
-        "--skip-ui-smoke",
-        "--report",
-        "output/qa/post-deploy-virtual-staff-regression.json",
-        "--json",
-      ], {}, {
-        allowPermissionDenied: options.softFailPermissionDenied,
-      })
-    );
+    const reportPath = resolve(repoRoot, "output/qa/post-deploy-virtual-staff-regression.json");
+    const args = [
+      "./scripts/run-portal-virtual-staff-regression.mjs",
+      "--project", "monsoonfire-portal",
+      "--base-url", options.baseUrl,
+      "--skip-ui-smoke",
+      "--report", reportPath,
+      "--json",
+    ];
+    if (options.softFailPermissionDenied) args.push("--soft-fail-permission-denied");
+    const staffStep = runStep("virtual staff backend regression", "node", args);
+    if (staffStep.status === "passed") {
+      const report = JSON.parse(await readFile(reportPath, "utf8"));
+      if (report.status === "passed_with_warnings") {
+        staffStep.status = "degraded";
+        staffStep.failureCategory = "permission_denied";
+      }
+    }
+    steps.push(staffStep);
   }
 
   if (options.includeIndexGuard) {

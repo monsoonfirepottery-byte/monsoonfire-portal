@@ -1,0 +1,139 @@
+{
+  "name": "Monsoon Fire Firing Care",
+  "version": "2.1.4",
+  "preview": false,
+  "visibility": "public-production",
+  "lastReviewed": "2026-10-07",
+  "provider": {
+    "name": "Monsoon Fire Pottery",
+    "publicWebsite": "https://monsoonfire.com",
+    "firingPlannerUrl": "https://monsoonfire.com/firing-services/pathfinder/"
+  },
+  "agentUse": {
+    "mode": "discovery-planning-and-review-handoff",
+    "doNotBookWithoutUser": true,
+    "doNotCollectPaymentDetails": true,
+    "authenticatedActions": "Do not route clients to a separate portal. Use the public firing planner and the secure Stripe links sent by the studio.",
+    "publicPageLimit": "This site explains services and pricing estimates. The firing pathfinder can issue a human-readable ticket for studio review, but it is not a booking, payment, or live-status API."
+  },
+  "agentOnlySurfaces": [
+    "/llms.txt",
+    "/ai.txt",
+    "/agent-service-catalog.json"
+  ],
+  "serviceLanguage": {
+    "publicNavLabel": "Firing Services",
+    "humanExperienceLabel": "Firing Care",
+    "internalStrategyLabel": "kiln firing care",
+    "campaignPhrase": "kiln firing help for ceramic artists"
+  },
+  "primaryJourney": [
+    "Get access instructions; online firing ticket is optional",
+    "Use instructed 24/7 outdoor dropoff with artist and firing details",
+    "Studio loading and firing",
+    "Ready email and final charge",
+    "Self-serve pickup"
+  ],
+  "services": [
+    {
+      "id": "low-fire",
+      "label": "Low Temp Firings",
+      "description": "Low-temperature bisque, low-fire glazes, and earthenware.",
+      "priceExample": "$20 half shelf",
+      "halfShelfPriceUsd": 20,
+      "priceCapUsd": 80,
+      "artistInputs": [
+        "material notes",
+        "piece size",
+        "handling notes",
+        "timing need if any"
+      ]
+    },
+    {
+      "id": "medium-fire",
+      "label": "Mid Temp Firings",
+      "description": "Midfire glazes and stonewares.",
+      "priceExample": "$35 half shelf",
+      "halfShelfPriceUsd": 35,
+      "priceCapUsd": 120,
+      "artistInputs": [
+        "material notes",
+        "surface notes",
+        "piece size"
+      ]
+    },
+      {
+        "id": "high-fire",
+        "label": "Cone 10 electric oxidation",
+        "description": "Shared firings require scheduling confirmation.",
+        "priceExample": "$45 per half shelf",
+        "halfShelfPriceUsd": 45,
+        "priceCapUsd": 160,
+        "privateTotalUsd": 180,
+        "fulfilledRushUsd": 20,
+        "priceSemantics": "Shared pricing is capped per customer per firing. Private firing is $180 even for a partial load. Rush adds $20 once per customer per firing if fulfilled.",
+        "artistInputs": ["material notes", "surface notes", "piece size"]
+      },
+      {
+        "id": "custom-firing",
+      "label": "Custom Firings",
+        "description": "Extended holds, unusual ramps, or specialty firing schedules.",
+      "priceExample": "Whole-kiln quote from the studio",
+        "priceSemantics": "The studio quotes specialty schedules before firing.",
+      "artistInputs": [
+        "batch size",
+        "shelf or height needs",
+        "deadline",
+        "special handling notes"
+      ]
+    }
+  ],
+  "pricingModel": "Shared low fire is $20 per half shelf, capped at $80 per client. Shared mid fire is $35 per half shelf, capped at $120 per client. Partial half shelves are charged as a full unit. Private firing adds $20; same-night rush adds $20 only if fulfilled. Custom firing is quoted separately.",
+  "ticketHandoff": {
+    "label": "Create a firing ticket",
+    "url": "https://monsoonfire.com/firing-services/pathfinder/",
+    "recipient": "support@monsoonfire.com",
+    "deliveryModes": [
+      "email"
+    ],
+    "requiresContactConsent": [
+      "email"
+    ],
+    "optionalArtistActions": [
+      "print one-page dropoff copy"
+    ],
+    "ticketLedger": "Firestore firingTickets/{ticketId}",
+    "billingKey": "ticketId",
+    "result": "One human-readable MF ticket ID, formatted HTML email to the artist and studio, and an optional one-page dropoff copy.",
+    "boundary": "This is not a confirmed firing, final quote, appointment, booking, payment, or live status update."
+  },
+  "checklistHandoff": {
+    "deprecated": true,
+    "replacement": "ticketHandoff",
+    "url": "https://monsoonfire.com/firing-services/pathfinder/",
+    "recipient": "support@monsoonfire.com",
+    "requiresContactConsent": true,
+    "boundary": "This is not a confirmed firing, final quote, appointment, booking, payment, or live status update."
+  },
+  "policies": [
+    "Monsoon Fire is a private home studio with no open studio hours; confirmed access details are sent with the firing handoff.",
+    "Standard dropoff and pickup can be self-serve and do not require a studio conversation.",
+    "Work should be safe to travel and clean where it meets the kiln shelf.",
+    "Artists should disclose unusual or unknown clay, glaze, repairs, or inclusions.",
+    "Anything over 10 inches tall starts at two half shelves, even when its footprint is small.",
+    "Bisque plates and bowls may stack when staff can do it safely; glazed surfaces do not stack.",
+    "Advancer shelves offer some protection from small glaze runs, but bottoms must remain clean and staff decides placement.",
+    "The studio loads and unloads the kiln and decides final fit, placement, and compatibility.",
+    "The planner gives an estimate, not a bill; the final charge is confirmed after firing from the space actually used.",
+    "A studio-caused problem has no firing charge; clay, glaze, or construction problems remain chargeable.",
+    "Pickup begins only after the studio sends the ready email.",
+    "The standard storage grace period ends 19 days and 6 hours after the ready notice; current extensions and daily charges are in the Studio Policies.",
+    "Missing a pickup deadline does not automatically transfer ownership; unclaimed work remains subject to notice and applicable law.",
+    "Responsibility is cause-based: studio fault means no charge or an appropriate refund, while other remedies are reviewed case by case."
+  ],
+  "canonicalCta": {
+    "label": "Plan your firing",
+    "url": "https://monsoonfire.com/firing-services/pathfinder/"
+  },
+  "accessModel": "Private home studio in the West Valley. Instructed self-service rack dropoff and pickup are available 24/7; studio visits and lessons are arranged separately."
+}

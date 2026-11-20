@@ -1,19 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 
 import {
   buildStripePaymentAuditDetails,
   classifyStripeWebhookReplayState,
   deriveOrderLifecycleStatusFromWebhookTransition,
   derivePaymentUpdateFromStripeEvent,
+  evaluateStripeWebhookEndpointReadiness,
   getStripeWebhookEventContract,
   mergePaymentStatus,
   resolveStripeWebhookMode,
+  STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS,
   validateStripeConfigForPersist,
   validateStripeWebhookSecret,
   verifyStripeWebhookEvent,
 } from "./stripeConfig";
+import { STRIPE_FIRING_BILLING_WEBHOOK_EVENTS } from "./firingBilling";
+import { getStripeWebhookApiVersion } from "./stripeRuntime";
 
 test("validateStripeConfigForPersist accepts valid config", () => {
   const config = validateStripeConfigForPersist({
@@ -63,6 +67,123 @@ test("validateStripeConfigForPersist rejects invalid publishable key prefix", ()
       }),
     /pk_test_/i
   );
+});
+
+test("validateStripeConfigForPersist requires invoices for firing pickup billing", () => {
+  assert.throws(
+    () =>
+      validateStripeConfigForPersist({
+        mode: "test",
+        publishableKeys: { test: "pk_test_123", live: "pk_live_123" },
+        priceIds: {},
+        productIds: {},
+        enabledFeatures: {
+          checkout: true,
+          customerPortal: false,
+          invoices: false,
+        },
+        firingBilling: {
+          enabled: true,
+          liveWritesEnabled: false,
+          daysUntilDue: 14,
+          pickupInstructions: "Use the pickup instructions from your email.",
+          pickupInstructionsVersion: "test-v1",
+        },
+        successUrl: "https://portal.monsoonfire.com/success",
+        cancelUrl: "https://portal.monsoonfire.com/cancel",
+      }),
+    /requires invoices/i
+  );
+});
+
+test("validateStripeConfigForPersist prevents a latent live-write arm in test mode", () => {
+  assert.throws(
+    () =>
+      validateStripeConfigForPersist({
+        mode: "test",
+        publishableKeys: { test: "pk_test_123", live: "pk_live_123" },
+        priceIds: {},
+        productIds: {},
+        enabledFeatures: {
+          checkout: true,
+          customerPortal: false,
+          invoices: true,
+        },
+        firingBilling: {
+          enabled: true,
+          liveWritesEnabled: true,
+          daysUntilDue: 14,
+          pickupInstructions: "Use the pickup instructions from your email.",
+          pickupInstructionsVersion: "test-v1",
+        },
+        successUrl: "https://portal.monsoonfire.com/success",
+        cancelUrl: "https://portal.monsoonfire.com/cancel",
+      }),
+    /only be armed.*live mode/i
+  );
+});
+
+test("portal webhook contract is the unique union of commerce and firing events", () => {
+  assert.equal(STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS.length, 18);
+  assert.equal(
+    new Set(STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS).size,
+    STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS.length
+  );
+  for (const eventType of STRIPE_FIRING_BILLING_WEBHOOK_EVENTS) {
+    assert.ok(STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS.includes(eventType), eventType);
+  }
+});
+
+test("webhook readiness requires the exact URL, mode, API version, and event set", () => {
+  const expectedUrl = "https://us-central1-monsoonfire-portal.cloudfunctions.net/stripePortalWebhook";
+  const endpoint = {
+    id: "we_1",
+    api_version: getStripeWebhookApiVersion("test"),
+    enabled_events: [...STRIPE_PORTAL_WEBHOOK_ENABLED_EVENTS],
+    livemode: false,
+    status: "enabled",
+    url: expectedUrl,
+  } as Stripe.WebhookEndpoint;
+
+  assert.deepEqual(
+    evaluateStripeWebhookEndpointReadiness({
+      endpoints: [endpoint],
+      expectedUrl,
+      mode: "test",
+    }),
+    {
+      ready: true,
+      matchingEndpointCount: 1,
+      endpointId: "we_1",
+      enabled: true,
+      livemodeMatches: true,
+      apiVersionMatches: true,
+      missingEvents: [],
+      unexpectedEvents: [],
+    }
+  );
+
+  const incomplete = evaluateStripeWebhookEndpointReadiness({
+    endpoints: [{
+      ...endpoint,
+      api_version: null,
+      enabled_events: ["invoice.paid", "customer.created"],
+    }],
+    expectedUrl,
+    mode: "test",
+  });
+  assert.equal(incomplete.ready, false);
+  assert.equal(incomplete.apiVersionMatches, false);
+  assert.ok(incomplete.missingEvents.includes("refund.created"));
+  assert.deepEqual(incomplete.unexpectedEvents, ["customer.created"]);
+
+  const duplicate = evaluateStripeWebhookEndpointReadiness({
+    endpoints: [endpoint, { ...endpoint, id: "we_2" }],
+    expectedUrl,
+    mode: "test",
+  });
+  assert.equal(duplicate.ready, false);
+  assert.equal(duplicate.matchingEndpointCount, 2);
 });
 
 test("resolveStripeWebhookMode prefers explicit env override", () => {
@@ -124,6 +245,36 @@ test("verifyStripeWebhookEvent validates single selected mode without probing", 
 
   assert.equal(out.ok, true);
   assert.deepEqual(called, ["whsec_live_contract"]);
+});
+
+test("verifyStripeWebhookEvent uses the exact raw bytes with Stripe signature verification", () => {
+  const secret = "whsec_real_library_contract";
+  const payload = JSON.stringify({
+    id: "evt_real_signature",
+    object: "event",
+    type: "invoice.paid",
+    livemode: false,
+    created: 1_784_160_000,
+    data: { object: { id: "in_test" } },
+  });
+  const signature = Stripe.webhooks.generateTestHeaderString({
+    payload,
+    secret,
+    timestamp: Math.floor(Date.now() / 1000),
+  });
+  const out = verifyStripeWebhookEvent({
+    rawBody: Buffer.from(payload),
+    signature,
+    context: {
+      mode: "test",
+      modeSource: "config_doc",
+      secretSource: "secret_manager",
+      secret,
+    },
+  });
+  assert.equal(out.ok, true);
+  if (!out.ok) return;
+  assert.equal(out.event.id, "evt_real_signature");
 });
 
 test("verifyStripeWebhookEvent rejects invalid signature", () => {
